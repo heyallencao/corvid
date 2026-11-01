@@ -1,6 +1,7 @@
 const { _electron } = require('playwright-core');
 const electronPath = require('electron');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -14,7 +15,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const piAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-config-'));
   const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = piAgentDir;
-  let app, createdSession;
+  let app, createdSession, reopenedSession;
   try {
     app = await _electron.launch({
       executablePath: electronPath,
@@ -67,10 +68,26 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(fs.statSync(path.dirname(createdSession.sessionFile)).mode & 0o777, 0o700);
     assert.equal(fs.existsSync(createdSession.sessionFile), false, 'Pi creates its transcript file when the first message is appended');
     assert.match(createdSession.session.systemPrompt, /You are Corvid/);
+    fs.writeFileSync(createdSession.sessionFile, `${JSON.stringify({type:'session',version:3,id:crypto.randomUUID(),timestamp:new Date().toISOString(),cwd:dataDir})}\n`, {mode:0o600});
+    reopenedSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: createdSession.sessionFile });
+    assert.equal(reopenedSession.sessionFile, createdSession.sessionFile);
+    assert.deepEqual(reopenedSession.tools, ['corvid_navigate', 'corvid_page_snapshot']);
+    const outsideTranscript = path.join(dataDir, 'outside-transcript.jsonl');
+    fs.writeFileSync(outsideTranscript, '{}\n');
+    fs.symlinkSync(outsideTranscript, path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl'));
+    await assert.rejects(
+      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl') }),
+      /Pi transcript must remain inside this task directory/,
+    );
+    await assert.rejects(
+      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: path.join(dataDir, 'outside-task.jsonl') }),
+      /Pi transcript must remain inside this task directory/,
+    );
 
     console.log('PASS Pi SDK session, task-isolated transcript path, explicit page consent, Room/Profile binding, and browser-only tool allowlist');
   } finally {
     createdSession?.session.dispose();
+    reopenedSession?.session.dispose();
     if (app) await app.close().catch(() => {});
     if (previousPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;

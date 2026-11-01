@@ -49,7 +49,7 @@
 | 33 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
 | 34 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：Agent 工作区面板开合与空态；同 Profile 多个 Agent Room 并行显示且不跨 Profile 泄露；窄窗口行布局无横向溢出；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看 Room 后面板关闭且活动 Room 更新。 | 风险复核的原生对话框由测试替身处理；本地隔离数据目录与 `about:blank` 页面；不接入真实 Agent 执行器。 |
 | 35 | `tests/mcp-e2e.cjs` | stdio MCP initialize/tools/list/tools/call；只读工具列表与 annotations；显式 Profile/Room 选择；页信息和 snapshot；未知 ID 与桌面离线错误；用户接管后拒绝页面读取；调用前后 Room 数量不变。 | 真实 Electron + 隔离数据目录；使用 `about:blank`；以 JSON-RPC 子进程夹具验证协议，不是 Claude Desktop/Cursor UI 配置或真实网站兼容性测试。 |
-| 36 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型，不执行 prompt，不验证 transcript 首条消息写入或恢复；使用隔离 Pi 配置目录与 `about:blank` 页面。 |
+| 36 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型/provider；使用隔离 Pi 配置目录与 `about:blank` 页面，以 SDK 打开合成 transcript 验证恢复路径、task 目录边界与工具 allowlist。 |
 
 ## 工作块与测试的映射
 
@@ -66,7 +66,7 @@
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
-| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、fixture 输出、落盘与重启恢复；无真实模型） |
+| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、多轮 transcript 续聊与重启后确认续跑；无真实模型） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e` |
 
 ## 单独运行
@@ -83,4 +83,4 @@
 - 系统对话框替身、非 `isTrusted` 合成事件和轮询实现必须在"关键限制"列写明。
 - 人眼布局检查不属于自动化项，记录在 [桌面 UI 视觉检查记录](ui-visual-check.md)，并在相关验收合同的证据列引用。
 
-| 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |
+| 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”，并可重新预览确认后从同一 transcript 继续；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |
