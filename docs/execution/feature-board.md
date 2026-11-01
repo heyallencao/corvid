@@ -2,18 +2,18 @@
 
 本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品主线是面向用户的完整浏览器：日常浏览与 Agent 协作在同一个桌面应用中完成。内置 Agent 与外部 SDK/CLI 共用 **Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）及同一授权合同。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。
 
-规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，36 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
+规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，37 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
 ## 当前事实与证据边界
 
 - 实现形态：Electron 45.2.1 + Chromium；页面由 `WebContentsView` 承载；本地控制服务只监听 `127.0.0.1` 的随机端口，使用 Bearer token 认证，凭据写入 `control.json`（权限 0600），应用关闭时删除。
 - 数据目录：默认 `~/.corvid`，可用 `CORVID_DATA_DIR` 覆盖；`CORVID_TEST_MODE`、`CORVID_PORT`、`CORVID_TEST_DOWNLOAD_DIR` 用于隔离测试。
-- 持久化文件：`rooms.json`（`schemaVersion=2`；支持 v1 会话迁移；旧 `spaces.json` 在启动时自动迁移一次，原文件保留）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`window-state.json`（窗口位置、尺寸、最大化状态，0600）、`control.json`。会话、库与窗口状态文件使用临时文件 + rename 原子写，权限 0600。
+- 持久化文件：`rooms.json`（`schemaVersion=2`；支持 v1 会话迁移；旧 `spaces.json` 在启动时自动迁移一次，原文件保留）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`window-state.json`（窗口位置、尺寸、最大化状态，0600）、`agent-tasks.json`（Pi 任务绑定、输出与恢复状态，0600）、`control.json`。会话、库与窗口状态文件使用临时文件 + rename 原子写，权限 0600。
 - 入口：桌面运行 `npm start`；全量回归 `npm test`；CLI 为 `node cli/corvid.mjs run < script.mjs` 与 `node cli/corvid.mjs help`。
 - 2026-11-01 在本机 macOS、Electron 45.2.1、隔离临时数据目录下执行 `env -u ELECTRON_RUN_AS_NODE npm test`：31 条命令、33 项真实 Electron 测试全部通过（新增 `tests/multi-window-e2e.cjs`；含 Agent API 合同回归、Snapshot v2、标签与窗口产品化回归）。该结果只覆盖本地夹具和 macOS，未验证真实网站、真实用户数据、原生系统对话框、Windows 与打包分发。
 - 2026-11-02 本机 macOS、Node.js v24.22.1、Electron 45.2.1、隔离临时数据目录：`env -u ELECTRON_RUN_AS_NODE npm test`，33 条命令 / 35 项真实 Electron 测试全部通过，新增 `tests/mcp-e2e.cjs`。另 `npm audit --audit-level=high` 为 0 vulnerabilities。仅覆盖 stdio 协议夹具与本地浏览器状态；真实 MCP host 配置、真实网站、打包入口、Windows 和真实模型未验证。
 - 2026-11-02 Pi runtime 基础 E2E：`node tests/pi-runtime-e2e.cjs` 通过；Pi `1.4.0` 会话无 API 调用启动，工具清单仅含 `corvid_page_snapshot` / `corvid_navigate`，测试隔离 Pi 配置和 Corvid 数据目录；`npm audit --audit-level=high` 为 0 vulnerabilities。还未验证真实模型、桌面任务 UI、Pi transcript 首条消息写入或恢复。
-- 2026-11-02 全量回归：本机 macOS、Node.js v24.22.1、Electron 45.2.1、隔离临时数据目录；`env -u ELECTRON_RUN_AS_NODE npm test` 34 条命令 / 36 项真实 Electron 用例全部通过，新增 `tests/pi-runtime-e2e.cjs`。`npm audit --audit-level=high` 为 0 vulnerabilities。Pi 无模型调用；未验证真实 MCP Host、真实网站、打包、Windows 或真实模型。
+- 2026-11-02 全量回归：本机 macOS、Node.js v24.22.1、Electron 45.2.1、隔离临时数据目录；`env -u ELECTRON_RUN_AS_NODE npm test` 35 条命令 / 37 项真实 Electron 用例全部通过，新增 `tests/pi-workbench-e2e.cjs`，Pi runtime 合同回归继续通过。`npm audit --audit-level=high` 为 0 vulnerabilities。Pi 无模型调用；未验证真实 MCP Host、真实网站、打包、Windows 或真实模型。
 - 自动化中的系统对话框是测试替身（`dialog.showMessageBox` / `showMessageBoxSync` / `showSaveDialogSync` 被替换）；下载测试用测试模式与临时下载目录绕开保存对话框。相关条目只能证明应用状态流转，不能证明原生对话框交互。
 
 ## 状态定义与证据要求
@@ -55,7 +55,7 @@
 | D10 | 部分 | **Page 与 SDK 合同**。已实现：`openRoom`/`resumeRoom`/`claimRoom`/`listRooms`；Room ID、Page label 稳定与未知来源保护；`adopt`/`release`/`finish`（keep 校验与收据）；Snapshot v2（`page`/`full_page`/`viewport`/`subtree` 范围、多层同源 iframe、`@N` 稳定引用、`frame` 标注、200 项截断与 `total`、跨源计入 `inaccessibleFrames`）；选择器（css/xpath/text/role/href、frame 限定、`:has-text`/`:text-is`/`>> nth=`）；输入与键盘（click/fill/press/`dblclick`/`focus`/`keyboard.*`/`insertText`/原生 `paste`）；等待（URL/selector/function/loadstate/popup/download/`waitForTimeout`）；`reload`/`info`/`events`/`receipt`/`cdp`；截图、`evaluate`、`fetch`、对话框、上传、select、指针、Agent 下载；统一 `CORVID_*` 错误码；CLI 多轮调用。差距：跨源 iframe 与 closed Shadow DOM 内容、`networkidle`、截图 `scale`/`raw`、`room.cdp()`、popup 历史跨重启、单凭据无 Agent 身份隔离、CLI 静态 import 与自动安装。 | ① `node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs` 覆盖新增合同。② 以 `npm test` 中 SDK/CLI 项为回归基线。③ 新增能力必须同时覆盖成功、错误/失效、控制权变更、重启或断开四类路径（适用时）。④ Snapshot 合同：范围必须显式、跨源内容计入 `inaccessibleFrames`、失效引用必须报错而不是静默重编号。⑤ 错误码新增必须同步映射与测试；参数形状错误与运营错误分开。 |
 | D11 | 部分 | **输入与网页能力**。已实现：`fill`、`press`、`click`、`dblclick`、`focus`、`hover`、`dragAndDrop`、`mouse.*`、`wheel`、`selectOption`、`setInputFiles`、`waitForFileChooser`、`keyboard.*`（type/press/down/up/insertText/paste）；点击/输入/按键为 `isTrusted: true` 事件；清空文件选择与 select 变更使用非 `isTrusted` 合成事件；同源 iframe 与开放 Shadow DOM 输入。差距：contenteditable、IME、任意组合键、目录上传、跨源 frame、OS 级拖放、原生文件选择器 UI、富文本、真实网站反自动化兼容性。 | ① `node --test tests/uploads.e2e.mjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`。② 新增输入路径必须验证事件 `isTrusted` 状态、焦点、滚动与视口边界。③ 合同：`paste` 的剪贴板恢复是 best-effort；合成事件只能标注为合成路径；跨源 frame、目录上传、IME 作为待实现项。 |
 | D12 | 部分 | **状态、接管与多 Agent 体验**。已实现：桌面状态"Agent 控制中/用户控制中/正在接管…/页面执行状态未知/网页对话框/站点权限/站点数据"；后台 Room 操作不改变前台 Room；错误以 alert 呈现；系统确认框当前为测试替身。差距：后台操作时前台焦点保持、多 Agent 身份、任务进度与长任务指示、崩溃/断开/清理失败后的状态一致性、无障碍与键盘可达性、状态同步延迟。 | ① 同时运行用户 Room 与至少两个 Agent Room，UI 可区分状态并可接管。② 断言前台 URL 与 `activeRoomId` 不受后台操作影响，并补测前台焦点保持。③ 退出/错误后不得显示虚假"已完成"；每个新状态必须对应可测试的状态源。④ 在单凭据问题解决前，UI 与文档都不得暗示 Agent 之间相互隔离。⑤ `node tests/agent-rooms-panel-e2e.cjs` 覆盖面板开合、并行 Room 列表、Profile 过滤、窄窗溢出、键盘接管/交还、执行风险复核与 Room 激活；真实模型与跨窗口实时刷新仍未覆盖。 |
-| D19 | 待实现 | **内置 Agent 工作台与统一任务体验**。当前没有内置 Agent 对话/任务工作台；桌面浏览器与 SDK/CLI 已有 Room、Page、状态与控制权合同。内置 Agent runtime 已选定 Pi SDK（[Issue #5](https://github.com/heyallencao/corvid/issues/5)）；Corvid 负责 UI、任务/Room 绑定与浏览器工具权限。第一步先补齐 Agent Room 的集中查看/接管入口（[Issue #1](https://github.com/heyallencao/corvid/issues/1)），它只呈现真实 Room 状态，不代表内置 Agent 已实现。目标：用户可从当前页面或选定标签发起任务，在独立 Room 观察 Agent 进度、接管并输入、交还后继续、查看结果/错误并恢复任务；内置 Agent、SDK/CLI 使用相同 Room 生命周期和权限边界。Pi 会话通过受限的 Corvid 浏览器工具工作；Pi 文件系统与 shell 工具默认关闭。`desktop/pi-agent.cjs` 已建立 Pi session 工厂并严格关闭默认工具/扩展，但尚未接入桌面工作台、持久任务状态或真实模型运行。 | ① 先定义任务生命周期与 UI 状态（草稿、运行、等待用户、用户接管、完成、失败、结果未知、可恢复），并与 Room/控制权状态建立单一映射。② 从当前页/所选标签启动时显式确认送入 Agent 的页面上下文；不得自动读取其他 Profile 或用户未选 Room。③ 用本地假 Agent/可控 fixture 验收启动、进度、取消或接管、交还后继续、错误、断连/重启恢复；成功与失败均可定位到 Room、任务和页面。④ 真实模型接入需单独定义凭据存储、数据发送范围、费用/运行状态与用户可撤销设置；测试 fixture 结果不得宣称真实模型已接入。⑤ 桌面工作台与外部 SDK/CLI 对同一 Room 的状态变更保持一致；用户控制期间所有 Agent 入口均拒绝动作。⑥ 可用性验收覆盖键盘、窄窗口、空态、慢任务、无网络、Agent 不可用与辅助技术可读状态。 |
+| D19 | 部分 | **内置 Agent 工作台与统一任务体验**。已实现第一段 Pi 任务流程（[Issue #8](https://github.com/heyallencao/corvid/issues/8)）：从当前 HTTP(S) 页面创建独立 Agent Room，预览快照并明确同意后启动 Pi SDK；Pi 输出/工具事件流入桌面任务面板；任务 Profile/Room/Tab 绑定及输出落盘，重启时运行中的任务标为“结果待检查”；停止、查看 Room 和清理记录及其 task 专属 Pi transcript 可用。E2E 使用明确标识的本地 fixture，不调用真实模型。剩余：任务中接管后的同会话继续、Pi transcript 会话恢复、等待用户与未知状态的完整生命周期、模型/凭据管理与真实 provider、跨 Room 任务统一入口和无障碍/窄屏/慢网验收。 | ① 当前任务从独立 Agent Room 的指定标签发起；页面快照与 URL/title 在发送前完整预览，启动前勾选同意；页面变化或 Room/Profile/Tab 绑定变化时拒绝。② Pi 工具限定于已确认的同一 Room/Profile/Tab；Pi 文件系统/shell 默认工具关闭；接管、待接管或执行风险时拒绝页面操作。③ fixture 验证启动、真实 Pi 事件映射、完成/错误、停止和重启恢复；fixture 不得冒充真实模型结果。④ 未恢复的运行任务只能呈现为中断/结果未知，不能标完成；其 task-to-Room 关系可检查。⑤ 真实模型凭据、provider 费用与数据发送范围单独设计并验证；当前未声明真实模型已接入。⑥ 后续继续满足 Issue #5 的同 Room 接管后续跑、SDK/CLI 状态一致性、键盘/窄窗/空态/慢任务/无网络/辅助技术验收。 |
 | D20 | 部分 | **外部 Agent / MCP 浏览器接入**。`mcp/corvid.mjs` 适配官方 stdio MCP SDK 与现有 SDK，暴露 `list_profiles`、按显式 Profile 查 `list_rooms`、按 Room 查 `list_tabs`、Agent-owned Room 下的 `page_info` 与 `page_snapshot`；不开放新 TCP 端口，不暴露写操作。实现与验收见 [Issue #4](https://github.com/heyallencao/corvid/issues/4)。 | ① `node tests/mcp-e2e.cjs`：协议初始化、工具发现与调用、明确 Profile/Room 范围、只读标记、Room 用户控制时拒绝页面读取、稳定错误、Corvid 未运行时保持协议有效。② `npm test` 全量回归。③ 未覆盖真实 MCP host 的 UI 配置、macOS 打包路径、Windows 与真实网站；无模型执行能力。④ 后续写工具必须单独建 Issue，逐项增加授权与副作用验收；禁止通过 MCP 暴露任意 `evaluate`/CDP。
 
 ## P2：平台、迁移与能力补齐
@@ -82,7 +82,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（34 条命令、36 项测试入口，按固定顺序串行执行）。
+1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（35 条命令、37 项测试入口，按固定顺序串行执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 

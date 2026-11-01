@@ -31,29 +31,16 @@ function assertReadableRoom(room, profileId) {
   if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(taskId)) throw new TypeError('taskId must contain only letters, numbers, underscores, or hyphens');
   if (includePageContext !== true) throw new Error('The user must explicitly confirm sharing this page context before starting the Agent');
 
-  const client = await connect({ dataDir });
-  let context;
-  try {
-    const profiles = await client.profiles();
-    if (!profiles.some(item => item.id === profileId)) throw localError('CORVID_NOT_FOUND', `Profile not found: ${profileId}`);
-    const room = await client.room(roomId);
-    assertReadableRoom(room, profileId);
-    const tab = (await room.tabs()).find(item => item.id === tabId);
-    if (!tab) throw localError('CORVID_NOT_FOUND', `Tab not found: ${tabId}`);
-    if (!tab.label) throw localError('CORVID_CONTROL_LOST', 'Tab is unmanaged; manage it in Corvid before sharing page context');
-    const page = room.page(tabId);
-    const info = await page.info();
-    const snapshot = await page.snapshot({ scope: 'page' });
-    context = { roomId, profileId, tabId, label: tab.label, url: info.url, title: info.title, snapshot };
-  } finally {
-    await client.disconnect();
+  const context = await readPiPageContext({ dataDir, profileId, roomId, tabId });
+  if (expectedContext && (expectedContext.label !== context.label || expectedContext.url !== context.url || expectedContext.title !== context.title || expectedContext.snapshot !== JSON.stringify(context.snapshot).slice(0, 12_000))) {
+    throw localError('CORVID_STALE_REFERENCE', 'Selected page changed after the user reviewed its context');
   }
 
   const pi = await import('@earendil-works/pi-coding-agent');
@@ -136,4 +123,21 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   return { session, context, sessionFile, modelFallbackMessage: modelFallbackMessage || null, tools: activeTools };
 }
 
-module.exports = { createPiAgentSession, AGENT_SYSTEM_PROMPT, TOOL_NAVIGATE, TOOL_SNAPSHOT };
+async function readPiPageContext({ dataDir, profileId, roomId, tabId }) {
+  const client = await connect({ dataDir });
+  try {
+    const profiles = await client.profiles();
+    if (!profiles.some(item => item.id === profileId)) throw localError('CORVID_NOT_FOUND', `Profile not found: ${profileId}`);
+    const room = await client.room(roomId);
+    assertReadableRoom(room, profileId);
+    const tab = (await room.tabs()).find(item => item.id === tabId);
+    if (!tab) throw localError('CORVID_NOT_FOUND', `Tab not found: ${tabId}`);
+    if (!tab.label) throw localError('CORVID_CONTROL_LOST', 'Tab is unmanaged; manage it in Corvid before sharing page context');
+    const page = room.page(tabId);
+    const info = await page.info();
+    const snapshot = await page.snapshot({ scope: 'page' });
+    return { roomId, profileId, tabId, label: tab.label, url: info.url, title: info.title, snapshot };
+  } finally { await client.disconnect(); }
+}
+
+module.exports = { createPiAgentSession, readPiPageContext, AGENT_SYSTEM_PROMPT, TOOL_NAVIGATE, TOOL_SNAPSHOT };
