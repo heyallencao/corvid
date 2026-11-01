@@ -45,10 +45,8 @@
 | 29 | `tests/tab-ux-e2e.cjs` | 桌面 UI：页面 favicon 出现在标签栏；Cmd/Ctrl+F 打开查找条、匹配计数 `1/3`、Enter/Shift+Enter 前后跳转、Esc 关闭；第二标签页；指针拖拽把第一个标签移到第二个之后并用 `/rooms` 断言顺序；切换标签关闭查找条；中键关闭标签。 | 只用本地夹具与单层文档；查找不覆盖跨 frame 高亮与长页面性能；拖拽只验证指针拖动路径，不是原生标签栏；macOS 键位为主。 |
 | 30 | `tests/tab-pin-menu-e2e.cjs` | 标签固定与右键菜单：右键固定使标签置顶并显示固定图标；跨固定分组的拖拽回弹且不隐式固定；`复制链接` 作用在打开菜单的标签而非当前激活标签；`关闭其他标签` 保留固定标签；关闭固定标签先确认（取消保留、确认移除）；固定状态跨重启保持并可取消固定。 | 确认框与 `clipboard.writeText` 为测试替身；菜单是应用内 DOM 菜单，未验证原生（系统）右键菜单；固定不改变 `openedBy` 归属，Agent 关闭路径未在此项覆盖；本地夹具。 |
 | 31 | `tests/window-state-e2e.cjs` | 多窗口边界位置/尺寸写入 `window-state.json` 并按稳定窗口 ID 重启恢复；旧单窗口对象格式仍可读；状态文件损坏回退默认尺寸；已移除显示器上的位置回退到可见区域。 | macOS；最大化/全屏切换、多显示器热插拔、Windows 窗口管理规则未覆盖；窗口系统可能微调边界坐标。 |
-| 32 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
-| 33 | `tests/multi-window-e2e.cjs` | 两个 BrowserWindow 与独立 shell UI；每窗 Room 列表隔离，控制 API 汇总所有 Room；Agent 可操作后台窗口 Room；关闭窗口将 Room 转移至剩余窗口；重启恢复窗口 ID 与 Room 归属，`rooms.json` 写为 schemaVersion=2。 | 真实 Electron + 本地 HTTP 页面夹具；macOS；未覆盖 Windows 焦点规则、多显示器窗口排列、窗口键盘切换与窗口崩溃恢复。 |
-| 31 | `tests/download-file-ops-e2e.cjs` | 下载完成后"打开文件"与"在文件夹中显示"把保存路径转发给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | `shell` 调用被替身替换，未验证真实应用打开、真实文件管理器、权限拒绝的真实系统错误；本地夹具与临时下载目录。 |
-| 30 | `tests/tab-pin-menu-e2e.cjs` | 标签固定与右键菜单：右键固定使标签置顶并显示固定图标；跨固定分组的拖拽回弹且不隐式固定；`复制链接` 作用在打开菜单的标签而非当前激活标签；`关闭其他标签` 保留固定标签；关闭固定标签先确认（取消保留、确认移除）；固定状态跨重启保持并可取消固定。 | 确认框与 `clipboard.writeText` 为测试替身；菜单是应用内 DOM 菜单，未验证原生（系统）右键菜单；固定不改变 `openedBy` 归属，Agent 关闭路径未在此项覆盖；本地夹具。 |
+| 32 | `tests/multi-window-e2e.cjs` | 两个 BrowserWindow 与独立 shell UI；每窗 Room 列表隔离，控制 API 汇总所有 Room；Agent 可操作后台窗口 Room；关闭窗口将 Room 转移至剩余窗口；重启恢复窗口 ID 与 Room 归属，`rooms.json` 写为 schemaVersion=2。 | 真实 Electron + 本地 HTTP 页面夹具；macOS；未覆盖 Windows 焦点规则、多显示器窗口排列、窗口键盘切换与窗口崩溃恢复。 |
+| 33 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
 
 ## 工作块与测试的映射
 

@@ -2,7 +2,7 @@
 
 本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品对象统一为：**Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。
 
-规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，32 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
+规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，33 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
 ## 当前事实与证据边界
 
