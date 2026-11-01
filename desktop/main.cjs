@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -96,15 +96,18 @@ function readSavedRooms() {
   }
   const roomIds=saved.rooms.map(room=>room.id), tabIds=saved.rooms.flatMap(room=>room.tabs.map(tab=>tab.id));
   if(new Set(roomIds).size!==roomIds.length || new Set(tabIds).size!==tabIds.length) throw new Error(`会话文件包含重复标识：${dbPath}；原文件未修改，请先备份并检查后再恢复。`);
-  for(const room of saved.rooms) {const labels=room.tabs.map(tab=>tab.label).filter(label=>label!==null && label!==undefined);if(labels.some(label=>!validString(label)) || new Set(labels).size!==labels.length || (room.usedLabels!==undefined && (!Array.isArray(room.usedLabels) || room.usedLabels.some(label=>!validString(label)) || new Set(room.usedLabels).size!==room.usedLabels.length)) || room.tabs.some(tab=>tab.openedBy!==undefined && !['agent','user','unknown'].includes(tab.openedBy)))throw new Error(`会话页面标识无效：${dbPath}；原文件未修改，请先备份并检查后再恢复。`);}
+  for(const room of saved.rooms) {const labels=room.tabs.map(tab=>tab.label).filter(label=>label!==null && label!==undefined);if(labels.some(label=>!validString(label)) || new Set(labels).size!==labels.length || (room.usedLabels!==undefined && (!Array.isArray(room.usedLabels) || room.usedLabels.some(label=>!validString(label)) || new Set(room.usedLabels).size!==room.usedLabels.length)) || room.tabs.some(tab=>tab.openedBy!==undefined && !['agent','user','unknown'].includes(tab.openedBy)) || room.tabs.some(tab=>tab.pinned!==undefined && typeof tab.pinned!=='boolean'))throw new Error(`会话页面标识无效：${dbPath}；原文件未修改，请先备份并检查后再恢复。`);}
   return saved;
 }
 function applyZoom(profileId) {const zoom=profileSettings(profileId).zoom;for(const tab of tabs.values()) if(findRoom(tab.roomId).profileId===profileId) tab.view.webContents.setZoomFactor(zoom);}
 const findRoom = roomId => { const room = rooms.find(s => s.id === roomId); if (!room) throw new Error('Room not found'); return room; };
 const findTab = tabId => { const tab = tabs.get(tabId); if (!tab) throw new Error('Tab not found'); return tab; };
-const describe = () => ({activeRoomId,activeProfileId,profiles, rooms: rooms.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))});
+// Pinned tabs form a prefix of tabIds: pinned first, then the rest in user order.
+const tabPartition = room => ({pinned:room.tabIds.filter(id=>tabs.get(id)?.pinned),unpinned:room.tabIds.filter(id=>!tabs.get(id)?.pinned)});
+const normalizeTabOrder = room => { const {pinned,unpinned}=tabPartition(room); room.tabIds=[...pinned,...unpinned]; };
+const describe = () => ({activeRoomId,activeProfileId,profiles, rooms: rooms.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))});
 function persist() {
-  const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
+  const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,pinned:Boolean(t.pinned),url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
   fs.mkdirSync(dataDir,{recursive:true});
   const temp = `${dbPath}.tmp`; fs.writeFileSync(temp, JSON.stringify(state), {mode:0o600}); fs.renameSync(temp,dbPath);
 }
@@ -183,7 +186,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const view = new WebContentsView({webPreferences:{partition,sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(__dirname,'page-preload.cjs')}});
   const openedBy=metadata.openedBy ?? 'unknown';
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
-  const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),popupSequence:0,popupEvents:[]};
+  const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[]};
   view.webContents.on('did-navigate',()=>{tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;});
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;});
@@ -330,7 +333,47 @@ async function dispatch(method, args = {}, fromApi = false) {
       const room=findRoom(target), order=args.tabIds;
       if(!Array.isArray(order) || order.length!==room.tabIds.length) throw new Error('Tab order must list every tab in the room');
       if(new Set(order).size!==order.length || order.some(tabId=>!room.tabIds.includes(tabId))) throw new Error('Tab order is invalid');
+      const pinnedIds=room.tabIds.filter(tabId=>findTab(tabId).pinned);
+      if(order.slice(0,pinnedIds.length).some(tabId=>!findTab(tabId).pinned) || order.slice(pinnedIds.length).some(tabId=>findTab(tabId).pinned)) throw new Error('固定标签必须保持在固定分组内');
       room.tabIds=order; update(); return describe();
+    }
+    case 'setTabPinned': {
+      if(fromApi) throw new Error('User action required');
+      const tab=findTab(target), room=findRoom(tab.roomId), pinned=Boolean(args.pinned);
+      if(tab.pinned===pinned) return describe();
+      tab.pinned=pinned; normalizeTabOrder(room); update(); return describe();
+    }
+    case 'closeTabFromUser': {
+      if(fromApi) throw new Error('User action required');
+      const tab=findTab(target);
+      if(tab.pinned){
+        const title=tab.view.webContents.getTitle() || tab.view.webContents.getURL() || '固定标签';
+        const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭固定标签'],defaultId:0,cancelId:0,title:'关闭固定标签',message:`“${title}”是固定标签`,detail:'固定标签用于长期保留的页面；关闭后该标签的固定状态一并移除，其他固定标签不受影响。'});
+        if(choice.response!==1) return {closed:false};
+        if(tabs.get(target)!==tab || !tab.pinned) throw new Error('确认期间标签已改变，请重新操作');
+      }
+      await runAction.releasePointer(tab.view.webContents);
+      await closeTab(target);
+      return {closed:true};
+    }
+    case 'closeOtherTabs': {
+      if(fromApi) throw new Error('User action required');
+      const keep=findTab(target), room=findRoom(keep.roomId);
+      const closing=room.tabIds.filter(tabId=>tabId!==keep.id && !findTab(tabId).pinned);
+      let count=0;
+      for(const tabId of closing){
+        agentDownloads.cancelTab(tabId);
+        try { await runAction.releasePointer(findTab(tabId).view.webContents); await closeTab(tabId); count++; }
+        catch(error) { throw new Error(`关闭其他标签时出错：${error.message}${count ? `；已有 ${count} 个标签关闭` : ''}`); }
+      }
+      return {closed:count,keptPinned:room.tabIds.length-closing.length};
+    }
+    case 'copyTabUrl': {
+      if(fromApi) throw new Error('User action required');
+      const url=findTab(target).view.webContents.getURL();
+      if(!url || url==='about:blank') throw new Error('当前标签页没有可复制的地址');
+      clipboard.writeText(url);
+      return {url};
     }
     case 'findInPage': {
       const tab=findTab(target), text=args.text;
@@ -561,7 +604,7 @@ app.whenReady().then(async () => {
   const saved=readSavedRooms();
   if (saved && Array.isArray(saved.rooms)) {
     restoring = true;
-    for (const old of saved.rooms) { const profileId=old.profileId ?? 'default';findProfile(profileId);const pending=Boolean(old.userResumePending);const executionRisk=old.executionRisk ? {...old.executionRisk,status:'unknown_after_restart'} : pending ? {operationId:null,tabId:null,status:'unknown_after_restart',executionStopped:null,mayHaveLateEffects:true} : null;const existingNumbers=old.tabs.map(tab=>/^p([1-9]\d*)$/.exec(tab.label || '')).filter(Boolean).map(match=>Number(match[1]));const nextPageNumber=Math.max(1,Number.isSafeInteger(old.nextPageNumber)?old.nextPageNumber:1,...existingNumbers.map(value=>value+1));const usedLabels=[...new Set([...(old.usedLabels || []),...old.tabs.map(tab=>tab.label).filter(Boolean)])];const s={id:old.id,name:old.name,profileId,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null}; rooms.push(s); for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',restored:true}); s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null; }
+    for (const old of saved.rooms) { const profileId=old.profileId ?? 'default';findProfile(profileId);const pending=Boolean(old.userResumePending);const executionRisk=old.executionRisk ? {...old.executionRisk,status:'unknown_after_restart'} : pending ? {operationId:null,tabId:null,status:'unknown_after_restart',executionStopped:null,mayHaveLateEffects:true} : null;const existingNumbers=old.tabs.map(tab=>/^p([1-9]\d*)$/.exec(tab.label || '')).filter(Boolean).map(match=>Number(match[1]));const nextPageNumber=Math.max(1,Number.isSafeInteger(old.nextPageNumber)?old.nextPageNumber:1,...existingNumbers.map(value=>value+1));const usedLabels=[...new Set([...(old.usedLabels || []),...old.tabs.map(tab=>tab.label).filter(Boolean)])];const s={id:old.id,name:old.name,profileId,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null}; rooms.push(s); for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true}); s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null; }
     activeProfileId=saved.activeProfileId ?? rooms.find(s=>s.id===saved.activeRoomId)?.profileId ?? 'default';findProfile(activeProfileId);
     activeRoomId=rooms.some(s=>s.id===saved.activeRoomId && s.profileId===activeProfileId)?saved.activeRoomId:rooms.find(s=>s.profileId===activeProfileId)?.id || null;
     restoring = false;

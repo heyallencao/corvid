@@ -109,11 +109,14 @@ document.querySelector('#close-library').onclick = () => {libraryKind=null;docum
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
 const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
-let findOpen=false, findTabId=null;
+const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z" fill="#4a5568"/></svg>');
+let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null;
 function tabElement(tab, room){
   const el=document.createElement('div');
-  el.className='tab'; el.setAttribute('role','tab'); el.setAttribute('aria-selected',tab.active?'true':'false'); el.dataset.tabId=tab.id;
+  el.className=tab.pinned?'tab pinned':'tab'; el.setAttribute('role','tab'); el.setAttribute('aria-selected',tab.active?'true':'false'); el.dataset.tabId=tab.id;
+  if(tab.pinned) el.dataset.pinned='true';
   const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;
+  if(tab.pinned){ const pin=document.createElement('img'); pin.className='pin-icon'; pin.alt='已固定'; pin.title='已固定'; pin.draggable=false; pin.src=PIN_ICON; main.append(pin); }
   const icon=document.createElement('img'); icon.className='favicon'; icon.alt=''; icon.draggable=false; icon.src=tab.faviconUrl || FALLBACK_FAVICON;
   icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};
   const title=document.createElement('span'); title.className='tab-title'; title.textContent=tab.title || tab.url || '新标签页';
@@ -121,9 +124,10 @@ function tabElement(tab, room){
   const close=document.createElement('button'); close.type='button'; close.className='tab-close'; close.textContent='×'; close.setAttribute('aria-label','关闭标签页'); close.title=`关闭 ${tab.title || tab.url || '标签页'}`;
   close.onclick=event=>{event.stopPropagation();void closeTabFromUi(tab.id);};
   el.append(main,close);
-  main.onclick=()=>{void api.invoke('activateTab',{id:tab.id}).catch(error=>{controlError=error.message;draw(state);});};
+  main.onclick=()=>{closeTabMenu();void api.invoke('activateTab',{id:tab.id}).catch(error=>{controlError=error.message;draw(state);});};
   el.onauxclick=event=>{if(event.button===1){event.preventDefault();void closeTabFromUi(tab.id);}};
-  el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;startTabDrag(event,el,room);};
+  el.oncontextmenu=event=>{event.preventDefault();openTabMenu(event,tab,room);};
+  el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;closeTabMenu();startTabDrag(event,el,room);};
   return el;
 }
 let tabsSignature='';
@@ -131,7 +135,7 @@ function renderTabs(room){
   // Rebuild only when the room or its tabs actually changed: frequent state
   // updates (download progress, agent activity) must not tear down the tab bar
   // while the user is dragging a tab or clicking its close button.
-  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.title,tab.url,tab.faviconUrl,tab.active].join('\u0000'))].join('\u0001');
+  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.title,tab.url,tab.faviconUrl,tab.active,tab.pinned].join('\u0000'))].join('\u0001');
   const existing=document.querySelector('#new-tab');
   if(signature===tabsSignature && existing && existing.parentElement?.id==='tabs') return;
   tabsSignature=signature;
@@ -140,7 +144,34 @@ function renderTabs(room){
   const add=button('+',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
   add.id='new-tab'; add.setAttribute('aria-label','新建标签'); tabs.append(add);
 }
-async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTab',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
+async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTabFromUser',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
+function tabMenuElement(){return document.querySelector('#tab-menu');}
+function closeTabMenu(){const menu=tabMenuElement();if(menu && !menu.hidden){menu.hidden=true;menu.replaceChildren();}tabMenu=null;tabMenuTabId=null;}
+function openTabMenu(event,tab,room){
+  const menu=tabMenuElement();
+  const items=[
+    {label:tab.pinned?'取消固定':'固定标签',action:()=>api.invoke('setTabPinned',{id:tab.id,pinned:!tab.pinned})},
+    {label:'重新加载',action:()=>api.invoke('reload',{id:tab.id})},
+    {label:'复制链接',action:()=>api.invoke('copyTabUrl',{id:tab.id})},
+    {separator:true},
+    {label:'关闭标签',action:()=>api.invoke('closeTabFromUser',{id:tab.id})},
+    {label:'关闭其他标签',action:()=>api.invoke('closeOtherTabs',{id:tab.id})}
+  ];
+  menu.replaceChildren();
+  for(const item of items){
+    if(item.separator){const rule=document.createElement('div');rule.className='menu-separator';menu.append(rule);continue;}
+    const entry=document.createElement('button');entry.type='button';entry.className='menu-item';entry.textContent=item.label;entry.setAttribute('role','menuitem');
+    entry.onclick=async()=>{closeTabMenu();controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}};
+    menu.append(entry);
+  }
+  menu.hidden=false;
+  const menuWidth=180, menuHeight=items.length*30+8;
+  menu.style.left=`${Math.max(4,Math.min(event.clientX,window.innerWidth-menuWidth-4))}px`;
+  menu.style.top=`${Math.max(4,Math.min(event.clientY,window.innerHeight-menuHeight-4))}px`;
+  tabMenuTabId=tab.id; tabMenu=menu;
+  menu.querySelector('.menu-item')?.focus();
+}
+function pinnedFirst(order,rooms){const pinned=new Set(order.filter(id=>rooms.some(tab=>tab.id===id && tab.pinned)));return [...order.filter(id=>pinned.has(id)),...order.filter(id=>!pinned.has(id))];}
 function startTabDrag(event,el,room){
   if(room.tabs.length<2) return;
   let active=false;
@@ -165,7 +196,10 @@ function startTabDrag(event,el,room){
     order.splice(from,1);
     const target=order.indexOf(over.dataset.tabId);
     order.splice(before?target:target+1,0,el.dataset.tabId);
-    void api.invoke('reorderTabs',{id:room.id,tabIds:order}).catch(error=>{controlError=error.message;draw(state);});
+    // Pinned tabs always lead the bar; dropping across the partition snaps back
+    // into the tab's own group instead of silently changing its pinned state.
+    const next=pinnedFirst(order,state.rooms.find(item=>item.id===room.id)?.tabs || []);
+    void api.invoke('reorderTabs',{id:room.id,tabIds:next}).catch(error=>{controlError=error.message;draw(state);});
   };
   document.addEventListener('pointermove',move);document.addEventListener('pointerup',finish);document.addEventListener('pointercancel',finish);
 }
@@ -202,3 +236,5 @@ api.onFindOpen(()=>openFindBar());
 api.onFindNext(options=>{const bar=findbarEl();if(bar.hidden){openFindBar();return;}runFind(true,!options.backward);});
 api.onFindResult(result=>{if(!findOpen || result.tabId!==findTabId) return;const count=document.querySelector('#find-count');if(!result.matches){count.textContent='无结果';return;}count.textContent=`${result.activeMatchOrdinal}/${result.matches}`;});
 api.onFindReset(result=>{if(findTabId===result.tabId) closeFindBar();});
+document.addEventListener('pointerdown',event=>{if(tabMenu && !tabMenu.contains(event.target)) closeTabMenu();},true);
+document.addEventListener('keydown',event=>{if(event.key==='Escape' && tabMenu && !tabMenu.hidden){event.preventDefault();closeTabMenu();}});
