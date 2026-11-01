@@ -340,7 +340,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'closeRoom': {const s=findRoom(target);for(const tabId of s.tabIds)await runAction.releasePointer(findTab(tabId).view.webContents);await closeRoom(target); return {ok:true};}
     case 'closeTab': await runAction.releasePointer(findTab(target).view.webContents);await closeTab(target); return {ok:true};
     case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
-    case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); return runAction(t.view.webContents,args.operation,args.args);}
+    case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const beforePopup=t.popupSequence; const result=await runAction(t.view.webContents,args.operation,args.args); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}
     case 'getPopupEvents': {const tab=findTab(target);if(args.after===undefined)return {cursor:tab.popupSequence,event:null};const after=Number(args.after);if(!Number.isSafeInteger(after) || after<0 || after>tab.popupSequence)throw new Error('Invalid popup cursor');if(tab.popupEvents.length && after<tab.popupEvents[0].sequence-1)throw new Error('Popup event history expired');const event=tab.popupEvents.find(item=>item.sequence>after);if(!event)return {cursor:tab.popupSequence,event:null};const popup=tabs.get(event.tabId);return {cursor:tab.popupSequence,event:{...event,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}: {})}};}
     case 'armDownload': return agentDownloads.arm(target,args.timeoutMs);
@@ -445,17 +445,26 @@ function apiRoute(req, url) {
   if (kind==='tabs' && target && req.method==='POST') return [{navigate:'navigate',activate:'activateTab',back:'back',forward:'forward',reload:'reload',action:'action'}[action],{id:target}];
   return [];
 }
+function errorCode(message) {
+  const text=String(message);
+  if(/timed out|timeout/i.test(text)) return 'CORVID_TIMEOUT';
+  if(/stale|no longer manages|already used|expired/i.test(text)) return 'CORVID_STALE_REFERENCE';
+  if(/user control|takeover is pending|resumeControl is pending|unresolved execution|execution risk/i.test(text)) return 'CORVID_CONTROL_LOST';
+  if(/unsupported|not supported|not yet supported/i.test(text)) return 'CORVID_UNSUPPORTED';
+  if(/not found|unknown action/i.test(text)) return 'CORVID_NOT_FOUND';
+  return 'CORVID_DESKTOP_ERROR';
+}
 async function startServer() {
   server=http.createServer(async (req,res) => {
     res.setHeader('Content-Type','application/json');
-    if (req.headers.authorization !== `Bearer ${token}`) {res.writeHead(401); res.end(JSON.stringify({error:'Unauthorized'})); return;}
+    if (req.headers.authorization !== `Bearer ${token}`) {res.writeHead(401); res.end(JSON.stringify({error:'Unauthorized',code:'CORVID_UNAUTHORIZED'})); return;}
     try {
-      const [method,routeArgs]=apiRoute(req,new URL(req.url,'http://localhost')); if (!method) {res.writeHead(404); res.end(JSON.stringify({error:'Not found'})); return;}
+      const [method,routeArgs]=apiRoute(req,new URL(req.url,'http://localhost')); if (!method) {res.writeHead(404); res.end(JSON.stringify({error:'Not found',code:'CORVID_NOT_FOUND'})); return;}
       let raw=''; for await (const chunk of req) {raw+=chunk; if(raw.length>65536) throw new Error('Request too large');}
       const body=raw ? JSON.parse(raw) : {}; const result=method==='health' ? {ok:true} : method==='shutdown' ? {ok:true} : await dispatchQueued(method,{...body,...routeArgs},true);
       res.end(JSON.stringify(result));
       if(method==='shutdown') setImmediate(()=>app.quit());
-    } catch (error) {res.writeHead(400);res.end(JSON.stringify({error:error.message}));}
+    } catch (error) {res.writeHead(400);res.end(JSON.stringify({error:error.message,code:errorCode(error.message)}));}
   });
   await new Promise((resolve,reject) => {server.once('error',reject);server.listen(Number(process.env.CORVID_PORT || 0),'127.0.0.1',resolve);});
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};

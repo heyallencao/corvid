@@ -71,3 +71,32 @@ Permission requests from an agent-owned main document transfer the room to the u
 `page.selectOption(target, choice)` accepts a value-or-label string, `{value, label, index}` criteria, an array of choices, or `null` / `[]` to clear. It returns selected values; `page.select` is an alias. Additional options, including a timeout, are not supported. The select itself must be visible and enabled; disabled options may be selected programmatically. This updates DOM option state and emits untrusted `input` and `change` events, rather than operating the native picker. Same-origin frame and open shadow controls are covered by local tests.
 
 `page.hover(target)` moves the pointer to an element, and `page.dragAndDrop(source, target)` drags between element centers. Both drag endpoints must fit in the viewport at the same time; position, force, label and timeout options are not supported. `page.mouse.move(x, y)`, `.click(x, y, {button})`, `.down({button})`, `.up({button})`, and `.wheel(deltaX, deltaY)` use main-viewport CSS pixels and support left, right and middle buttons. Wheel input is dispatched at the last pointer position; dispatch completion does not prove scrolling has finished. Held buttons are released before a normal yieldControl or tab closure. Tests cover a local HTML drag with transferred text, pointer dragging and wheel events, but do not establish compatibility with all sites, cross-origin frames or OS drag targets.
+
+## Page control, keyboard and raw protocol
+
+`page.reload()` reloads the current page (navigation is asynchronous; wait with `waitForLoadState` or `waitForURL`). `page.focus(target)` focuses a single resolved element and fails when focus cannot be acquired. `page.dblclick(target)` dispatches a trusted double-click sequence. `page.waitForTimeout(ms)` delays without observing the page; prefer a condition wait when one exists.
+
+`page.keyboard` supports `down(key)`, `up(key)`, `press(key)`, `type(text)`, `insertText(text)` and `paste(textOrOptions)`. Keys use the same names as `press()` (`Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `Home`, `End`, arrow keys, `space`, letters, digits) and `+`-joined modifiers (`Control+a`, `Shift+b`). `down`/`up` maintain modifier state between calls. `type` and `insertText` use browser text insertion; `paste` writes the system clipboard, triggers a native paste and then makes a best-effort attempt to restore the previous clipboard content.
+
+`page.info()` returns `{ label, targetId, roomId, openedBy, url, title, ready, domReady, loadComplete, dialog }`. `targetId` is the stable tab identity used by the desktop for the lifetime of the page and is not a raw CDP target id.
+
+`page.events()` returns and advances a buffered popup event list. The first call establishes the baseline and returns `[]`; later calls return events observed since the previous call or the baseline, each shaped as `{ sequence, tabId, status: 'initializing' | 'ready' | 'closed', label?, openedBy? }`. The history is in memory only and is not restored across application restart.
+
+Actions resolve with an immediate observation receipt: `{ ok: true, receipt: { popups: [...], dialog: null | { type, message, defaultPrompt? } } }`. A receipt describes what was observed right after the action dispatch; it does not verify the resulting application state. `page.cdp(method, params)` is the raw Chromium DevTools Protocol escape hatch for the addressed page; it returns the CDP response object. Raw CDP can invalidate snapshot references, and no room-level CDP is exposed.
+
+## Errors
+
+Operational failures raise `CorvidError` with a stable `code`:
+
+| Code | Meaning |
+| --- | --- |
+| `CORVID_NOT_FOUND` | Room, page, tab, profile, download or route does not exist |
+| `CORVID_CONTROL_LOST` | The room is under user control, a takeover is pending, the room has an unresolved execution risk, or the tab is unmanaged |
+| `CORVID_EXECUTION_RISK` | Page code timed out and the room is blocked until the user reviews it |
+| `CORVID_STALE_REFERENCE` | Snapshot reference, page label or room handle no longer applies |
+| `CORVID_TIMEOUT` | A bounded wait or chooser expired |
+| `CORVID_UNSUPPORTED` | The requested capability is not implemented |
+| `CORVID_UNAUTHORIZED` | The control service rejected the credential |
+| `CORVID_DESKTOP_ERROR` | Desktop error without a more specific classification |
+
+Argument shape problems keep raising `TypeError` or `RangeError`; only operational failures carry a `CORVID_*` code. Desktop error classification is message-based, so new desktop errors must add a mapping and a regression assertion.

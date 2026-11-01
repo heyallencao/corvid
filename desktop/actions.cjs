@@ -182,6 +182,12 @@ function pageOperation(operation, args, seed) {
     if (element.getRootNode().activeElement!==element) throw new Error('Input focus was not acquired');
     return {ok:true};
   }
+  if (operation==='focus-element') {
+    if (!element.isConnected || element.disabled) throw new Error('Element is unavailable');
+    element.focus({preventScroll:true});
+    if (element.getRootNode().activeElement!==element) throw new Error('Element could not be focused');
+    return {ok:true};
+  }
   if (operation==='verify-focus') {
     if (element.getRootNode().activeElement!==element) throw new Error('Input focus was not acquired');
     return {ok:true};
@@ -233,6 +239,16 @@ module.exports = async function runAction(contents, operation, args = {}) {
     return drag(contents,from,to,run);
   }
   if (operation==='hover') {const {ref}=await run('resolve',args);const point=await run('prepare-input',{target:ref});return pointerAction(contents,'mouseMove',point,run);}
+  if (operation==='dblclick') {const {ref}=await run('resolve',args);const point=await run('prepare-input',{target:ref});return doubleClick(contents,point);}
+  if (operation==='focus') {const {ref}=await run('resolve',args);return run('focus-element',{target:ref});}
+  if (['keyboardDown','keyboardUp','keyboardPress','keyboardType','keyboardInsertText','keyboardPaste'].includes(operation)) return keyboardAction(contents,operation,args);
+  if (operation==='cdp') {
+    if(typeof args.method!=='string' || !args.method)throw new Error('CDP method is required');
+    if(args.params!==undefined && (args.params===null || typeof args.params!=='object' || Array.isArray(args.params)))throw new Error('CDP params must be an object');
+    await pageDebugger.ensure(contents);
+    try {return {result:await contents.debugger.sendCommand(args.method,args.params || {})};}
+    catch(error) {throw new Error(`CDP ${args.method} failed: ${error.message}`);}
+  }
   if (['click','fill','press'].includes(operation)) { const {ref}=await run('resolve',args); return trustedInput(contents, operation, {...args,target:ref}, run); }
   if (!['snapshot','text','select','selector-state'].includes(operation)) throw new Error('Unsupported operation');
   return run(operation,args);
@@ -361,10 +377,115 @@ function parseKey(value) {
   for(const modifier of parts) { if (!Object.hasOwn(masks, modifier) || (modifiers & masks[modifier])) throw new Error('Unsupported key modifier'); modifiers |= masks[modifier]; }
   const special={Enter:13,Tab:9,Escape:27,Backspace:8,Delete:46,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40,Home:36,End:35,' ':32};
   let code, vk;
-  if (Object.hasOwn(special, key)) {code=key===' '?'Room':key;vk=special[key];}
+  if (Object.hasOwn(special, key)) {code=key===' '?'Space':key;vk=special[key];}
   else if (/^[a-zA-Z]$/.test(key)) {code=`Key${key.toUpperCase()}`;vk=key.toUpperCase().charCodeAt(0);}
   else if (/^[0-9]$/.test(key)) {code=`Digit${key}`;vk=key.charCodeAt(0);}
-  else throw new Error('Unsupported key; use letters, digits, room, or documented named keys');
+  else throw new Error('Unsupported key; use letters, digits, space, or documented named keys');
   const printable=key.length===1 && !(modifiers & (1|2|4));
   return {key,code,windowsVirtualKeyCode:vk,modifiers,...(printable ? {text:key} : {})};
+}
+
+const keyboardStates = new WeakMap();
+const KEY_BITS = {Alt:1,Control:2,Ctrl:2,Meta:4,Command:4,Shift:8};
+const MODIFIER_BITS = {Shift:8,Control:2,Alt:1,Meta:4};
+const MODIFIER_CODES = {Shift:'ShiftLeft',Control:'ControlLeft',Alt:'AltLeft',Meta:'MetaLeft'};
+const MODIFIER_VK = {Shift:16,Control:17,Alt:18,Meta:91};
+const NAMED_KEYS = {Enter:13,Tab:9,Escape:27,Backspace:8,Delete:46,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40,Home:36,End:35};
+
+function keyboardState(contents) {let state=keyboardStates.get(contents);if(!state){state={modifiers:0};keyboardStates.set(contents,state);}return state;}
+
+function parseKeySpec(value) {
+  if (typeof value!=='string' || !value) throw new Error('Key is required');
+  const parts=value.split('+'), key=parts.pop();
+  if(!key) throw new Error('Key is required');
+  let modifiers=0;
+  for(const modifier of parts) {if(!Object.hasOwn(KEY_BITS,modifier)) throw new Error('Unsupported key modifier');modifiers|=KEY_BITS[modifier];}
+  const normalized=key==='Command'?'Meta':key;
+  if(Object.hasOwn(MODIFIER_BITS,normalized)) return {modifier:normalized,key:normalized,code:MODIFIER_CODES[normalized],vk:MODIFIER_VK[normalized],modifiers};
+  if(normalized===' ') return {key:' ',code:'Space',vk:32,modifiers,text:' '};
+  if(Object.hasOwn(NAMED_KEYS,normalized)) return {key:normalized,code:normalized,vk:NAMED_KEYS[normalized],modifiers};
+  if(/^[a-zA-Z]$/.test(normalized)) return {key:normalized.toLowerCase(),code:`Key${normalized.toUpperCase()}`,vk:normalized.toUpperCase().charCodeAt(0),modifiers,text:normalized.toLowerCase()};
+  if(/^[0-9]$/.test(normalized)) return {key:normalized,code:`Digit${normalized}`,vk:normalized.charCodeAt(0),modifiers,text:normalized};
+  throw new Error('Unsupported key; use letters, digits, space, or documented named keys');
+}
+
+async function dispatchChord(contents, chord) {
+  const parts=chord.split('+'), key=parts.pop();
+  const mods=parts.map(modifier=>modifier==='Command'?'Meta':modifier);
+  let mask=0;for(const modifier of mods) mask|=MODIFIER_BITS[modifier];
+  for(const modifier of mods) await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyDown',key:modifier,code:MODIFIER_CODES[modifier],windowsVirtualKeyCode:MODIFIER_VK[modifier],modifiers:mask});
+  const spec=parseKeySpec(key);
+  await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyDown',key:spec.key,code:spec.code,windowsVirtualKeyCode:spec.vk,modifiers:mask,...(spec.text===undefined?{}:{text:spec.text})});
+  await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:spec.key,code:spec.code,windowsVirtualKeyCode:spec.vk,modifiers:mask});
+  for(const modifier of [...mods].reverse()) await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:modifier,code:MODIFIER_CODES[modifier],windowsVirtualKeyCode:MODIFIER_VK[modifier],modifiers:mask & ~MODIFIER_BITS[modifier]});
+}
+
+async function keyboardAction(contents, operation, args) {
+  await pageDebugger.ensure(contents);
+  const send=(method,params)=>contents.debugger.sendCommand(method,params);
+  const state=keyboardState(contents);
+  if (operation==='keyboardType' || operation==='keyboardInsertText') {
+    if (typeof args.text!=='string' || (operation==='keyboardType' && !args.text)) throw new Error('text is required');
+    await send('Input.insertText',{text:args.text});
+    return {ok:true};
+  }
+  if (operation==='keyboardPaste') {
+    if (!args || (typeof args.text!=='string' && typeof args.html!=='string')) throw new Error('paste requires text or html');
+    const electronModule=require('electron');
+    const clipboard=electronModule.clipboard;
+    if(!clipboard) throw new Error(`paste unavailable: electron.clipboard missing (keys: ${Object.keys(electronModule).slice(0,12).join(',')})`);
+    let previous;
+    try { previous={text:clipboard.readText(),html:typeof clipboard.readHTML==='function'?clipboard.readHTML():null}; }
+    catch(error) { throw new Error(`paste cannot read clipboard: ${error.message}`); }
+    try {
+      if (typeof args.html==='string' && typeof clipboard.write==='function') clipboard.write({text:args.text ?? '',html:args.html});
+      else clipboard.writeText(args.text);
+      contents.paste();
+      await new Promise(resolve=>setTimeout(resolve,80));
+      return {ok:true};
+    } finally {
+      // Restoring the user's clipboard is best effort: a failed restore must not
+      // turn a successful paste into an error.
+      try {
+        if (previous.html!==null && typeof clipboard.write==='function') clipboard.write({text:previous.text,html:previous.html});
+        else if (previous.text) clipboard.writeText(previous.text);
+        else clipboard.clear();
+      } catch {}
+    }
+  }
+  const spec=parseKeySpec(args.key);
+  const base={key:spec.key,code:spec.code,windowsVirtualKeyCode:spec.vk,modifiers:state.modifiers|spec.modifiers};
+  if (spec.modifier) {
+    const bit=MODIFIER_BITS[spec.modifier];
+    if (operation==='keyboardUp') {
+      await send('Input.dispatchKeyEvent',{type:'keyUp',...base});
+      state.modifiers&=~bit;
+    } else {
+      state.modifiers|=bit;
+      await send('Input.dispatchKeyEvent',{type:'keyDown',...base,modifiers:state.modifiers});
+      if (operation==='keyboardPress') {
+        await send('Input.dispatchKeyEvent',{type:'keyUp',...base,modifiers:state.modifiers});
+        state.modifiers&=~bit;
+      }
+    }
+    return {ok:true};
+  }
+  const text=spec.text!==undefined && !(base.modifiers & (1|2|4)) ? ((base.modifiers&8) ? spec.text.toUpperCase() : spec.text) : undefined;
+  if (operation!=='keyboardUp') await send('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text===undefined?{}:{text})});
+  if (operation!=='keyboardDown') await send('Input.dispatchKeyEvent',{type:'keyUp',...base});
+  return {ok:true};
+}
+
+async function doubleClick(contents, point) {
+  const state=pointerState(contents);
+  if(state.buttons) throw new Error('Release held mouse buttons before clicking');
+  await pageDebugger.ensure(contents);
+  const send=(type,fields={})=>contents.debugger.sendCommand('Input.dispatchMouseEvent',{type,x:point.x,y:point.y,...fields});
+  await send('mouseMoved',{button:'none',buttons:0});
+  await send('mousePressed',{button:'left',buttons:1,clickCount:1});
+  await send('mouseReleased',{button:'left',buttons:0,clickCount:1});
+  await send('mousePressed',{button:'left',buttons:1,clickCount:2});
+  await send('mouseReleased',{button:'left',buttons:0,clickCount:2});
+  state.x=point.x;state.y=point.y;
+  return {ok:true};
 }

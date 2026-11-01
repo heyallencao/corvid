@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join, dirname, isAbsolute } from 'node:path';
 import { urlMatcher } from './url-matcher.js';
 import { fetchInDocument } from './page-fetch.js';
+import { CODES, CorvidError, errorFromResponse } from './errors.js';
 
 /** Connect to the desktop control service without exposing a browser debugging endpoint. */
 export async function connect({ dataDir = process.env.CORVID_DATA_DIR || join(homedir(), '.corvid') } = {}) {
@@ -14,7 +15,13 @@ export async function connect({ dataDir = process.env.CORVID_DATA_DIR || join(ho
       headers: { authorization: `Bearer ${config.token}`, ...(options.body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
-    if (!response.ok) throw new Error(`Desktop request failed: ${response.status} ${await response.text()}`);
+    if (!response.ok) {
+      const text = await response.text();
+      let payload = null;
+      try { payload = JSON.parse(text); } catch {}
+      if (!payload) payload = { error: `Desktop request failed: ${response.status} ${text}` };
+      throw errorFromResponse(response.status, payload);
+    }
     return response.status === 204 ? null : response.json();
   };
   return new Client(api);
@@ -39,7 +46,7 @@ class Client {
   async claimRoom(id) {const info=await this.api(`/rooms/${encodeURIComponent(id)}/claim`,{method:'POST',body:{}});return new Room(this,info);}
   async room(id) {
     const room = (await this.rooms()).find(item => item.id === id);
-    if (!room) throw new Error(`Room not found: ${id}`);
+    if (!room) throw new CorvidError(CODES.NOT_FOUND,`Room not found: ${id}`);
     return room;
   }
   async disconnect() { /* HTTP calls do not retain a browser connection. */ }
@@ -71,7 +78,7 @@ class Room {
       const current=await this.client.room(this.id),info=current.info;
       if(info.ownership==='agent' && !info.finished && !info.userResumePending && !info.executionRisk) {this.info=info;this.ownership=info.ownership;return;}
       const remaining=deadline-performance.now();
-      if(remaining<=0) throw new Error(`task.waitForControl timed out after ${timeout}ms`);
+      if(remaining<=0) throw new CorvidError(CODES.TIMEOUT,`task.waitForControl timed out after ${timeout}ms`);
       await new Promise(resolve=>setTimeout(resolve,Math.min(interval,remaining)));
     }
   }
@@ -79,23 +86,50 @@ class Room {
 
 function mouseOptions(options) {if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).some(key=>key!=='button'))throw new Error('Only the mouse button option is supported');return options;}
 class Page {
-  constructor(client, tabId,roomId,label,openedBy) { this.client = client; this.tabId = tabId;this.roomId=roomId;this.label=label;this.openedBy=openedBy;this.mouse={move:(x,y)=>this.action('mouseMove',{x,y}),down:(options={})=>this.action('mouseDown',mouseOptions(options)),up:(options={})=>this.action('mouseUp',mouseOptions(options)),click:(x,y,options={})=>this.action('mouseClick',{x,y,...mouseOptions(options)}),wheel:(deltaX,deltaY)=>this.action('mouseWheel',{deltaX,deltaY})}; }
-  async resolveId() {if(this.tabId)return this.tabId;const room=await this.client.room(this.roomId),tab=(room.info.tabs || []).find(item=>item.id===this.label || item.label===this.label);if(!tab)throw new Error(`Page not found: ${this.label}`);this.tabId=tab.id;this.label=tab.label;this.openedBy=tab.openedBy;return tab.id;}
+  constructor(client, tabId,roomId,label,openedBy) { this.client = client; this.tabId = tabId;this.roomId=roomId;this.label=label;this.openedBy=openedBy;this.mouse={move:(x,y)=>this.action('mouseMove',{x,y}),down:(options={})=>this.action('mouseDown',mouseOptions(options)),up:(options={})=>this.action('mouseUp',mouseOptions(options)),click:(x,y,options={})=>this.action('mouseClick',{x,y,...mouseOptions(options)}),wheel:(deltaX,deltaY)=>this.action('mouseWheel',{deltaX,deltaY})};this.keyboard={down:key=>this.action('keyboardDown',{key}),up:key=>this.action('keyboardUp',{key}),press:key=>this.action('keyboardPress',{key}),type:text=>this.action('keyboardType',{text}),insertText:text=>this.action('keyboardInsertText',{text}),paste:input=>this.action('keyboardPaste',typeof input==='string'?{text:input}:input)}; }
+  async resolveId() {if(this.tabId)return this.tabId;const room=await this.client.room(this.roomId),tab=(room.info.tabs || []).find(item=>item.id===this.label || item.label===this.label);if(!tab)throw new CorvidError(CODES.NOT_FOUND,`Page not found: ${this.label}`);this.tabId=tab.id;this.label=tab.label;this.openedBy=tab.openedBy;return tab.id;}
   async action(operation, args = {}) { if(this.popupArm)await this.popupArm;if(this.downloadArm)await this.downloadArm;return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/action`, { method: 'POST', body: { operation, args, pageLabel:this.label } }); }
   async navigate(url) { return this.action('navigate', { url }); }
   async goto(url) { return this.navigate(url); }
   async currentTab() {
     const id=await this.resolveId(),room=await this.client.room(this.roomId),info=room.info;
-    if(info.ownership!=='agent' || info.userResumePending)throw new Error('Room is under user control or resumeControl is pending');
-    if(info.executionRisk)throw new Error('Room has an unresolved execution risk');
+    if(info.ownership!=='agent' || info.userResumePending)throw new CorvidError(CODES.CONTROL_LOST,'Room is under user control or resumeControl is pending');
+    if(info.executionRisk)throw new CorvidError(CODES.EXECUTION_RISK,'Room has an unresolved execution risk');
     const tab=(info.tabs || []).find(item=>item.id===id);
-    if(!tab)throw new Error('Page not found');
-    if(tab.label!==this.label)throw new Error('Page label is stale or no longer manages this tab');
-    if(!tab.label)throw new Error('Tab is unmanaged; adopt it before agent operations');
+    if(!tab)throw new CorvidError(CODES.NOT_FOUND,'Page not found');
+    if(tab.label!==this.label)throw new CorvidError(CODES.STALE_REFERENCE,'Page label is stale or no longer manages this tab');
+    if(!tab.label)throw new CorvidError(CODES.CONTROL_LOST,'Tab is unmanaged; adopt it before agent operations');
     return tab;
   }
   async url() {return (await this.currentTab()).url;}
   async title() {return (await this.currentTab()).title;}
+  async info() {
+    const tab=await this.currentTab();
+    return {label:tab.label,targetId:tab.id,roomId:this.roomId,openedBy:tab.openedBy,url:tab.url,title:tab.title,ready:tab.ready,domReady:tab.domReady,loadComplete:tab.loadComplete,dialog:tab.dialog ?? null};
+  }
+  async reload() { await this.currentTab(); return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/reload`,{method:'POST',body:{pageLabel:this.label}}); }
+  async dblclick(target) { return this.action('dblclick', { target }); }
+  async focus(target) { return this.action('focus', { target }); }
+  async waitForTimeout(ms) {
+    if(typeof ms!=='number' || !Number.isFinite(ms) || ms<0 || ms>2147483647) throw new RangeError('waitForTimeout expects a non-negative number of milliseconds no greater than 2147483647');
+    await new Promise(resolve=>setTimeout(resolve,ms));
+  }
+  async events() {
+    const id=await this.resolveId(),base=`/tabs/${encodeURIComponent(id)}/popups`,label=encodeURIComponent(this.label);
+    if(this.eventCursor===undefined) { const first=await this.client.api(`${base}?pageLabel=${label}`); this.eventCursor=first.cursor; return []; }
+    const drained=[];
+    for(;;) {
+      const {event,cursor}=await this.client.api(`${base}?after=${this.eventCursor}&pageLabel=${label}`);
+      this.eventCursor=cursor;
+      if(!event) return drained;
+      drained.push(event);
+    }
+  }
+  async cdp(method, params = {}) {
+    if(typeof method!=='string' || !method) throw new TypeError('cdp method must be a nonempty string');
+    if(params===null || typeof params!=='object' || Array.isArray(params)) throw new TypeError('cdp params must be an object');
+    return (await this.action('cdp',{method,params})).result;
+  }
   async waitForURL(expected,options={}) {
     if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).some(key=>key!=='timeout'))throw new TypeError('waitForURL accepts only the timeout option');
     const timeout=options.timeout ?? 10000;
@@ -103,7 +137,7 @@ class Page {
     const matcher=urlMatcher(expected),deadline=performance.now()+timeout;let last='';
     for(;;) {
       last=await this.url();if(matcher.matches(last))return;
-      const remaining=deadline-performance.now();if(remaining<=0)throw new Error(`page.waitForURL timed out after ${timeout}ms: expected ${matcher.description}; last URL was ${JSON.stringify(last)}`);
+      const remaining=deadline-performance.now();if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForURL timed out after ${timeout}ms: expected ${matcher.description}; last URL was ${JSON.stringify(last)}`);
       await new Promise(resolve=>setTimeout(resolve,Math.min(100,remaining)));
     }
   }
@@ -113,7 +147,7 @@ class Page {
     const timeout=options.timeout ?? 10000;
     if(typeof timeout!=='number' || !Number.isFinite(timeout) || timeout<=0 || timeout>2147483647)throw new RangeError('timeout must be a positive number no greater than 2147483647 ms');
     const deadline=performance.now()+timeout;
-    for(;;){const tab=await this.currentTab();if(state==='load'?tab.loadComplete:tab.domReady)return;const remaining=deadline-performance.now();if(remaining<=0)throw new Error(`page.waitForLoadState timed out after ${timeout}ms waiting for ${state}`);await new Promise(resolve=>setTimeout(resolve,Math.min(50,remaining)));}
+    for(;;){const tab=await this.currentTab();if(state==='load'?tab.loadComplete:tab.domReady)return;const remaining=deadline-performance.now();if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForLoadState timed out after ${timeout}ms waiting for ${state}`);await new Promise(resolve=>setTimeout(resolve,Math.min(50,remaining)));}
   }
   async snapshot() { return this.action('snapshot'); }
   async click(target) { if(this.chooserArm) await this.chooserArm; return this.action('click', { target }); }
@@ -137,7 +171,7 @@ class Page {
         if(state.status==='open') {if(!state.supported)throw new Error('File chooser is not backed by a file input');completed=true;return new FileChooser(this.client,base,id,state.mode,this.label);}
         await new Promise(resolve=>setTimeout(resolve,25));
       }
-      throw new Error('File chooser timed out');
+      throw new CorvidError(CODES.TIMEOUT,'File chooser timed out');
     } finally {
       if(this.chooserArm===arm)this.chooserArm=null;
       if(id && !completed)await this.client.api(`${base}/cancel`,{method:'POST',body:{chooserId:id,pageLabel:this.label}}).catch(()=>{});
@@ -163,7 +197,7 @@ class Page {
           return await (await this.client.room(this.roomId)).adopt(popup.tabId);
         }
         const remaining=deadline-performance.now();
-        if(remaining<=0)throw new Error(`page.waitForEvent("popup") timed out after ${timeout}ms`);
+        if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForEvent("popup") timed out after ${timeout}ms`);
         await new Promise(resolve=>setTimeout(resolve,Math.min(50,remaining)));
       }
     } finally {if(this.popupArm===arm)this.popupArm=null;}
@@ -180,11 +214,11 @@ class Page {
       binding=await arm;
       while(performance.now()<deadline) {
         const state=await this.client.api(`${binding.base}?id=${encodeURIComponent(binding.id)}&pageLabel=${encodeURIComponent(binding.label)}`);
-        if(state.status==='expired')throw new Error(`page.waitForEvent("download") timed out after ${timeout}ms`);
+        if(state.status==='expired')throw new CorvidError(CODES.TIMEOUT,`page.waitForEvent("download") timed out after ${timeout}ms`);
         if(state.status!=='armed'){observed=true;return new Download(this.client,binding,this,state);}
         await new Promise(resolve=>setTimeout(resolve,25));
       }
-      throw new Error(`page.waitForEvent("download") timed out after ${timeout}ms`);
+      throw new CorvidError(CODES.TIMEOUT,`page.waitForEvent("download") timed out after ${timeout}ms`);
     } finally {
       if(this.downloadArm===arm)this.downloadArm=null;
       if(binding && !observed)await this.client.api(`${binding.base}/cancel`,{method:'POST',body:{downloadId:binding.id,pageLabel:binding.label}}).catch(()=>{});
@@ -204,7 +238,7 @@ class Page {
       const result=await this.action('selector-state',{target});
       if(({attached:result.attached,detached:!result.attached,visible:result.visible,hidden:!result.visible})[state])return true;
       const remaining=deadline-performance.now();
-      if(remaining<=0)throw new Error(`page.waitForSelector timed out after ${timeout}ms waiting for ${state}`);
+      if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForSelector timed out after ${timeout}ms waiting for ${state}`);
       await new Promise(resolve=>setTimeout(resolve,Math.min(100,remaining)));
     }
   }
@@ -221,12 +255,12 @@ class Page {
     const expression=`(async()=>{try{return {ok:true,value:Boolean(await (${source}))}}catch(error){return {ok:false,error:String(error?.message ?? error)}}})()`,deadline=performance.now()+timeout;
     for(;;) {
       const remaining=deadline-performance.now();
-      if(remaining<=0)throw new Error(`page.waitForFunction timed out after ${timeout}ms`);
+      if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForFunction timed out after ${timeout}ms`);
       const result=await this.evaluate(expression,undefined,{timeoutMs:Math.max(100,Math.min(60000,Math.ceil(remaining)))});
       if(!result.ok)throw new Error(`waitForFunction predicate failed: ${result.error}`);
       if(result.value)return true;
       const left=deadline-performance.now();
-      if(left<=0)throw new Error(`page.waitForFunction timed out after ${timeout}ms`);
+      if(left<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForFunction timed out after ${timeout}ms`);
       await new Promise(resolve=>setTimeout(resolve,Math.min(polling,left)));
     }
   }
@@ -291,3 +325,5 @@ class Download {
   async cancel(){const {base,id,label}=this.binding;await this.client.api(`${base}/cancel`,{method:'POST',body:{downloadId:id,pageLabel:label}});}
   async delete(){const {base,id,label}=this.binding;await this.client.api(`${base}/delete`,{method:'POST',body:{downloadId:id,pageLabel:label}});}
 }
+
+export { CODES, CorvidError, isCorvidError } from './errors.js';

@@ -1,10 +1,10 @@
 # 端到端测试索引
 
-本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 26 项测试入口。`npm test` 共 24 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 23 条独立脚本命令。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 27 项测试入口。`npm test` 共 25 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 24 条独立脚本命令。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
-- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；2026-11-01 全量 24 条命令 / 26 项通过。
+- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；2026-11-01 全量 25 条命令 / 27 项通过。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`。原生对话框交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、多窗口、按 Agent 身份隔离。
@@ -40,6 +40,7 @@
 | 24 | `tests/agent-download-e2e.cjs` | Agent 下载捕获（来源页归属、URL、文件名、失败、临时路径、`saveAs`、`delete`）；不弹出系统保存对话框；其他页面触发下载不被错误归属；下载中取消；交还时等待中断；`finish` 与退出清理临时文件。 | 跨 frame、异常退出、Windows 未验证；SDK 断开时临时文件是否保留未单测；本地夹具。 |
 | 25 | `tests/page-fetch-e2e.cjs` | `page.fetch`：页面 Cookie 与 `credentials: omit`、POST 与请求头、HTTP 404、CORS 拒绝/允许、二进制 `saveAs`、8 MiB 上限不写文件、超时关闭连接、交还后拒绝。 | 不撤销服务端副作用；未覆盖 Service Worker、跨 frame、其他平台；请求体受本地控制通道限制。 |
 | 26 | `tests/load-state-e2e.cjs` | `waitForLoadState` 区分 `domcontentloaded` 与 `load`（延迟图片）、超时、交还中断等待、同文档导航；`networkidle` 明确不支持。 | 状态属于已提交文档，过早调用可能观察旧文档；`networkidle` 未实现；本地夹具。 |
+| 27 | `tests/contract-e2e.cjs` | Agent API 合同：`keyboard.*`（type/press/down/up/insertText/paste 原生粘贴与焦点）、`focus`、`dblclick`、`reload`、`waitForTimeout`、`info()`/`targetId`、`events()` 排空 popup 事件、动作 `receipt`（popup/dialog）、`cdp()` 原始协议逃生口、错误码（TIMEOUT/NOT_FOUND/STALE_REFERENCE/CONTROL_LOST）。 | 只用本地夹具；`keyboard.paste` 依赖系统剪贴板，恢复是 best-effort；`dblclick` 只验证单层文档；错误码映射基于消息分类，未覆盖全部错误路径。 |
 
 ## 工作块与测试的映射
 
@@ -54,14 +55,14 @@
 | D07 用户界面与导航 | `library-e2e`、`library-search-e2e`、`browser-shortcuts-e2e`、`claim-e2e` |
 | D08 历史、书签与下载 | `library-e2e`、`library-search-e2e`、`download-e2e` |
 | D09 Profile 管理 | `profiles-e2e` |
-| D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e` |
-| D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e` |
+| D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e` |
+| D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e` |
 
 ## 单独运行
 
 - 3 个 `node:test` 文件：`node --test tests/browser.e2e.mjs`、`node --test tests/dialogs.e2e.mjs`、`node --test tests/uploads.e2e.mjs`。
-- 23 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 24 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 
