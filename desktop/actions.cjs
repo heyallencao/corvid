@@ -7,21 +7,38 @@ const pointers = new WeakMap();
 // This function is evaluated in an isolated Chromium world belonging to the
 // current document. Its registry disappears automatically on navigation.
 function pageOperation(operation, args, seed) {
-  const registry = globalThis.__corvidRegistry ||= {documentId: seed, next: 1, nodes: new Map()};
+  const registry = globalThis.__corvidRegistry ||= {documentId: seed, next: 1, nodes: new Map(), refs: new WeakMap()};
+  const refKey = value => {
+    const match = /^(?:@(\d+)|ref=(\d+)|ref:[^:]+:(\d+))$/.exec(value);
+    return match ? '@'+(match[1] || match[2] || match[3]) : null;
+  };
+  const refFor = node => {
+    let ref=registry.refs.get(node);
+    if(!ref){ref='@'+registry.next++;registry.refs.set(node,ref);registry.nodes.set(ref,node);}
+    return ref;
+  };
   const nodeFor = (target, allowMissing = false) => {
-    if (typeof target === 'string' && target.startsWith('ref:')) {
-      const node = registry.nodes.get(target);
-      if (!node || !node.isConnected) throw new Error('Stale or unknown node reference');
-      let view=node.ownerDocument.defaultView;
-      while (view && view!==window) {
-        let frame; try {frame=view.frameElement; if (!frame || frame.contentDocument!==view.document || !frame.isConnected) throw new Error();} catch {throw new Error('Stale or unknown node reference');}
-        view=frame.ownerDocument.defaultView;
+    if (typeof target === 'string') {
+      const key=refKey(target);
+      if (key) {
+        const node=registry.nodes.get(key);
+        if (!node || !node.isConnected) throw new Error('Stale or unknown node reference');
+        let view=node.ownerDocument.defaultView;
+        while (view && view!==window) {
+          let frame; try {frame=view.frameElement; if (!frame || frame.contentDocument!==view.document || !frame.isConnected) throw new Error();} catch {throw new Error('Stale or unknown node reference');}
+          view=frame.ownerDocument.defaultView;
+        }
+        if (view!==window) throw new Error('Stale or unknown node reference');
+        return node;
       }
-      if (view!==window) throw new Error('Stale or unknown node reference');
-      return node;
     }
-    let query=target;
+    let query=target, nth;
+    let textFilter=null;
     if (typeof query==='string') {
+      const nthMatch=/^(.*?)\s*>>\s*nth=(-?\d+)\s*$/.exec(query);
+      if(nthMatch){query=nthMatch[1];nth=Number(nthMatch[2]);}
+      const pseudo=/(.*?)(?::(has-text|text-is)\((['"])(.*?)\3\))\s*$/.exec(query);
+      if(pseudo){query=pseudo[1];textFilter={kind:pseudo[2],value:pseudo[4]};}
       if (query.startsWith('loc=css:')) query={by:'css',value:query.slice(8)};
       else if (query.startsWith('css=')) query={by:'css',value:query.slice(4)};
       else if (query.startsWith('xpath=')) query={by:'xpath',value:query.slice(6)};
@@ -66,28 +83,60 @@ function pageOperation(operation, args, seed) {
         }
       }
     }
+    if (textFilter) {
+      const normalized=s=>(s||'').replace(/\s+/g,' ').trim();
+      matches=matches.filter(el=>{
+        const text=normalized(el.innerText);
+        return textFilter.kind==='text-is' ? text===normalized(textFilter.value) : text.toLowerCase().includes(normalized(textFilter.value).toLowerCase());
+      });
+    }
+    if (nth!==undefined) {
+      const index=nth<0 ? matches.length+nth : nth;
+      matches=index>=0 && index<matches.length ? [matches[index]] : [];
+    }
     if (matches.length===0 && allowMissing) return null;
     if (matches.length!==1) throw new Error(`Locator matched ${matches.length} elements`);
     return matches[0];
   };
   if (operation === 'snapshot') {
+    const options=args.options || {};
+    const scope=options.scope || 'page';
+    if (!['page','viewport','subtree'].includes(scope)) throw new Error('Invalid snapshot scope');
+    if (scope==='subtree' && (typeof options.root!=='string' || !options.root)) throw new Error('Subtree snapshot requires a root reference');
     const all=[]; let inaccessibleFrames=0;
-    const collect = root => {
+    const interactive='a,button,input,textarea,select,[role],[contenteditable="true"]';
+    const frameLabel=el=>{ if(el.id) return '#'+el.id; const name=el.getAttribute('name'); return name ? `${el.localName}[name="${name}"]` : el.localName; };
+    const absoluteRect=el=>{
+      let rect=el.getBoundingClientRect(), view=el.ownerDocument.defaultView;
+      while(view && view!==window){const frame=view.frameElement;if(!frame)return null;const bounds=frame.getBoundingClientRect();rect={left:rect.left+bounds.left,top:rect.top+bounds.top,right:rect.right+bounds.left,bottom:rect.bottom+bounds.top};view=frame.ownerDocument.defaultView;}
+      return rect;
+    };
+    const consider=(el,frame)=>{
+      const box=el.getBoundingClientRect(), style=el.ownerDocument.defaultView.getComputedStyle(el);
+      if (!(box.width>0 && box.height>0) || style.visibility==='hidden' || style.display==='none') return;
+      if (scope==='viewport') {const rect=absoluteRect(el);if(!rect || rect.right<=0 || rect.bottom<=0 || rect.left>=innerWidth || rect.top>=innerHeight) return;}
+      all.push({el,frame});
+    };
+    const collect=(root,frame)=>{
       for (const el of root.querySelectorAll('*')) {
-        if (el.matches('a,button,input,textarea,select,[role],[contenteditable="true"]')) {
-          const box=el.getBoundingClientRect(); const style=el.ownerDocument.defaultView.getComputedStyle(el);
-          if (box.width>0 && box.height>0 && style.visibility!=='hidden' && style.display!=='none') all.push(el);
-        }
-        if (el.shadowRoot) collect(el.shadowRoot);
-        if (el.localName==='iframe') { try { if (el.contentDocument) collect(el.contentDocument); else inaccessibleFrames++; } catch { inaccessibleFrames++; } }
+        if (el.matches(interactive)) consider(el,frame ?? null);
+        if (el.shadowRoot) collect(el.shadowRoot,frame ?? null);
+        if (el.localName==='iframe') { try { if (el.contentDocument) collect(el.contentDocument,frame ?? frameLabel(el)); else inaccessibleFrames++; } catch { inaccessibleFrames++; } }
       }
     };
-    collect(document);
-    const items=all.slice(0,200).map(el=>{
-      const ref=`ref:${registry.documentId}:${registry.next++}`; registry.nodes.set(ref,el);
-      return {ref,role:el.getAttribute('role') || el.tagName.toLowerCase(),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || ''};
-    });
-    return {url:location.href,title:document.title,items,truncated:all.length>200,limitations:['Accessible names are approximate; closed shadow roots and cross-origin iframe contents are not included.'],inaccessibleFrames};
+    if (scope==='subtree') {
+      const root=nodeFor(options.root);
+      if (root.localName==='iframe') {
+        if (!root.contentDocument) throw new Error('Snapshot root frame is cross-origin or unavailable');
+        collect(root.contentDocument,frameLabel(root));
+      } else {
+        if (root.matches(interactive)) consider(root,null);
+        collect(root,null);
+        if (root.shadowRoot) collect(root.shadowRoot,null);
+      }
+    } else collect(document,null);
+    const items=all.slice(0,200).map(({el,frame})=>({ref:refFor(el),role:el.getAttribute('role') || (el.tagName || '').toLowerCase(),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || '',frame:frame ?? null}));
+    return {url:location.href,title:document.title,scope,items,truncated:all.length>200,total:all.length,limitations:['Accessible names are approximate; closed shadow roots and cross-origin iframe contents are not included.'],inaccessibleFrames};
   }
   if(operation==='viewport')return {width:innerWidth,height:innerHeight,devicePixelRatio:devicePixelRatio};
   const element=nodeFor(args.target,operation==='selector-state');
@@ -103,7 +152,7 @@ function pageOperation(operation, args, seed) {
     }
     return {attached:true,visible};
   }
-  if (operation==='resolve') { const ref=`ref:${registry.documentId}:${registry.next++}`; registry.nodes.set(ref,element); return {ref}; }
+  if (operation==='resolve') return {ref:refFor(element)};
   if (operation==='file-validate') {
     const win=element.ownerDocument.defaultView;
     if (!(element instanceof win.HTMLInputElement) || element.type!=='file' || element.disabled) throw new Error('Target must be an enabled file input');

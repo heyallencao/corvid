@@ -2,7 +2,7 @@
 
 本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品对象统一为：**Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。
 
-规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，27 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
+规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，28 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
 ## 当前事实与证据边界
 
@@ -10,7 +10,7 @@
 - 数据目录：默认 `~/.corvid`，可用 `CORVID_DATA_DIR` 覆盖；`CORVID_TEST_MODE`、`CORVID_PORT`、`CORVID_TEST_DOWNLOAD_DIR` 用于隔离测试。
 - 持久化文件：`rooms.json`（`schemaVersion=1`；旧 `spaces.json` 在启动时自动迁移一次，原文件保留）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`control.json`。会话与库文件使用临时文件 + rename 原子写，权限 0600。
 - 入口：桌面运行 `npm start`；全量回归 `npm test`；CLI 为 `node cli/corvid.mjs run < script.mjs` 与 `node cli/corvid.mjs help`。
-- 2026-11-01 在本机 macOS、Electron 45.2.1、隔离临时数据目录下执行 `npm test`：25 条命令、27 项真实 Electron 测试全部通过（含 Agent API 合同回归 `tests/contract-e2e.cjs`）。该结果只覆盖本地夹具和 macOS，未验证真实网站、真实用户数据、原生系统对话框、Windows 与打包分发。
+- 2026-11-01 在本机 macOS、Electron 45.2.1、隔离临时数据目录下执行 `npm test`：26 条命令、28 项真实 Electron 测试全部通过（含 Agent API 合同回归 `tests/contract-e2e.cjs` 与 Snapshot v2 回归 `tests/snapshot-e2e.cjs`）。该结果只覆盖本地夹具和 macOS，未验证真实网站、真实用户数据、原生系统对话框、Windows 与打包分发。
 - 自动化中的系统对话框是测试替身（`dialog.showMessageBox` / `showMessageBoxSync` / `showSaveDialogSync` 被替换）；下载测试用测试模式与临时下载目录绕开保存对话框。相关条目只能证明应用状态流转，不能证明原生对话框交互。
 
 ## 状态定义与证据要求
@@ -29,7 +29,7 @@
 4. `evaluate` 超时表示"结果未知"，不是"已终止"；不得声称已撤销页面副作用。
 5. 所有测试必须使用隔离数据目录和本地夹具，不得使用真实用户 Profile 或真实浏览数据。
 
-截至 2026-11-01，没有条目达到"已验证"：27 项通过只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
+截至 2026-11-01，没有条目达到"已验证"：28 项通过只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
 
 ## P0：可安全使用且控制权可靠
 
@@ -49,7 +49,7 @@
 | D07 | 部分 | **用户界面与日常导航**。已实现：Room/Profile 选择、标签栏、地址栏、状态区、设置（搜索模板/缩放）、历史/书签/下载面板、错误以 `role=alert`/`role=status` 呈现、缩放按 Profile 保存。差距：加载失败/证书错误/重定向页面、错误页与重试、地址解析边界、焦点与纯键盘操作、窗口最小尺寸布局、视觉基线、真实搜索引擎。 | ① 通过桌面 UI 实测而非仅 API：成功导航、错误地址、页面加载失败、重定向、慢加载、缩放与窗口 resize；断言可见文案、URL、标题与焦点。② 记录实际错误与页面状态，不只断言接口成功。③ 截图仅作为辅助证据，逐像素视觉基线另行建立。④ 真实搜索引擎需单独授权与网络前提，默认只测本地搜索模板夹具。 |
 | D08 | 部分 | **历史、书签与下载**。已实现：历史/书签搜索、删除、Profile 隔离、重启持久化；下载完成、进度、取消、同名文件不覆盖、状态文案、重启历史、文件名/URL 搜索；测试模式使用临时下载目录。差距：真实系统保存对话框、打开文件/在文件夹显示、重试/续传、其他下载协议、组织/文件夹、导入导出、库文件损坏恢复、真实下载站。 | ① `node tests/library-e2e.cjs`、`node tests/library-search-e2e.cjs`、`node tests/download-e2e.cjs`。② 手工验证真实保存对话框：选择、取消、同名、权限错误，并记录为手工证据。③ 补测 `library.json` 损坏拒绝/备份、下载中断后重启状态、多 Profile 并发下载取消。④ 合同：不得把临时下载目录结果当作真实保存对话框已验证。 |
 | D09 | 部分 | **Profile 管理**。已实现：创建、切换、重命名（取消、空白拒绝、裁剪）、跨重启、Room/书签/下载归属、旧数据默认归 default Profile。差距：删除、默认 Profile 选择、重名策略（当前允许）、真实 Chromium 数据迁移、Profile 级权限/数据管理、数量与命名约束。 | ① `node tests/profiles-e2e.cjs`。② 新增删除路径前先定义引用关系与确认/取消合同（不可删 default、不可删最后一个），并验证删除后 Room/历史/下载/权限行为。③ 补测重名创建与切换、Profile 删除影响范围。④ 禁止使用真实浏览器 Profile 做测试。 |
-| D10 | 部分 | **Page 与 SDK 合同**。已实现：`openRoom`/`resumeRoom`/`claimRoom`/`listRooms`；Room ID 稳定；Page label `p1`…跨重启、不复用、未知来源保护；`adopt`/`release`/`finish`（keep 校验与收据）；Snapshot（主文档 + 单层同源 iframe + 开放 Shadow DOM、200 项、`truncated`、失效引用）；定位符（css/xpath/text/role/href、frame 限定、唯一匹配）；输入与键盘（click/fill/press/`dblclick`/`focus`/`keyboard.*`/`insertText`/原生 `paste`）；等待（URL/selector/function/loadstate/popup/download/`waitForTimeout`）；`reload`；`info()`/`targetId`；`events()`；动作 `receipt`（popup/dialog）；`cdp()` 原始协议逃生口；截图、`evaluate`、`fetch`、对话框、上传、select、指针、Agent 下载；统一 `CORVID_*` 错误码；CLI 多轮调用。差距：Snapshot v2（多层 iframe、子树/整页范围、稳定引用）、`networkidle`、截图 `scale`/`raw`、跨源 frame 与 closed Shadow DOM、popup 历史跨重启、`room.cdp()`、单凭据无 Agent 身份隔离、CLI 静态 import 与自动安装。 | ① `node tests/contract-e2e.cjs` 覆盖键盘/焦点/双击/reload/info/events/receipt/cdp/错误码。② 以 `npm test` 中 SDK/CLI 项为回归基线。③ 新增能力必须同时覆盖成功、错误/失效、控制权变更、重启或断开四类路径（适用时）。④ Snapshot v2 合同：多层 iframe、显式跨源报错、引用稳定性与截断标记。⑤ 错误码新增必须同步映射与测试；参数形状错误与运营错误分开。 |
+| D10 | 部分 | **Page 与 SDK 合同**。已实现：`openRoom`/`resumeRoom`/`claimRoom`/`listRooms`；Room ID、Page label 稳定与未知来源保护；`adopt`/`release`/`finish`（keep 校验与收据）；Snapshot v2（`page`/`full_page`/`viewport`/`subtree` 范围、多层同源 iframe、`@N` 稳定引用、`frame` 标注、200 项截断与 `total`、跨源计入 `inaccessibleFrames`）；选择器（css/xpath/text/role/href、frame 限定、`:has-text`/`:text-is`/`>> nth=`）；输入与键盘（click/fill/press/`dblclick`/`focus`/`keyboard.*`/`insertText`/原生 `paste`）；等待（URL/selector/function/loadstate/popup/download/`waitForTimeout`）；`reload`/`info`/`events`/`receipt`/`cdp`；截图、`evaluate`、`fetch`、对话框、上传、select、指针、Agent 下载；统一 `CORVID_*` 错误码；CLI 多轮调用。差距：跨源 iframe 与 closed Shadow DOM 内容、`networkidle`、截图 `scale`/`raw`、`room.cdp()`、popup 历史跨重启、单凭据无 Agent 身份隔离、CLI 静态 import 与自动安装。 | ① `node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs` 覆盖新增合同。② 以 `npm test` 中 SDK/CLI 项为回归基线。③ 新增能力必须同时覆盖成功、错误/失效、控制权变更、重启或断开四类路径（适用时）。④ Snapshot 合同：范围必须显式、跨源内容计入 `inaccessibleFrames`、失效引用必须报错而不是静默重编号。⑤ 错误码新增必须同步映射与测试；参数形状错误与运营错误分开。 |
 | D11 | 部分 | **输入与网页能力**。已实现：`fill`、`press`、`click`、`dblclick`、`focus`、`hover`、`dragAndDrop`、`mouse.*`、`wheel`、`selectOption`、`setInputFiles`、`waitForFileChooser`、`keyboard.*`（type/press/down/up/insertText/paste）；点击/输入/按键为 `isTrusted: true` 事件；清空文件选择与 select 变更使用非 `isTrusted` 合成事件；同源 iframe 与开放 Shadow DOM 输入。差距：contenteditable、IME、任意组合键、目录上传、跨源 frame、OS 级拖放、原生文件选择器 UI、富文本、真实网站反自动化兼容性。 | ① `node --test tests/uploads.e2e.mjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`。② 新增输入路径必须验证事件 `isTrusted` 状态、焦点、滚动与视口边界。③ 合同：`paste` 的剪贴板恢复是 best-effort；合成事件只能标注为合成路径；跨源 frame、目录上传、IME 作为待实现项。 |
 | D12 | 部分 | **状态、接管与多 Agent 体验**。已实现：桌面状态"Agent 控制中/用户控制中/正在接管…/页面执行状态未知/网页对话框/站点权限/站点数据"；后台 Room 操作不改变前台 Room；错误以 alert 呈现；系统确认框当前为测试替身。差距：后台操作时前台焦点保持、多 Agent 身份、任务进度与长任务指示、崩溃/断开/清理失败后的状态一致性、无障碍与键盘可达性、状态同步延迟。 | ① 同时运行用户 Room 与至少两个 Agent Room，UI 可区分状态并可接管。② 断言前台 URL 与 `activeRoomId` 不受后台操作影响，并补测前台焦点保持。③ 退出/错误后不得显示虚假"已完成"；每个新状态必须对应可测试的状态源。④ 在单凭据问题解决前，UI 与文档都不得暗示 Agent 之间相互隔离。 |
 
@@ -76,7 +76,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.12；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（25 条命令、27 项测试，按固定顺序串行执行）。
+1. **环境准备**：Node.js ≥ 22.12；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（26 条命令、28 项测试，按固定顺序串行执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 

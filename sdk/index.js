@@ -149,7 +149,15 @@ class Page {
     const deadline=performance.now()+timeout;
     for(;;){const tab=await this.currentTab();if(state==='load'?tab.loadComplete:tab.domReady)return;const remaining=deadline-performance.now();if(remaining<=0)throw new CorvidError(CODES.TIMEOUT,`page.waitForLoadState timed out after ${timeout}ms waiting for ${state}`);await new Promise(resolve=>setTimeout(resolve,Math.min(50,remaining)));}
   }
-  async snapshot() { return this.action('snapshot'); }
+  async snapshot(options = {}) {
+    if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).some(key=>!['scope','root'].includes(key))) throw new TypeError('snapshot supports scope and root options');
+    const requested=options.scope ?? 'page';
+    if(!['page','full_page','viewport','subtree'].includes(requested)) throw new TypeError('snapshot scope must be page, full_page, viewport or subtree');
+    const scope=requested==='full_page' ? 'page' : requested;
+    if(scope==='subtree') {if(typeof options.root!=='string' || !options.root) throw new TypeError('subtree snapshot requires a root reference');}
+    else if(options.root!==undefined) throw new TypeError('snapshot root is only valid for subtree scope');
+    return this.action('snapshot',{options:{scope,...(options.root===undefined?{}:{root:options.root})}});
+  }
   async click(target) { if(this.chooserArm) await this.chooserArm; return this.action('click', { target }); }
   async hover(target) { return this.action('hover', { target }); }
   async dragAndDrop(source,target,options={}) { if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).length)throw new Error('dragAndDrop options are not supported');return this.action('dragAndDrop',{source,target}); }
