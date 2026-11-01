@@ -1,12 +1,12 @@
 # 端到端测试索引
 
-本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 28 项测试入口。`npm test` 共 26 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 25 条独立脚本命令。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 31 项测试入口。`npm test` 共 29 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 28 条独立脚本命令。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
-- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；2026-11-01 全量 26 条命令 / 28 项通过。
+- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；2026-11-01 全量 29 条命令 / 31 项通过。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
-- 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`。原生对话框交互本身未验证。
+- 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、多窗口、按 Agent 身份隔离。
 - 每项结束时清理自己创建的 Electron 进程、HTTP 服务与临时目录。
 
@@ -42,6 +42,9 @@
 | 26 | `tests/load-state-e2e.cjs` | `waitForLoadState` 区分 `domcontentloaded` 与 `load`（延迟图片）、超时、交还中断等待、同文档导航；`networkidle` 明确不支持。 | 状态属于已提交文档，过早调用可能观察旧文档；`networkidle` 未实现；本地夹具。 |
 | 27 | `tests/contract-e2e.cjs` | Agent API 合同：`keyboard.*`（type/press/down/up/insertText/paste 原生粘贴与焦点）、`focus`、`dblclick`、`reload`、`waitForTimeout`、`info()`/`targetId`、`events()` 排空 popup 事件、动作 `receipt`（popup/dialog）、`cdp()` 原始协议逃生口、错误码（TIMEOUT/NOT_FOUND/STALE_REFERENCE/CONTROL_LOST）。 | 只用本地夹具；`keyboard.paste` 依赖系统剪贴板，恢复是 best-effort；`dblclick` 只验证单层文档；错误码映射基于消息分类，未覆盖全部错误路径。 |
 | 28 | `tests/snapshot-e2e.cjs` | Snapshot v2：`page`/`full_page`/`viewport`/`subtree` 范围；多层同源 iframe；`@N` 引用作为动作目标；`frame` 标注；`:has-text`/`:text-is`/`>> nth=` 选择器子集；跨源 iframe 计入 `inaccessibleFrames`；截断与 `total`。 | 跨源 iframe 内容与 closed Shadow DOM 仍不可见；`subtree` 根为跨源 iframe 时报错；本地夹具；未做真实站点体积与性能验证。 |
+| 29 | `tests/tab-ux-e2e.cjs` | 桌面 UI：页面 favicon 出现在标签栏；Cmd/Ctrl+F 打开查找条、匹配计数 `1/3`、Enter/Shift+Enter 前后跳转、Esc 关闭；第二标签页；指针拖拽把第一个标签移到第二个之后并用 `/rooms` 断言顺序；切换标签关闭查找条；中键关闭标签。 | 只用本地夹具与单层文档；查找不覆盖跨 frame 高亮与长页面性能；拖拽只验证指针拖动路径，不是原生标签栏；macOS 键位为主。 |
+| 30 | `tests/window-state-e2e.cjs` | 窗口位置/尺寸写入 `window-state.json` 并在重启后恢复；状态文件为坏 JSON 时回退默认尺寸；保存位置在已移除显示器上时保持尺寸并回到可见区域。 | 只验证单窗口；最大化/全屏切换、多显示器热插拔、Windows 未覆盖；macOS 窗口系统可能对边界有细微调整（测试断言当前机器行为）。 |
+| 31 | `tests/download-file-ops-e2e.cjs` | 下载完成后"打开文件"与"在文件夹中显示"把保存路径转发给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | `shell` 调用被替身替换，未验证真实应用打开、真实文件管理器、权限拒绝的真实系统错误；本地夹具与临时下载目录。 |
 
 ## 工作块与测试的映射
 
@@ -52,9 +55,9 @@
 | D03 权限与浏览器提示 | `permissions-e2e`、`dialogs.e2e`、`dialogs-ui-e2e` |
 | D04 执行风险与清理 | `evaluation-risk-e2e`、`sdk-e2e`、`browser.e2e` |
 | D05 浏览数据边界 | `site-data-e2e`、`profiles-e2e`、`permissions-e2e`、`browser.e2e` |
-| D06 标签、窗口与导航 | `browser-shortcuts-e2e`、`room-close-e2e`、`beforeunload-e2e`、`popup-events-e2e` |
-| D07 用户界面与导航 | `library-e2e`、`library-search-e2e`、`browser-shortcuts-e2e`、`claim-e2e` |
-| D08 历史、书签与下载 | `library-e2e`、`library-search-e2e`、`download-e2e` |
+| D06 标签、窗口与导航 | `browser-shortcuts-e2e`、`room-close-e2e`、`beforeunload-e2e`、`popup-events-e2e`、`tab-ux-e2e`、`window-state-e2e` |
+| D07 用户界面与导航 | `library-e2e`、`library-search-e2e`、`browser-shortcuts-e2e`、`claim-e2e`、`tab-ux-e2e` |
+| D08 历史、书签与下载 | `library-e2e`、`library-search-e2e`、`download-e2e`、`download-file-ops-e2e` |
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
@@ -63,7 +66,7 @@
 ## 单独运行
 
 - 3 个 `node:test` 文件：`node --test tests/browser.e2e.mjs`、`node --test tests/dialogs.e2e.mjs`、`node --test tests/uploads.e2e.mjs`。
-- 25 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 28 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 
@@ -72,3 +75,4 @@
 - 新增或修改测试时，必须同步更新本索引、[验证记录](../reviews/verification-log.md) 和 [执行任务板](../execution/feature-board.md) 中对应工作块的证据。
 - "通过"只记录当次真实运行；不得用 API 级结果代替 UI 结果，也不得用本地夹具结果替代真实网站结论。
 - 系统对话框替身、非 `isTrusted` 合成事件和轮询实现必须在"关键限制"列写明。
+- 人眼布局检查不属于自动化项，记录在 [桌面 UI 视觉检查记录](ui-visual-check.md)，并在相关验收合同的证据列引用。

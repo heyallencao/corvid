@@ -16,11 +16,11 @@ function draw(value) {
   for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) rooms.append(button(`${s.name} ${s.ownership === 'agent' ? '•' : ''}`, () => api.invoke('activateRoom', {id:s.id}), s.id === state.activeRoomId));
   if(state.activeRoomId)rooms.append(button('关闭当前 Room',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}}));
   rooms.append(button('+ Room', async () => { await api.invoke('setPanel',{open:true}); document.querySelector('#new-room').showModal(); document.querySelector('#room-name').focus(); }));
-  const room = state.rooms.find(s => s.id === state.activeRoomId); const tabs = document.querySelector('#tabs'); tabs.replaceChildren();
-  if (!room) {document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
-  for (const t of room.tabs) { tabs.append(button(t.title || t.url || '新标签页', () => api.invoke('activateTab', {id:t.id}), t.active)); tabs.append(button('×', async()=>{controlError='';try{await api.invoke('closeTab',{id:t.id});}catch(error){controlError=error.message;draw(state);}})); }
-  tabs.append(button('+', () => api.invoke('createTab',{id:room.id})));
+  const room = state.rooms.find(s => s.id === state.activeRoomId);
+  if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  renderTabs(room);
   const active = activeTab(); document.querySelector('#address').value = active?.url === 'about:blank' ? '' : active?.url || '';
+  if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
   const status=document.querySelector('#status'); status.replaceChildren();
   if(room.executionRisk) status.append(button('页面执行状态未知 · 查看',()=>api.invoke('reviewExecutionRisk',{id:room.id})));
   if(active?.dialog) status.append(button('网页对话框 · 查看',()=>showPageDialog(active)));
@@ -64,6 +64,10 @@ async function renderLibrary() {
       details.textContent=`${item.filename} — ${labels[item.status] || item.status}${item.status==='progressing' ? progress : ''}${item.error ? `：${item.error}` : ''}`;
       details.title=item.path || item.url; row.append(details);
       if(item.status==='progressing') row.append(button('取消',async()=>{await api.invoke('cancelDownload',{id:item.id});}));
+      if(item.status==='completed' && item.path){
+        row.append(button('打开',async()=>{controlError='';try{await api.invoke('openDownload',{id:item.id});}catch(error){controlError=error.message;draw(state);}}));
+        row.append(button('在文件夹中显示',async()=>{controlError='';try{await api.invoke('revealDownload',{id:item.id});}catch(error){controlError=error.message;draw(state);}}));
+      }
       items.append(row); continue;
     }
     const link = document.createElement('a'); link.href = '#'; link.textContent = item.title || item.url; link.title = item.url;
@@ -102,3 +106,99 @@ document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
 document.querySelector('#clear-site').onclick = async () => {const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
 document.querySelector('#site-permissions').onclick = async () => {const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
 document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;api.invoke('setPanel',{open:false});};
+
+// ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
+const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
+let findOpen=false, findTabId=null;
+function tabElement(tab, room){
+  const el=document.createElement('div');
+  el.className='tab'; el.setAttribute('role','tab'); el.setAttribute('aria-selected',tab.active?'true':'false'); el.dataset.tabId=tab.id;
+  const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;
+  const icon=document.createElement('img'); icon.className='favicon'; icon.alt=''; icon.draggable=false; icon.src=tab.faviconUrl || FALLBACK_FAVICON;
+  icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};
+  const title=document.createElement('span'); title.className='tab-title'; title.textContent=tab.title || tab.url || '新标签页';
+  main.append(icon,title);
+  const close=document.createElement('button'); close.type='button'; close.className='tab-close'; close.textContent='×'; close.setAttribute('aria-label','关闭标签页'); close.title=`关闭 ${tab.title || tab.url || '标签页'}`;
+  close.onclick=event=>{event.stopPropagation();void closeTabFromUi(tab.id);};
+  el.append(main,close);
+  main.onclick=()=>{void api.invoke('activateTab',{id:tab.id}).catch(error=>{controlError=error.message;draw(state);});};
+  el.onauxclick=event=>{if(event.button===1){event.preventDefault();void closeTabFromUi(tab.id);}};
+  el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;startTabDrag(event,el,room);};
+  return el;
+}
+let tabsSignature='';
+function renderTabs(room){
+  // Rebuild only when the room or its tabs actually changed: frequent state
+  // updates (download progress, agent activity) must not tear down the tab bar
+  // while the user is dragging a tab or clicking its close button.
+  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.title,tab.url,tab.faviconUrl,tab.active].join('\u0000'))].join('\u0001');
+  const existing=document.querySelector('#new-tab');
+  if(signature===tabsSignature && existing && existing.parentElement?.id==='tabs') return;
+  tabsSignature=signature;
+  const tabs=document.querySelector('#tabs'); tabs.replaceChildren();
+  for(const tab of room.tabs) tabs.append(tabElement(tab,room));
+  const add=button('+',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
+  add.id='new-tab'; add.setAttribute('aria-label','新建标签'); tabs.append(add);
+}
+async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTab',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
+function startTabDrag(event,el,room){
+  if(room.tabs.length<2) return;
+  let active=false;
+  const move=ev=>{
+    if(!active){ if(Math.abs(ev.clientX-event.clientX)<6 && Math.abs(ev.clientY-event.clientY)<6) return; active=true; document.body.classList.add('tab-dragging'); el.classList.add('dragging'); }
+    const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.tab');
+    document.querySelectorAll('.tab').forEach(node=>node.classList.remove('drop-before','drop-after'));
+    if(!over || over===el) return;
+    const rect=over.getBoundingClientRect(); over.classList.add(ev.clientX < rect.left+rect.width/2?'drop-before':'drop-after');
+  };
+  const finish=ev=>{
+    document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',finish);document.removeEventListener('pointercancel',finish);
+    if(!active) return;
+    document.body.classList.remove('tab-dragging'); el.classList.remove('dragging');
+    document.querySelectorAll('.tab').forEach(node=>node.classList.remove('drop-before','drop-after'));
+    const over=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.tab');
+    if(!over || over===el) return;
+    const order=state.rooms.find(item=>item.id===room.id)?.tabs.map(tab=>tab.id) || [];
+    const from=order.indexOf(el.dataset.tabId);
+    if(from<0 || !order.includes(over.dataset.tabId)) return;
+    const rect=over.getBoundingClientRect(); const before=ev.clientX < rect.left+rect.width/2;
+    order.splice(from,1);
+    const target=order.indexOf(over.dataset.tabId);
+    order.splice(before?target:target+1,0,el.dataset.tabId);
+    void api.invoke('reorderTabs',{id:room.id,tabIds:order}).catch(error=>{controlError=error.message;draw(state);});
+  };
+  document.addEventListener('pointermove',move);document.addEventListener('pointerup',finish);document.addEventListener('pointercancel',finish);
+}
+function findbarEl(){return document.querySelector('#findbar');}
+function closeFindBar(){
+  const bar=findbarEl(); if(!bar || bar.hidden) return;
+  bar.hidden=true; findOpen=false; document.querySelector('#find-count').textContent='';
+  const tabId=findTabId; findTabId=null;
+  if(tabId) void api.invoke('stopFindInPage',{id:tabId,action:'clearSelection'}).catch(()=>{});
+}
+function openFindBar(){
+  const tab=activeTab(); if(!tab) return;
+  const bar=findbarEl(); const input=document.querySelector('#find-input');
+  findTabId=tab.id;
+  if(bar.hidden){ bar.hidden=false; findOpen=true; input.focus(); if(input.value) runFind(false,true); }
+  else { input.focus(); input.select(); }
+}
+function runFind(findNext,forward){
+  const tab=activeTab(); const input=document.querySelector('#find-input'); const text=input.value;
+  if(!tab) return;
+  findTabId=tab.id;
+  if(!text){ document.querySelector('#find-count').textContent=''; void api.invoke('stopFindInPage',{id:tab.id,action:'clearSelection'}).catch(()=>{}); return; }
+  void api.invoke('findInPage',{id:tab.id,text,forward,findNext}).catch(error=>{document.querySelector('#find-count').textContent='';controlError=error.message;draw(state);});
+}
+document.querySelector('#find-input').oninput=()=>runFind(false,true);
+document.querySelector('#find-input').onkeydown=event=>{
+  if(event.key==='Enter'){event.preventDefault();runFind(true,!event.shiftKey);}
+  else if(event.key==='Escape'){event.preventDefault();closeFindBar();}
+};
+document.querySelector('#find-next').onclick=()=>runFind(true,true);
+document.querySelector('#find-prev').onclick=()=>runFind(true,false);
+document.querySelector('#find-close').onclick=()=>closeFindBar();
+api.onFindOpen(()=>openFindBar());
+api.onFindNext(options=>{const bar=findbarEl();if(bar.hidden){openFindBar();return;}runFind(true,!options.backward);});
+api.onFindResult(result=>{if(!findOpen || result.tabId!==findTabId) return;const count=document.querySelector('#find-count');if(!result.matches){count.textContent='无结果';return;}count.textContent=`${result.activeMatchOrdinal}/${result.matches}`;});
+api.onFindReset(result=>{if(findTabId===result.tabId) closeFindBar();});

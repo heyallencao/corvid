@@ -22,6 +22,14 @@ npm start
 
 默认数据目录是 `~/.corvid`；设置 `CORVID_DATA_DIR` 可以使用独立目录。`npm test` 会使用临时数据目录和本地网页 fixture 启动真实 Electron 进程，逐项验证桌面和 Agent 接口行为（测试索引见 [QA 目录](docs/qa/e2e-suites.md)）。
 
+## 日常使用
+
+- 标签栏显示页面 favicon，支持拖拽排序与中键关闭；标签和 Room 的状态会跨重启恢复。
+- `Cmd/Ctrl + F` 打开页内查找：输入即显示 `当前/总数`，Enter / Shift+Enter 前后跳转，Esc 关闭。
+- `Cmd/Ctrl + T/W/L/R`、`Cmd/Ctrl + 数字`、`Control + Tab` 等常用快捷键可用。
+- 历史、书签、下载面板支持搜索；下载完成后可以打开文件或在文件夹中显示。
+- 窗口位置、尺寸与最大化状态保存在数据目录的 `window-state.json`，重启后恢复。
+
 ## Agent 接入
 
 桌面应用启动后，可以通过 CLI 运行一段 Node.js 脚本：

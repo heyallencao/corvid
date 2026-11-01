@@ -35,6 +35,14 @@
 ## 风险与遗留
 
 - **仓库此前没有 commit**：本次重构完成后才做首次提交，因此没有"重构前"的 git 历史；回滚依赖重构前的 tarball 备份（`/tmp/corvid-baseline-20261101-174251.tar.gz`，仅本机临时保留）。
-- 项目目录仍叫 `go-lite`；目录改名需要切换工作区后另行执行。
+- 项目目录原叫 `go-lite`；已于 2026-11-01 改名为 `corvid`，收尾记录见下节。
 - 单凭据、无按 Agent 身份隔离；跨源 iframe / closed Shadow DOM 不支持；真实网站、Windows、打包分发均未验证。
 - 下一步：Agent API 合同（keyboard、焦点、事件、错误码、CDP 逃生口）与 Snapshot v2。
+
+## 目录改名收尾（2026-11-01）
+
+- 目录：`/Users/allen/Workspace/projects/personal/go-lite` → `/Users/allen/Workspace/projects/personal/corvid`，用 `mv` 原样迁移（含 `.git`、`node_modules`）；改名后 `git log` 仍为 `90b0753` → `b842855` → `24f7d69`，仓库内容未变。
+- 会话：旧会话（`session-b699a21d-…`）的工作区绑定在旧路径，目录移走后无法继续（turn 5/6 报 `working-directory: directory does not exist`）；改在新路径开新会话继续，旧会话记录仅作为历史保留。
+- 代码与文档引用：仓库内除本文件的历史叙述外，无 `go-lite` 字符串残留；`package.json`、CLI、数据目录、窗口标题均已是 `corvid` 语义。
+- 旧数据：本机没有 `~/.go-lite` 数据目录，因此没有搬迁动作；首次启动会创建 `~/.corvid`。
+- 验证：改名后未改任何代码先跑全量 `npm test`，26 条命令 / 28 项测试全绿，确认改名没有破坏路径假设。

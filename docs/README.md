@@ -7,7 +7,7 @@
 - `architecture/`：系统边界、架构设计与关键决策。入口：[系统设计](architecture/overview.md)。
 - `execution/`：执行任务板、任务优先级和验收合同。入口：[执行任务板](execution/feature-board.md)。
 - `reviews/`：验证记录、质量门禁和评审证据。入口：[验证记录](reviews/verification-log.md)。
-- `qa/`：端到端测试索引、浏览器/桌面 QA 记录和手动验证记录。入口：[测试索引](qa/e2e-suites.md)。
+- `qa/`：端到端测试索引、浏览器/桌面 QA 记录和手动验证记录。入口：[测试索引](qa/e2e-suites.md)，另有 [桌面 UI 视觉检查记录](qa/ui-visual-check.md)。
 - `records/`：ADR、变更记录、迁移说明和交接记录。入口：[重构交接记录](records/rebrand-handoff.md)。
 - `research/`：技术调研与上游笔记（仅自有产品相关的调研，不存放参考产品的逆向证据）。
 

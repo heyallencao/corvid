@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -21,6 +21,36 @@ const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
 const connectionPath = path.join(dataDir, 'control.json');
+const windowStatePath = path.join(dataDir, 'window-state.json');
+function readWindowState() {
+  let saved;
+  try { saved = JSON.parse(fs.readFileSync(windowStatePath, 'utf8')); } catch { return null; }
+  if (!saved || typeof saved !== 'object') return null;
+  const { x, y, width, height, maximized } = saved;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 600 || height < 400) return null;
+  const size = { width: Math.round(width), height: Math.round(height), maximized: Boolean(maximized) };
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return size;
+  const bounds = { x: Math.round(x), y: Math.round(y), ...size };
+  // A saved position can belong to a monitor that is no longer attached; fall
+  // back to the default centered window instead of opening it off-screen.
+  const visible = screen.getAllDisplays().some(display => {
+    const area = display.workArea;
+    return bounds.x < area.x + area.width && bounds.x + bounds.width > area.x && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y;
+  });
+  return visible ? bounds : size;
+}
+let windowStateTimer;
+function saveWindowState() {
+  if (!window || window.isDestroyed()) return;
+  const bounds = window.getNormalBounds();
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    const temp = `${windowStatePath}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized: window.isMaximized() }), { mode: 0o600 });
+    fs.renameSync(temp, windowStatePath);
+  } catch (error) { console.error('Unable to save window state:', error.message); }
+}
+function scheduleWindowStateSave() { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(saveWindowState, 300); }
 const library = require('./library.cjs')(dataDir);
 const activeDownloads = new Map();
 const downloadPartitions = new Set();
@@ -72,7 +102,7 @@ function readSavedRooms() {
 function applyZoom(profileId) {const zoom=profileSettings(profileId).zoom;for(const tab of tabs.values()) if(findRoom(tab.roomId).profileId===profileId) tab.view.webContents.setZoomFactor(zoom);}
 const findRoom = roomId => { const room = rooms.find(s => s.id === roomId); if (!room) throw new Error('Room not found'); return room; };
 const findTab = tabId => { const tab = tabs.get(tabId); if (!tab) throw new Error('Tab not found'); return tab; };
-const describe = () => ({activeRoomId,activeProfileId,profiles, rooms: rooms.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))});
+const describe = () => ({activeRoomId,activeProfileId,profiles, rooms: rooms.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))});
 function persist() {
   const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
   fs.mkdirSync(dataDir,{recursive:true});
@@ -154,7 +184,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const openedBy=metadata.openedBy ?? 'unknown';
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
   const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),popupSequence:0,popupEvents:[]};
-  view.webContents.on('did-navigate',()=>{tab.domReady=false;tab.loadComplete=false;});
+  view.webContents.on('did-navigate',()=>{tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;});
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;});
   view.webContents.on('will-prevent-unload',event=>{
@@ -173,6 +203,9 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   await view.webContents.loadURL('about:blank');
   await pageDebugger.ensure(view.webContents,changed);
   view.webContents.on('page-title-updated',(_event,title) => { if (tab.visitId) library.title(tab.visitId,title); changed(); });
+  view.webContents.on('page-favicon-updated',(_event,favicons) => { if (!Array.isArray(favicons) || !favicons.length) return; tab.faviconUrl=favicons[0]; changed(); });
+  view.webContents.on('found-in-page',(_event,result) => { if (window && !window.isDestroyed()) window.webContents.send('shell-find-result',{tabId,...result}); });
+  view.webContents.on('did-navigate',() => { if (window && !window.isDestroyed()) window.webContents.send('shell-find-reset',{tabId}); });
   const recordVisit = (_event,url) => { view.webContents.setZoomFactor(profileSettings(s.profileId).zoom);if (!restoring && !tab.restoringInitial) tab.visitId=library.visit(url,url,s.profileId)?.id; changed(); };
   view.webContents.on('did-navigate',recordVisit);
   view.webContents.on('did-navigate-in-page',(_event,url,isMainFrame) => { if(isMainFrame) recordVisit(_event,url); });
@@ -249,6 +282,9 @@ function installShortcuts(contents) {
     else if(primary && key==='w' && !input.shift && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
     else if(primary && key==='l' && !input.shift) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
     else if(primary && key==='r' && !input.shift && tab) action=()=>dispatchQueued('reload',{id:tab.id});
+    else if(primary && key==='f' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
+    else if(primary && key==='g' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
+    else if(primary && key==='g' && input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
     else if(primary && !input.shift && ['[',']'].includes(key) && tab) action=()=>dispatchQueued(key==='['?'back':'forward',{id:tab.id});
     else if(primary && !input.shift && /^[1-9]$/.test(key) && room?.tabIds.length) {const index=key==='9'?room.tabIds.length-1:Number(key)-1;const target=room.tabIds[index];if(target) action=()=>dispatchQueued('activateTab',{id:target});}
     else if(primary && ['+','=','-','0'].includes(key)) action=()=>{const current=profileSettings(activeProfileId).zoom;const zoom=key==='0'?1:Math.round(Math.min(3,Math.max(0.5,current+(key==='-'?-0.1:0.1)))*10)/10;saveSettings(activeProfileId,{zoom});applyZoom(activeProfileId);update();};
@@ -289,6 +325,43 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'removeBookmark': return {removed:library.removeBookmark(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'removeHistory': return {removed:library.removeHistory(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'setPanel': panelOpen=Boolean(args.open); layout(); return {ok:true};
+    case 'reorderTabs': {
+      if(fromApi) throw new Error('User action required');
+      const room=findRoom(target), order=args.tabIds;
+      if(!Array.isArray(order) || order.length!==room.tabIds.length) throw new Error('Tab order must list every tab in the room');
+      if(new Set(order).size!==order.length || order.some(tabId=>!room.tabIds.includes(tabId))) throw new Error('Tab order is invalid');
+      room.tabIds=order; update(); return describe();
+    }
+    case 'findInPage': {
+      const tab=findTab(target), text=args.text;
+      if(typeof text!=='string' || !text.length) throw new Error('Find text required');
+      if([...text].length>200) throw new Error('Find text is too long');
+      const requestId=tab.view.webContents.findInPage(text,{forward:args.forward!==false,findNext:Boolean(args.findNext),matchCase:Boolean(args.matchCase)});
+      return {requestId,tabId:tab.id,text};
+    }
+    case 'stopFindInPage': {
+      const tab=findTab(target);
+      const action=['clearSelection','keepSelection','activateSelection'].includes(args.action) ? args.action : 'clearSelection';
+      tab.view.webContents.stopFindInPage(action);
+      return {ok:true};
+    }
+    case 'openDownload': {
+      if(fromApi) throw new Error('User action required');
+      const entry=library.downloads(activeProfileId).find(item=>item.id===target);
+      if(!entry) throw new Error('Download not found');
+      if(entry.status!=='completed' || !entry.path) throw new Error('Download is not completed or has no saved file');
+      const failure=await shell.openPath(entry.path);
+      if(failure) throw new Error(`无法打开文件：${failure}`);
+      return {ok:true};
+    }
+    case 'revealDownload': {
+      if(fromApi) throw new Error('User action required');
+      const entry=library.downloads(activeProfileId).find(item=>item.id===target);
+      if(!entry) throw new Error('Download not found');
+      if(!entry.path) throw new Error('Download has no saved file');
+      shell.showItemInFolder(entry.path);
+      return {ok:true};
+    }
     case 'createRoom': return createRoom(args.name, fromApi ? 'agent' : (args.ownership || 'user'), args.profileId ?? (fromApi ? 'default' : activeProfileId));
     case 'resolveRoom': return resolveRoom(args.identifier,args.profileId);
     case 'createTab': return createTab(target,args.url || 'about:blank',id(),{openedBy:fromApi?'agent':'user'});
@@ -472,7 +545,11 @@ async function startServer() {
 }
 app.whenReady().then(async () => {
   fs.mkdirSync(dataDir,{recursive:true});
-  window = new BrowserWindow({width:1280,height:850,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const savedWindow=readWindowState();
+  const initialBounds=savedWindow ? (savedWindow.x!==undefined ? {x:savedWindow.x,y:savedWindow.y,width:savedWindow.width,height:savedWindow.height} : {width:savedWindow.width,height:savedWindow.height}) : {width:1280,height:850};
+  window = new BrowserWindow({...initialBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  if(savedWindow?.maximized) window.maximize();
+  window.on('resize',scheduleWindowStateSave);window.on('move',scheduleWindowStateSave);window.on('close',saveWindowState);
   installShortcuts(window.webContents);
   ipcMain.handle('shell-action',(_event,method,args) => dispatchQueued(method,args));
   ipcMain.on('page-prompt',(event,message,defaultPrompt)=>{
