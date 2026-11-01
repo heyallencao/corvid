@@ -81,4 +81,6 @@ BrowserMCP 是用户所指的 OpenCLI 作者 MCP 浏览器项目。它已实现�
 
 参考 Pi 官方 [SDK 文档](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)：SDK 可嵌入 Node/Bun 进程、创建和持久化 Agent session，并订阅消息/工具/运行事件；官方 npm 元数据当前为 `@earendil-works/pi-coding-agent@1.4.0`、Node.js `>=22.19.0`。Corvid 声明的最低 Node 版本目前为 `>=22.12.0`，因此集成前须决定提高运行时下限还是隔离/延迟加载 Pi。
 
-Pi 默认工具与 Corvid 浏览器权限必须拆开：内置 Agent 首期禁用 Pi 的 filesystem/shell 工具，只注册当前显式 Room 的 Corvid tools；真实模型凭据、费用和任务持久化需纳入设置与恢复设计。离线确定性 fixture 只能证明生命周期和 UI 合同，不代表真实模型连通。
+Pi 默认工具与 Corvid 浏览器权限必须拆开：已新增 `desktop/pi-agent.cjs` session factory，禁用 filesystem/shell 工具以及用户 Pi extensions、skills、prompt templates、themes、context files，只注册 `corvid_page_snapshot` / `corvid_navigate` 并绑定一个显式 Room/Profile/Tab，单次工具输出上限 32 KiB。session transcript 目录位于 Corvid 数据目录下的任务专属目录（0700）；Pi 凭据/model 配置继续使用用户 Pi agentDir。为当前 Pi 依赖树的 `undici` 与 `minimatch` 安全公告增加固定 overrides，`npm audit --audit-level=high` 结果为 0。
+
+`tests/pi-runtime-e2e.cjs` 使用临时 Pi 配置和 Corvid 数据目录，验证 session 初始化、工具清单、上下文显式确认、Room/Profile 拒绝路径；没有调用真实模型，也没有调用 `session.prompt()`，因此 transcript 文件尚未被 Pi 首次写出。桌面工作台、真实模型凭据与费用说明、任务/Room/Session 状态恢复仍未实现。
