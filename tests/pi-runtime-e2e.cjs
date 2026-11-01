@@ -72,6 +72,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     reopenedSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: createdSession.sessionFile });
     assert.equal(reopenedSession.sessionFile, createdSession.sessionFile);
     assert.deepEqual(reopenedSession.tools, ['corvid_navigate', 'corvid_page_snapshot']);
+    const outsideTranscript = path.join(dataDir, 'outside-transcript.jsonl');
+    fs.writeFileSync(outsideTranscript, '{}\n');
+    fs.symlinkSync(outsideTranscript, path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl'));
+    await assert.rejects(
+      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl') }),
+      /Pi transcript must remain inside this task directory/,
+    );
     await assert.rejects(
       createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, sessionFile: path.join(dataDir, 'outside-task.jsonl') }),
       /Pi transcript must remain inside this task directory/,

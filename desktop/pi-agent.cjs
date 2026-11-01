@@ -52,6 +52,11 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   if (sessionFile) {
     const resolvedSessionFile = path.resolve(sessionFile);
     if (!resolvedSessionFile.startsWith(`${path.resolve(sessionDirectory)}${path.sep}`)) throw new Error('Pi transcript must remain inside this task directory');
+    let realSessionDir, realSessionFile, transcriptStat;
+    try {
+      [realSessionDir, realSessionFile, transcriptStat] = await Promise.all([fs.realpath(sessionDirectory), fs.realpath(resolvedSessionFile), fs.stat(resolvedSessionFile)]);
+    } catch { throw new Error('Pi transcript is missing or cannot be opened'); }
+    if (!transcriptStat.isFile() || !realSessionFile.startsWith(`${realSessionDir}${path.sep}`)) throw new Error('Pi transcript must remain inside this task directory');
     sessionManager = SessionManager.open(resolvedSessionFile, sessionDirectory, dataDir);
   } else sessionManager = SessionManager.create(dataDir, sessionDirectory);
   await fs.mkdir(sessionDirectory, { recursive: true, mode: 0o700 });
