@@ -1,10 +1,10 @@
 # 端到端测试索引
 
-本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 33 项测试入口。`npm test` 共 31 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 30 条独立脚本命令。索引中的序号按当前 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 34 项测试入口。`npm test` 共 32 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 31 条独立脚本命令。索引中的序号按当前 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
-- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；2026-11-01 全量 31 条命令 / 33 项通过。
+- 环境：本机 macOS、Electron 45.2.1、Node.js ≥ 22.12；最近一次全量回归为 2026-11-02，32 条命令 / 34 项通过。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、按 Agent 身份隔离。
@@ -47,6 +47,7 @@
 | 31 | `tests/window-state-e2e.cjs` | 多窗口边界位置/尺寸写入 `window-state.json` 并按稳定窗口 ID 重启恢复；旧单窗口对象格式仍可读；状态文件损坏回退默认尺寸；已移除显示器上的位置回退到可见区域。 | macOS；最大化/全屏切换、多显示器热插拔、Windows 窗口管理规则未覆盖；窗口系统可能微调边界坐标。 |
 | 32 | `tests/multi-window-e2e.cjs` | 两个 BrowserWindow 与独立 shell UI；每窗 Room 列表隔离，控制 API 汇总所有 Room；Agent 可操作后台窗口 Room；关闭窗口将 Room 转移至剩余窗口；重启恢复窗口 ID 与 Room 归属，`rooms.json` 写为 schemaVersion=2。 | 真实 Electron + 本地 HTTP 页面夹具；macOS；未覆盖 Windows 焦点规则、多显示器窗口排列、窗口键盘切换与窗口崩溃恢复。 |
 | 33 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
+| 34 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：Agent 工作区面板开合与空态；同 Profile 多个 Agent Room 并行显示且不跨 Profile 泄露；窄窗口行布局无横向溢出；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看 Room 后面板关闭且活动 Room 更新。 | 风险复核的原生对话框由测试替身处理；本地隔离数据目录与 `about:blank` 页面；不接入真实 Agent 执行器。 |
 
 ## 工作块与测试的映射
 
@@ -63,12 +64,12 @@
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
-| D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e` |
+| D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e` |
 
 ## 单独运行
 
 - 3 个 `node:test` 文件：`node --test tests/browser.e2e.mjs`、`node --test tests/dialogs.e2e.mjs`、`node --test tests/uploads.e2e.mjs`。
-- 30 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 31 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 

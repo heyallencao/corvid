@@ -1,5 +1,26 @@
 # 验证记录
 
+## 2026-11-02 Agent Room 面板端到端回归：32 条命令、34 项通过
+
+### 执行与结果
+
+- 命令：`env -u ELECTRON_RUN_AS_NODE npm test`；串行执行 32 条命令，包含 1 条 `node --test tests/*.e2e.mjs`（3 项）与 31 个独立 Electron 脚本，34 项全部通过（EXIT 0）。
+- 环境：本机 macOS；Node.js v24.22.1；Electron 45.2.1；测试各自使用隔离临时 `CORVID_DATA_DIR` 与本地/空白页面，不访问真实用户浏览数据。
+- 新增测试：`tests/agent-rooms-panel-e2e.cjs`。
+
+### 本轮新增覆盖
+
+- 面板开合、空态，以及 Agent Room 创建后状态实时出现。
+- 同 Profile 可同时显示多个 Agent Room；其他 Profile 的 Room 名称不出现在当前列表。
+- 640 px 窗口下列表行无横向溢出。
+- 键盘 Tab/Enter 可接管 Room 并交还 Agent；查看 Room 后面板关闭且活动 Room 切换正确。
+- 超时执行显示风险状态；“复核”入口交给用户控制并保留风险提示。
+
+### 测试替身与未验证边界
+
+- 页面为 `about:blank`；执行风险复核对话框使用 Electron 测试替身。本测试证明本地 Room 状态与界面流转，不验证真实模型、内置 Agent 执行、真实网站、原生对话框或 Windows。
+- 多窗口间面板状态推送、同步 Renderer 卡死和完整任务历史仍未覆盖。
+
 ## 2026-11-02 Agent Room 面板人工检查
 
 ### 执行与结果
