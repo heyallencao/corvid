@@ -1,6 +1,6 @@
 # Corvid 执行任务板
 
-本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品对象统一为：**Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。
+本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品主线是面向用户的完整浏览器：日常浏览与 Agent 协作在同一个桌面应用中完成。内置 Agent 与外部 SDK/CLI 共用 **Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）及同一授权合同。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。
 
 规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，33 项测试的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
@@ -52,6 +52,7 @@
 | D10 | 部分 | **Page 与 SDK 合同**。已实现：`openRoom`/`resumeRoom`/`claimRoom`/`listRooms`；Room ID、Page label 稳定与未知来源保护；`adopt`/`release`/`finish`（keep 校验与收据）；Snapshot v2（`page`/`full_page`/`viewport`/`subtree` 范围、多层同源 iframe、`@N` 稳定引用、`frame` 标注、200 项截断与 `total`、跨源计入 `inaccessibleFrames`）；选择器（css/xpath/text/role/href、frame 限定、`:has-text`/`:text-is`/`>> nth=`）；输入与键盘（click/fill/press/`dblclick`/`focus`/`keyboard.*`/`insertText`/原生 `paste`）；等待（URL/selector/function/loadstate/popup/download/`waitForTimeout`）；`reload`/`info`/`events`/`receipt`/`cdp`；截图、`evaluate`、`fetch`、对话框、上传、select、指针、Agent 下载；统一 `CORVID_*` 错误码；CLI 多轮调用。差距：跨源 iframe 与 closed Shadow DOM 内容、`networkidle`、截图 `scale`/`raw`、`room.cdp()`、popup 历史跨重启、单凭据无 Agent 身份隔离、CLI 静态 import 与自动安装。 | ① `node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs` 覆盖新增合同。② 以 `npm test` 中 SDK/CLI 项为回归基线。③ 新增能力必须同时覆盖成功、错误/失效、控制权变更、重启或断开四类路径（适用时）。④ Snapshot 合同：范围必须显式、跨源内容计入 `inaccessibleFrames`、失效引用必须报错而不是静默重编号。⑤ 错误码新增必须同步映射与测试；参数形状错误与运营错误分开。 |
 | D11 | 部分 | **输入与网页能力**。已实现：`fill`、`press`、`click`、`dblclick`、`focus`、`hover`、`dragAndDrop`、`mouse.*`、`wheel`、`selectOption`、`setInputFiles`、`waitForFileChooser`、`keyboard.*`（type/press/down/up/insertText/paste）；点击/输入/按键为 `isTrusted: true` 事件；清空文件选择与 select 变更使用非 `isTrusted` 合成事件；同源 iframe 与开放 Shadow DOM 输入。差距：contenteditable、IME、任意组合键、目录上传、跨源 frame、OS 级拖放、原生文件选择器 UI、富文本、真实网站反自动化兼容性。 | ① `node --test tests/uploads.e2e.mjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`。② 新增输入路径必须验证事件 `isTrusted` 状态、焦点、滚动与视口边界。③ 合同：`paste` 的剪贴板恢复是 best-effort；合成事件只能标注为合成路径；跨源 frame、目录上传、IME 作为待实现项。 |
 | D12 | 部分 | **状态、接管与多 Agent 体验**。已实现：桌面状态"Agent 控制中/用户控制中/正在接管…/页面执行状态未知/网页对话框/站点权限/站点数据"；后台 Room 操作不改变前台 Room；错误以 alert 呈现；系统确认框当前为测试替身。差距：后台操作时前台焦点保持、多 Agent 身份、任务进度与长任务指示、崩溃/断开/清理失败后的状态一致性、无障碍与键盘可达性、状态同步延迟。 | ① 同时运行用户 Room 与至少两个 Agent Room，UI 可区分状态并可接管。② 断言前台 URL 与 `activeRoomId` 不受后台操作影响，并补测前台焦点保持。③ 退出/错误后不得显示虚假"已完成"；每个新状态必须对应可测试的状态源。④ 在单凭据问题解决前，UI 与文档都不得暗示 Agent 之间相互隔离。 |
+| D19 | 待实现 | **内置 Agent 工作台与统一任务体验**。当前没有内置 Agent 对话/任务工作台；桌面浏览器与 SDK/CLI 已有 Room、Page、状态与控制权合同。目标：用户可从当前页面或选定标签发起任务，在独立 Room 观察 Agent 进度、接管并输入、交还后继续、查看结果/错误并恢复任务；内置 Agent、SDK/CLI 使用相同 Room 生命周期和权限边界。模型/Agent 执行后端保持可替换，不把特定供应商写成浏览器架构前提。 | ① 先定义任务生命周期与 UI 状态（草稿、运行、等待用户、用户接管、完成、失败、结果未知、可恢复），并与 Room/控制权状态建立单一映射。② 从当前页/所选标签启动时显式确认送入 Agent 的页面上下文；不得自动读取其他 Profile 或用户未选 Room。③ 用本地假 Agent/可控 fixture 验收启动、进度、取消或接管、交还后继续、错误、断连/重启恢复；成功与失败均可定位到 Room、任务和页面。④ 真实模型接入需单独定义凭据存储、数据发送范围、费用/运行状态与用户可撤销设置；测试 fixture 结果不得宣称真实模型已接入。⑤ 桌面工作台与外部 SDK/CLI 对同一 Room 的状态变更保持一致；用户控制期间所有 Agent 入口均拒绝动作。⑥ 可用性验收覆盖键盘、窄窗口、空态、慢任务、无网络、Agent 不可用与辅助技术可读状态。 |
 
 ## P2：平台、迁移与能力补齐
 
@@ -71,6 +72,7 @@
 - P2 的导入、扩展、安装分发各有独立合同与平台证据；未验证平台不写"已验证"。
 - 系统对话框替身全部有对应人工验证记录；原生对话框不得由自动化结果代替。
 - Agent 身份隔离完成前，不得宣称多 Agent 之间安全隔离；单凭据风险持续记录在文档中。
+- Corvid 的产品完成条件包括内置 Agent 工作台与完整日常浏览器体验；SDK/CLI 的接口能力不能替代用户可见的任务发起、进度、接管、恢复和结果界面。D19 未达到其验收合同前，不得宣称内置 Agent 已交付。
 - 任一"部分"不得因单项通过整体关闭；验证证据按 [验证记录](../reviews/verification-log.md) 的格式追加。
 - 文档、测试索引与任务板同步：新增或修改测试必须同时登记到 [端到端测试索引](../qa/e2e-suites.md) 与本板证据列。
 

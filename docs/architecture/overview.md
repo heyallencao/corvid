@@ -1,6 +1,8 @@
 # Corvid 系统设计
 
-Corvid 的目标是在 macOS 上先建立可运行、可验证的本地桌面浏览器，并保留 Windows 适配空间。用户在自己的标签页里浏览，Agent 在独立 Room 中并行工作。本文只描述系统边界与关键决策，需求与验收状态以 [执行任务板](../execution/feature-board.md) 为准。
+Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的主产品。产品主线采用 Ego 式浏览器协作模式：用户日常浏览与 Agent 在独立 Room 中并行工作；Room 控制权可见、可接管、可交还，任务可以跨调用和重启继续。浏览器日常功能、内置 Agent 工作台、外部 Agent SDK/CLI 必须汇入同一套 Profile、Room、Page 与控制权合同，而不是成为彼此割裂的产品入口。
+
+当前实现已有桌面浏览器、Profile/Room、用户控制权交接与外部 Agent SDK/CLI；内置 Agent 对话/任务工作台尚未实现。架构目标不代表已交付能力。本文只描述系统边界与关键决策，需求与验收状态以 [执行任务板](../execution/feature-board.md) 为准。
 
 ## 系统边界
 
@@ -20,6 +22,8 @@ Corvid 的目标是在 macOS 上先建立可运行、可验证的本地桌面浏
 | 状态文件原子写 | `rooms.json`、`library.json`、`profiles.json` 使用 tmp + rename，权限 0600；文件带 `schemaVersion` |
 | Page label 稳定 | `p1`、`p2` 跨轮次、跨重启保持，已用 label 不复用；Agent 创建的页面与用户页面用 `openedBy` 区分 |
 | 观察结果显式受限 | Snapshot 返回截断标记和覆盖限制；不把近似无障碍树说成完整语义 |
+| 所有 Agent 共用一套协作合同 | 内置 Agent、SDK/CLI 与后续适配器都必须使用同一 Room/Page 生命周期、授权检查、运行状态、任务记录和控制权交接；不能绕开用户控制或制造另一份浏览器状态 |
+| 浏览器日常能力是 Agent 的上下文，不是 Agent 的替代品 | 地址栏、标签、历史、书签、下载、权限与站点数据管理继续属于完整浏览器；Agent 从当前用户明确选择的上下文开始工作，并把执行状态和待用户处理事项呈现在桌面 |
 
 ## 已知限制
 
@@ -32,4 +36,4 @@ Corvid 的目标是在 macOS 上先建立可运行、可验证的本地桌面浏
 
 ## 迭代顺序
 
-已完成后进入以下顺序：工程底座（版本历史、文档治理、数据 schema）→ Agent API 合同（键盘、焦点、事件、错误码、CDP 逃生口）→ Snapshot v2（多层 iframe、`full_page`/`subtree` 范围、`@N` 引用）→ 产品化（多窗口、标签交互、页内查找、设置）→ 导入、扩展、打包分发。任务状态见 [执行任务板](../execution/feature-board.md)，验证证据见 [验证记录](../reviews/verification-log.md)。
+执行顺序以 [执行任务板](../execution/feature-board.md) 为唯一任务入口：先收敛 P0 的控制权、风险恢复、权限与数据边界；同步完善 P1 日常浏览交互和可访问性；在现有 Room/SDK 合同上交付内置 Agent 工作台，让用户能从浏览上下文启动、观察、暂停/接管、继续和结束任务；再收敛多 Agent 身份与任务连续性；最后处理导入、扩展、安装分发及平台验证。每次交付保持真实桌面 UI、Agent API、状态持久化和错误路径一致，具体验收合同见任务板。

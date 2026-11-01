@@ -7,16 +7,22 @@ function draw(value) {
   const dialogView=document.querySelector('#page-dialog');
   if(dialogView.open && !state.rooms.some(room=>room.tabs.some(tab=>tab.id===dialogTabId && tab.dialog))) dialogView.close();
   if (libraryKind) void renderLibrary();
-  const rooms = document.querySelector('#rooms'); rooms.replaceChildren();
-  const profileSelect=document.createElement('select');profileSelect.setAttribute('aria-label','Profile');
+  void renderBookmarksBar();
+  const profileSelect=document.querySelector('#profile-select');profileSelect.replaceChildren();
   for(const profile of state.profiles){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name;option.selected=profile.id===state.activeProfileId;profileSelect.append(option);}
-  profileSelect.onchange=()=>api.invoke('activateProfile',{id:profileSelect.value});rooms.append(profileSelect);
-  rooms.append(button('+ Profile',async()=>{await api.invoke('setPanel',{open:true});document.querySelector('#new-profile').showModal();document.querySelector('#profile-name').focus();}));
-  rooms.append(button('重命名 Profile',async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profile.name;document.querySelector('#rename-profile-error').textContent='';await api.invoke('setPanel',{open:true});document.querySelector('#rename-profile').showModal();document.querySelector('#renamed-profile-name').select();}));
-  for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) rooms.append(button(`${s.name} ${s.ownership === 'agent' ? '•' : ''}`, () => api.invoke('activateRoom', {id:s.id}), s.id === state.activeRoomId));
-  if(state.activeRoomId)rooms.append(button('关闭当前 Room',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}}));
-  rooms.append(button('+ Room', async () => { await api.invoke('setPanel',{open:true}); document.querySelector('#new-room').showModal(); document.querySelector('#room-name').focus(); }));
-  rooms.append(button('新建窗口', async () => { controlError=''; try { await api.invoke('createWindow',{}); } catch (error) { controlError=error.message; draw(state); } }));
+  profileSelect.onchange=()=>api.invoke('activateProfile',{id:profileSelect.value});
+  const roomStrip=document.querySelector('#room-strip');roomStrip.replaceChildren();
+  for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) roomStrip.append(button(`${s.name} ${s.ownership === 'agent' ? '•' : ''}`, () => api.invoke('activateRoom', {id:s.id}), s.id === state.activeRoomId));
+  const profileMenu=document.querySelector('#profile-menu');profileMenu.replaceChildren();
+  const profileAction=(label,fn)=>{const item=button(label,()=>{profileMenu.hidden=true;fn();});item.setAttribute('role','menuitem');profileMenu.append(item);};
+  profileAction('新建 Profile',async()=>{await api.invoke('setPanel',{open:true});document.querySelector('#new-profile').showModal();document.querySelector('#profile-name').focus();});
+  profileAction('重命名当前 Profile',async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profile.name;document.querySelector('#rename-profile-error').textContent='';await api.invoke('setPanel',{open:true});document.querySelector('#rename-profile').showModal();document.querySelector('#renamed-profile-name').select();});
+  const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
+  const roomAction=(label,fn)=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');roomMenu.append(item);};
+  roomAction('新建 Room',async()=>{await api.invoke('setPanel',{open:true});document.querySelector('#new-room').showModal();document.querySelector('#room-name').focus();});
+  if(state.activeRoomId)roomAction('关闭当前 Room',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
+  const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
+  roomActions.append(button('新建窗口',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}}));
   const room = state.rooms.find(s => s.id === state.activeRoomId);
   if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
@@ -79,7 +85,26 @@ async function renderLibrary() {
   if (!matching.length) items.textContent = query && result[kind].length ? '没有匹配结果' : kind === 'history' ? '暂无浏览历史' : kind === 'downloads' ? '暂无下载' : '暂无书签';
 }
 async function showLibrary(kind) {if(libraryKind!==kind)document.querySelector('#library-search').value='';libraryKind=kind;document.querySelector('#library').hidden=false; await api.invoke('setPanel',{open:true});await renderLibrary();}
+let bookmarksRenderVersion=0;
+async function renderBookmarksBar() {
+  const version=++bookmarksRenderVersion, profileId=state?.activeProfileId;
+  if(!profileId)return;
+  const result=await api.invoke('bookmarks',{profileId});
+  if(version!==bookmarksRenderVersion || state?.activeProfileId!==profileId)return;
+  const bar=document.querySelector('#bookmarks-bar');bar.replaceChildren();
+  const items=result.bookmarks.slice(0,12);
+  for(const item of items){
+    const link=document.createElement('a');link.className='bookmark-item';link.href='#';link.title=item.url;
+    const icon=document.createElement('img');icon.alt='';icon.src=`${new URL(item.url).origin}/favicon.ico`;icon.onerror=()=>{icon.remove();};
+    const label=document.createElement('span');label.textContent=item.title||item.url;
+    link.append(icon,label);link.onclick=async event=>{event.preventDefault();const tab=activeTab();if(tab)await api.invoke('navigate',{id:tab.id,url:item.url});};bar.append(link);
+  }
+  if(result.bookmarks.length>items.length){const more=button('更多书签',()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
+}
 api.onState(draw); api.invoke('state').then(draw);
+for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);trigger.onclick=()=>{const next=menu.hidden;for(const item of document.querySelectorAll('#profile-menu,#room-menu'))item.hidden=true;menu.hidden=!next;trigger.setAttribute('aria-expanded',String(!menu.hidden));};}
+document.addEventListener('pointerdown',event=>{for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}}});
 document.querySelector('#new-room-form').onsubmit = async event => { event.preventDefault(); const input=document.querySelector('#room-name'); const name=input.value.trim(); if(!name) return; await api.invoke('createRoom',{name,ownership:'user'}); input.value=''; document.querySelector('#new-room').close(); };
 document.querySelector('#cancel-room').onclick = () => document.querySelector('#new-room').close();
 document.querySelector('#new-room').onclose = () => api.invoke('setPanel',{open:Boolean(libraryKind)});
@@ -99,13 +124,16 @@ document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind)});
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
-document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});await showLibrary('bookmarks');};
+document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};
 document.querySelector('#show-bookmarks').onclick = () => showLibrary('bookmarks');
-document.querySelector('#show-history').onclick = () => showLibrary('history');
+document.querySelector('#show-history').onclick = () => {if(libraryKind==='history'){libraryKind=null;document.querySelector('#library').hidden=true;void api.invoke('setPanel',{open:false});}else void showLibrary('history');};
 document.querySelector('#show-downloads').onclick = () => showLibrary('downloads');
 document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
-document.querySelector('#clear-site').onclick = async () => {const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
-document.querySelector('#site-permissions').onclick = async () => {const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
+document.querySelector('#site-permissions').onclick = async () => {document.querySelector('#site-tools').hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
+document.querySelector('#clear-site').onclick = async () => {document.querySelector('#site-tools').hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
+document.querySelector('#more-tools').onclick=event=>{const menu=document.querySelector('#site-tools');menu.hidden=!menu.hidden;event.currentTarget.setAttribute('aria-expanded',String(!menu.hidden));};
+document.addEventListener('pointerdown',event=>{const menu=document.querySelector('#site-tools'),trigger=document.querySelector('#more-tools');if(!menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=document.querySelector('#site-tools');if(!menu.hidden){menu.hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');document.querySelector('#more-tools').focus();}}});
 document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;api.invoke('setPanel',{open:false});};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
