@@ -1,5 +1,18 @@
 # 验证记录
 
+## 2026-11-02 Agent Room 面板人工检查
+
+### 执行与结果
+
+- 命令：`CORVID_DATA_DIR=/tmp/corvid-panel-qa.gpVWaB npm start`；临时数据目录下运行桌面应用，并通过应用本地控制接口创建一次性 Agent Room。
+- 环境：本机 macOS；Electron 45.2.1；默认 Profile；空白 `about:blank` 页面；未连接真实网站或用户浏览数据。
+- 覆盖：Agent 工作区按钮与面板开合；无 Agent Room 的空态；Agent Room 行显示控制状态和标签数量；“接管”后状态显示“用户控制中”；“交还 Agent”后恢复；“查看”切换到该 Room 并关闭面板。
+- 结果：上述人工操作均按预期显示。检查中发现搜索框对该列表无用，已隐藏。
+- 未运行自动化测试。本次未检查跨 Profile 隔离、执行风险复核、慢/断连状态、窄窗口与键盘操作；面板仍只展示 Room 当前状态，不提供内置模型执行或任务历史。
+- Issue：[Add a first-class Agent Room activity panel](https://github.com/heyallencao/corvid/issues/1)。
+
+本记录是隔离数据目录中的人工冒烟检查，不替代端到端验收。功能状态在对应 E2E 合同通过前不得标为“部分”或“已验证”。
+
 ## 2026-11-01 产品化第三批回归（多窗口）：31 条命令、33 项通过
 
 ### 执行与结果

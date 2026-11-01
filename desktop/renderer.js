@@ -7,6 +7,7 @@ function draw(value) {
   const dialogView=document.querySelector('#page-dialog');
   if(dialogView.open && !state.rooms.some(room=>room.tabs.some(tab=>tab.id===dialogTabId && tab.dialog))) dialogView.close();
   if (libraryKind) void renderLibrary();
+  document.querySelector('#show-agent-rooms').setAttribute('aria-expanded',String(libraryKind==='agent-rooms'));
   void renderBookmarksBar();
   const profileSelect=document.querySelector('#profile-select');profileSelect.replaceChildren();
   for(const profile of state.profiles){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name;option.selected=profile.id===state.activeProfileId;profileSelect.append(option);}
@@ -57,7 +58,10 @@ document.querySelector('#page-dialog').onclose=()=>api.invoke('setPanel',{open:B
 let libraryRenderVersion=0;
 async function renderLibrary() {
   if (!libraryKind) return;
+  if(libraryKind==='agent-rooms'){renderAgentRooms();return;}
   const kind = libraryKind, profileId=state.activeProfileId, version=++libraryRenderVersion; const result = await api.invoke(kind,{profileId}); if (version!==libraryRenderVersion || libraryKind !== kind || state.activeProfileId!==profileId) return;
+  const panel=document.querySelector('#library');panel.dataset.kind=kind;
+  document.querySelector('#library-search').hidden=false;
   const query=document.querySelector('#library-search').value.trim().toLocaleLowerCase();
   const matching=result[kind].filter(item=>!query || [item.title,item.url,item.filename,item.path].some(value=>typeof value==='string' && value.toLocaleLowerCase().includes(query)));
   const items = document.querySelector('#library-items'); items.replaceChildren();
@@ -83,6 +87,34 @@ async function renderLibrary() {
     remove.setAttribute('aria-label',`删除 ${item.title || item.url}`); row.append(link,remove); items.append(row);
   }
   if (!matching.length) items.textContent = query && result[kind].length ? '没有匹配结果' : kind === 'history' ? '暂无浏览历史' : kind === 'downloads' ? '暂无下载' : '暂无书签';
+}
+function renderAgentRooms(){
+  const panel=document.querySelector('#library'),items=document.querySelector('#library-items');
+  panel.dataset.kind='agent-rooms';
+  document.querySelector('#library-title').textContent='Agent 工作区';
+  document.querySelector('#library-search').hidden=true;
+  const rooms=state.rooms.filter(room=>room.profileId===state.activeProfileId&&(room.ownership==='agent'||room.yielded||room.finished));
+  items.replaceChildren();
+  for(const room of rooms){
+    const row=document.createElement('div');row.className='agent-room-entry';
+    const name=document.createElement('span');name.className='agent-room-name';name.textContent=room.name;name.title=room.name;
+    const status=document.createElement('span');status.className='agent-room-state';
+    const ownershipLabel=room.executionRisk?'页面执行状态未知':room.userResumePending?'正在接管':room.finished?'已结束':room.ownership==='agent'?'Agent 控制中':room.yielded?'用户控制中':'空闲';
+    status.textContent=`${ownershipLabel} · ${room.tabs.length} 个标签`;
+    const view=button('查看',async()=>{libraryKind=null;panel.hidden=true;delete panel.dataset.kind;await api.invoke('setPanel',{open:false});await api.invoke('activateRoom',{id:room.id});});
+    view.setAttribute('aria-label',`查看 ${room.name}`);
+    row.append(name,status,view);
+    if(room.ownership==='agent'){
+      const take=button(room.userResumePending?'接管中…':'接管',async()=>{controlError='';try{await api.invoke('requestUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}});
+      take.disabled=room.userResumePending;take.setAttribute('aria-label',`接管 ${room.name}`);row.append(take);
+    }else if(room.yielded&&!room.finished&&!room.executionRisk){
+      const resume=button('交还 Agent',async()=>{controlError='';try{await api.invoke('returnUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}});
+      resume.setAttribute('aria-label',`交还 Agent：${room.name}`);row.append(resume);
+    }
+    if(room.executionRisk){const review=button('复核',()=>api.invoke('reviewExecutionRisk',{id:room.id}));review.setAttribute('aria-label',`复核 ${room.name} 的执行状态`);row.append(review);}
+    items.append(row);
+  }
+  if(!rooms.length)items.textContent='当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。';
 }
 async function showLibrary(kind) {if(libraryKind!==kind)document.querySelector('#library-search').value='';libraryKind=kind;document.querySelector('#library').hidden=false; await api.invoke('setPanel',{open:true});await renderLibrary();}
 let bookmarksRenderVersion=0;
@@ -134,7 +166,8 @@ document.querySelector('#clear-site').onclick = async () => {document.querySelec
 document.querySelector('#more-tools').onclick=event=>{const menu=document.querySelector('#site-tools');menu.hidden=!menu.hidden;event.currentTarget.setAttribute('aria-expanded',String(!menu.hidden));};
 document.addEventListener('pointerdown',event=>{const menu=document.querySelector('#site-tools'),trigger=document.querySelector('#more-tools');if(!menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=document.querySelector('#site-tools');if(!menu.hidden){menu.hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');document.querySelector('#more-tools').focus();}}});
-document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;api.invoke('setPanel',{open:false});};
+document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');api.invoke('setPanel',{open:false});};
+document.querySelector('#show-agent-rooms').onclick=async()=>{if(libraryKind==='agent-rooms'){libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');await api.invoke('setPanel',{open:false});}else{libraryKind='agent-rooms';document.querySelector('#library-search').value='';document.querySelector('#library').hidden=false;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','true');await api.invoke('setPanel',{open:true});await renderAgentRooms();}};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
 const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
