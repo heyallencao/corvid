@@ -1,0 +1,36 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const {randomUUID} = require('node:crypto');
+
+module.exports = function createLibrary(directory) {
+  const SCHEMA_VERSION = 1;
+  const file = path.join(directory, 'library.json');
+  let data;
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    data = {schemaVersion: SCHEMA_VERSION, history: [], bookmarks: [], downloads: []};
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid library data');
+  if (data.schemaVersion !== undefined && data.schemaVersion !== SCHEMA_VERSION) throw new Error(`Unsupported library schema version: ${data.schemaVersion}`);
+  data.schemaVersion = SCHEMA_VERSION;
+  if (!Array.isArray(data.history) || !Array.isArray(data.bookmarks)) throw new Error('Invalid library data');
+  if (data.downloads === undefined) data.downloads = [];
+  if (!Array.isArray(data.downloads)) throw new Error('Invalid download history');
+  const save = () => { const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(data), {mode: 0o600}); fs.renameSync(tmp,file); };
+  let interrupted = false;
+  for (const item of data.downloads) if (item.status === 'progressing') { item.status = 'interrupted'; interrupted = true; }
+  if (interrupted) save();
+  const validUrl = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol); } catch { return false; } };
+  return {
+    history: profileId => data.history.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
+    bookmarks: profileId => data.bookmarks.filter(item=>(item.profileId ?? 'default')===profileId),
+    downloads: profileId => data.downloads.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
+    addDownload(item) { data.downloads.push(item); save(); return item; },
+    updateDownload(id, fields, persist = true) { const item=data.downloads.find(x=>x.id===id); if(!item) throw new Error('Download not found'); Object.assign(item,fields); if(persist) save(); return item; },
+    visit(url, title, profileId) { if (!validUrl(url)) return null; const item={id:randomUUID(),profileId,url,title:title || url,visitedAt:new Date().toISOString()}; data.history.push(item); save(); return item; },
+    title(id,title) { const item=data.history.find(x=>x.id===id); if(item && title && item.title!==title){item.title=title;save();} },
+    removeHistory(id,profileId) { const before=data.history.length; data.history=data.history.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId); if(before!==data.history.length) save(); return before!==data.history.length; },
+    addBookmark(url,title,profileId) { if(!validUrl(url)) throw new Error('Bookmark URL must be HTTP or HTTPS'); const existing=data.bookmarks.find(x=>x.url===url && (x.profileId ?? 'default')===profileId); if(existing) return existing; const item={id:randomUUID(),profileId,url,title:typeof title==='string' && title ? title : url,createdAt:new Date().toISOString()}; data.bookmarks.push(item);save();return item; },
+    removeBookmark(id,profileId) { const before=data.bookmarks.length;data.bookmarks=data.bookmarks.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId);if(before!==data.bookmarks.length) save();return before!==data.bookmarks.length; }
+  };
+};
