@@ -20,6 +20,8 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   for (const task of tasks) if (['preparing', 'running'].includes(task.status)) {
     task.status = 'interrupted';
     task.updatedAt = new Date().toISOString();
+    const pendingTurn = task.conversation?.at(-1);
+    if (pendingTurn?.role === 'assistant' && pendingTurn.status === 'running') pendingTurn.status = 'interrupted';
     task.events = [...(task.events || []), { type: 'interrupted', text: 'Corvid 重启时任务仍未结束；结果未知，可检查 Room 后重新发起。', at: task.updatedAt }].slice(-100);
   }
   persist();
@@ -49,6 +51,8 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
       const update = event.assistantMessageEvent;
       if (update?.type === 'text_delta' && update.delta) {
         task.output = `${task.output || ''}${update.delta}`.slice(-MAX_OUTPUT);
+        const turn = task.conversation?.at(-1);
+        if (turn?.role === 'assistant' && turn.status === 'running') turn.text = task.output;
         task.updatedAt = new Date().toISOString(); scheduleChanged();
       }
     } else if (event.type === 'tool_execution_start') {
@@ -70,28 +74,56 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     const context = await readContext({ dataDir, profileId, roomId, tabId });
     const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
     if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
-    const task = { id: crypto.randomUUID(), profileId, roomId, tabId, prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const task = { id: crypto.randomUUID(), profileId, roomId, tabId, prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     tasks.push(task); changed();
+    await run(task, { message: task.prompt, context, consentedSnapshot, sessionFile: null, initial: true });
+    return copy(task);
+  }
+  async function continueTask({ taskId, message, includePageContext, contextPreview }) {
+    const task = taskById(taskId);
+    if (!['completed', 'interrupted', 'failed'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
+    if (!task.piSessionFile) throw new Error('当前任务没有可继续的 Pi transcript，请发起新任务');
+    if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
+    if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
+    const context = await readContext({ dataDir, profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
+    const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
+    if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
+    task.conversation ||= [];
+    task.conversation.push({ role: 'user', text: message.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() });
+    task.error = null;
+    task.page = { label: context.label, url: context.url, title: context.title };
+    task.output = '';
+    task.status = 'preparing'; changed();
+    await run(task, { message: message.trim(), context, consentedSnapshot, sessionFile: task.piSessionFile, initial: false });
+    return copy(task);
+  }
+  async function run(task, { message, context, consentedSnapshot, sessionFile, initial }) {
     try {
-      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId, roomId, tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot } });
+      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(sessionFile ? { sessionFile } : {}) });
       task.runtime = created.fixture ? '本地确定性 fixture（无真实模型）' : 'Pi SDK';
-      task.piSessionFile = created.sessionFile || null;
+      task.piSessionFile = created.sessionFile || sessionFile || null;
       changed();
       sessions.set(task.id, created.session);
       if (typeof created.session.subscribe === 'function') created.session.subscribe(event => handlePiEvent(task, event));
-      task.status = 'running'; addEvent(task, 'started', 'Pi Agent 已开始处理任务');
-      const payload = `用户任务：\n${task.prompt}\n\n用户明确确认共享的当前页面上下文（仅限此 Room 的 ${context.label}）：\n${JSON.stringify({ url: context.url, title: context.title, snapshot: consentedSnapshot })}`;
+      task.status = 'running'; addEvent(task, initial ? 'started' : 'continued', initial ? 'Pi Agent 已开始处理任务' : 'Pi Agent 已从保存的对话继续');
+      const pageContext = JSON.stringify({ url: context.url, title: context.title, snapshot: consentedSnapshot });
+      const payload = initial ? `用户任务：\n${message}\n\n用户明确确认共享的当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}` : `用户继续指令：\n${message}\n\n用户已重新确认当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}`;
       void Promise.resolve(created.session.prompt(payload)).then(() => {
         if (task.status !== 'running') return;
         task.piSessionFile = created.session.sessionFile || task.piSessionFile;
+        const assistantTurn = task.conversation?.at(-1);
+        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'completed';
         task.status = 'completed'; addEvent(task, 'completed', 'Pi Agent 已结束本轮任务'); sessions.delete(task.id); created.session.dispose?.();
       }, error => {
         if (task.status !== 'running') return;
         task.piSessionFile = created.session.sessionFile || task.piSessionFile;
+        const assistantTurn = task.conversation?.at(-1);
+        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
         task.status = 'failed'; task.error = String(error?.message || error).slice(0, 1_000); addEvent(task, 'error', `Pi Agent 未完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
       });
-      return copy(task);
     } catch (error) {
+      const assistantTurn = task.conversation?.at(-1);
+      if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
       task.status = 'failed'; task.error = String(error?.message || error).slice(0, 1_000); addEvent(task, 'error', `无法启动 Pi Agent：${task.error}`); throw error;
     }
   }
@@ -99,7 +131,10 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     const task = taskById(taskId), session = sessions.get(taskId);
     if (!session || task.status !== 'running') return copy(task);
     task.piSessionFile = session.sessionFile || task.piSessionFile;
-    task.status = 'interrupted'; addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
+    task.status = 'interrupted';
+    const assistantTurn = task.conversation?.at(-1);
+    if (assistantTurn?.role === 'assistant') assistantTurn.status = 'interrupted';
+    addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
     sessions.delete(taskId); session.abort?.(); session.dispose?.();
     return copy(task);
   }
@@ -109,7 +144,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     fs.rmSync(path.join(dataDir, 'agent-sessions', task.id.replaceAll('-', '_')), { recursive: true, force: true });
     tasks = tasks.filter(item => item.id !== taskId); changed(); return { ok: true };
   }
-  return { list, prepare, start, stop, clear };
+  return { list, prepare, start, continueTask, stop, clear };
 }
 
 module.exports = { createPiWorkbench };

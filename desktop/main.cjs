@@ -15,9 +15,13 @@ const runAction = require('./actions.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
 const { createPiWorkbench } = require('./pi-workbench.cjs');
-const fixtureSession = async () => {
+const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
+  const directory=path.join(dataDir,'agent-sessions',taskId);
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});fs.chmodSync(directory,0o700);
+  const transcript=sessionFile || path.join(directory,'fixture-session.jsonl');
+  if(sessionFile && !path.resolve(sessionFile).startsWith(`${path.resolve(directory)}${path.sep}`))throw new Error('Fixture transcript must remain inside the task directory');
   const listeners=new Set();
-  return {session:{subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},async prompt(){for(const listener of listeners){listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'这是本地确定性 Agent fixture。此结果没有调用真实模型。'}});}return {stopReason:'stop'};},dispose(){},abort(){}},tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
+  return {session:{sessionFile:transcript,subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},async prompt(message){const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});for(const listener of listeners){listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});}return {stopReason:'stop'};},dispose(){},abort(){}},sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
 };
 let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitting = false, restoring = false, frontView = null;
 // Multi-window support. Each record owns its BrowserWindow plus the per-window
@@ -467,6 +471,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'piTasks': return { tasks: piWorkbench.list(args.profileId ?? activeProfileId) };
     case 'preparePiTask': return piWorkbench.prepare(args);
     case 'startPiTask': return piWorkbench.start(args);
+    case 'continuePiTask': return piWorkbench.continueTask(args);
     case 'stopPiTask': return piWorkbench.stop(args.taskId);
     case 'clearPiTask': return piWorkbench.clear(args.taskId);
     case 'createPiRoom': {

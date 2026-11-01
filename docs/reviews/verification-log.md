@@ -1,5 +1,19 @@
 # 验证记录
 
+## 2026-11-02 Pi Agent 多轮对话与 transcript 恢复回归：35 条命令、37 项通过
+
+### 执行与结果
+
+- 命令：`env -u ELECTRON_RUN_AS_NODE npm test`；35 条命令、37 项全部通过（EXIT 0）。`git diff --check` 与四个改动入口的 `node --check` 通过。
+- 增补：用户在完成任务后发送后续消息，Pi 使用 task 专属 transcript 继续；重启后的未完成任务显示为结果未知，用户重新检查页面上下文并确认后可继续。
+- 环境：macOS、Node.js v24.22.1、Electron 45.2.1；隔离临时 Corvid/Pi 配置目录、本地 HTTP 页面夹具。
+
+### 覆盖与限制
+
+- Pi SDK `SessionManager.open` 使用合成 session header 验证 session 恢复初始化；拒绝 task transcript 路径越界；工具 allowlist 保持仅限 Corvid 浏览器工具。
+- Electron E2E fixture 验证同一 task/Profile/Room/Tab 下首轮、后续轮、重启结果未知、显式重新确认后继续及删除 transcript。
+- 没有调用真实模型/provider；真实 provider 的断连/崩溃 transcript 完整性、用户 takeover 后自动继续、凭据/费用界面、Windows 与打包仍未验证。D19 仍为部分。
+
 ## 2026-11-02 Corvid Pi Agent 工作台首段回归：35 条命令、37 项通过
 
 ### 执行与结果

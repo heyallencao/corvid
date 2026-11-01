@@ -31,7 +31,7 @@ function assertReadableRoom(room, profileId) {
   if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
@@ -48,6 +48,12 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   const { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, defineTool } = pi;
   const piAgentDir = getAgentDir();
   const sessionDirectory = path.join(dataDir, 'agent-sessions', taskId);
+  let sessionManager;
+  if (sessionFile) {
+    const resolvedSessionFile = path.resolve(sessionFile);
+    if (!resolvedSessionFile.startsWith(`${path.resolve(sessionDirectory)}${path.sep}`)) throw new Error('Pi transcript must remain inside this task directory');
+    sessionManager = SessionManager.open(resolvedSessionFile, sessionDirectory, dataDir);
+  } else sessionManager = SessionManager.create(dataDir, sessionDirectory);
   await fs.mkdir(sessionDirectory, { recursive: true, mode: 0o700 });
   await fs.chmod(sessionDirectory, 0o700);
 
@@ -107,7 +113,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
     cwd: dataDir,
     agentDir: piAgentDir,
     resourceLoader,
-    sessionManager: SessionManager.create(dataDir, sessionDirectory),
+    sessionManager,
     noTools: 'all',
     tools: [TOOL_SNAPSHOT, TOOL_NAVIGATE],
     customTools: [pageSnapshot, navigate],
@@ -119,8 +125,8 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
     throw new Error(`Pi tool boundary mismatch: expected ${expectedTools.join(', ')}, got ${activeTools.join(', ')}`);
   }
 
-  const sessionFile = session.sessionFile || null;
-  return { session, context, sessionFile, modelFallbackMessage: modelFallbackMessage || null, tools: activeTools };
+  const activeSessionFile = session.sessionFile || null;
+  return { session, context, sessionFile: activeSessionFile, modelFallbackMessage: modelFallbackMessage || null, tools: activeTools };
 }
 
 async function readPiPageContext({ dataDir, profileId, roomId, tabId }) {

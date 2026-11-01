@@ -1,5 +1,5 @@
 const api = window.browserShell;
-let state, libraryKind = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '';
+let state, libraryKind = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function draw(value) {
@@ -124,26 +124,41 @@ async function renderPiTasks(){
   const profileId=state.activeProfileId,result=await api.invoke('piTasks',{profileId});
   if(libraryKind!=='pi-workbench'||state.activeProfileId!==profileId)return;
   piTasks=result.tasks;
+  if(piContinueTaskId&&!piTasks.some(task=>task.id===piContinueTaskId)){piContinueTaskId=null;piContinuationPreview=null;}
   const items=document.querySelector('#library-items'),list=document.querySelector('#pi-task-list');
   if(!list)return;
   list.replaceChildren();
   const labels={preparing:'准备中',running:'Pi 正在运行',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
   for(const task of piTasks){
     const row=document.createElement('article');row.className='pi-task-entry';
-    const heading=document.createElement('strong');heading.textContent=task.prompt;heading.title=task.prompt;
     const meta=document.createElement('div');meta.className='pi-task-meta';
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?'页面执行状态未知':roomState?.userResumePending?'接管中':roomState?.ownership==='user'?'用户控制中':'';
     const status=document.createElement('span');status.textContent=`${labels[task.status]||task.status}${controlLabel?` · ${controlLabel}`:''} · ${task.runtime||'Pi SDK'} · ${task.page?.title||task.page?.url||'页面'}`;meta.append(status);
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
-    else meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});await renderPiTasks();}));
-    row.append(heading,meta);
+    else {
+      if(task.piSessionFile&&['completed','interrupted','failed'].includes(task.status))meta.append(button(piContinueTaskId===task.id?'收起继续对话':'继续对话',()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();}));
+      meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;await renderPiTasks();}));
+    }
+    row.append(meta);
+    for(const turn of task.conversation||[]){const message=document.createElement('div');message.className='pi-task-output';message.textContent=`${turn.role==='user'?'你':'Pi'}：${turn.text|| (turn.status==='running'?'正在回复…':'')}`;row.append(message);}
     for(const event of task.events||[]){const line=document.createElement('div');line.textContent=event.text;line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
-    if(task.output){const output=document.createElement('div');output.className='pi-task-output';output.textContent=task.output;row.append(output);}
     if(task.error){const error=document.createElement('div');error.setAttribute('role','alert');error.textContent=task.error;row.append(error);}
+    if(piContinueTaskId===task.id)appendContinuationComposer(row,task);
     list.append(row);
   }
   if(!piTasks.length){const empty=document.createElement('p');empty.textContent='还没有 Pi Agent 任务。选择当前页面后创建一个隔离的 Agent Room，再确认要发送的页面上下文。';list.append(empty);}
+}
+function appendContinuationComposer(row,task){
+  const form=document.createElement('section');form.className='pi-task-entry';
+  const prompt=document.createElement('textarea');prompt.setAttribute('aria-label','继续这项浏览任务');prompt.placeholder='补充问题或告诉 Pi 下一步要做什么';prompt.value=piContinuationDraft;prompt.oninput=()=>{piContinuationDraft=prompt.value;};form.append(prompt);
+  const preview=button('预览后继续',async()=>{try{piContinuationPreview=await api.invoke('preparePiTask',{profileId:task.profileId,roomId:task.roomId,tabId:task.tabId});piContinuationConsent=false;renderPiTasks();}catch(error){message.textContent=`无法继续任务：${error.message}`;}});form.append(preview);
+  if(piContinuationPreview){
+    const details=document.createElement('div');details.className='pi-context';details.textContent=`Pi 将收到：\n${piContinuationPreview.title}\n${piContinuationPreview.url}${piContinuationPreview.snapshotTruncated?'\n页面快照过长，以下预览与发送内容均截断至 12 KB。':''}\n\n${piContinuationPreview.snapshot}`;form.append(details);
+    const consent=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.id='pi-continuation-consent';check.checked=piContinuationConsent;consent.append(check,document.createTextNode('我已检查以上内容，同意将当前页面上下文和继续指令发送给 Pi'));form.append(consent);
+    const send=button('发送并继续',async()=>{try{await api.invoke('continuePiTask',{taskId:task.id,message:prompt.value,includePageContext:check.checked,contextPreview:piContinuationPreview});piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piContinueTaskId=null;await renderPiTasks();}catch(error){message.textContent=`任务未能继续：${error.message}`;}});send.disabled=!check.checked||!prompt.value.trim();check.onchange=()=>{piContinuationConsent=check.checked;send.disabled=!check.checked||!prompt.value.trim();};prompt.oninput=()=>{piContinuationDraft=prompt.value;send.disabled=!check.checked||!prompt.value.trim();};form.append(send);
+  }
+  const message=document.createElement('div');message.setAttribute('role','alert');form.append(message);row.append(form);
 }
 function renderPiWorkbench(){
   if(piBinding&&piBinding.profileId!==state.activeProfileId){piBinding=null;piContextPreview=null;}

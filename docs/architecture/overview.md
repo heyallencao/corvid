@@ -2,7 +2,7 @@
 
 Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的主产品。产品主线采用 Ego 式浏览器协作模式：用户日常浏览与 Agent 在独立 Room 中并行工作；Room 控制权可见、可接管、可交还，任务可以跨调用和重启继续。浏览器日常功能、内置 Agent 工作台、外部 Agent SDK/CLI 必须汇入同一套 Profile、Room、Page 与控制权合同，而不是成为彼此割裂的产品入口。
 
-当前实现已有桌面浏览器、Profile/Room、用户控制权交接与外部 Agent SDK/CLI；内置 Agent 对话/任务工作台尚未实现。架构目标不代表已交付能力。本文只描述系统边界与关键决策，需求与验收状态以 [执行任务板](../execution/feature-board.md) 为准。
+当前实现包括桌面日常浏览器、Profile/Room、用户控制权交接、外部 Agent SDK/CLI，以及首段 Pi Agent 工作台：用户可从当前网页创建独立 Agent Room，预览并确认页面上下文后启动 Pi，查看任务事件，并在保存 transcript 上继续多轮对话。任务与 transcript 目录按 task 绑定，未完成任务重启后显示为结果未知。接管后自动续跑、实时 provider/凭据设置和更完整的中断恢复仍未实现；详见 [执行任务板](../execution/feature-board.md) 的 D19。
 
 ## 系统边界
 
