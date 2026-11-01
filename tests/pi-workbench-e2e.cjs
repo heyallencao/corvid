@@ -17,7 +17,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
     app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
     const shell = await app.firstWindow();
-    const control = await (async () => {
+    let control = await (async () => {
       for (let i = 0; i < 200; i++) { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'control.json'), 'utf8')); } catch { await delay(25); } }
       throw new Error('Corvid control service did not start');
     })();
@@ -72,6 +72,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     afterFollowup.status='running';afterFollowup.conversation[3].status='running';fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify([afterFollowup]),{mode:0o600});
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     const restoredShell=await app.firstWindow();
+    control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart');})();
     await restoredShell.getByRole('button',{name:'Pi Agent 工作台'}).click();
     await restoredShell.getByText(/结果待检查/).waitFor();
     const restored=JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'))[0];
@@ -84,12 +85,44 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await restoredShell.getByRole('button',{name:'发送并继续'}).click();
     await restoredShell.getByText('Pi：这是本地确定性 Agent fixture 第 3 轮回复。没有调用真实模型。').waitFor();
     assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'))[0].id,originalTaskId);
-    const transcriptDir=path.join(dataDir,'agent-sessions',restored.id.replaceAll('-','_'));
-    fs.mkdirSync(transcriptDir,{recursive:true});fs.writeFileSync(path.join(transcriptDir,'fixture-session.jsonl'),'fixture');
     await restoredShell.getByRole('button',{name:'移除记录'}).click();
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
-    assert.equal(fs.existsSync(transcriptDir),false,'removing a task also deletes its private Pi transcript directory');
-    console.log('PASS Pi workbench context consent, isolated Room, multi-turn transcript continuation, task persistence and interrupted recovery');
+    assert.equal(fs.existsSync(path.join(dataDir,'agent-sessions',restored.id.replaceAll('-','_'))),false,'removing a task also deletes its private Pi transcript directory');
+
+    await restoredShell.getByRole('button',{name:'为当前页创建 Pi Room'}).click();
+    await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:hold] 等待用户接管后继续');
+    await restoredShell.getByRole('button',{name:'检查并预览页面上下文'}).click();
+    await restoredShell.getByLabel(/我已检查以上内容/).check();
+    await restoredShell.getByRole('button',{name:'启动 Pi Agent'}).click();
+    await restoredShell.getByText(/Pi 正在运行/).waitFor();
+    let handoffTask=JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'))[0];
+    const handoffTaskId=handoffTask.id,handoffRoomId=handoffTask.roomId,handoffTabId=handoffTask.tabId,handoffTranscript=handoffTask.piSessionFile;
+    await restoredShell.getByRole('button',{name:'打开 Room'}).click();
+    await restoredShell.getByRole('button',{name:'接管',exact:true}).click();
+    await restoredShell.getByText(/等待用户交还 Room/).waitFor();
+    handoffTask=JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'))[0];
+    assert.equal(handoffTask.status,'waiting_for_user');
+    let controlledState=await (await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}})).json();
+    assert.equal(controlledState.rooms.find(room=>room.id===handoffRoomId).ownership,'user');
+    const afterHandoffUrl=`http://127.0.0.1:${site.address().port}/after-handoff`;
+    await restoredShell.getByLabel('地址或搜索').fill(afterHandoffUrl);
+    await restoredShell.getByLabel('地址或搜索').press('Enter');
+    await (async()=>{for(let i=0;i<200;i++){controlledState=await (await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}})).json();if(controlledState.rooms.flatMap(room=>room.tabs).some(tab=>tab.id===handoffTabId&&tab.url===afterHandoffUrl))return;await delay(25);}throw new Error('User page navigation did not complete');})();
+    await restoredShell.getByRole('button',{name:'交还 Agent',exact:true}).click();
+    await (async()=>{for(let i=0;i<200;i++){controlledState=await (await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}})).json();if(controlledState.rooms.find(room=>room.id===handoffRoomId)?.ownership==='agent')return;await delay(25);}throw new Error('Room control was not returned to Pi');})();
+    await restoredShell.getByRole('button',{name:'继续对话'}).click();
+    await restoredShell.getByRole('textbox',{name:'继续这项浏览任务'}).fill('结合我刚才切换到的页面继续任务');
+    await restoredShell.getByRole('button',{name:'预览后继续'}).click();
+    await restoredShell.getByText(afterHandoffUrl).waitFor();
+    await restoredShell.getByLabel(/我已检查以上内容，同意将当前页面上下文/).check();
+    await restoredShell.getByRole('button',{name:'发送并继续'}).click();
+    await restoredShell.getByText('Pi：这是本地确定性 Agent fixture 第 2 轮回复。没有调用真实模型。').waitFor();
+    const resumedTask=JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'))[0];
+    assert.equal(resumedTask.id,handoffTaskId);
+    assert.equal(resumedTask.roomId,handoffRoomId);
+    assert.equal(resumedTask.tabId,handoffTabId);
+    assert.equal(resumedTask.piSessionFile,handoffTranscript);
+    console.log('PASS Pi workbench context consent, multi-turn transcript and restart recovery, user handoff and same-task continuation');
   } finally {
     if (app) await app.close().catch(() => {});
     await new Promise(resolve => site.close(resolve));

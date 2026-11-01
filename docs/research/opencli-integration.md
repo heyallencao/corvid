@@ -83,4 +83,4 @@ BrowserMCP 是用户所指的 OpenCLI 作者 MCP 浏览器项目。它已实现�
 
 Pi 默认工具与 Corvid 浏览器权限必须拆开：已新增 `desktop/pi-agent.cjs` session factory，禁用 filesystem/shell 工具以及用户 Pi extensions、skills、prompt templates、themes、context files，只注册 `corvid_page_snapshot` / `corvid_navigate` 并绑定一个显式 Room/Profile/Tab，单次工具输出上限 32 KiB。session transcript 目录位于 Corvid 数据目录下的任务专属目录（0700）；Pi 凭据/model 配置继续使用用户 Pi agentDir。为当前 Pi 依赖树的 `undici` 与 `minimatch` 安全公告增加固定 overrides，`npm audit --audit-level=high` 结果为 0。
 
-当前用户可见首段见 [Pi Agent 工作台验证记录](../reviews/verification-log.md)：通过 Pi SDK 创建、打开 task 专属 transcript；桌面支持明确确认页面上下文、任务事件呈现、多轮续聊与 fixture 下的中断恢复。`tests/pi-runtime-e2e.cjs` 和 `tests/pi-workbench-e2e.cjs` 均隔离临时数据，不调用真实 provider/model。真实模型凭据与费用说明、用户接管后同会话自动续跑，以及真实 provider 的断连恢复边界仍待实现。
+当前用户可见首段见 [Pi Agent 工作台验证记录](../reviews/verification-log.md)：通过 Pi SDK 创建、打开 task 专属 transcript；桌面支持明确确认页面上下文、任务事件呈现、多轮续聊与 fixture 下的中断恢复。`tests/pi-runtime-e2e.cjs` 和 `tests/pi-workbench-e2e.cjs` 均隔离临时数据，不调用真实 provider/model。用户接管会暂停运行中的 Pi task，交还 Room 后可经显式页面确认继续同一 transcript；目前仍需用户发起继续。真实模型凭据/费用设置与真实 provider 断连恢复边界仍待实现。

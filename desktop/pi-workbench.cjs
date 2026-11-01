@@ -81,7 +81,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   }
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);
-    if (!['completed', 'interrupted', 'failed'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
+    if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
     if (!task.piSessionFile) throw new Error('当前任务没有可继续的 Pi transcript，请发起新任务');
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
@@ -138,13 +138,40 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     sessions.delete(taskId); session.abort?.(); session.dispose?.();
     return copy(task);
   }
+  async function pauseRoom(roomId) {
+    for (const task of tasks.filter(item => item.roomId === roomId && item.status === 'running')) {
+      const session = sessions.get(task.id);
+      if (!session) {
+        task.status = 'interrupted';
+        addEvent(task, 'interrupted', 'Room 已交给用户，但 Pi session 不可用；结果未知。');
+        continue;
+      }
+      task.status = 'waiting_for_user';
+      task.piSessionFile = session.sessionFile || task.piSessionFile;
+      const assistantTurn = task.conversation?.at(-1);
+      if (assistantTurn?.role === 'assistant') assistantTurn.status = 'waiting_for_user';
+      addEvent(task, 'waiting_for_user', '用户已接管 Room；Pi 已暂停，等待用户交还并确认后继续。');
+      sessions.delete(task.id);
+      try {
+        await session.abort?.();
+        task.piSessionFile = session.sessionFile || task.piSessionFile;
+      } catch (error) {
+        task.status = 'interrupted';
+        task.error = `无法确认 Pi 已暂停：${String(error?.message || error).slice(0, 500)}`;
+        addEvent(task, 'error', task.error);
+      } finally {
+        session.dispose?.();
+        changed();
+      }
+    }
+  }
   function clear(taskId) {
     const task = taskById(taskId);
     if (['running', 'preparing'].includes(task.status)) throw new Error('请先停止运行中的任务');
     fs.rmSync(path.join(dataDir, 'agent-sessions', task.id.replaceAll('-', '_')), { recursive: true, force: true });
     tasks = tasks.filter(item => item.id !== taskId); changed(); return { ok: true };
   }
-  return { list, prepare, start, continueTask, stop, clear };
+  return { list, prepare, start, continueTask, pauseRoom, stop, clear };
 }
 
 module.exports = { createPiWorkbench };

@@ -128,7 +128,7 @@ async function renderPiTasks(){
   const items=document.querySelector('#library-items'),list=document.querySelector('#pi-task-list');
   if(!list)return;
   list.replaceChildren();
-  const labels={preparing:'准备中',running:'Pi 正在运行',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
+  const labels={preparing:'准备中',running:'Pi 正在运行',waiting_for_user:'等待用户交还 Room',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
   for(const task of piTasks){
     const row=document.createElement('article');row.className='pi-task-entry';
     const meta=document.createElement('div');meta.className='pi-task-meta';
@@ -137,7 +137,7 @@ async function renderPiTasks(){
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
-      if(task.piSessionFile&&['completed','interrupted','failed'].includes(task.status))meta.append(button(piContinueTaskId===task.id?'收起继续对话':'继续对话',()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();}));
+      if(task.piSessionFile&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const resume=button(piContinueTaskId===task.id?'收起继续对话':'继续对话',()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续 Pi 任务':'';meta.append(resume);}
       meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;await renderPiTasks();}));
     }
     row.append(meta);
