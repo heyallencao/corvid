@@ -1,10 +1,10 @@
 # 端到端测试索引
 
-本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 36 项测试入口。`npm test` 共 34 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 33 条独立脚本命令。索引中的序号按当前 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 37 项测试入口。`npm test` 共 35 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 34 条独立脚本命令。索引中的序号按当前 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
-- 环境：本机 macOS、Electron 45.2.1、Node.js v24.22.1；最近一次全量回归为 2026-11-02，34 条命令 / 36 项通过。
+- 环境：本机 macOS、Electron 45.2.1、Node.js v24.22.1；最近一次全量回归为 2026-11-02，35 条命令 / 37 项通过。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、按 Agent 身份隔离。
@@ -66,7 +66,7 @@
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
-| D19 内置 Agent / Pi runtime 基础 | `pi-runtime-e2e`（session 创建、显式上下文、工具 allowlist；无真实模型） |
+| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、fixture 输出、落盘与重启恢复；无真实模型） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e` |
 
 ## 单独运行
@@ -82,3 +82,5 @@
 - "通过"只记录当次真实运行；不得用 API 级结果代替 UI 结果，也不得用本地夹具结果替代真实网站结论。
 - 系统对话框替身、非 `isTrusted` 合成事件和轮询实现必须在"关键限制"列写明。
 - 人眼布局检查不属于自动化项，记录在 [桌面 UI 视觉检查记录](ui-visual-check.md)，并在相关验收合同的证据列引用。
+
+| 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |

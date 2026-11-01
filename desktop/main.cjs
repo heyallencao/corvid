@@ -14,6 +14,11 @@ const roomResolutions = new Map();
 const runAction = require('./actions.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
+const { createPiWorkbench } = require('./pi-workbench.cjs');
+const fixtureSession = async () => {
+  const listeners=new Set();
+  return {session:{subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},async prompt(){for(const listener of listeners){listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'这是本地确定性 Agent fixture。此结果没有调用真实模型。'}});}return {stopReason:'stop'};},dispose(){},abort(){}},tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
+};
 let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitting = false, restoring = false, frontView = null;
 // Multi-window support. Each record owns its BrowserWindow plus the per-window
 // view state (which Room/Profile that window shows and whether its panel is
@@ -21,6 +26,9 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
+const piWorkbench = createPiWorkbench({ dataDir, createSession:process.env.CORVID_TEST_MODE==='1'?fixtureSession:undefined, onChange: tasks => {
+  for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
+} });
 let panelOpen = false;
 function activeRecord() {
   if (window && !window.isDestroyed()) {
@@ -456,6 +464,21 @@ async function dispatch(method, args = {}, fromApi = false) {
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','resumeControl','adoptTab','releasePage','finishRoom'].includes(method)) { const s = ['createTab','closeRoom','resumeControl','adoptTab','releasePage','finishRoom'].includes(method) ? findRoom(target) : findRoom(findTab(target).roomId); if (s.executionRisk) throw new Error('Room has an unresolved timed-out execution; user review is required'); }
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
+    case 'piTasks': return { tasks: piWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'preparePiTask': return piWorkbench.prepare(args);
+    case 'startPiTask': return piWorkbench.start(args);
+    case 'stopPiTask': return piWorkbench.stop(args.taskId);
+    case 'clearPiTask': return piWorkbench.clear(args.taskId);
+    case 'createPiRoom': {
+      if(fromApi) throw new Error('User action required');
+      const current=findTab(args.sourceTabId), sourceRoom=findRoom(current.roomId);
+      if(sourceRoom.profileId!==activeProfileId || current.view.webContents.getURL()!==args.sourceUrl) throw new Error('当前页面已变化，请重新打开 Agent 工作台');
+      const parsed=new URL(args.sourceUrl);
+      if(!['http:','https:'].includes(parsed.protocol)) throw new Error('Pi 任务只支持从 HTTP 或 HTTPS 页面开始');
+      const room=await createRoom(args.name || 'Pi Agent 任务','agent',sourceRoom.profileId);
+      try { await navigateAgent(findTab(room.tabs[0].id),parsed.href); return describe().rooms.find(item=>item.id===room.id); }
+      catch(error) { await closeRoom(room.id).catch(()=>{}); throw error; }
+    }
     case 'profiles': return {profiles};
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
