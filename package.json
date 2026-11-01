@@ -4,16 +4,19 @@
   "private": true,
   "type": "module",
   "bin": {
-    "corvid": "./cli/corvid.mjs"
+    "corvid": "./cli/corvid.mjs",
+    "corvid-mcp": "./mcp/corvid.mjs"
   },
   "main": "desktop/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/*.e2e.mjs && node tests/rpc-e2e.cjs && node tests/library-e2e.cjs && node tests/sdk-e2e.cjs && node tests/download-e2e.cjs && node tests/profiles-e2e.cjs && node tests/browser-shortcuts-e2e.cjs && node tests/evaluation-risk-e2e.cjs && node tests/recovery-e2e.cjs && node tests/permissions-e2e.cjs && node tests/dialogs-ui-e2e.cjs && node tests/user-control-e2e.cjs && node tests/site-data-e2e.cjs && node tests/cli-e2e.cjs && node tests/page-lifecycle-e2e.cjs && node tests/claim-e2e.cjs && node tests/restore-loading-e2e.cjs && node tests/library-search-e2e.cjs && node tests/room-close-e2e.cjs && node tests/beforeunload-e2e.cjs && node tests/popup-events-e2e.cjs && node tests/agent-download-e2e.cjs && node tests/page-fetch-e2e.cjs && node tests/load-state-e2e.cjs && node tests/contract-e2e.cjs && node tests/snapshot-e2e.cjs && node tests/tab-ux-e2e.cjs && node tests/tab-pin-menu-e2e.cjs && node tests/window-state-e2e.cjs && node tests/multi-window-e2e.cjs && node tests/download-file-ops-e2e.cjs && node tests/agent-rooms-panel-e2e.cjs"
+    "test": "node --test tests/*.e2e.mjs && node tests/rpc-e2e.cjs && node tests/library-e2e.cjs && node tests/sdk-e2e.cjs && node tests/download-e2e.cjs && node tests/profiles-e2e.cjs && node tests/browser-shortcuts-e2e.cjs && node tests/evaluation-risk-e2e.cjs && node tests/recovery-e2e.cjs && node tests/permissions-e2e.cjs && node tests/dialogs-ui-e2e.cjs && node tests/user-control-e2e.cjs && node tests/site-data-e2e.cjs && node tests/cli-e2e.cjs && node tests/page-lifecycle-e2e.cjs && node tests/claim-e2e.cjs && node tests/restore-loading-e2e.cjs && node tests/library-search-e2e.cjs && node tests/room-close-e2e.cjs && node tests/beforeunload-e2e.cjs && node tests/popup-events-e2e.cjs && node tests/agent-download-e2e.cjs && node tests/page-fetch-e2e.cjs && node tests/load-state-e2e.cjs && node tests/contract-e2e.cjs && node tests/snapshot-e2e.cjs && node tests/tab-ux-e2e.cjs && node tests/tab-pin-menu-e2e.cjs && node tests/window-state-e2e.cjs && node tests/multi-window-e2e.cjs && node tests/download-file-ops-e2e.cjs && node tests/agent-rooms-panel-e2e.cjs && node tests/mcp-e2e.cjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
     "electron": "45.2.1",
-    "playwright-core": "^1.53.0"
+    "playwright-core": "^1.53.0",
+    "zod": "4.6.7"
   },
   "engines": {
     "node": ">=22.12.0"

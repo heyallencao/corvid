@@ -66,3 +66,19 @@ Corvid 与 OpenCLI 的主要区别：
 ## 结论与边界
 
 BrowserMCP 是用户所指的 OpenCLI 作者 MCP 浏览器项目。它已实现完整的 MCP browser server、持久 REPL、doctor、站点工具动态发现和以 tab 所有权为中心的清理流程。Corvid 可借鉴这些 Agent Experience 设计，但连接层应直接接 Corvid SDK/本地控制 API，无需 BrowserMCP 的 Chrome 扩展与 Native Messaging 桥接，也不建议初期照搬自由度较高的 Node REPL。建议先实现显式、窄 schema 的只读与常用交互 tools，随后再考虑动态 adapter；`evaluate`/CDP 保持显式 opt-in。源码调研未运行 BrowserMCP doctor 或真实浏览器操作；对 Corvid 对接的判断是基于已有 SDK/API 的静态映射。
+
+## Corvid 首版实现记录（2026-11-02）
+
+- 新增 `mcp/corvid.mjs`，通过官方 `@modelcontextprotocol/server@2.4.0` 的 stdio transport 提供 MCP；Zod 固定为 `4.6.7`，`npm audit --audit-level=high` 为 0 vulnerabilities。
+- 首版只有五个只读 tools：`list_profiles`、`list_rooms`（必须指定 `profileId`）、`list_tabs`（必须指定 `roomId`）、`page_info`、`page_snapshot`。页面读取只接受 Agent-owned、无待接管且无执行风险的 Room；不提供导航、点击、输入、`evaluate`、CDP、控制权转移或关闭工具。
+- 每次调用通过 `sdk.connect()` 读取现有 0600 Bearer 凭据；不复制 token、不新增监听端口。MCP stdout 只承载协议消息，错误以工具结果传回。
+- 复现：`node tests/mcp-e2e.cjs`。用隔离 `CORVID_DATA_DIR` 验证 initialize、tools/list、tools/call、只读状态、Profile/Room 显式选择、用户接管时拒绝页面读取、未知 ID 与桌面离线错误。它尚未在 Claude Desktop/Cursor 等真实 host 界面手工配置，也未验证打包后入口和 Windows。
+- 配置方式（仓库 checkout 环境）：host 启动 `node /绝对路径/corvid/mcp/corvid.mjs`；若 Corvid 数据目录非默认位置，只在本地 server 的环境变量中设置 `CORVID_DATA_DIR`。不要把 `control.json` token 放进 host 配置。MCP 进程与桌面同时运行时才能访问浏览器。
+
+## 内置 Agent runtime 选型（2026-11-02）
+
+用户已明确指定 Pi。产品决定采用 Pi SDK 嵌入会话 runtime，Corvid 继续拥有浏览器 UI、任务状态、Profile/Room/Page 绑定和授权边界；不把 Pi 的 TUI 当作 Corvid 产品界面。首个实现 Issue 为 [Issue #5](https://github.com/heyallencao/corvid/issues/5)。
+
+参考 Pi 官方 [SDK 文档](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)：SDK 可嵌入 Node/Bun 进程、创建和持久化 Agent session，并订阅消息/工具/运行事件；官方 npm 元数据当前为 `@earendil-works/pi-coding-agent@1.4.0`、Node.js `>=22.19.0`。Corvid 声明的最低 Node 版本目前为 `>=22.12.0`，因此集成前须决定提高运行时下限还是隔离/延迟加载 Pi。
+
+Pi 默认工具与 Corvid 浏览器权限必须拆开：内置 Agent 首期禁用 Pi 的 filesystem/shell 工具，只注册当前显式 Room 的 Corvid tools；真实模型凭据、费用和任务持久化需纳入设置与恢复设计。离线确定性 fixture 只能证明生命周期和 UI 合同，不代表真实模型连通。
