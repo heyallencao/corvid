@@ -66,7 +66,7 @@
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
-| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、多轮 transcript 续聊与重启后确认续跑；无真实模型） |
+| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、多轮 transcript 续聊、重启确认续跑、用户接管/交还后续跑；无真实模型） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e` |
 
 ## 单独运行
@@ -83,4 +83,4 @@
 - 系统对话框替身、非 `isTrusted` 合成事件和轮询实现必须在"关键限制"列写明。
 - 人眼布局检查不属于自动化项，记录在 [桌面 UI 视觉检查记录](ui-visual-check.md)，并在相关验收合同的证据列引用。
 
-| 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”，并可重新预览确认后从同一 transcript 继续；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |
+| 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”，并可重新预览确认后从同一 transcript 继续；用户接管会暂停运行中 task，交还并确认后续跑同 transcript；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |
