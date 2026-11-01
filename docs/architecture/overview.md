@@ -10,6 +10,7 @@ Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的
 - **Profile** 是浏览身份及其 Cookie、存储的边界；**Room** 是同一 Profile 下的工作区与控制权边界。不能把 Room 隔离误称为浏览数据隔离。
 - 桌面端维护 Room、Page、控制权状态；页面由 Electron `WebContentsView` 承载，同一 Profile 的页面使用同一持久化 session，不同 Profile 使用不同 session。
 - Agent SDK 与 CLI 连接本地控制服务。服务统一校验房间所有权，维护稳定的 Room ID、标签 ID 和 Page label 映射；显示名称不充当唯一标识。
+- 内置 Agent 采用 Pi SDK 作为可替换的会话/执行运行时；Corvid 仍拥有任务 UI、Profile/Room/Page 绑定、浏览器工具授权与用户接管合同。Pi 默认文件与 shell 工具不作为浏览器 Agent 的隐式能力。
 - 页面动作通过被授权页面的 Chromium 调试能力执行。用户控制期间拒绝自动操作；执行超时或异常退出后保留"结果未知"的风险状态，直到用户确认。
 
 ## 关键决策
@@ -23,6 +24,7 @@ Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的
 | Page label 稳定 | `p1`、`p2` 跨轮次、跨重启保持，已用 label 不复用；Agent 创建的页面与用户页面用 `openedBy` 区分 |
 | 观察结果显式受限 | Snapshot 返回截断标记和覆盖限制；不把近似无障碍树说成完整语义 |
 | 所有 Agent 共用一套协作合同 | 内置 Agent、SDK/CLI 与后续适配器都必须使用同一 Room/Page 生命周期、授权检查、运行状态、任务记录和控制权交接；不能绕开用户控制或制造另一份浏览器状态 |
+| Pi 提供内置 Agent runtime，Corvid 提供产品体验与边界 | 通过 Pi SDK 嵌入会话与模型工具调用；任务状态、浏览器 UI、Profile/Room/Page 绑定、用户控制和恢复仍由 Corvid 管理。浏览器 Agent 只注册显式授权的 Corvid 工具，不继承 Pi 的文件系统或 shell 工具 |
 | 浏览器日常能力是 Agent 的上下文，不是 Agent 的替代品 | 地址栏、标签、历史、书签、下载、权限与站点数据管理继续属于完整浏览器；Agent 从当前用户明确选择的上下文开始工作，并把执行状态和待用户处理事项呈现在桌面 |
 
 ## 已知限制
