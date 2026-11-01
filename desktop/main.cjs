@@ -15,16 +15,49 @@ const runAction = require('./actions.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
 let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitting = false, restoring = false, frontView = null;
+// Multi-window support. Each record owns its BrowserWindow plus the per-window
+// view state (which Room/Profile that window shows and whether its panel is
+// open). `window`, `activeRoomId`, `activeProfileId`, `panelOpen` and
+// `frontView` stay as aliases for the focused window so existing call sites keep
+// their meaning; `focusWindow` switches those aliases.
+const windowRecords = new Map();
+let panelOpen = false;
+function activeRecord() {
+  if (window && !window.isDestroyed()) {
+    for (const record of windowRecords.values()) if (record.browserWindow === window) return record;
+  }
+  const first = [...windowRecords.values()].find(record => !record.browserWindow.isDestroyed());
+  return first || null;
+}
+function focusWindow(record) {
+  if (!record || record.browserWindow.isDestroyed()) return;
+  window = record.browserWindow;
+  panelOpen = record.panelOpen;
+  frontView = record.frontView;
+  activeRoomId = record.activeRoomId;
+  activeProfileId = record.activeProfileId;
+}
+function syncRecordFromAliases(record) {
+  if (!record) return;
+  record.panelOpen = panelOpen;
+  record.frontView = frontView;
+  record.activeRoomId = activeRoomId;
+  record.activeProfileId = activeProfileId;
+}
+function requireFocusedRecord() {
+  const record = activeRecord();
+  if (!record) throw new Error('No window is available');
+  focusWindow(record);
+  return record;
+}
 const id = () => crypto.randomUUID();
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
 const connectionPath = path.join(dataDir, 'control.json');
 const windowStatePath = path.join(dataDir, 'window-state.json');
-function readWindowState() {
-  let saved;
-  try { saved = JSON.parse(fs.readFileSync(windowStatePath, 'utf8')); } catch { return null; }
+function normalizeBounds(saved) {
   if (!saved || typeof saved !== 'object') return null;
   const { x, y, width, height, maximized } = saved;
   if (!Number.isFinite(width) || !Number.isFinite(height) || width < 600 || height < 400) return null;
@@ -39,14 +72,27 @@ function readWindowState() {
   });
   return visible ? bounds : size;
 }
+// Window state is stored as a list so several windows can be restored. The
+// single-object shape written by earlier versions is read as one window.
+function readWindowStates() {
+  let saved;
+  try { saved = JSON.parse(fs.readFileSync(windowStatePath, 'utf8')); } catch { return []; }
+  const entries = Array.isArray(saved) ? saved : [saved];
+  return entries.map(entry => ({id:typeof entry?.id==='string'?entry.id:null,bounds:normalizeBounds(entry)})).filter(entry=>entry.bounds);
+}
 let windowStateTimer;
 function saveWindowState() {
-  if (!window || window.isDestroyed()) return;
-  const bounds = window.getNormalBounds();
+  const states = [];
+  for (const record of windowRecords.values()) {
+    if (record.browserWindow.isDestroyed()) continue;
+    const bounds = record.browserWindow.getNormalBounds();
+    states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized: record.browserWindow.isMaximized() });
+  }
+  if (!states.length) return;
   try {
     fs.mkdirSync(dataDir, { recursive: true });
     const temp = `${windowStatePath}.tmp`;
-    fs.writeFileSync(temp, JSON.stringify({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized: window.isMaximized() }), { mode: 0o600 });
+    fs.writeFileSync(temp, JSON.stringify(states), { mode: 0o600 });
     fs.renameSync(temp, windowStatePath);
   } catch (error) { console.error('Unable to save window state:', error.message); }
 }
@@ -59,7 +105,6 @@ let profiles;
 try { profiles=JSON.parse(fs.readFileSync(profilesPath,'utf8')); }
 catch(error) { if(error.code!=='ENOENT') throw error; profiles=[{id:'default',name:'默认',isDefault:true}]; }
 if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Error('Invalid profile data');
-let panelOpen = false;
 const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
 const defaultSearch='https://www.google.com/search?q={query}';
@@ -89,7 +134,13 @@ function readSavedRooms() {
   let saved;
   try { saved=JSON.parse(fs.readFileSync(dbPath,'utf8')); }
   catch(error) { if(error.code==='ENOENT') return null; throw new Error(`无法读取会话文件 ${dbPath}；原文件未修改：${error.message}`); }
-  if(saved && typeof saved==='object' && saved.schemaVersion!==undefined && saved.schemaVersion!==SCHEMA_VERSION) throw new Error(`会话文件版本不受支持：${dbPath}（schemaVersion=${saved.schemaVersion}）；原文件未修改，请先备份并检查。`);
+  if(saved && typeof saved==='object' && saved.schemaVersion!==undefined && saved.schemaVersion!==SCHEMA_VERSION) {
+    // v1 described a single implicit window; carry it forward in memory and let
+    // the next persist() rewrite the file as v2. Anything else is refused with
+    // the original file left untouched.
+    if(saved.schemaVersion===1) saved={...saved,schemaVersion:SCHEMA_VERSION,windows:[{id:'legacy-window',activeRoomId:saved.activeRoomId ?? null,activeProfileId:saved.activeProfileId ?? 'default'}]};
+    else throw new Error(`会话文件版本不受支持：${dbPath}（schemaVersion=${saved.schemaVersion}）；原文件未修改，请先备份并检查。`);
+  }
   const validString=value=>typeof value==='string' && value.length>0;
   if(!saved || typeof saved!=='object' || !Array.isArray(saved.rooms) || saved.rooms.some(room=>!room || !validString(room.id) || !validString(room.name) || !['agent','user'].includes(room.ownership) || !Array.isArray(room.tabs) || room.tabs.some(tab=>!tab || !validString(tab.id) || typeof tab.url!=='string'))) {
     throw new Error(`会话文件结构无效：${dbPath}；原文件未修改，请先备份并检查后再恢复。`);
@@ -105,14 +156,62 @@ const findTab = tabId => { const tab = tabs.get(tabId); if (!tab) throw new Erro
 // Pinned tabs form a prefix of tabIds: pinned first, then the rest in user order.
 const tabPartition = room => ({pinned:room.tabIds.filter(id=>tabs.get(id)?.pinned),unpinned:room.tabIds.filter(id=>!tabs.get(id)?.pinned)});
 const normalizeTabOrder = room => { const {pinned,unpinned}=tabPartition(room); room.tabIds=[...pinned,...unpinned]; };
-const describe = () => ({activeRoomId,activeProfileId,profiles, rooms: rooms.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))});
+const describe = (record = activeRecord()) => {
+  const scoped = record ? rooms.filter(s => s.windowId === record.id) : rooms;
+  return {
+    windowId: record?.id ?? null,
+    windowCount: [...windowRecords.values()].filter(item => !item.browserWindow.isDestroyed()).length,
+    activeRoomId: record ? record.activeRoomId : activeRoomId,
+    activeProfileId: record ? record.activeProfileId : activeProfileId,
+    profiles,
+    rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
+  };
+};
+// The local control API speaks for the whole app: every Room is visible there,
+// while `activeRoomId` keeps meaning "the focused window's room" so the SDK and
+// existing contracts are unchanged.
+const describeAll = () => {
+  const focused = activeRecord();
+  const scoped = describe(focused);
+  return {
+    ...scoped,
+    activeRoomId: focused?.activeRoomId ?? null,
+    activeProfileId: focused?.activeProfileId ?? activeProfileId,
+    windows: [...windowRecords.values()].filter(record => !record.browserWindow.isDestroyed()).map(windowStateSnapshot),
+    rooms: rooms.map(s => scoped.rooms.find(item => item.id === s.id) || describeRoom(s))
+  };
+};
+function describeRoom(s) {
+  return { id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) };
+}
 function persist() {
-  const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,pinned:Boolean(t.pinned),url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
+  const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(record=>({id:record.id,activeRoomId:record.activeRoomId,activeProfileId:record.activeProfileId})), rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,pinned:Boolean(t.pinned),url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
   fs.mkdirSync(dataDir,{recursive:true});
   const temp = `${dbPath}.tmp`; fs.writeFileSync(temp, JSON.stringify(state), {mode:0o600}); fs.renameSync(temp,dbPath);
 }
-function update() { if (!window || window.isDestroyed()) return; layout(); window.webContents.send('shell-state',describe()); if (!restoring) persist(); }
-function notifyDownloads() { if(window && !window.isDestroyed()) window.webContents.send('shell-state',describe()); }
+function update(record = activeRecord()) {
+  if (!record) return;
+  if (record.browserWindow.isDestroyed()) return;
+  // The focused window's record is the source of truth for the module-level
+  // aliases, never the other way around: syncing aliases into the record here
+  // would overwrite state the caller just changed.
+  if (record.browserWindow === window) {
+    panelOpen = record.panelOpen;
+    frontView = record.frontView;
+    activeRoomId = record.activeRoomId;
+    activeProfileId = record.activeProfileId;
+  }
+  layout(record);
+  record.browserWindow.webContents.send('shell-state', describe(record));
+  if (!restoring) persist();
+}
+function notifyDownloads() {
+  for (const record of windowRecords.values()) {
+    if (record.browserWindow.isDestroyed()) continue;
+    record.browserWindow.webContents.send('shell-state', describe(record));
+  }
+  if (!restoring) persist();
+}
 function installDownloads(partition,profileId) {
   if(downloadPartitions.has(partition)) return;
   downloadPartitions.add(partition);
@@ -167,18 +266,54 @@ function installDownloads(partition,profileId) {
     notifyDownloads();
   });
 }
-function layout() {
-  if (!window || window.isDestroyed()) return;
-  const s = rooms.find(x => x.id === activeRoomId); const tab = s && tabs.get(s.activeTabId);
-  const [width,height] = window.getContentSize(); const top = panelOpen ? 352 : 112;
-  for (const t of tabs.values()) { t.view.setBounds({x:0,y:top,width,height:Math.max(0,height-top)}); t.view.setVisible(Boolean(tab)); }
-  if (tab && frontView !== tab.view) { window.contentView.removeChildView(tab.view); window.contentView.addChildView(tab.view); frontView = tab.view; }
+function layout(record = activeRecord()) {
+  if (!record) return;
+  const browserWindow = record.browserWindow;
+  if (browserWindow.isDestroyed()) return;
+  const roomId = record.activeRoomId;
+  const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
+  const tab = room && tabs.get(room.activeTabId);
+  const [width,height] = browserWindow.getContentSize(); const top = record.panelOpen ? 352 : 112;
+  for (const item of tabs.values()) {
+    // Every view is owned by the window that hosts its room: it is sized in that
+    // window and left hidden in any other window. Background Rooms keep their
+    // views visible-but-behind, which is what lets agent actions reach a Room
+    // that the user is not currently looking at.
+    const owner = rooms.find(entry => entry.id === item.roomId);
+    if (owner?.windowId !== record.id) continue;
+    item.view.setBounds({x:0,y:top,width,height:Math.max(0,height-top)});
+    item.view.setVisible(Boolean(tab));
+  }
+  if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
 }
 function allocatePageLabel(room,requested) {
   if(requested!==undefined && (typeof requested!=='string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(requested)))throw new Error('Page label must start with a letter and contain letters, numbers, _ or -');
   let label=requested;if(label===undefined){do{label=`p${room.nextPageNumber++}`;}while(room.usedLabels.includes(label));}
   if(room.usedLabels.includes(label))throw new Error(`Page label already used: ${label}`);
   room.usedLabels.push(label);return label;
+}
+const findWindowRecord = windowId => { const record=windowRecords.get(windowId); if(!record || record.browserWindow.isDestroyed()) throw new Error('Window not found'); return record; };
+// A Room lives in exactly one window. Moving it reparents every page view, since
+// a WebContentsView can only be a child of one window's contentView at a time.
+function moveRoomToWindow(room, record) {
+  if (room.windowId === record.id) return;
+  const previous = windowRecords.get(room.windowId);
+  for (const tabId of room.tabIds) {
+    const tab = tabs.get(tabId);
+    if (!tab) continue;
+    if (previous && !previous.browserWindow.isDestroyed()) {
+      try { previous.browserWindow.contentView.removeChildView(tab.view); } catch {}
+      if (previous.frontView === tab.view) previous.frontView = null;
+    }
+    record.browserWindow.contentView.addChildView(tab.view);
+    tab.view.setVisible(false);
+  }
+  room.windowId = record.id;
+  record.frontView = null;
+}
+function roomsOfWindow(record) { return rooms.filter(room => room.windowId === record.id); }
+function windowStateSnapshot(record) {
+  return {id:record.id,activeRoomId:record.activeRoomId,activeProfileId:record.activeProfileId,roomIds:roomsOfWindow(record).map(room=>room.id)};
 }
 async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {}) {
   const s = findRoom(roomId);
@@ -197,9 +332,10 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
   installShortcuts(view.webContents);
-  tabs.set(tabId,tab); s.tabIds.push(tabId); s.activeTabId = tabId; window.contentView.addChildView(view); frontView=null; view.setVisible(false);
-  if(url!=='about:blank') update();
-  const changed = () => { if (!quitting && tabs.has(tabId)) update(); };
+  const owner=findWindowRecord(s.windowId);
+  tabs.set(tabId,tab); s.tabIds.push(tabId); s.activeTabId = tabId; owner.browserWindow.contentView.addChildView(view); owner.frontView=null; view.setVisible(false);
+  if(url!=='about:blank') update(owner);
+  const changed = () => { if (!quitting && tabs.has(tabId)) update(owner); };
   tab.bootstrap=(async()=>{
   // A newly created WebContents does not answer Page.enable until its first
   // document exists. Bind the debugger before navigating to the requested URL.
@@ -217,17 +353,18 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   tab.initialization=(async()=>{try {
   await tab.bootstrap;
   if(url!=='about:blank') await view.webContents.loadURL(url).catch(() => {});if(!tabs.has(tabId) || view.webContents.isDestroyed())throw new Error('Tab closed during initialization');tab.restoringInitial=false;view.webContents.setZoomFactor(profileSettings(s.profileId).zoom);tab.ready=true;update(); return describe().rooms.find(x => x.id===roomId).tabs.find(x => x.id===tabId);
-  } catch(error) {if(tabs.has(tabId)){window.contentView.removeChildView(view);tabs.delete(tabId);s.tabIds=s.tabIds.filter(value=>value!==tabId);if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;if(!view.webContents.isDestroyed())view.webContents.close();update();}throw error;}})();
+  } catch(error) {if(tabs.has(tabId)){owner.browserWindow.contentView.removeChildView(view);tabs.delete(tabId);s.tabIds=s.tabIds.filter(value=>value!==tabId);if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;if(!view.webContents.isDestroyed())view.webContents.close();update();}throw error;}})();
   if(metadata.restored){tab.initialization.catch(error=>console.error('Restored tab initialization failed:',error.message));await tab.bootstrap;return;}
   return tab.initialization;
 }
 async function createRoom(name, ownership = 'agent', profileId = 'default') {
   if (typeof name !== 'string' || !name.trim()) throw new Error('Room name required');
   findProfile(profileId);
-  const previousRoom=activeRoomId,previousProfile=activeProfileId;
-  const room = {id:id(),name:name.trim(),profileId,ownership,yielded:false,nextPageNumber:1,usedLabels:[],tabIds:[],activeTabId:null}; rooms.push(room); if (ownership === 'user') {activeProfileId=profileId;activeRoomId=room.id;} else if(!activeRoomId && activeProfileId===profileId) activeRoomId=room.id;
-  try {await createTab(room.id,'about:blank',id(),{openedBy:ownership==='agent'?'agent':'user'}); update(); return describe().rooms.find(s => s.id === room.id);}
-  catch(error) {rooms=rooms.filter(item=>item!==room);if(activeRoomId===room.id){activeRoomId=previousRoom;activeProfileId=previousProfile;}update();throw error;}
+  const record=requireFocusedRecord();
+  const previousRoom=record.activeRoomId,previousProfile=record.activeProfileId;
+  const room = {id:id(),name:name.trim(),profileId,windowId:record.id,ownership,yielded:false,nextPageNumber:1,usedLabels:[],tabIds:[],activeTabId:null}; rooms.push(room); if (ownership === 'user') {record.activeProfileId=profileId;record.activeRoomId=room.id;} else if(!record.activeRoomId && record.activeProfileId===profileId) record.activeRoomId=room.id;
+  try {await createTab(room.id,'about:blank',id(),{openedBy:ownership==='agent'?'agent':'user'}); update(record); return describe(record).rooms.find(s => s.id === room.id);}
+  catch(error) {rooms=rooms.filter(item=>item!==room);if(record.activeRoomId===room.id){record.activeRoomId=previousRoom;record.activeProfileId=previousProfile;}update(record);throw error;}
 }
 async function navigateAgent(tab,url) {
   const sequence=tab.userNavigation=(tab.userNavigation || 0)+1;
@@ -263,14 +400,26 @@ async function closeTab(tabId) {
     });
   } catch(error) {if(!contents.isDestroyed())await pageDebugger.ensure(contents);throw error;}
   if(!closed){await pageDebugger.ensure(contents);throw new Error('页面取消关闭，未保存的内容仍保留');}
-  window.contentView.removeChildView(t.view);if(frontView===t.view)frontView=null;tabs.delete(tabId);s.tabIds=s.tabIds.filter(x=>x!==tabId);
+  const owner=windowRecords.get(s.windowId);
+  if(owner && !owner.browserWindow.isDestroyed()){owner.browserWindow.contentView.removeChildView(t.view);if(owner.frontView===t.view)owner.frontView=null;}
+  tabs.delete(tabId);s.tabIds=s.tabIds.filter(x=>x!==tabId);
   if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;update();
 }
 async function closeRoom(roomId) {
   const s=findRoom(roomId);let count=0;
   for(const tabId of [...s.tabIds]){try{await closeTab(tabId);count++;}catch(error){if(count)throw new Error(`${error.message}；已有 ${count} 个标签关闭`);throw error;}}
   if(s.tabIds.length)throw new Error(`关闭期间出现新标签；已有 ${count} 个标签关闭，请检查剩余页面`);
-  rooms=rooms.filter(x=>x.id!==roomId);if(activeRoomId===roomId)activeRoomId=rooms.find(x=>x.profileId===activeProfileId)?.id || null;update();
+  const owner=windowRecords.get(s.windowId);
+  rooms=rooms.filter(x=>x.id!==roomId);
+  if(owner && !owner.browserWindow.isDestroyed()){
+    if(owner.activeRoomId===roomId){
+      const next=roomsOfWindow(owner)[0] || rooms.find(room=>room.profileId===owner.activeProfileId) || null;
+      owner.activeRoomId=next?.id ?? null;
+      if(next && next.windowId!==owner.id) moveRoomToWindow(next,owner);
+      if(next) owner.activeProfileId=next.profileId;
+    }
+    update(owner);
+  } else update();
 }
 function asUrl(value,profileId) { if (typeof value !== 'string' || !value.trim()) throw new Error('URL required'); const input = value.trim(); if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return input; if (/^[^\s.]+(?:\.[^\s.]+)+(?::\d+)?(?:[/?#]|$)/.test(input) || /^localhost(?::\d+)?(?:[/?#]|$)/.test(input)) return `https://${input}`; return profileSettings(profileId).searchTemplate.replaceAll('{query}',encodeURIComponent(input)); }
 function installShortcuts(contents) {
@@ -282,6 +431,7 @@ function installShortcuts(contents) {
     const cycle=input.control && !input.meta && key==='tab';let action;
     if(cycle && room?.tabIds.length){const index=room.tabIds.indexOf(room.activeTabId),step=input.shift?-1:1;action=()=>dispatchQueued('activateTab',{id:room.tabIds[(index+step+room.tabIds.length)%room.tabIds.length]});}
     else if(primary && key==='t' && !input.shift && room) action=()=>dispatchQueued('createTab',{id:room.id});
+    else if(primary && key==='n' && !input.shift) action=()=>dispatchQueued('createWindow',{});
     else if(primary && key==='w' && !input.shift && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
     else if(primary && key==='l' && !input.shift) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
     else if(primary && key==='r' && !input.shift && tab) action=()=>dispatchQueued('reload',{id:tab.id});
@@ -305,7 +455,7 @@ async function dispatch(method, args = {}, fromApi = false) {
   if(fromApi && ['closeTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload'].includes(method) && !findTab(target).label)throw new Error('Tab is unmanaged; adopt it before agent operations');
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','resumeControl','adoptTab','releasePage','finishRoom'].includes(method)) { const s = ['createTab','closeRoom','resumeControl','adoptTab','releasePage','finishRoom'].includes(method) ? findRoom(target) : findRoom(findTab(target).roomId); if (s.executionRisk) throw new Error('Room has an unresolved timed-out execution; user review is required'); }
   switch (method) {
-    case 'state': return describe();
+    case 'state': return fromApi ? describeAll() : describe();
     case 'profiles': return {profiles};
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
@@ -319,7 +469,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间Room已改变，请重新操作');
       await dispatch('closeRoom',{id:room.id},false);return {closed:true};
     }
-    case 'activateProfile': {findProfile(target);activeProfileId=target;activeRoomId=rooms.find(s=>s.profileId===target)?.id || null;update();return describe();}
+    case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
     case 'history': return {history:library.history(findProfile(args.profileId ?? activeProfileId).id)};
     case 'bookmarks': return {bookmarks:library.bookmarks(findProfile(args.profileId ?? activeProfileId).id)};
     case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id)};
@@ -327,7 +477,25 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'addBookmark': return library.addBookmark(args.url,args.title,findProfile(args.profileId ?? activeProfileId).id);
     case 'removeBookmark': return {removed:library.removeBookmark(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'removeHistory': return {removed:library.removeHistory(target,findProfile(args.profileId ?? activeProfileId).id)};
-    case 'setPanel': panelOpen=Boolean(args.open); layout(); return {ok:true};
+    case 'setPanel': {const record=requireFocusedRecord();record.panelOpen=Boolean(args.open);panelOpen=record.panelOpen;layout(record);return {ok:true};}
+    case 'listWindows': return {windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(windowStateSnapshot),focusedWindowId:activeRecord()?.id ?? null};
+    case 'createWindow': {
+      if(fromApi) throw new Error('User action required');
+      const record=await createWindowRecord();
+      const profileId=args.profileId ?? activeRecord()?.activeProfileId ?? 'default';
+      findProfile(profileId);
+      const room=await createRoom(args.name || '新窗口的 Room','user',profileId);
+      record.activeRoomId=room.id; record.activeProfileId=profileId; update(record);
+      return describeAll();
+    }
+    case 'closeWindow': {
+      // Reachable from the window UI and from the local control API (a local
+      // client is inside the same trust boundary); the last window is protected
+      // inside closeWindowRecord.
+      const record=findWindowRecord(target ?? activeRecord()?.id);
+      await closeWindowRecord(record);
+      return describeAll();
+    }
     case 'reorderTabs': {
       if(fromApi) throw new Error('User action required');
       const room=findRoom(target), order=args.tabIds;
@@ -412,8 +580,8 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'releasePage': {const s=findRoom(target),tab=s.tabIds.map(findTab).find(item=>item.label===args.label);if(!tab)throw new Error('Page label not found');if(tab.openedBy==='agent')throw new Error('Agent-created pages must be closed, not released');agentDownloads.cancelTab(tab.id);await pageDebugger.cancelChooser(tab.view.webContents);await runAction.releasePointer(tab.view.webContents);if(s.ownership!=='agent' || s.userResumePending || s.executionRisk)throw new Error('Room is no longer available for agent control');tab.label=null;update();return describe().rooms.find(item=>item.id===s.id).tabs.find(item=>item.id===tab.id);}
     case 'finishRoom': return finishRoom(findRoom(target),args.keep);
     case 'claimRoom': return claimRoom(findRoom(target));
-    case 'activateRoom': {const s=findRoom(target);activeProfileId=s.profileId;activeRoomId=target;update();return describe();}
-    case 'activateTab': {const t=findTab(target), s=findRoom(t.roomId); activeProfileId=s.profileId;activeRoomId=s.id; s.activeTabId=target; update(); return describe();}
+    case 'activateRoom': {const s=findRoom(target);const record=requireFocusedRecord();if(s.windowId!==record.id) moveRoomToWindow(s,record);record.activeProfileId=s.profileId;record.activeRoomId=target;update(record);return describe(record);}
+    case 'activateTab': {const t=findTab(target), s=findRoom(t.roomId); const record=requireFocusedRecord(); if(s.windowId!==record.id) moveRoomToWindow(s,record); record.activeProfileId=s.profileId;record.activeRoomId=s.id; s.activeTabId=target; update(record); return describe(record);}
     case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();return describe();}
     case 'resumeControl': {const s=findRoom(target);if(!s.yielded) throw new Error('Room was not handed off by an agent');if(fromApi && s.manualControl)throw new Error('The user has not returned control');if(s.executionRisk)throw new Error('Room has an unresolved timed-out execution; user review is required');s.ownership='agent';s.yielded=false;s.manualControl=false;update();return describe();}
     case 'requestUserControl': return requestUserControl(target);
@@ -538,6 +706,8 @@ function apiRoute(req, url) {
   if (req.method==='GET' && url.pathname==='/health') return ['health',{}];
   if (req.method==='POST' && url.pathname==='/shutdown' && process.env.CORVID_TEST_MODE==='1') return ['shutdown',{}];
   if (req.method==='GET' && url.pathname==='/rooms') return ['state',{}];
+  if (req.method==='GET' && url.pathname==='/windows') return ['listWindows',{}];
+  if (kind==='windows' && target && req.method==='DELETE' && !action) return ['closeWindow',{id:target}];
   if (req.method==='GET' && url.pathname==='/profiles') return ['profiles',{}];
   if (req.method==='POST' && url.pathname==='/profiles') return ['createProfile',{}];
   if (req.method==='GET' && url.pathname==='/history') return ['history',{...(url.searchParams.has('profileId')?{profileId:url.searchParams.get('profileId')}:{})}];
@@ -586,33 +756,102 @@ async function startServer() {
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};
   fs.writeFileSync(connectionPath,JSON.stringify(connection),{mode:0o600}); fs.chmodSync(connectionPath,0o600);
 }
+async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
+  const browserWindow = new BrowserWindow({...bounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const record = {id:recordId,browserWindow,panelOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default'};
+  windowRecords.set(recordId,record);
+  focusWindow(record);
+  browserWindow.on('resize',()=>{scheduleWindowStateSave();layout(record);});
+  browserWindow.on('move',scheduleWindowStateSave);
+  browserWindow.on('close',()=>saveWindowState());
+  browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
+  browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
+  installShortcuts(browserWindow.webContents);
+  await browserWindow.loadFile(path.join(__dirname,'index.html'));
+  return record;
+}
+async function closeWindowRecord(record) {
+  if (windowRecords.size <= 1) throw new Error('至少需要保留一个窗口');
+  const scoped = roomsOfWindow(record);
+  // Agent-owned, unfinished rooms keep working: move them to another window
+  // instead of silently ending an agent task.
+  const fallback = [...windowRecords.values()].find(item => item.id !== record.id && !item.browserWindow.isDestroyed());
+  for (const room of scoped) moveRoomToWindow(room, fallback);
+  const browserWindow = record.browserWindow;
+  windowRecords.delete(record.id);
+  if (!browserWindow.isDestroyed()) browserWindow.destroy();
+  const next = activeRecord();
+  if (next) { focusWindow(next); update(next); }
+  saveWindowState();
+}
 app.whenReady().then(async () => {
   fs.mkdirSync(dataDir,{recursive:true});
-  const savedWindow=readWindowState();
-  const initialBounds=savedWindow ? (savedWindow.x!==undefined ? {x:savedWindow.x,y:savedWindow.y,width:savedWindow.width,height:savedWindow.height} : {width:savedWindow.width,height:savedWindow.height}) : {width:1280,height:850};
-  window = new BrowserWindow({...initialBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-  if(savedWindow?.maximized) window.maximize();
-  window.on('resize',scheduleWindowStateSave);window.on('move',scheduleWindowStateSave);window.on('close',saveWindowState);
-  installShortcuts(window.webContents);
-  ipcMain.handle('shell-action',(_event,method,args) => dispatchQueued(method,args));
+  ipcMain.handle('shell-action',(event,method,args) => {
+    const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
+    if (record) { focusWindow(record); syncRecordFromAliases(record); }
+    return dispatchQueued(method,args);
+  });
   ipcMain.on('page-prompt',(event,message,defaultPrompt)=>{
     const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);
     if(!tab || typeof message!=='string' || typeof defaultPrompt!=='string') {event.returnValue=null;return;}
     try {pageDebugger.openPrompt(event.sender,message,defaultPrompt,value=>{event.returnValue=value;});} catch {event.returnValue=null;}
   });
-  await window.loadFile(path.join(__dirname,'index.html')); window.on('resize',layout);
   const saved=readSavedRooms();
-  if (saved && Array.isArray(saved.rooms)) {
-    restoring = true;
-    for (const old of saved.rooms) { const profileId=old.profileId ?? 'default';findProfile(profileId);const pending=Boolean(old.userResumePending);const executionRisk=old.executionRisk ? {...old.executionRisk,status:'unknown_after_restart'} : pending ? {operationId:null,tabId:null,status:'unknown_after_restart',executionStopped:null,mayHaveLateEffects:true} : null;const existingNumbers=old.tabs.map(tab=>/^p([1-9]\d*)$/.exec(tab.label || '')).filter(Boolean).map(match=>Number(match[1]));const nextPageNumber=Math.max(1,Number.isSafeInteger(old.nextPageNumber)?old.nextPageNumber:1,...existingNumbers.map(value=>value+1));const usedLabels=[...new Set([...(old.usedLabels || []),...old.tabs.map(tab=>tab.label).filter(Boolean)])];const s={id:old.id,name:old.name,profileId,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null}; rooms.push(s); for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true}); s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null; }
-    activeProfileId=saved.activeProfileId ?? rooms.find(s=>s.id===saved.activeRoomId)?.profileId ?? 'default';findProfile(activeProfileId);
-    activeRoomId=rooms.some(s=>s.id===saved.activeRoomId && s.profileId===activeProfileId)?saved.activeRoomId:rooms.find(s=>s.profileId===activeProfileId)?.id || null;
-    restoring = false;
+  const savedStates=readWindowStates();
+  const savedWindows=Array.isArray(saved?.windows) ? saved.windows : null;
+  // Older session files describe a single implicit window; give it an identity
+  // so rooms can be assigned to a window in both shapes.
+  const windowPlan=(savedWindows && savedWindows.length ? savedWindows : [{id:'legacy-window',activeRoomId:saved?.activeRoomId ?? null,activeProfileId:saved?.activeProfileId ?? 'default'}]);
+  restoring = true;
+  for (const [index,plan] of windowPlan.entries()) {
+    const savedState=savedStates.find(entry=>entry.id===plan.id) || savedStates[index];
+    const stateBounds=savedState?.bounds;
+    const bounds=stateBounds ? (stateBounds.x!==undefined?{x:stateBounds.x,y:stateBounds.y,width:stateBounds.width,height:stateBounds.height}:{width:stateBounds.width,height:stateBounds.height}) : {width:1280,height:850};
+    const record=await createWindowRecord(bounds,plan.id);
+    if(stateBounds?.maximized) record.browserWindow.maximize();
+    record.plan=plan;
   }
-  if (!rooms.length) await createRoom('我的 Room','user'); update();
+  // The first plan entry that is not the legacy placeholder owns every room
+  // when the session file predates multi-window.
+  const legacyRecord=[...windowRecords.values()].find(record=>record.plan?.id==='legacy-window');
+  if (saved && Array.isArray(saved.rooms)) {
+    for (const old of saved.rooms) {
+      const profileId=old.profileId ?? 'default';
+      findProfile(profileId);
+      const pending=Boolean(old.userResumePending);
+      const executionRisk=old.executionRisk ? {...old.executionRisk,status:'unknown_after_restart'} : pending ? {operationId:null,tabId:null,status:'unknown_after_restart',executionStopped:null,mayHaveLateEffects:true} : null;
+      const existingNumbers=old.tabs.map(tab=>/^p([1-9]\d*)$/.exec(tab.label || '')).filter(Boolean).map(match=>Number(match[1]));
+      const nextPageNumber=Math.max(1,Number.isSafeInteger(old.nextPageNumber)?old.nextPageNumber:1,...existingNumbers.map(value=>value+1));
+      const usedLabels=[...new Set([...(old.usedLabels || []),...old.tabs.map(tab=>tab.label).filter(Boolean)])];
+      const ownerRecord=(old.windowId && windowRecords.get(old.windowId)) || legacyRecord || [...windowRecords.values()][0];
+      focusWindow(ownerRecord);
+      const s={id:old.id,name:old.name,profileId,windowId:ownerRecord.id,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null};
+      rooms.push(s);
+      for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true});
+      s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null;
+    }
+    for (const record of windowRecords.values()) {
+      const plan=record.plan || {};
+      const scoped=roomsOfWindow(record);
+      const wanted=plan.activeRoomId && scoped.some(room=>room.id===plan.activeRoomId) ? plan.activeRoomId : scoped[0]?.id || null;
+      record.activeProfileId=plan.activeProfileId && profiles.some(profile=>profile.id===plan.activeProfileId) ? plan.activeProfileId : (rooms.find(room=>room.id===wanted)?.profileId ?? 'default');
+      findProfile(record.activeProfileId);
+      record.activeRoomId=wanted;
+    }
+    const first=activeRecord();
+    if (first) focusWindow(first);
+  }
+  // A fresh session (or a session whose windows outnumbered its rooms) needs at
+  // least one user room in the focused window.
+  const primary=activeRecord();
+  focusWindow(primary);
+  if (!rooms.length) await createRoom('我的 Room','user');
+  else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
+  restoring = false;
+  for (const record of windowRecords.values()) update(record);
   await startServer();
   console.log(`Corvid control: ${connectionPath}`);
 }).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox('Corvid 启动失败',error.message);app.exit(1);});
-app.on('before-quit',() => {quitting=true; if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
+app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
 app.on('window-all-closed',() => app.quit());
 app.on('will-quit',()=>{try{agentDownloads.cleanup();}catch(error){console.error('Agent download cleanup failed:',error.message);}});

@@ -16,6 +16,7 @@ function draw(value) {
   for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) rooms.append(button(`${s.name} ${s.ownership === 'agent' ? '•' : ''}`, () => api.invoke('activateRoom', {id:s.id}), s.id === state.activeRoomId));
   if(state.activeRoomId)rooms.append(button('关闭当前 Room',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}}));
   rooms.append(button('+ Room', async () => { await api.invoke('setPanel',{open:true}); document.querySelector('#new-room').showModal(); document.querySelector('#room-name').focus(); }));
+  rooms.append(button('新建窗口', async () => { controlError=''; try { await api.invoke('createWindow',{}); } catch (error) { controlError=error.message; draw(state); } }));
   const room = state.rooms.find(s => s.id === state.activeRoomId);
   if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);

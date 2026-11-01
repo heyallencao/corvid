@@ -8,9 +8,9 @@
 
 - 实现形态：Electron 45.2.1 + Chromium；页面由 `WebContentsView` 承载；本地控制服务只监听 `127.0.0.1` 的随机端口，使用 Bearer token 认证，凭据写入 `control.json`（权限 0600），应用关闭时删除。
 - 数据目录：默认 `~/.corvid`，可用 `CORVID_DATA_DIR` 覆盖；`CORVID_TEST_MODE`、`CORVID_PORT`、`CORVID_TEST_DOWNLOAD_DIR` 用于隔离测试。
-- 持久化文件：`rooms.json`（`schemaVersion=1`；旧 `spaces.json` 在启动时自动迁移一次，原文件保留）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`window-state.json`（窗口位置、尺寸、最大化状态，0600）、`control.json`。会话、库与窗口状态文件使用临时文件 + rename 原子写，权限 0600。
+- 持久化文件：`rooms.json`（`schemaVersion=2`；支持 v1 会话迁移；旧 `spaces.json` 在启动时自动迁移一次，原文件保留）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`window-state.json`（窗口位置、尺寸、最大化状态，0600）、`control.json`。会话、库与窗口状态文件使用临时文件 + rename 原子写，权限 0600。
 - 入口：桌面运行 `npm start`；全量回归 `npm test`；CLI 为 `node cli/corvid.mjs run < script.mjs` 与 `node cli/corvid.mjs help`。
-- 2026-11-01 在本机 macOS、Electron 45.2.1、隔离临时数据目录下执行 `npm test`：30 条命令、32 项真实 Electron 测试全部通过（含 Agent API 合同回归 `tests/contract-e2e.cjs`、Snapshot v2 回归 `tests/snapshot-e2e.cjs`，以及产品化回归 `tests/tab-ux-e2e.cjs`、`tests/tab-pin-menu-e2e.cjs`、`tests/window-state-e2e.cjs`、`tests/download-file-ops-e2e.cjs`）。该结果只覆盖本地夹具和 macOS，未验证真实网站、真实用户数据、原生系统对话框、Windows 与打包分发。
+- 2026-11-01 在本机 macOS、Electron 45.2.1、隔离临时数据目录下执行 `env -u ELECTRON_RUN_AS_NODE npm test`：31 条命令、33 项真实 Electron 测试全部通过（新增 `tests/multi-window-e2e.cjs`；含 Agent API 合同回归、Snapshot v2、标签与窗口产品化回归）。该结果只覆盖本地夹具和 macOS，未验证真实网站、真实用户数据、原生系统对话框、Windows 与打包分发。
 - 自动化中的系统对话框是测试替身（`dialog.showMessageBox` / `showMessageBoxSync` / `showSaveDialogSync` 被替换）；下载测试用测试模式与临时下载目录绕开保存对话框。相关条目只能证明应用状态流转，不能证明原生对话框交互。
 
 ## 状态定义与证据要求
@@ -29,13 +29,13 @@
 4. `evaluate` 超时表示"结果未知"，不是"已终止"；不得声称已撤销页面副作用。
 5. 所有测试必须使用隔离数据目录和本地夹具，不得使用真实用户 Profile 或真实浏览数据。
 
-截至 2026-11-01，没有条目达到"已验证"：32 项通过只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
+截至 2026-11-01，没有条目达到"已验证"：33 项通过只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
 
 ## P0：可安全使用且控制权可靠
 
 | ID | 状态 | 工作块与当前差距 | 可执行验收合同 |
 | --- | --- | --- | --- |
-| D01 | 部分 | **启动、恢复与会话文件**。已实现：启动读取 `rooms.json` 恢复 Room/标签；坏 JSON、结构无效、重复 Room/标签 ID 拒绝启动并保留原文件；慢页面异步恢复不阻塞其他 Room 与控制接口；`control.json` 0600 且关闭时删除；旧 `spaces.json` 一次性迁移并保留原文件。差距：强制杀进程/异常退出后的恢复、数据目录不可写、`schemaVersion` 升级迁移、超大标签量资源消耗、旧数据目录搬迁。 | ① `node tests/recovery-e2e.cjs`：三类坏输入均退出码 1、stderr 含"原文件未修改"、原文件字节不变、不产生 `control.json`。② `node tests/restore-loading-e2e.cjs`：慢标签未 ready 时其他 Room 与 `/rooms` 可用，保存 URL 不被空白页覆盖，用户/Agent 可改导航，历史不重复，重启保持。③ 补测并写清阈值：`schemaVersion=2` 拒绝且保留原文件；只读数据目录给出可诊断错误；`SIGKILL` 后重启恢复；数千标签的启动时间与内存预算。④ 补测旧 `spaces.json` 迁移只发生一次、迁移后 ID 稳定；升级/回滚合同另行设计。 |
+| D01 | 部分 | **启动、恢复与会话文件**。已实现：启动读取 `rooms.json` 恢复 Room/标签；坏 JSON、结构无效、重复 Room/标签 ID 拒绝启动并保留原文件；慢页面异步恢复不阻塞其他 Room 与控制接口；`control.json` 0600 且关闭时删除；旧 `spaces.json` 一次性迁移并保留原文件。差距：强制杀进程/异常退出后的恢复、数据目录不可写、v1 到 v2 迁移缺少独立迁移测试与回滚策略、超大标签量资源消耗、旧数据目录搬迁。 | ① `node tests/recovery-e2e.cjs`：三类坏输入均退出码 1、stderr 含"原文件未修改"、原文件字节不变、不产生 `control.json`。② `node tests/restore-loading-e2e.cjs`：慢标签未 ready 时其他 Room 与 `/rooms` 可用，保存 URL 不被空白页覆盖，用户/Agent 可改导航，历史不重复，重启保持。③ 补测并写清阈值：未知 `schemaVersion` 拒绝且保留原文件；补测 v1→v2 会话迁移的字段保留与重启稳定性；只读数据目录给出可诊断错误；`SIGKILL` 后重启恢复；数千标签的启动时间与内存预算。④ 补测旧 `spaces.json` 迁移只发生一次、迁移后 ID 稳定；升级/回滚合同另行设计。 |
 | D02 | 部分 | **Room 控制权**。已实现：桌面"接管"/"交还 Agent"；`yieldControl` 等正在进行动作完成后再返回；接管请求挂起期间新 Agent 动作被拒；其他 Room 不受影响；用户手动接管跨重启保持，Agent 不能自行 `resumeControl`；`waitForControl` 在用户交还后返回，在风险未清或 Room 删除时明确失败；接管未完成时退出会保留用户控制并标记结果未知。差距：强制退出、renderer 卡死、清理失败（下载/调试器/文件选择器）、设备提示、Windows 焦点与快捷键差异。 | ① `node tests/user-control-e2e.cjs`：接管中请求、动作完成、其他 Room、重启、`manualControl`、等待超时/成功、Room 删除报错。② `node --test tests/browser.e2e.mjs`：`yieldControl` 等待进行中动作，返回后新动作被拒，`resumeControl` 恢复。③ `node tests/load-state-e2e.cjs` 与 `node tests/sdk-e2e.cjs` 中等待类操作在交还时立即以 user control 失败。④ 补测：强制 kill、同步 renderer 卡死、清理失败、设备选择提示、Windows 平台。⑤ 合同：用户未"交还 Agent"前，任何 Agent 客户端不得取回控制权；`waitForControl` 只观察，不主动改变控制权。 |
 | D03 | 部分 | **权限与浏览器提示**。已实现：主文档通知权限请求先转交用户再弹窗；允许/拒绝、状态查询、同 Profile 同来源共享、跨 Profile 与权限类型隔离、桌面 UI 撤销、导航竞态不授予原来源、重启不保留；页面 alert/confirm/prompt 可在触发动作仍挂起时经 SDK 应答，prompt 还支持经桌面 UI 应答，支持连续弹窗和连接中断后重连应答。差距：系统确认框为测试替身；摄像头/麦克风与真实地理位置服务、设备选择器、跨 frame 对话框、应用重启期间打开的对话框未验证。 | ① `node tests/permissions-e2e.cjs`：拒绝/允许/查询/撤销/隔离/导航竞态/重启。② `node --test tests/dialogs.e2e.mjs`、`node tests/dialogs-ui-e2e.cjs`：对话框等待、连续弹窗、prompt 默认值、UI 应答、触发动作保持挂起。③ 补测：摄像头/麦克风、真实地理位置、跨源 frame 对话框、设备选择器、原生对话框人工记录。④ 合同：无已存授权时查询当前显示 `denied`，这是已知限制，不得宣称已区分"未决定"与"拒绝"。 |
 | D04 | 部分 | **长任务、执行风险与清理**。已实现：`evaluate` 的 `timeoutMs` 支持 100–60000；超时返回 `timed_out`、`executionStopped: false`、`mayHaveLateEffects: true`；Room 进入风险态并阻止新 Agent 动作与 `resumeControl`，`yieldControl` 仍可用；晚到结果更新为 `late_completed`/`late_failed`；重启后为 `unknown_after_restart`；桌面"页面执行状态未知"可保留或确认清除；`waitForFunction` 谓词超时同样进入风险态。差距：同步死循环、超时后的关闭/退出/清理、其他长时间操作（fetch/下载/上传）、风险确认后的页面副作用。 | ① `node --test tests/browser.e2e.mjs`、`node tests/sdk-e2e.cjs`：超时字段、风险阻止、晚到结果、跨重启。② `node tests/evaluation-risk-e2e.cjs`：UI 复核保留/清除并恢复动作。③ 补测：同步 renderer 卡死；超时后关闭页面/退出应用；清理失败；`fetch` 超时与下载取消后的风险语义。④ 合同：任何"超时"都不得报告为"执行已停止"，也不得撤销已发送请求、定时器或页面副作用。 |
@@ -45,7 +45,7 @@
 
 | ID | 状态 | 工作块与当前差距 | 可执行验收合同 |
 | --- | --- | --- | --- |
-| D06 | 部分 | **标签、窗口与导航**。已实现：单窗口多 Room、标签创建/切换/关闭、地址栏导航、前进/后退/刷新、快捷键（Cmd/Ctrl+T、W、L、R、`[`、`]`、1–9、`+`/`-`/`0`、Control+Tab）、缩放与搜索模板、标签 favicon、标签拖拽排序、中键关闭标签、**标签固定**（固定标签置顶、跨固定分组的拖拽只会回弹而不隐式改固定状态、关闭固定标签需确认、关闭其他标签时保留固定标签、固定状态写入 `rooms.json` 并跨重启保持）、**标签右键菜单**（固定/取消固定、重新加载、复制链接、关闭标签、关闭其他标签；应用内菜单，非原生菜单）、窗口尺寸/位置/最大化状态跨重启持久化（含窗口状态文件损坏与显示器已移除时的回退）、`beforeunload` 取消/确认与 Room 转交、关闭 Room 的取消/变更保护/部分完成报错、弹窗等待与未知来源保护。差距：多窗口、标签分组、最后标签关闭策略、原生菜单与系统对话框、全屏、popup 事件跨重启。 | ① `node tests/browser-shortcuts-e2e.cjs`、`node tests/room-close-e2e.cjs`、`node tests/beforeunload-e2e.cjs`、`node tests/popup-events-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/tab-ux-e2e.cjs`、`node tests/tab-pin-menu-e2e.cjs`、`node tests/window-state-e2e.cjs`。② 补测多窗口（创建/切换/关闭/重启恢复）、最后标签关闭行为、标签焦点顺序、真实原生 beforeunload/关闭确认、原生右键菜单。③ 合同：快捷键只可宣称覆盖清单内组合；多窗口作为独立验收块，不得用单窗口结果替代；拖拽排序只证明指针拖动与状态顺序，不证明原生标签栏行为；固定标签不改变标签归属（`openedBy`）与 Agent 关闭权限，Agent 路径（`closeTab`/`finish`/`closeRoom`）不受固定状态影响。 |
+| D06 | 部分 | **标签、窗口与导航**。已实现：多窗口（“新建窗口”按钮或 Cmd/Ctrl+N；每窗拥有独立 Room/Profile 选择与页面视图；关闭窗口时 Room 转移到剩余窗口；`rooms.json` schemaVersion=2 持久化窗口 ID/Room 归属并跨重启恢复）、标签创建/切换/关闭、地址栏导航、前进/后退/刷新、快捷键（Cmd/Ctrl+T、W、L、R、N、`[`、`]`、1–9、`+`/`-`/`0`、Control+Tab）、缩放与搜索模板、标签 favicon、标签拖拽排序、中键关闭标签、标签固定与右键菜单、窗口尺寸/位置/最大化状态持久化、`beforeunload` 与 Room 关闭保护、弹窗等待。差距：窗口焦点切换顺序、标签分组、最后标签关闭策略、原生菜单与系统对话框、全屏、popup 事件跨重启。`tests/multi-window-e2e.cjs` 覆盖创建、窗口间 Room 隔离、Agent API 跨窗访问、窗口关闭时 Room 转移、窗口与归属重启恢复。 | ① `node tests/browser-shortcuts-e2e.cjs`、`node tests/room-close-e2e.cjs`、`node tests/beforeunload-e2e.cjs`、`node tests/popup-events-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/tab-ux-e2e.cjs`、`node tests/tab-pin-menu-e2e.cjs`、`node tests/window-state-e2e.cjs`、`node tests/multi-window-e2e.cjs`。② 后续补测窗口焦点顺序、最后标签关闭行为、真实原生 beforeunload/关闭确认、原生右键菜单。③ 合同：快捷键只可宣称覆盖清单内组合；多窗口作为独立验收块，不得用单窗口结果替代；拖拽排序只证明指针拖动与状态顺序，不证明原生标签栏行为；固定标签不改变标签归属（`openedBy`）与 Agent 关闭权限，Agent 路径（`closeTab`/`finish`/`closeRoom`）不受固定状态影响。 |
 | D07 | 部分 | **用户界面与日常导航**。已实现：Room/Profile 选择、标签栏（favicon、拖拽排序、中键关闭、固定标签置顶与固定图标、右键菜单）、地址栏、状态区、页内查找（Cmd/Ctrl+F 查找条、结果计数、Enter/Shift+Enter 前后跳转、Esc 关闭、切换标签自动关闭）、设置（搜索模板/缩放）、历史/书签/下载面板、错误以 `role=alert`/`role=status` 呈现、缩放按 Profile 保存。差距：加载失败/证书错误/重定向页面、错误页与重试、地址解析边界、焦点与纯键盘操作、窗口最小尺寸布局、视觉基线、真实搜索引擎、原生（系统）菜单、页内查找的跨 frame 匹配与高亮样式、查找条在真实长页面上的性能。 | ① 通过桌面 UI 实测而非仅 API：成功导航、错误地址、页面加载失败、重定向、慢加载、缩放与窗口 resize；断言可见文案、URL、标题与焦点。② `node tests/tab-ux-e2e.cjs`：favicon 来自页面、查找计数与前后跳转、Esc 关闭、切换标签关闭查找条。③ `node tests/tab-pin-menu-e2e.cjs`：右键菜单各条目作用在打开菜单的标签上、Escape 关闭菜单、`role=menuitem` 键盘可达；固定标签的固定/取消固定与图标呈现。④ 记录实际错误与页面状态，不只断言接口成功。⑤ 人眼布局检查记录见 [桌面 UI 视觉检查记录](../qa/ui-visual-check.md)（发现并修复查找条遮挡工具栏）；截图仅作为辅助证据，逐像素视觉基线另行建立。⑥ 真实搜索引擎需单独授权与网络前提，默认只测本地搜索模板夹具。 |
 | D08 | 部分 | **历史、书签与下载**。已实现：历史/书签搜索、删除、Profile 隔离、重启持久化；下载完成、进度、取消、同名文件不覆盖、状态文案、重启历史、文件名/URL 搜索；下载完成后"打开文件"与"在文件夹中显示"（系统调用由测试替身验证）、打开失败以 `role=alert` 呈现；测试模式使用临时下载目录。差距：真实系统保存对话框、真实打开文件/文件管理器行为未人工验证、重试/续传、其他下载协议、组织/文件夹、导入导出、库文件损坏恢复、真实下载站。 | ① `node tests/library-e2e.cjs`、`node tests/library-search-e2e.cjs`、`node tests/download-e2e.cjs`、`node tests/download-file-ops-e2e.cjs`。② 手工验证真实保存对话框：选择、取消、同名、权限错误，并记录为手工证据；真实打开文件/在文件夹中显示需要人工记录。③ 补测 `library.json` 损坏拒绝/备份、下载中断后重启状态、多 Profile 并发下载取消。④ 合同：不得把临时下载目录结果当作真实保存对话框已验证；不得把 shell 调用替身当作真实系统应用已打开。 |
 | D09 | 部分 | **Profile 管理**。已实现：创建、切换、重命名（取消、空白拒绝、裁剪）、跨重启、Room/书签/下载归属、旧数据默认归 default Profile。差距：删除、默认 Profile 选择、重名策略（当前允许）、真实 Chromium 数据迁移、Profile 级权限/数据管理、数量与命名约束。 | ① `node tests/profiles-e2e.cjs`。② 新增删除路径前先定义引用关系与确认/取消合同（不可删 default、不可删最后一个），并验证删除后 Room/历史/下载/权限行为。③ 补测重名创建与切换、Profile 删除影响范围。④ 禁止使用真实浏览器 Profile 做测试。 |
@@ -60,7 +60,7 @@
 | D13 | 待实现 | **首次启动与浏览器数据导入**。未实现书签/历史/Cookie/登录/扩展导入；源格式、平台加密与授权边界未调研。 | ① 先只读调研源格式、平台加密与授权，输出调研记录。② 用合成源 Profile 验证预览、选择、取消、备份、部分失败、重复导入幂等。③ 只导入书签不得声称"完整迁移"。④ 任何真实数据迁移需用户明确授权并可回滚。 |
 | D14 | 待实现 | **扩展**。未实现扩展安装/启用/禁用/更新与权限模型。 | ① 用自建测试扩展验证安装、启停、更新、卸载、Profile 归属。② 扩展权限提示接入 D03 的权限合同。③ 明确不支持 API 与平台；不承诺第三方商店兼容。 |
 | D15 | 待实现 | **安装、默认浏览器与更新**。无打包、签名、安装器、协议注册、默认浏览器与自动更新。 | ① 全新环境验证 macOS arm64/x64 与 Windows x64 安装、首启、协议/默认浏览器选择、升级、回滚、卸载与数据保留。② 配置修改可见、可撤销；未经用户明确操作不修改系统默认应用或其他 Agent 配置。③ 无法取得的平台标"未验证"。 |
-| D16 | 部分 | **其他日常功能**。已部分接入：设置（搜索模板、缩放）、快捷键、站点权限/站点数据面板、页内查找（Cmd/Ctrl+F 查找条、结果计数、前后跳转、Esc 关闭，见 D07 证据）、下载文件操作（打开/在文件夹中显示，见 D08 证据）、窗口状态持久化（见 D06 证据）、标签固定与标签右键菜单（应用内菜单，见 D06/D07 证据）；系统剪贴板（整页复制等）、全屏、打印、媒体、开发者工具、下载管理增强（重试/续传）、多窗口、原生菜单未实现或未调查。 | ① 逐项先定义用户行为、错误路径和退出恢复，再实现与测试。② "已实现"与"已验证"分列。③ 不把通用浏览器预期当已实现；未调查项保持"待实现/未知"。 |
+| D16 | 部分 | **其他日常功能**。已部分接入：设置（搜索模板、缩放）、快捷键、站点权限/站点数据面板、页内查找（Cmd/Ctrl+F 查找条、结果计数、前后跳转、Esc 关闭，见 D07 证据）、下载文件操作（打开/在文件夹中显示，见 D08 证据）、窗口状态持久化（见 D06 证据）、标签固定与标签右键菜单（应用内菜单，见 D06/D07 证据）；系统剪贴板（整页复制等）、全屏、打印、媒体、开发者工具、下载管理增强（重试/续传）、原生菜单未实现或未调查；多窗口已由 D06 实现并有 Electron E2E 覆盖，平台边界仍待补测。 | ① 逐项先定义用户行为、错误路径和退出恢复，再实现与测试。② "已实现"与"已验证"分列。③ 不把通用浏览器预期当已实现；未调查项保持"待实现/未知"。 |
 | D17 | 部分 | **平台与分发**。目前只在开发机上以 macOS 直接运行 Electron；macOS 打包/签名/公证、Windows 构建与运行、其他平台、自动更新、崩溃上报均未验证。 | ① 在全新环境验证 macOS arm64/x64 与 Windows x64 的构建、安装、运行、升级。② 记录 OS、架构、Electron 版本、签名与结果。③ 无法取得的平台标"未验证"，禁止用模拟结果代替。 |
 | D18 | 部分 | **持续发现与能力台账**。已具备：本板、验证记录与测试索引构成初始能力矩阵。差距：没有独立的发现流程、来源记录与定期复核机制，未调查能力仍可能被误读为已穷尽。 | ① 维护能力台账（能力、来源、观察/推断/未知、证据、验收状态）。② 只使用公开资料、自建夹具与自有产品行为，不访问私人浏览数据。③ 发现新能力时新增任务、更新本板与测试索引；无法复现的观察标"未知"。 |
 
@@ -76,7 +76,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.12；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（30 条命令、32 项测试，按固定顺序串行执行）。
+1. **环境准备**：Node.js ≥ 22.12；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（31 条命令、33 项测试入口，按固定顺序串行执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 
@@ -88,7 +88,7 @@
    | `CORVID_TEST_DOWNLOAD_DIR` | 下载测试目标目录，绕开系统保存对话框 |
 
    默认数据目录为 `~/.corvid`。
-4. **持久化文件**：`rooms.json`（`schemaVersion=1`，旧 `spaces.json` 自动迁移一次）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`control.json`（Bearer token，0600）。
+4. **持久化文件**：`rooms.json`（`schemaVersion=2`，v1 单窗口会话迁移，旧 `spaces.json` 自动迁移一次）、`library.json`（`schemaVersion=1`，历史/书签/下载）、`profiles.json`、`control.json`（Bearer token，0600）。
 5. **运行前提**：普通终端直接执行 `npm test`；在沙箱/CI 环境需要清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。当前只在 macOS 验证。
 6. **测试替身与人工验证**：自动化中的系统对话框是测试替身；真实保存对话框、原生权限提示、原生 beforeunload 必须单独做人工验证并写入验证记录。
 7. **CLI**：先启动桌面，并使用相同的 `CORVID_DATA_DIR`，再运行 `node cli/corvid.mjs run < script.mjs`；脚本在 Node 中执行（`AsyncFunction`，无静态 `import`/`export`），拥有本地用户权限。`node cli/corvid.mjs help` 查看入口说明。
