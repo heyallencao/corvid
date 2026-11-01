@@ -61,7 +61,8 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   }
   async function prepare({ profileId, roomId, tabId }) {
     const context = await readContext({ dataDir, profileId, roomId, tabId });
-    return { profileId, roomId, tabId, label: context.label, url: context.url, title: context.title, snapshot: JSON.stringify(context.snapshot).slice(0, 12_000) };
+    const snapshotText = JSON.stringify(context.snapshot);
+    return { profileId, roomId, tabId, label: context.label, url: context.url, title: context.title, snapshot: snapshotText.slice(0, 12_000), snapshotTruncated: snapshotText.length > 12_000 };
   }
   async function start({ profileId, roomId, tabId, prompt, includePageContext, contextPreview }) {
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
@@ -82,9 +83,11 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
       const payload = `用户任务：\n${task.prompt}\n\n用户明确确认共享的当前页面上下文（仅限此 Room 的 ${context.label}）：\n${JSON.stringify({ url: context.url, title: context.title, snapshot: consentedSnapshot })}`;
       void Promise.resolve(created.session.prompt(payload)).then(() => {
         if (task.status !== 'running') return;
+        task.piSessionFile = created.session.sessionFile || task.piSessionFile;
         task.status = 'completed'; addEvent(task, 'completed', 'Pi Agent 已结束本轮任务'); sessions.delete(task.id); created.session.dispose?.();
       }, error => {
         if (task.status !== 'running') return;
+        task.piSessionFile = created.session.sessionFile || task.piSessionFile;
         task.status = 'failed'; task.error = String(error?.message || error).slice(0, 1_000); addEvent(task, 'error', `Pi Agent 未完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
       });
       return copy(task);
@@ -95,6 +98,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   function stop(taskId) {
     const task = taskById(taskId), session = sessions.get(taskId);
     if (!session || task.status !== 'running') return copy(task);
+    task.piSessionFile = session.sessionFile || task.piSessionFile;
     task.status = 'interrupted'; addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
     sessions.delete(taskId); session.abort?.(); session.dispose?.();
     return copy(task);
