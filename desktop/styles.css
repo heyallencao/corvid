@@ -174,6 +174,9 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-task-event { padding: 2px 3px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .pi-task-event[data-type="error"] { color: var(--danger); }
 .pi-task-event[data-type="waiting_for_user"] { color: var(--warning); }
+.pi-task-error { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid #f3d2d2; border-radius: var(--radius-sm); background: #fff7f7; color: var(--danger); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.pi-task-error strong { font-size: 10px; }
+.pi-task-recovery-note { padding: 2px 3px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 .agent-room-entry { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 6px; padding: 10px 5px; border-bottom: 1px solid #eff0f2; }
 .agent-room-entry .agent-room-name { grid-column: 1 / -1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .agent-room-entry .agent-room-state { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }

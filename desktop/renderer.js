@@ -163,13 +163,18 @@ async function renderPiTasks(){
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
-      if(task.piSessionFile&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const resume=button(piContinueTaskId===task.id?'收起继续对话':'继续对话',()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续 Pi 任务':'';meta.append(resume);}
+      if(task.piSessionFile&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续 Pi 任务':'';meta.append(resume);}
       meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;await renderPiTasks();}));
     }
     row.append(meta);
     for(const turn of task.conversation||[]){const message=document.createElement('div');message.className=`pi-task-output ${turn.role==='user'?'from-user':'from-pi'}`;message.dataset.role=turn.role;message.setAttribute('aria-label',turn.role==='user'?'你':'Pi');message.textContent=turn.text|| (turn.status==='running'?'Pi 正在回复…':'');row.append(message);}
-    for(const event of task.events||[]){const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=event.text;line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
-    if(task.error){const error=document.createElement('div');error.setAttribute('role','alert');error.textContent=task.error;row.append(error);}
+    for(const event of task.events||[]){if(task.error&&event.type==='error'&&String(event.text||'').includes(task.error))continue;const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=event.text;line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
+    if(task.status==='failed'){
+      const failure=document.createElement('div');failure.className='pi-task-error';failure.setAttribute('role','alert');
+      const heading=document.createElement('strong');heading.textContent='任务未完成';failure.append(heading);
+      const reason=document.createElement('span');reason.textContent=task.error||'Pi 未能完成此任务。';failure.append(reason);row.append(failure);
+      if(!task.piSessionFile){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='当前任务没有可恢复的 Pi transcript。打开 Room 检查页面后，重新发起任务。';row.append(guidance);}
+    } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=task.error;row.append(error);}
     if(piContinueTaskId===task.id)appendContinuationComposer(row,task);
     list.append(row);
   }
