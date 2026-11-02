@@ -64,7 +64,31 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(sessionFile && !path.resolve(sessionFile).startsWith(`${path.resolve(directory)}${path.sep}`))throw new Error('Fixture transcript must remain inside the task directory');
   const listeners=new Set();
   let abortActive;
-  return {session:{sessionFile:transcript,subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},async prompt(message){const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('Pi session could not be resumed');if(message.includes('[fixture:hold]'))return new Promise(resolve=>{abortActive=()=>{abortActive=null;resolve({stopReason:'aborted'});};});for(const listener of listeners){listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});}return {stopReason:'stop'};},dispose(){},async abort(){abortActive?.();}},sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
+  const session={
+    sessionFile:transcript,
+    subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
+    async prompt(message){
+      const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;
+      fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});
+      if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');
+      if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('Pi session could not be resumed');
+      if(message.includes('[fixture:hold-stop-late]'))return new Promise(resolve=>{abortActive=async()=>{
+        await new Promise(done=>setTimeout(done,120));
+        for(const listener of listeners){
+          listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'迟到的停止后输出'}});
+          listener({type:'tool_execution_start',toolName:'late_fixture_tool'});
+        }
+        abortActive=null;resolve({stopReason:'aborted'});
+      };});
+      if(message.includes('[fixture:hold-stop-fails]'))return new Promise(()=>{abortActive=async()=>{throw new Error('本地 fixture 无法确认停止');};});
+      if(message.includes('[fixture:hold]'))return new Promise(resolve=>{abortActive=()=>{abortActive=null;resolve({stopReason:'aborted'});};});
+      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});
+      return {stopReason:'stop'};
+    },
+    dispose(){},
+    async abort(){await abortActive?.();}
+  };
+  return {session,sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
 };
 let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitting = false, restoring = false, frontView = null;
 // Multi-window support. Each record owns its BrowserWindow plus the per-window

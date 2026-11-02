@@ -194,7 +194,8 @@ async function renderPiTasks(){
       const reason=document.createElement('span');reason.textContent=userFacingAgentError(task.error,'Agent 未能完成此轮对话，请检查模型连接后重试。');failure.append(reason);row.append(failure);
       if(!task.hasSession){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开 Room 检查页面后，再重新开始。';row.append(guidance);}
     } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=userFacingAgentError(task.error);row.append(error);}
-    if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但当前运行环境暂不支持继续。可以切回兼容环境后再试，或从 Room 重新开始。';row.append(recovery);}
+    if(task.stopUnconfirmed){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='无法确认上一轮是否已停止。对话记录已保留；请检查模型服务和页面状态，再从新对话继续。';row.append(recovery);}
+    else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但当前运行环境暂不支持继续。可以切回兼容环境后再试，或从 Room 重新开始。';row.append(recovery);}
     list.append(row);
   }
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';empty.innerHTML='<span class="pi-welcome-mark">✳</span><h3>让 Corvid Agent 帮你读懂网页</h3><p>提问、总结或开始一项浏览任务。先检查页面内容，再决定是否分享给 Agent。</p>';list.append(empty);}
