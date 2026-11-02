@@ -80,10 +80,10 @@ function writeChromeCookies(profileDir,key){
   database.close();
 }
 
-function addChromeCookie(profileDir,name,value){
+function addChromeCookie(profileDir,name,value,{host='auth.example.test',cookiePath='/'}={}){
   const database=new DatabaseSync(path.join(profileDir,'Cookies'));
   const add=database.prepare('INSERT INTO cookies VALUES(?,?,?,?,?,?,?,?,?,?,?)');
-  add.run('auth.example.test',name,value,Buffer.alloc(0),'/',0,0,0,0,2,'');
+  add.run(host,name,value,Buffer.alloc(0),cookiePath,0,0,0,0,2,'');
   database.close();
 }
 
@@ -392,6 +392,50 @@ async function allowCookieImport(shell){
       assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex'),sourceAfterFixture,'partial and retried imports must not modify Chrome source data');
       await shell.locator('#cancel-chrome-import').click();
       await app.close();app=undefined;
+
+      addChromeCookie(path.join(chromeRoot,'Default'),'rollback_subject','fixture-rollback-value',{host:'.example.test',cookiePath:'/app'});
+      for(const failure of ['remove','restore']){
+        const rollbackData=path.join(tempRoot,`cookie-${failure}-rollback-data`);
+        const injection={
+          CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),
+          CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',
+          [`CORVID_TEST_CHROME_COOKIE_${failure.toUpperCase()}_FAIL_NAME`]:'rollback_subject',
+        };
+        ({app,shell,call}=await boot(rollbackData,injection));
+        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.locator('#skip-chrome-import').click();
+        await shell.locator('#show-settings').click();
+        await shell.locator('#start-chrome-import').click();
+        await installDialogFixture(app,chromeRoot);
+        await chooseSource(shell);
+        await app.evaluate(async({session})=>{
+          const destination=session.fromPartition('persist:corvid');
+          await destination.cookies.set({url:'http://example.test/',domain:'.example.test',name:'rollback_subject',value:'preserve-original-value',path:'/',expirationDate:1893456000});
+          await destination.cookies.flushStore();
+        });
+        await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+        await allowCookieImport(shell);
+        await shell.locator('#confirm-chrome-import').click();
+        const rollbackStatus=shell.locator('#chrome-import-error');
+        await rollbackStatus.getByText(/回滚未完整完成/).waitFor();
+        assert.equal(await rollbackStatus.getAttribute('data-partial'),'true',`${failure} failure must be shown as a partial rollback`);
+        assert.equal(await rollbackStatus.getAttribute('data-success'),null,`${failure} failure must not appear successful`);
+        assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,`${failure} failure must leave retry available`);
+        assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,`${failure} retry must keep the destination Profile fixed`);
+        assert.match(await rollbackStatus.textContent(),new RegExp(failure==='remove'?'删除本次新增 Cookie':'恢复目标 Profile 原有 Cookie'));
+        const afterRollback=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'rollback_subject'}));
+        assert.equal(afterRollback.find(cookie=>cookie.path==='/')?.value,failure==='remove'?'preserve-original-value':undefined,`${failure} failure must expose whether the preexisting Cookie was restored`);
+        assert.equal(afterRollback.find(cookie=>cookie.path==='/app')?.value,failure==='remove'?'fixture-rollback-value':undefined,`${failure} failure must report whether the imported Cookie remains`);
+        await shell.locator('#confirm-chrome-import').click();
+        await rollbackStatus.getByText(/Cookie 新增/).waitFor();
+        assert.equal(await rollbackStatus.getAttribute('data-success'),'true',`${failure} recovery retry must complete successfully`);
+        const afterRetry=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'rollback_subject'}));
+        assert.equal(afterRetry.find(cookie=>cookie.path==='/')?.value,failure==='remove'?'preserve-original-value':undefined,'retry must not claim restoration of a Cookie whose rollback failed');
+        assert.equal(afterRetry.find(cookie=>cookie.path==='/app')?.value,'fixture-rollback-value','retry must eventually import the selected Chrome Cookie');
+        await app.close();app=undefined;
+      }
     }
 
     const pendingData=path.join(tempRoot,'pending-corvid-data');
@@ -415,7 +459,7 @@ async function allowCookieImport(shell){
     await delay(300);
     assert.equal(await shell.locator('#chrome-import-onboarding').evaluate(element=>element.open),false,'existing Corvid profiles must not get first-run onboarding');
     await app.close();app=undefined;
-    console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, per-Cookie write failure reporting/retry, extension version/failure handling, content execution, disable/remove and restart restore');
+    console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, per-Cookie write failure/retry, rollback delete/restore failures and retry, extension version/failure handling, content execution, disable/remove and restart restore');
   }finally{
     if(app)await app.close().catch(()=>{});
     if(server)await new Promise(resolve=>server.close(resolve));
