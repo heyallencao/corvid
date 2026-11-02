@@ -168,7 +168,9 @@ async function selectAllExtensions(shell){
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
-    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'}:{ }));
+    const testEnv={CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE:'1'};
+    if(supportsCookieImport)Object.assign(testEnv,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'});
+    ({app,shell,call}=await boot(appData,testEnv));
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     assert.equal(await app.evaluate(()=>globalThis.chromeImportDialogCalls||0),0,'first launch must not scan or open Chrome');
     await installDialogFixture(app,chromeRoot);
@@ -196,12 +198,20 @@ async function selectAllExtensions(shell){
       await shell.locator('#start-chrome-import').click();
       await chooseSource(shell);
     }
+    await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved','title':'已有书签'});
+    const libraryBeforeFailedImport=fs.readFileSync(path.join(appData,'library.json'));
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
     if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
+    await shell.locator('#chrome-import-error').getByText('测试注入：Chrome 导入浏览资料库替换失败').waitFor();
+    assert.deepEqual(fs.readFileSync(path.join(appData,'library.json')),libraryBeforeFailedImport,'failed Chrome library replacement must preserve the existing library bytes');
+    assert.equal(fs.existsSync(path.join(appData,'library.json.tmp')),false,'failed Chrome library replacement must remove its temporary file');
+    assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved'],'failed import must not partially append Chrome bookmarks');
+    assert.equal((await call('/history')).history.length,0,'failed import must not partially append Chrome history');
+    await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
-    assert.equal((await call('/bookmarks')).bookmarks.length,1);
+    assert.equal((await call('/bookmarks')).bookmarks.length,2);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
     if(supportsCookieImport){
@@ -229,7 +239,7 @@ async function selectAllExtensions(shell){
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
-    assert.equal((await call('/bookmarks')).bookmarks.length,1,'repeat import must be idempotent');
+    assert.equal((await call('/bookmarks')).bookmarks.length,2,'repeat import must be idempotent');
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'repeat extension import must skip the existing extension');
     await shell.locator('#cancel-chrome-import').click();
     const work=await call('/profiles','POST',{name:'Imported work'});
@@ -252,7 +262,7 @@ async function selectAllExtensions(shell){
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(/扩展新增 1 项/).waitFor();
     assert.equal((await call(`/bookmarks?profileId=${work.id}`)).bookmarks[0].title,'书签 1');
-    assert.equal((await call('/bookmarks?profileId=default')).bookmarks[0].title,'书签 0');
+    assert.ok((await call('/bookmarks?profileId=default')).bookmarks.some(item=>item.title==='书签 0'));
     await shell.locator('#cancel-chrome-import').click();
     await shell.getByRole('button',{name:'新建标签'}).click();
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
