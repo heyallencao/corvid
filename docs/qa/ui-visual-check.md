@@ -1,5 +1,20 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 Agent 工作区任务状态播报合同
+
+- 环境：macOS 真实 Electron、临时 Corvid 数据目录、确定性任务 fixture；未连接真实模型或 Provider。
+- 检查：`tests/agent-rooms-panel-e2e.cjs` 先在旧实现上因稳定播报区不存在而失败；修复后验证 `#agent-room-announcer` 的 `role=status`、`aria-live=polite`、`aria-atomic=true`，Agent Room 列表重绘后节点身份不变，任务停止与接管状态变化写入稳定播报区。
+- REA 边界：本地 `file://` shell 不在 REA 可检查的浏览器目标中，REA 页面检查拒绝该目标；本项行为由真实 Electron E2E 断言，不把 DOM 合同当成屏幕阅读器播报证据。
+- 限制：未使用 VoiceOver 或其他屏幕阅读器，不证明不同辅助技术实际播报顺序、打断策略或体验；未做新的像素截图检查。
+
+## 2026-11-03 内置 Agent 状态可访问播报（Issue #16）
+
+- 环境：本机 macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 与确定性 Agent fixture；未调用真实模型、Provider 或 OAuth。
+- 运行态边界：REA 对本机 CDP 的页面清单 Evidence `ev_093cc98569763990cf050b1121488623a685d612f7f9ff420a2148a047289b45` 只列出 HTTP(S) 页面，Corvid shell 的 `file://` 页面被排除；随后 REA 被动页面检查明确拒绝该目标。改用 CUA 读取原生可访问树，确认 Corvid Agent 的入口、空态标题、页面提示和任务输入框可访问；这不等于 VoiceOver 实际播报验收。
+- 基线与修复：`renderPiTasks()` 每次刷新都会替换整段任务列表，原任务状态虽然临时带有 `role=status`，节点本身却随着整段列表重建。新增稳定挂载的 `#pi-task-announcer`，在所选任务状态或空间控制状态变化时以 `role=status`、`aria-live="polite"`、`aria-atomic="true"` 播报；流式回复增量不会触发播报。
+- 验证：`tests/pi-workbench-e2e.cjs` 的真实 Electron 红测先因缺少稳定播报区失败；修复后 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0，断言 live region 属性、接管前后节点身份不变，以及“等待你接管/用户控制中”播报。`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs` 与 `git diff --check` 通过。
+- 限制：未在 VoiceOver 下验证实际语音/盲文输出，未完成整个浏览与 Agent 流程的键盘及辅助技术验收；REA 不支持直接检查当前 `file://` shell 页面。
+
 ## 2026-11-03 新标签起始页与后台 Agent Room 共存（Issue #98）
 
 - 环境：本机 macOS、真实 Electron、隔离数据目录、本地 HTTP fixture；未使用真实 Profile、Cookie、网站、模型或 OAuth。

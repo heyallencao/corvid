@@ -1,5 +1,21 @@
 # 验证记录
 
+## 2026-11-03 Agent 工作区列表状态可访问播报（Issue #16）
+
+- 缺口：Agent 工作区列表整块重绘，列表中的临时 `role=status` 随节点销毁，状态变化无法依靠稳定的 live region 播报。
+- 修复：在面板内稳定保留 polite、atomic 的 status 区；仅对任务状态或空间控制权变化更新文案，面板关闭时隐藏播报区；状态快照建立后新增任务也会被播报。
+- 红绿验证：旧实现运行 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` 时因 `#agent-room-announcer` 不存在失败；修复后真实 Electron 回归通过，验证状态区属性、列表重绘前后 DOM 节点身份不变、任务行不生成重复 live region、关闭面板时清空旧播报，以及任务停止和空间接管时的任务状态与控制权文案。
+- 其他检查：`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check` 通过；未运行全量 `npm test`。
+- 边界：REA 无法检查本地 `file://` shell；E2E 证明 DOM live region 合同，不证明 VoiceOver 或其他屏幕阅读器的实际播报。
+
+## 2026-11-03 内置 Agent 状态可访问播报（Issue #16）
+
+- 缺口：`renderPiTasks()` 每轮会替换任务列表；列表内临时创建的 `role=status` 随即销毁，无法保证辅助技术收到稳定区域的状态更新。
+- 修复：在工作台中保留稳定挂载的 polite live region；仅当当前所选任务状态或空间控制状态变化时播报，不重复朗读逐字回复。
+- 红绿验证：真实 Electron E2E 在修复前因 `#pi-task-announcer` 不存在失败；修复后断言 `role=status`、`aria-live=polite`、`aria-atomic=true`、状态切换时 live region 节点身份不变，以及接管状态和空间控制状态均有更新。
+- 命令：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`、`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 均通过。未运行全量 `npm test`。
+- 运行态证据：REA CDP 页面清单 Evidence `ev_093cc98569763990cf050b1121488623a685d612f7f9ff420a2148a047289b45` 不包含本地 `file://` shell；REA `inspect_web_page` 拒绝该目标。CUA 原生可访问树可见工作台入口与空态语义；未用 VoiceOver 验证实际播报。
+
 ## 2026-11-03 地址栏草稿在状态刷新中丢失（Issue #101）
 
 - 根因：创建空间对话框关闭后，延迟到达的 `shell-state` 会触发 `draw()`；如果这时地址栏已失焦，旧逻辑会用当前页面 URL 覆盖刚输入但尚未提交的地址，导致 Enter 提交空字符串，页面仍停留在 `about:blank`。问题是浏览器交互缺陷，不是标签无障碍角色选错。

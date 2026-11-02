@@ -168,7 +168,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     let restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart');})();
     await restoredShell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
-    await restoredShell.getByText(/等待检查/).waitFor();
+    await restoredShell.locator('.pi-task-state').getByText('等待检查',{exact:true}).waitFor();
     const restored=readSavedTasks(dataDir)[0];
     assert.equal(restored.status,'interrupted');
     assert.equal(restored.roomId,savedTasks[0].roomId);
@@ -278,6 +278,12 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await restoredShell.getByLabel(/我已检查/).check();
     await restoredShell.getByRole('button',{name:'发送'}).click();
     await restoredShell.locator('.pi-task-state[data-status="running"]').waitFor();
+    const taskAnnouncement=restoredShell.locator('#pi-task-announcer');
+    await taskAnnouncement.waitFor();
+    assert.equal(await taskAnnouncement.getAttribute('role'),'status','Agent status changes use one live region that exists before updates');
+    assert.equal(await taskAnnouncement.getAttribute('aria-live'),'polite');
+    assert.equal(await taskAnnouncement.getAttribute('aria-atomic'),'true');
+    await taskAnnouncement.evaluate(region=>{window.__taskStatusRegion=region;});
     let handoffTask=readSavedTasks(dataDir)[0];
     const handoffTaskId=handoffTask.id,handoffRoomId=handoffTask.roomId,handoffTabId=handoffTask.tabId,handoffTranscript=handoffTask.sessionRef?.data?.sessionFile;
     await restoredShell.getByRole('button',{name:'打开空间'}).click();
@@ -285,6 +291,9 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await restoredShell.locator('.pi-task-event').getByText(/你已接管此空间；Agent 已暂停/).waitFor();
     assert.equal(await restoredShell.locator('.pi-task-state').textContent(),'等待你接管');
     assert.equal(await restoredShell.locator('.pi-task-control-state').textContent(),'用户控制中');
+    assert.equal(await taskAnnouncement.evaluate(region=>window.__taskStatusRegion===region),true,'the live status region stays mounted while task and Room states change');
+    assert.match(await taskAnnouncement.textContent(),/等待你接管/);
+    assert.match(await taskAnnouncement.textContent(),/用户控制中/);
     handoffTask=readSavedTasks(dataDir)[0];
     assert.equal(handoffTask.status,'waiting_for_user');
     let controlledState=await (await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}})).json();
