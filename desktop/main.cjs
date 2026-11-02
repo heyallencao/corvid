@@ -603,6 +603,17 @@ async function closeTab(tabId) {
   tabs.delete(tabId);s.tabIds=s.tabIds.filter(x=>x!==tabId);
   if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;update();
 }
+async function ensureUserRoomHasStartTab(room) {
+  if(!rooms.includes(room) || room.ownership!=='user' || room.tabIds.length) return;
+  await createTab(room.id,'about:blank',id(),{openedBy:'user'});
+}
+async function closeTabFromBrowserUi(tab) {
+  const room=findRoom(tab.roomId);
+  await runAction.releasePointer(tab.view.webContents);
+  await closeTab(tab.id);
+  await ensureUserRoomHasStartTab(room);
+  return {closed:true};
+}
 async function closeRoom(roomId) {
   const s=findRoom(roomId);let count=0;
   for(const tabId of [...s.tabIds]){try{await closeTab(tabId);count++;}catch(error){if(count)throw new Error(`${error.message}；已有 ${count} 个标签关闭`);throw error;}}
@@ -890,9 +901,7 @@ async function dispatch(method, args = {}, fromApi = false) {
         if(choice.response!==1) return {closed:false};
         if(tabs.get(target)!==tab || !tab.pinned) throw new Error('确认期间标签已改变，请重新操作');
       }
-      await runAction.releasePointer(tab.view.webContents);
-      await closeTab(target);
-      return {closed:true};
+      return closeTabFromBrowserUi(tab);
     }
     case 'closeOtherTabs': {
       if(fromApi) throw new Error('User action required');
@@ -992,7 +1001,11 @@ async function dispatch(method, args = {}, fromApi = false) {
       return {revoked:true,origin};
     }
     case 'closeRoom': {const s=findRoom(target);for(const tabId of s.tabIds)await runAction.releasePointer(findTab(tabId).view.webContents);await closeRoom(target); return {ok:true};}
-    case 'closeTab': await runAction.releasePointer(findTab(target).view.webContents);await closeTab(target); return {ok:true};
+    case 'closeTab': {
+      const tab=findTab(target);
+      if(!fromApi) return closeTabFromBrowserUi(tab);
+      await runAction.releasePointer(tab.view.webContents);await closeTab(target);return {ok:true};
+    }
     case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError)t.navigationError={url,message:navigationFailureMessage(error.errno,error.message)};update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
     case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);const beforePopup=t.popupSequence;const result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground}); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}

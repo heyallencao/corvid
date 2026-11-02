@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-03 关闭最后一个用户标签后返回起始页（Issue #108）
+
+- 行为决策：用户空间关闭最后一个标签后保留原空间、Profile 和窗口，并在同一空间创建由用户打开的 `about:blank` 起始页；仅在原页成功关闭后创建。Agent/API 关闭路径不补建用户起始页。
+- 参考边界：EGO Lite 0.6.1.13 Agent API 运行态中，关闭唯一 Agent Page 后观察到活动的 `about:blank` 未托管标签；这只证明其 Agent Page close API 行为，不代表用户手动关闭最后标签的 EGO UI。产品策略依据 Corvid 的持久用户空间合同，不把未观察的 EGO 行为当作事实。
+- 实现：浏览器关闭按钮、中键和 Cmd/Ctrl+W 共用用户空间收尾；页面通过 `beforeunload` 阻止关闭时保留原标签且不生成替代标签；Agent/API 的 `closeTab` 仍按既有 Agent 生命周期关闭。
+- 红绿验证：先加真实 Electron E2E，旧实现因最后标签关闭后仍无起始页而超时；完成后覆盖关闭按钮、中键、Cmd/Ctrl+W、空间/Profile/窗口/所有权保持、起始页可用、beforeunload 取消及 Agent SDK 关闭边界。
+- 命令：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` EXIT 0；`node --check desktop/main.cjs`、`node --check tests/tab-ux-e2e.cjs`、`git diff --check` 通过。未运行全量 `npm test`，没有 OAuth 或模型请求。
+- 限制：macOS 开发版、本地夹具；beforeunload 由测试替身确认；未验证 Windows/Linux、打包版、多窗口竞态、VoiceOver 或真实网站。浅色起始页截图 SHA-256 `3c0de8a57cfb62c015af8a7251062e559d80ebcb55f96640fcb9c9d90d6d0a97`，2096×1412，留在本机 `/tmp/corvid-last-tab.png`；目视结果见 QA 视觉记录。
+
 ## 2026-11-03 新标签起始页跟随系统深色主题（Issue #16）
 
 - 缺口：浏览器壳和 Agent 工作区已跟随系统主题，但独立 `WebContentsView` 的新标签起始页使用写死的浅色值，暗色下成为亮色孤岛。
