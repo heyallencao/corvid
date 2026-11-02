@@ -39,6 +39,7 @@ let panelOpen = false;
 const selectedChromeSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
+let failChromeCookieSetNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'';
 async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
@@ -596,7 +597,7 @@ async function dispatch(method, args = {}, fromApi = false) {
         if(chosenExtensionIds.some(extensionId=>!sourceExtensions.some(extension=>extension.id===extensionId)))throw new Error('Chrome 扩展清单已变化，请重新预览');
       }else if(chosenExtensionIds!==undefined&&(!Array.isArray(chosenExtensionIds)||chosenExtensionIds.length))throw new Error('扩展 ID 只能与扩展导入类别一起提交');
       const destinationSession=session.fromPartition(partitionFor(profileId));
-      const cookieResult={imported:0,skipped:0,unsupported:0},addedCookies=[];
+      const cookieResult={imported:0,skipped:0,unsupported:0,failed:0},addedCookies=[];
       const rollbackCookies=async()=>{
         const failures=[];
         for(const {cookie,previous} of [...addedCookies].reverse()){
@@ -621,8 +622,10 @@ async function dispatch(method, args = {}, fromApi = false) {
             if(existing.some(item=>item.domain===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
             const {sourceDomain,hostOnly,...cookieDetails}=cookie;
             if(!hostOnly)cookieDetails.domain=sourceDomain;
-            try{await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;}
-            catch{cookieResult.unsupported++;}
+            try{
+              if(failChromeCookieSetNameForTest===cookie.name){failChromeCookieSetNameForTest='';throw new Error('测试注入：Chrome Cookie 单项写入失败');}
+              await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;
+            }catch{cookieResult.failed++;}
           }
           await flushChromeCookies(destinationSession);
         }
@@ -646,7 +649,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             extensions.failed.push({id:extension.id,name:extension.name,error:String(error?.message||error).slice(0,300)});
           }
         }
-        selectedChromeSources.delete(args.sourceToken);
+        if(!cookieResult.failed)selectedChromeSources.delete(args.sourceToken);
         return {...result,cookies:cookieResult,extensions,profileId};
       }catch(error){
         try{await rollbackCookies();}catch(rollbackError){throw new Error(`${error.message}；${rollbackError.message}`);}
