@@ -112,6 +112,29 @@ async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
   await destinationSession.cookies.flushStore();
 }
+function verifyChromeCookiesPersisted(destinationSession,addedCookies){
+  const persistentCookies=addedCookies.filter(({cookie})=>Number.isFinite(cookie.expirationDate));
+  if(!persistentCookies.length)return;
+  const storagePath=destinationSession.getStoragePath();
+  let database;
+  try{
+    // Chromium can resolve flushStore while a read-only Profile directory prevents persistent Cookies from reaching disk. Verify identity metadata only; never read Cookie values.
+    if(!storagePath)throw new Error('Cookie 存储目录不可用');
+    const databasePath=[path.join(storagePath,'Cookies'),path.join(storagePath,'Network','Cookies')].find(candidate=>fs.existsSync(candidate));
+    if(!databasePath||!fs.lstatSync(databasePath).isFile())throw new Error('Cookie 数据库不可用');
+    const {DatabaseSync}=require('node:sqlite');
+    database=new DatabaseSync(databasePath,{readOnly:true});
+    const hasCookie=database.prepare('SELECT 1 FROM cookies WHERE host_key = ? AND name = ? AND path = ? LIMIT 1');
+    for(const {cookie} of persistentCookies){
+      const hostKey=cookie.domain||new URL(cookie.url).hostname;
+      if(!hasCookie.get(hostKey,cookie.name,cookie.path||'/'))throw new Error('Cookie 未写入数据库');
+    }
+  }catch{
+    throw new Error('Chrome Cookie 持久化校验失败，未能确认本次导入的持久 Cookie 已写入磁盘。为保护目标 Profile 原有 Cookie，已撤回可安全撤回的本次修改。请确认目标 Profile 数据目录可写后，在同一来源和目标 Profile 下重试。');
+  }finally{
+    try{database?.close();}catch{}
+  }
+}
 function activeRecord() {
   if (window && !window.isDestroyed()) {
     for (const record of windowRecords.values()) if (record.browserWindow === window) return record;
@@ -690,7 +713,7 @@ async function dispatch(method, args = {}, fromApi = false) {
           }catch{failures.push('删除本次新增 Cookie');}
         }
         if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}
-        if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。目标 Profile 中可能仍留有部分 Cookie，请检查后再重试。`);
+        if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。为保护目标 Profile 原有 Cookie，本次跳过无法按路径安全执行的删除回滚；本次导入的 Cookie 可能仍保留在目标 Profile。请在当前对话框中重试；关闭对话框或重启 Corvid 后，请重新选择同一 Chrome 来源和目标 Profile，再次点击“导入”以补写持久化结果。`);
       };
       try{
         if(args.categories.includes('cookies')){
@@ -708,6 +731,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             }catch{cookieResult.failed++;}
           }
           await flushChromeCookies(destinationSession);
+          verifyChromeCookiesPersisted(destinationSession,addedCookies);
         }
         const libraryCategories=args.categories.filter(category=>category!=='extensions');
         const result=libraryCategories.length?library.importChromeData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};

@@ -30,6 +30,16 @@
 - 仅通过 renderer 事件 fixture 打开并取消弹窗；未登录 Provider、未触发 OAuth、未调用模型、未消耗模型额度。
 - 边界：这证明 Corvid UI 的错误归一化与取消呈现，不证明真实 Provider 登录流程、系统浏览器回调或屏幕阅读器体验。
 
+## 2026-11-03 Chrome Cookie 持久化核验与重启恢复（Issue #77）
+
+- 保持按 URL/name 无法限制 path 时不删除同名旧 Cookie 的保护逻辑；部分回滚提示说明当前窗口可重试，关闭窗口或重启后需重新选择同一 Chrome 来源和目标 Profile 再导入。
+- [Electron Cookies API 文档](https://www.electronjs.org/docs/latest/api/cookies) 描述 `flushStore()` 返回解析时 Cookie store 已 flush，但没有承诺底层文件系统写错误会拒绝该 Promise；本地 REA 运行观察补足了这个边界。
+- REA 控制运行捕获 `ev_8d853848b440ca0bd610373e772629c9ea104b4c8657e247176e8589c13da474` 在 macOS arm64 隔离数据目录中观察到：普通用户对 Profile 目录的写权限为 false，`cookies.set()` 与 `flushStore()` 均解析；主进程 `SIGKILL` 并重启后目标 Cookie 不存在。文件系统快照不记录 syscall；另由 E2E 的 `writeFileSync` 断言确认只读目录返回 `EACCES`。
+- 新增落盘核验：`flushStore()` 后用只读 SQLite 检查新导入的持久 Cookie 域名、名称和路径，不读取值；缺库、查询错误或缺少任一记录时撤回可安全撤回的本次 Cookie，显示错误并保留重试来源。会话 Cookie 仍按不跨重启保留的既有语义处理。
+- 运行时会为 Node 内置 `node:sqlite` 发出 `ExperimentalWarning`；当前只读查询依赖 Chromium Cookies 表结构，Electron/Node 升级时需要复核 API 与表结构兼容性。
+- 隔离真实 Electron E2E 覆盖真实只读 Profile 目录、静默 flush、失败呈现、内存回滚、强杀、恢复权限、重新选择 Chrome 来源导入及再次重启验证持久 Cookie。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs`：通过。
+- 边界：未模拟磁盘满、SQLite 部分写入/损坏、核验前断电或未来 Chromium 数据库格式变化；SQLite 表/路径变化时当前核验会失败关闭。未访问真实 Chrome Profile 或系统钥匙串；Issue 保持开放。
+
 ## 2026-11-03 Corvid Agent 运行时错误变体隔离（Issue #89）
 
 - 扩展界面错误归一化规则，覆盖大小写、空格/连字符/下划线组合的 Pi runtime/SDK/session/agent 标识及 Pi 包名；内部错误格式变体统一映射到 Corvid Agent 提示。
