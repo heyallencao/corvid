@@ -6,6 +6,7 @@ function userFacingAgentError(error, fallback='Corvid Agent 暂时无法完成�
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null;
 let chromeImportOnboardingPrompted=false;
 const piModelControlVersions=new WeakMap();
+let agentRoomRenderVersion=0;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
@@ -86,7 +87,7 @@ document.querySelector('#page-dialog').onclose=()=>api.invoke('setPanel',{open:B
 let libraryRenderVersion=0;
 async function renderLibrary() {
   if (!libraryKind) return;
-  if(libraryKind==='agent-rooms'){renderAgentRooms();return;}
+  if(libraryKind==='agent-rooms'){await renderAgentRooms();return;}
   if(libraryKind==='pi-workbench'){renderPiWorkbench();return;}
   const kind = libraryKind, profileId=state.activeProfileId, version=++libraryRenderVersion; const result = await api.invoke(kind,{profileId}); if (version!==libraryRenderVersion || libraryKind !== kind || state.activeProfileId!==profileId) return;
   const panel=document.querySelector('#library');panel.dataset.kind=kind;
@@ -117,12 +118,17 @@ async function renderLibrary() {
   }
   if (!matching.length) items.textContent = query && result[kind].length ? '没有匹配结果' : kind === 'history' ? '暂无浏览历史' : kind === 'downloads' ? '暂无下载' : '暂无书签';
 }
-function renderAgentRooms(){
+async function renderAgentRooms(){
+  const version=++agentRoomRenderVersion,profileId=state.activeProfileId;
+  const result=await api.invoke('piTasks',{profileId});
+  if(version!==agentRoomRenderVersion||libraryKind!=='agent-rooms'||state.activeProfileId!==profileId)return;
   const panel=document.querySelector('#library'),items=document.querySelector('#library-items');
   panel.dataset.kind='agent-rooms';
   document.querySelector('#library-title').textContent='Agent 工作区';
   document.querySelector('#library-search').hidden=true;
   const rooms=state.rooms.filter(room=>room.profileId===state.activeProfileId&&(room.ownership==='agent'||room.yielded||room.finished));
+  const tasksByRoom=new Map();
+  for(const task of result.tasks){const tasks=tasksByRoom.get(task.roomId)||[];tasks.push(task);tasksByRoom.set(task.roomId,tasks);}
   items.replaceChildren();
   for(const room of rooms){
     const row=document.createElement('div');row.className='agent-room-entry';
@@ -130,9 +136,23 @@ function renderAgentRooms(){
     const status=document.createElement('span');status.className='agent-room-state';
     const ownershipLabel=room.executionRisk?'页面执行状态未知':room.userResumePending?'正在接管':room.finished?'已结束':room.ownership==='agent'?'Agent 控制中':room.yielded?'用户控制中':'空闲';
     status.textContent=`${ownershipLabel} · ${room.tabs.length} 个标签`;
+    const roomTasks=tasksByRoom.get(room.id)||[];
+    const taskStates=document.createElement('div');taskStates.className='agent-room-tasks';
+    const taskLabels={preparing:'准备中',running:'正在回复',waiting_for_user:'等待你接管',completed:'已完成',failed:'需要处理',interrupted:'等待检查'};
+    for(const task of roomTasks){
+      const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||'状态未知'}`;taskStatus.setAttribute('role','status');taskStates.append(taskStatus);
+      const openTask=button('查看对话',async()=>{
+        piSelectedTaskId=task.id;piHistoryOpen=false;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding={profileId:task.profileId,roomId:task.roomId,tabId:task.tabId};piContextPreview=null;
+        setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
+        await api.invoke('setPanel',{open:true,workspace:true});
+        renderPiWorkbench();
+      });openTask.setAttribute('aria-label',`查看 Corvid Agent 对话：${room.name} · ${taskLabels[task.status]||'任务'}`);taskStates.append(openTask);
+    }
     const view=button('查看',async()=>{await closeLibraryPanel({restoreFocus:true});await api.invoke('activateRoom',{id:room.id});});
     view.setAttribute('aria-label',`查看 ${room.name}`);
-    row.append(name,status,view);
+    row.append(name,status);
+    if(roomTasks.length)row.append(taskStates);
+    row.append(view);
     if(room.ownership==='agent'){
       const take=button(room.userResumePending?'接管中…':'接管',async()=>{controlError='';try{await api.invoke('requestUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}});
       take.disabled=room.userResumePending;take.setAttribute('aria-label',`接管 ${room.name}`);row.append(take);
@@ -181,7 +201,7 @@ async function renderPiTasks(){
     list.append(history);
   }
   for(const task of visibleTasks){
-    const row=document.createElement('article');row.className='pi-task-entry';
+    const row=document.createElement('article');row.className='pi-task-entry';row.dataset.taskId=task.id;
     const title=document.createElement('strong');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||'浏览任务';title.title=title.textContent;row.append(title);
     const context=document.createElement('div');context.className='pi-task-context';context.textContent=`Corvid Agent${task.selectedModel?.name?` · ${task.selectedModel.name}`:''} · ${task.page?.title||task.page?.url||'页面'}`;row.append(context);
     const meta=document.createElement('div');meta.className='pi-task-meta';
@@ -331,7 +351,7 @@ async function renderBookmarksBar() {
   }
   if(result.bookmarks.length>items.length){const more=button('更多书签',()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
 }
-api.onState(draw); api.onPiTasks(()=>void renderPiTasks()); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=`无法打开授权页：${userFacingAgentError(error)}`;}};if(status)status.textContent='请在浏览器完成授权，或从授权框打开登录页';return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=userFacingAgentError(event.message,'正在连接模型账号…');});
+api.onState(draw); api.onPiTasks(()=>{if(libraryKind==='pi-workbench')void renderPiTasks();else if(libraryKind==='agent-rooms')void renderAgentRooms();}); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=`无法打开授权页：${userFacingAgentError(error)}`;}};if(status)status.textContent='请在浏览器完成授权，或从授权框打开登录页';return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=userFacingAgentError(event.message,'正在连接模型账号…');});
 api.onPiAuthPrompt(async request=>{
   const prompt=request.prompt||{},dialog=document.querySelector('#pi-auth-dialog'),form=document.querySelector('#pi-auth-form'),message=document.querySelector('#pi-auth-message'),label=document.querySelector('#pi-auth-input-label');let input=document.querySelector('#pi-auth-input');
   message.textContent=userFacingAgentError(prompt.message||prompt.instructions,'请按步骤完成模型账号授权。');label.replaceChildren(document.createTextNode(prompt.type==='manual_code'?'授权码或回调链接':'授权信息'));
