@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引对应 `package.json` 的 `test` 脚本与 `tests/` 目录，共 39 项测试入口。`npm test` 共 37 条命令：1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）加 36 条独立脚本命令。索引中的序号按当前 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 41 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。全量 `npm test` 由 1 条 `node --test tests/*.e2e.mjs`（内部运行 3 个 `node:test` 文件）和 37 条独立脚本命令组成，共 40 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs` 预期启动失败外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -48,7 +48,7 @@
 | 31 | `tests/window-state-e2e.cjs` | 多窗口边界位置/尺寸写入 `window-state.json` 并按稳定窗口 ID 重启恢复；旧单窗口对象格式仍可读；状态文件损坏回退默认尺寸；已移除显示器上的位置回退到可见区域。 | macOS；最大化/全屏切换、多显示器热插拔、Windows 窗口管理规则未覆盖；窗口系统可能微调边界坐标。 |
 | 32 | `tests/multi-window-e2e.cjs` | 两个 BrowserWindow 与独立 shell UI；每窗 Room 列表隔离，控制 API 汇总所有 Room；Agent 可操作后台窗口 Room；关闭窗口将 Room 转移至剩余窗口；重启恢复窗口 ID 与 Room 归属，`rooms.json` 写为 schemaVersion=2。 | 真实 Electron + 本地 HTTP 页面夹具；macOS；未覆盖 Windows 焦点规则、多显示器窗口排列、窗口键盘切换与窗口崩溃恢复。 |
 | 33 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
-| 34 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：Agent 工作区面板开合与空态；同 Profile 多个 Agent Room 并行显示且不跨 Profile 泄露；窄窗口行布局无横向溢出；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看 Room 后面板关闭且活动 Room 更新。 | 风险复核的原生对话框由测试替身处理；本地隔离数据目录与 `about:blank` 页面；不接入真实 Agent 执行器。 |
+| 34 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：Agent 工作区面板开合与空态；书签、历史、下载、Agent Rooms 与 Pi 工作台经关闭按钮关闭后键盘焦点返回打开面板的侧栏项，面板切换时恢复目标随之更新；同 Profile 多个 Agent Room 并行显示且不跨 Profile 泄露；窄窗口行布局无横向溢出；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看 Room 后面板关闭且活动 Room 更新。 | 风险复核的原生对话框由测试替身处理；本地隔离数据目录与 `about:blank` 页面；不接入真实 Agent 执行器。 |
 | 35 | `tests/mcp-e2e.cjs` | stdio MCP initialize/tools/list/tools/call；只读与写工具 annotations；显式 Profile/Room/Tab 选择；页信息与 snapshot；本地 HTTP 导航；role 定位器 fill/press/click 并通过后续 snapshot 检查页面实际状态；拒绝 `javascript:` 导航；未知 ID、桌面离线错误；用户接管后拒绝读取和写入。 | 真实 Electron + 隔离数据目录；页面使用本地 HTTP fixture；JSON-RPC 子进程验证，不是 Claude Desktop/Cursor UI 配置、真实 MCP host 或真实网站兼容性测试。 |
 | 36 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型/provider；使用隔离 Pi 配置目录与 `about:blank` 页面，以 SDK 打开合成 transcript 验证恢复路径、task 目录边界与工具 allowlist。 |
 | 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；任务目标、执行状态、运行时/页面上下文分开展示；用户控制状态与 Pi 等待状态分开展示；Provider 断连 fixture 保留 transcript、仅播报一个失败 alert、检查上下文并重新同意后续跑同一 task/session；Session 初始化失败 fixture 不提供虚假续聊入口并给出重新发起说明；重启将未完成任务恢复为“结果待检查”，并可重新预览确认后从同一 transcript 继续；用户接管会暂停运行中 task，交还并确认后续跑同 transcript；移除记录会删除该 task 的 transcript 目录；700×420 下模型、连接状态/操作和任务输入不滚动即完整可见且不重叠。 | 不调用真实 Pi 模型或 provider；两类故障均为本地确定性 fixture，不能证明真实 provider 故障时 transcript 完整性；不替代人工视觉/屏幕阅读器检查；浏览器页面为本地 HTTP 夹具。 |

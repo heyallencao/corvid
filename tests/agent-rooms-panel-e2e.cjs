@@ -43,13 +43,47 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return result;
     };
 
-    await shell.getByRole('button', { name: 'Agent 工作区' }).click();
+    const bookmarksTrigger=shell.locator('#show-bookmarks');
+    await bookmarksTrigger.click();
+    await shell.locator('#library[data-kind="bookmarks"]').waitFor();
+    await shell.locator('#close-library').focus();
+    await shell.keyboard.press('Enter');
+    await shell.locator('#library').waitFor({ state: 'hidden' });
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-bookmarks','closing Bookmarks restores focus to the sidebar control that opened it');
+
+    for(const [kind,triggerId] of [['history','show-history'],['downloads','show-downloads']]){
+      await shell.locator(`#${triggerId}`).click();
+      await shell.locator(`#library[data-kind="${kind}"]`).waitFor();
+      await shell.locator('#close-library').focus();
+      await shell.keyboard.press('Enter');
+      await shell.locator('#library').waitFor({ state: 'hidden' });
+      assert.equal(await shell.evaluate(() => document.activeElement.id),triggerId,`closing ${kind} restores focus to its sidebar control`);
+    }
+
+    const agentRoomsTrigger=shell.getByRole('button', { name: 'Agent 工作区' });
+    await agentRoomsTrigger.click();
     await shell.getByText('当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。').waitFor();
     assert.equal(await shell.locator('#library-search').isVisible(), false);
-    await shell.getByRole('button', { name: 'Agent 工作区' }).click();
+    await shell.locator('#close-library').focus();
+    await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.getByRole('button', { name: 'Agent 工作区' }).getAttribute('aria-expanded'), 'false');
-    await shell.getByRole('button', { name: 'Agent 工作区' }).click();
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-agent-rooms','closing Agent Rooms restores focus to its sidebar control');
+    await shell.getByRole('button',{name:'Pi Agent 工作台'}).click();
+    await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
+    await agentRoomsTrigger.click();
+    await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
+    await shell.locator('#close-library').focus();
+    await shell.keyboard.press('Enter');
+    await shell.locator('#library').waitFor({ state: 'hidden' });
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-agent-rooms','switching panels updates the focus restoration target');
+    await shell.getByRole('button',{name:'Pi Agent 工作台'}).click();
+    await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
+    await shell.locator('#close-library').focus();
+    await shell.keyboard.press('Enter');
+    await shell.locator('#library').waitFor({ state: 'hidden' });
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-pi-workbench','closing Pi workbench restores focus to its sidebar control');
+    await agentRoomsTrigger.click();
     await shell.getByText('当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。').waitFor();
 
     const defaultRoom = await call('/rooms', 'POST', { name: 'Default agent room' });
