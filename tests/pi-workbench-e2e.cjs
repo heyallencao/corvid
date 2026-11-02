@@ -95,6 +95,20 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.screenshot({path:path.join(os.tmpdir(),'corvid-pi-workbench-history.png')});
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow().setSize(700,420));
     await delay(150);
+    const narrowModelControls=await shell.locator('#pi-task-form').evaluate(form=>{
+      const visible=element=>{const box=element.getBoundingClientRect(),clip=form.getBoundingClientRect();return box.height>0&&box.top>=clip.top&&box.bottom<=clip.bottom;};
+      const controls=form.querySelector('.pi-model-controls'),controlsBox=controls.getBoundingClientRect(),prompt=form.querySelector('#pi-task-prompt'),promptBox=prompt.getBoundingClientRect();
+      return {select:visible(form.querySelector('.pi-model-select')),status:visible(form.querySelector('.pi-model-status')),action:visible(form.querySelector('.pi-model-action')),prompt:visible(prompt),clearance:Math.round(promptBox.top-controlsBox.bottom),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
+    });
+    assert.ok(narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.action&&narrowModelControls.prompt&&narrowModelControls.clearance>=1,`selected model, connection status, account action and task prompt stay visible without scrolling the composer or overlapping: ${JSON.stringify(narrowModelControls)}`);
+    const apiKeyModelValue=await modelSelect.locator('option').evaluateAll(options=>options.find(option=>option.value.includes('"providerId":"anthropic"'))?.value);
+    await modelSelect.selectOption(apiKeyModelValue);
+    const apiKeyControlsVisible=await shell.locator('#pi-task-form').evaluate(form=>{
+      const visible=element=>{const box=element.getBoundingClientRect(),clip=form.getBoundingClientRect();return box.height>0&&box.top>=clip.top&&box.bottom<=clip.bottom;};
+      return {field:visible(form.querySelector('.pi-model-key')),action:Array.from(form.querySelectorAll('.pi-model-action')).some(visible)};
+    });
+    assert.ok(apiKeyControlsVisible.field&&apiKeyControlsVisible.action,'API Key entry and save action remain visible in the short workspace');
+    await modelSelect.selectOption(codexModelValue);
     const narrowPrompt='窄窗口中启动 Pi 任务';
     await shell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill(narrowPrompt);
     await shell.getByRole('button',{name:'检查并预览页面上下文'}).click();
