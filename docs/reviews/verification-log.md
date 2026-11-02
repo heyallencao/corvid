@@ -16,6 +16,14 @@
 
 # 验证记录
 
+## 2026-11-02 Corvid Agent 对话体验与 GPT-6 Luna 定向验收（Issue #56）
+
+- 产品界面改为 Corvid 自有语义：Corvid Agent、对话、模型和页面来源；Pi 仅作为内部可替换运行时，不出现在用户入口与运行状态文案中。对话工作区以当前单线程消息流为主，历史可展开选择，输入区固定在底部，模型和页面来源就近可见，页面内容发送前仍需预览与明确同意。
+- 隔离 Electron 回归通过：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，38 条独立脚本命令和 3 项 `node:test` 共 41 项自动化检查通过；包括 Agent Room 面板、MCP、Pi runtime/model 配置、Corvid Agent 工作台、自定义端点、Chrome 导入与导航错误回归。测试使用临时数据目录和本地页面 fixture。
+- 真实模型专项通过：`env -u ELECTRON_RUN_AS_NODE node tests/pi-real-model-smoke.cjs` EXIT 0。重新完成 Corvid 发起的 ChatGPT OAuth 后，显式选择 `openai-codex/gpt-6-luna`；真实请求只发往本地 HTTP fixture 并收到 `CORVID_LUNA_OK`。没有 fallback 到其他模型；测试凭据和 session 位于隔离 Corvid 数据目录，测试结束清理。
+- `git diff --check` 通过。视觉断言与限制见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-02-corvid-agent-对话工作区与短窗复查-issue-56)。
+- 限制：这不是对真实网站或聊天服务内容的验收；真实模型请求消耗账户额度但仅执行上述一次 Luna smoke。仍需完成流式/停止、失败重试、键盘与辅助技术、暗色及跨平台的完整验收。
+
 ## 2026-11-02 工作区面板关闭后的键盘焦点恢复（Issue #52）
 
 - 基线复现：真实 Electron 中从书签打开右侧面板，键盘激活“关闭面板”后，焦点仍停在已隐藏的 `#close-library`（期望 `#show-bookmarks`）。

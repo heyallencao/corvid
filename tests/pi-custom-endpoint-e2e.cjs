@@ -50,7 +50,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByLabel('地址或搜索').fill(pageUrl); await shell.getByLabel('地址或搜索').press('Enter');
     await (async () => { for (let i = 0; i < 200; i++) { const result = await call('/rooms'); if (result.rooms.flatMap(room => room.tabs).some(tab => tab.url === pageUrl && tab.title === 'Custom endpoint fixture page')) return; await delay(25); } throw new Error('Local page did not finish loading'); })();
 
-    await shell.getByRole('button', { name: 'Pi Agent 工作台' }).click();
+    await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await shell.getByRole('button', { name: '管理内置 Agent 模型' }).click();
     await shell.locator('#pi-endpoint-name').fill('Fixture Endpoint');
     await shell.locator('#pi-endpoint-url').fill(`http://127.0.0.1:${models.address().port}/v1`);
@@ -69,13 +69,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByText('无需密钥').waitFor();
     await shell.getByRole('button', { name: '关闭模型设置' }).click();
 
-    await shell.getByRole('button', { name: '为当前页创建 Pi Room' }).click();
-    await shell.getByText(/任务页面：Pi Agent 任务/).waitFor();
+    await shell.getByRole('button', { name: '连接当前页面' }).click();
+    await shell.getByText(/任务页面：Corvid Agent 对话/).waitFor();
     await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill('使用当前配置的模型回复');
     await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
-    await shell.getByText(/Pi 将收到：/).waitFor();
-    await shell.getByLabel(/我已检查以上内容/).check();
-    await shell.getByRole('button', { name: '启动 Pi Agent' }).click();
+    await shell.getByText(/将分享给 Agent：/).waitFor();
+    await shell.getByLabel(/我已检查/).check();
+    await shell.getByRole('button', { name: '发送' }).click();
     await shell.waitForFunction(() => [...document.querySelectorAll('.pi-task-state')].some(node => ['completed', 'failed'].includes(node.dataset.status)), { timeout: 15_000 });
     const tasksAfterRequest = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
     assert.equal(tasksAfterRequest[0].status, 'completed', JSON.stringify({ task: tasksAfterRequest[0], modelId, modelPath }));

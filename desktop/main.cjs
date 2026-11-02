@@ -567,8 +567,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       const current=findTab(args.sourceTabId), sourceRoom=findRoom(current.roomId);
       if(sourceRoom.profileId!==activeProfileId || current.view.webContents.getURL()!==args.sourceUrl) throw new Error('当前页面已变化，请重新打开 Agent 工作台');
       const parsed=new URL(args.sourceUrl);
-      if(!['http:','https:'].includes(parsed.protocol)) throw new Error('Pi 任务只支持从 HTTP 或 HTTPS 页面开始');
-      const room=await createRoom(args.name || 'Pi Agent 任务','agent',sourceRoom.profileId);
+      if(!['http:','https:'].includes(parsed.protocol)) throw new Error('Agent 对话只支持从 HTTP 或 HTTPS 页面开始');
+      const room=await createRoom(args.name || 'Corvid Agent 对话','agent',sourceRoom.profileId);
       try { await navigateAgent(findTab(room.tabs[0].id),parsed.href); return describe().rooms.find(item=>item.id===room.id); }
       catch(error) { await closeRoom(room.id).catch(()=>{}); throw error; }
     }
