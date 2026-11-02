@@ -104,8 +104,8 @@ async function chromeCookieKey(){
   return crypto.pbkdf2Sync(Buffer.from(password,'utf8'),Buffer.from('saltysalt'),1003,16,'sha1');
 }
 
-async function readCookies(directory){
-  const rows=readCookieRows(directory),key=await chromeCookieKey(),cookies=[];
+function decodeCookieRows(rows,key){
+  const cookies=[];
   let unsupported=0;
   for(const row of rows){
     const host=typeof row.host_key==='string'?row.host_key:'';
@@ -134,9 +134,16 @@ async function readCookies(directory){
   return {cookies,unsupported};
 }
 
+function readCookiesWithKey(directory,key){return decodeCookieRows(readCookieRows(directory),key);}
+
+async function readCookies(directory){
+  const rows=readCookieRows(directory),key=await chromeCookieKey();
+  return decodeCookieRows(rows,key);
+}
+
 function readProfile(root, relative) {
   const directory=profilePath(root,relative);
   return {bookmarks:readBookmarks(directory),history:readHistory(directory),cookieCount:process.platform==='darwin'?cookieCount(directory):null};
 }
 
-module.exports={profiles,readProfile,readCookies};
+module.exports={profiles,readProfile,readCookies,readCookiesWithKey};

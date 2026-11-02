@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 fs.mkdirSync(dataDir,{recursive:true});
 app.setPath('userData', dataDir);
+const hadExistingCorvidData=[path.join(dataDir,'rooms.json'),path.join(dataDir,'spaces.json'),path.join(dataDir,'profiles.json'),path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json')].some(file=>fs.existsSync(file));
 const token = crypto.randomBytes(32).toString('hex');
 const tabs = new Map();
 const queues = new Map();
@@ -70,10 +71,10 @@ const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
-const existingCorvidDataFiles=[dbPath,legacyDbPath,profilesPath,path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json')];
 let chromeImportOnboardingState=null;
 try{chromeImportOnboardingState=JSON.parse(fs.readFileSync(chromeImportOnboardingPath,'utf8')).status;}catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
-let needsChromeImportOnboarding=chromeImportOnboardingState==='pending'||(chromeImportOnboardingState!=='completed'&&!existingCorvidDataFiles.some(file=>fs.existsSync(file)));
+const allowChromeImportOnboarding=process.env.CORVID_TEST_MODE!=='1'||process.env.CORVID_TEST_CHROME_IMPORT==='1';
+let needsChromeImportOnboarding=chromeImportOnboardingState==='pending'||(allowChromeImportOnboarding&&chromeImportOnboardingState!=='completed'&&!hadExistingCorvidData);
 if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
   const temp=`${chromeImportOnboardingPath}.tmp`;fs.writeFileSync(temp,JSON.stringify({status:'pending',startedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);chromeImportOnboardingState='pending';
 }

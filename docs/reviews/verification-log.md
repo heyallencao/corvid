@@ -1,5 +1,18 @@
 # 验证记录
 
+## 2026-11-02 Google Chrome 导入首启与隔离验收：36 条命令、38 项通过
+
+### 执行与结果
+
+- 命令：`node tests/chrome-import-e2e.cjs` 定向 E2E 通过（EXIT 0）；修正测试隔离开关及过期 UI 测试合同后，`env -u ELECTRON_RUN_AS_NODE npm test` 的 36 条命令、38 项全部通过（EXIT 0）。
+- 本轮新增合成 Chrome User Data 多 Profile fixture 和真实 Electron UI 测试。首次运行先暴露首启导入引导缺失：Pi 工作台初始化早于旧数据检测并创建 `agent-tasks.json`，误判为既有 Corvid 数据；已将旧数据快照移至主进程初始化早期，并由干净/既有/待选择重启用例覆盖。测试模式默认关闭首启引导，仅该导入测试通过专用环境标记显式启用。全量回归还校正了跟随 UI 文案变化后过期的 Space 菜单与 Pi 回复文本测试选择器。
+- 环境：macOS、Node.js v24.22.1、Electron 45.2.1；临时 Corvid 与 Chrome Profile 数据目录；对话框目录选择器由测试替身提供。
+
+### 覆盖与限制
+
+- 验证多 Chrome Profile 发现，书签与历史解析、UI 导入、Corvid Profile 归属和隔离、重复导入去重、源书签/历史哈希不变、合成 macOS v10 Cookie 解密与属性保留、首次导入/稍后状态持久化。
+- 未访问真实 Chrome Profile；未读取系统钥匙串或验证 Cookie 写入目标 UI；扩展迁移、已保存密码、原生选择器、打包版与 Windows 未覆盖。D13 保持部分。
+
 ## 2026-11-02 Pi Agent 用户接管与续聊回归：35 条命令、37 项通过
 
 ### 执行与结果
