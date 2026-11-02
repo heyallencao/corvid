@@ -155,7 +155,7 @@ async function renderPiTasks(){
   for(const task of piTasks){
     const row=document.createElement('article');row.className='pi-task-entry';
     const title=document.createElement('strong');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||'浏览任务';title.title=title.textContent;row.append(title);
-    const context=document.createElement('div');context.className='pi-task-context';context.textContent=`${task.runtime||'Pi SDK'} · ${task.page?.title||task.page?.url||'页面'}`;row.append(context);
+    const context=document.createElement('div');context.className='pi-task-context';context.textContent=`${task.runtime||'Pi SDK'}${task.selectedModel?.name?` · ${task.selectedModel.name}`:''} · ${task.page?.title||task.page?.url||'页面'}`;row.append(context);
     const meta=document.createElement('div');meta.className='pi-task-meta';
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?'页面执行状态未知':roomState?.userResumePending?'接管中':roomState?.ownership==='user'?'用户控制中':'';
     const status=document.createElement('span');status.className='pi-task-state';status.dataset.status=task.status;status.textContent=labels[task.status]||task.status;status.setAttribute('role','status');meta.append(status);
@@ -192,6 +192,31 @@ function appendContinuationComposer(row,task){
   }
   const message=document.createElement('div');message.setAttribute('role','alert');form.append(message);row.append(form);
 }
+async function renderPiModelControls(target){
+  target.replaceChildren();
+  const status=document.createElement('span');status.className='pi-model-status';status.setAttribute('role','status');status.textContent='读取模型目录…';
+  try{
+    const catalog=await api.invoke('piModels'),select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label','内置 Agent 模型');
+    for(const provider of catalog.providers){
+      const group=document.createElement('optgroup');group.label=provider.name;
+      for(const model of provider.models){const option=document.createElement('option');option.value=JSON.stringify({providerId:provider.id,modelId:model.id});option.textContent=model.name;option.selected=provider.id===catalog.selection.providerId&&model.id===catalog.selection.modelId;group.append(option);}
+      select.append(group);
+    }
+    if(!Array.from(select.options).some(option=>option.value===JSON.stringify(catalog.selection))){const missing=document.createElement('option');missing.value=JSON.stringify(catalog.selection);missing.textContent=`模型未找到：${catalog.selection.providerId}/${catalog.selection.modelId}`;missing.selected=true;missing.disabled=true;select.prepend(missing);}
+    if(!select.options.length)throw new Error('Pi 没有可用的聊天模型');
+    select.onchange=async()=>{try{const next=JSON.parse(select.value);await api.invoke('selectPiModel',next);const provider=catalog.providers.find(item=>item.id===next.providerId);status.textContent=provider?.configured?'新任务将使用此模型':'请先连接此模型的账号';renderPiModelActions(target,catalog,next,status);}catch(error){status.textContent=`无法选择模型：${error.message}`;}};
+    target.append(select,status);renderPiModelActions(target,catalog,catalog.selection,status);
+  }catch(error){status.textContent=`模型设置不可用：${error.message}`;target.append(status);}
+}
+function renderPiModelActions(target,catalog,selection,status){
+  target.querySelectorAll('.pi-model-action,.pi-model-key').forEach(node=>node.remove());
+  const provider=catalog.providers.find(item=>item.id===selection.providerId);if(!provider)return;
+  status.textContent=provider.configured?`${provider.name} · 已连接`:`${provider.name} · 未连接`;
+  if(provider.configured){const logout=button('退出',async()=>{logout.disabled=true;try{await api.invoke('logoutPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){logout.disabled=false;status.textContent=`退出失败：${error.message}`;}});logout.className='pi-model-action';target.append(logout);return;}
+  if(provider.supportsOAuth){const connect=button('连接账号',async()=>{connect.disabled=true;status.textContent='正在打开账号授权页…完成授权后请返回 Corvid';try{await api.invoke('loginPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){connect.disabled=false;status.textContent=`登录未完成：${error.message}`;}});connect.className='pi-model-action';target.append(connect);}
+  if(provider.supportsApiKey){const key=document.createElement('input');key.className='pi-model-key';key.type='password';key.autocomplete='off';key.spellcheck=false;key.placeholder='API Key';key.setAttribute('aria-label',`${provider.name} API Key`);const save=button('连接 Key',async()=>{save.disabled=true;try{await api.invoke('loginPiProviderApiKey',{providerId:provider.id,apiKey:key.value});key.value='';await renderPiModelControls(target);}catch(error){save.disabled=false;status.textContent=`连接失败：${error.message}`;}});save.className='pi-model-action';target.append(key,save);}
+  if(!provider.supportsOAuth&&!provider.supportsApiKey)status.textContent+=' · 请在 Pi 设置中完成认证';
+}
 function renderPiWorkbench(){
   if(piBinding&&piBinding.profileId!==state.activeProfileId){piBinding=null;piContextPreview=null;}
   const panel=document.querySelector('#library'),items=document.querySelector('#library-items');
@@ -208,6 +233,7 @@ function renderPiWorkbench(){
     const create=button('为当前页创建 Pi Room',async()=>{try{const room=await api.invoke('createPiRoom',{sourceTabId:current.id,sourceUrl:current.url,name:'Pi Agent 任务'});piBinding={roomId:room.id,tabId:room.tabs[0].id,profileId:room.profileId};piContextPreview=null;renderPiWorkbench();}catch(error){page.textContent=`无法创建 Pi Room：${error.message}`;}});create.className='pi-create-room';form.append(create);
   }
   const prompt=document.createElement('textarea');prompt.id='pi-task-prompt';prompt.setAttribute('aria-label','描述要完成的浏览任务');prompt.placeholder='例如：阅读此页并提炼三个要点';prompt.value=piPromptDraft;prompt.oninput=()=>{piPromptDraft=prompt.value;};form.append(prompt);
+  const modelControls=document.createElement('div');modelControls.className='pi-model-controls';form.append(modelControls);void renderPiModelControls(modelControls);
   const previewButton=button('检查并预览页面上下文',async()=>{if(!piBinding){page.textContent='请先为当前页创建 Pi Room';return;}try{piContextPreview=await api.invoke('preparePiTask',piBinding);renderPiWorkbench();}catch(error){page.textContent=`无法读取页面上下文：${error.message}`;}});previewButton.className='pi-secondary-action';previewButton.disabled=!piBinding;form.append(previewButton);
   if(piContextPreview){
     const details=document.createElement('div');details.className='pi-context';details.textContent=`Pi 将收到：\n${piContextPreview.title}\n${piContextPreview.url}${piContextPreview.snapshotTruncated?'\n页面快照过长，以下预览与发送内容均截断至 12 KB。':''}\n\n${piContextPreview.snapshot}`;form.append(details);
@@ -234,7 +260,7 @@ async function renderBookmarksBar() {
   }
   if(result.bookmarks.length>items.length){const more=button('更多书签',()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
 }
-api.onState(draw); api.onPiTasks(()=>void renderPiTasks()); api.invoke('state').then(draw);
+api.onState(draw); api.onPiTasks(()=>void renderPiTasks()); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(!status)return;if(event.type==='device_code')status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;else if(event.type==='auth_url')status.textContent='已打开授权页，请在浏览器完成登录';else if(event.type==='progress'||event.type==='info')status.textContent=event.message||'正在连接模型账号…';}); api.invoke('state').then(draw);
 for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);trigger.onclick=()=>{const next=menu.hidden;for(const item of document.querySelectorAll('#profile-menu,#room-menu'))item.hidden=true;menu.hidden=!next;trigger.setAttribute('aria-expanded',String(!menu.hidden));};}
 document.addEventListener('pointerdown',event=>{for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}}});

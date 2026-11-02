@@ -16,6 +16,10 @@ const runAction = require('./actions.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
 const { createPiWorkbench } = require('./pi-workbench.cjs');
+const { createPiModelManager } = require('./pi-models.cjs');
+const piModelManager = createPiModelManager({ dataDir, openExternal: url => shell.openExternal(url), onAuthEvent: event => {
+  for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-auth-event', event);
+} });
 let failNextPiFixtureInitialization = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_INIT_FAILURE_ONCE === '1';
 const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(failNextPiFixtureInitialization){failNextPiFixtureInitialization=false;throw new Error('本地 fixture 模拟 Pi Session 初始化失败');}
@@ -34,7 +38,7 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
-const piWorkbench = createPiWorkbench({ dataDir, createSession:process.env.CORVID_TEST_MODE==='1'?fixtureSession:undefined, onChange: tasks => {
+const piWorkbench = createPiWorkbench({ dataDir, resolveModel: selection => process.env.CORVID_TEST_MODE==='1' ? null : piModelManager.getModel(selection), getModelSelection: () => process.env.CORVID_TEST_MODE==='1' ? null : piModelManager.getSelection(), createSession:process.env.CORVID_TEST_MODE==='1'?fixtureSession:undefined, onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
 } });
 let panelOpen = false;
@@ -533,6 +537,11 @@ async function dispatch(method, args = {}, fromApi = false) {
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
     case 'piTasks': return { tasks: piWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }
+    case 'selectPiModel': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.select(args); }
+    case 'loginPiProvider': { if(fromApi) throw new Error('Model login must be started by the user in Corvid UI'); return piModelManager.login(args.providerId); }
+    case 'logoutPiProvider': { if(fromApi) throw new Error('Model logout must be started by the user in Corvid UI'); return piModelManager.logout(args.providerId); }
+    case 'loginPiProviderApiKey': { if(fromApi) throw new Error('API Keys can only be managed from Corvid UI'); return piModelManager.loginApiKey(args.providerId, args.apiKey); }
     case 'preparePiTask': return piWorkbench.prepare(args);
     case 'startPiTask': return piWorkbench.start(args);
     case 'continuePiTask': return piWorkbench.continueTask(args);
