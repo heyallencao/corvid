@@ -1,5 +1,6 @@
 const api = window.browserShell;
 let state, libraryKind = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false;
+let chromeImportOnboardingPrompted=false;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
@@ -11,6 +12,7 @@ for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener(
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function draw(value) {
   state = value;
+  if(state.needsChromeImportOnboarding&&!chromeImportOnboardingPrompted){chromeImportOnboardingPrompted=true;void openShellDialog('#chrome-import-onboarding');}
   if(piBinding&&(piBinding.profileId!==state.activeProfileId||!state.rooms.some(room=>room.id===piBinding.roomId&&room.tabs.some(tab=>tab.id===piBinding.tabId)))){piBinding=null;piContextPreview=null;}
   const dialogView=document.querySelector('#page-dialog');
   if(dialogView.open && !state.rooms.some(room=>room.tabs.some(tab=>tab.id===dialogTabId && tab.dialog))) dialogView.close();
@@ -243,6 +245,15 @@ document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let chromeSources=[],chromeSourceId='',chromeSourceToken='';
 const chromeImportDialog=document.querySelector('#chrome-import');
+async function openChromeImportDialog(){
+  chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
+  document.querySelector('#chrome-import-error').removeAttribute('data-success');
+  document.querySelector('#chrome-import-target').textContent=`导入目标：${state.profiles.find(profile=>profile.id===settingsProfileId)?.name || '当前 Profile'}`;
+  document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
+  document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
+  document.querySelector('#chrome-import-preview').textContent='选择目录后会显示可导入项目数量。';
+  await openShellDialog('#chrome-import');
+}
 function showChromePreview(preview){
   document.querySelector('#chrome-import-preview').textContent=`来源：${preview.sourceName}。找到 ${preview.bookmarks} 个书签、${preview.history} 条历史记录${preview.cookies===null?'':`、${preview.cookies} 个 Cookie`}。导入只会新增项目；已有资料会跳过。`;
   document.querySelector('#chrome-bookmark-count').textContent=`${preview.bookmarks} 项`;
@@ -258,14 +269,11 @@ function showChromePreview(preview){
 }
 document.querySelector('#start-chrome-import').onclick=async()=>{
   document.querySelector('#settings').close();
-  chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
-  document.querySelector('#chrome-import-error').removeAttribute('data-success');
-  document.querySelector('#chrome-import-target').textContent=`导入目标：${state.profiles.find(profile=>profile.id===settingsProfileId)?.name || '当前 Profile'}`;
-  document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
-  document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
-  document.querySelector('#chrome-import-preview').textContent='选择目录后会显示可导入项目数量。';
-  await openShellDialog('#chrome-import');
+  await openChromeImportDialog();
 };
+document.querySelector('#skip-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
+document.querySelector('#begin-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();settingsProfileId=state.activeProfileId;await openChromeImportDialog();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
+document.querySelector('#chrome-import-onboarding').addEventListener('cancel',event=>event.preventDefault());
 document.querySelector('#choose-chrome-source').onclick=async()=>{
   const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
   try{const result=await api.invoke('chooseChromeImportSource');if(result.canceled)return;if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSources=result.sources;chromeSourceToken=result.sourceToken;const select=document.querySelector('#chrome-source-profile');select.replaceChildren(...chromeSources.map(source=>new Option(`${source.name} (${source.id})`,source.id)));select.disabled=false;select.value=chromeSources[0]?.id || '';if(select.value){chromeSourceId=select.value;showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}}

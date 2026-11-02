@@ -208,6 +208,14 @@ dialog form > button[type="submit"] { background: var(--accent); color: white; }
 .import-limitation { flex-basis: 100%; margin: 0; color: var(--warning); }
 #chrome-import-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
 #chrome-import-error[data-success="true"] { color: var(--success); }
+#chrome-import-onboarding { width: min(460px, calc(100vw - 36px)); }
+#chrome-import-onboarding h2 { flex: 1 1 100%; margin: 0; font-size: 18px; letter-spacing: -.02em; }
+#chrome-import-onboarding p { flex: 1 1 100%; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+#chrome-import-onboarding .import-limitation { color: var(--text-muted); font-size: 12px; }
+.onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; margin-top: 6px; }
+.onboarding-actions button { min-height: 36px; padding: 8px 12px; }
+.onboarding-actions button:last-child { background: var(--accent); color: #fff; }
+#chrome-import-onboarding-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
 dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: .55; }
 
 @media (max-width: 972px) and (min-width: 861px) {

@@ -69,6 +69,14 @@ const SCHEMA_VERSION = 2;
 const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
+const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
+const existingCorvidDataFiles=[dbPath,legacyDbPath,profilesPath,path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json')];
+let chromeImportOnboardingState=null;
+try{chromeImportOnboardingState=JSON.parse(fs.readFileSync(chromeImportOnboardingPath,'utf8')).status;}catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
+let needsChromeImportOnboarding=chromeImportOnboardingState==='pending'||(chromeImportOnboardingState!=='completed'&&!existingCorvidDataFiles.some(file=>fs.existsSync(file)));
+if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
+  const temp=`${chromeImportOnboardingPath}.tmp`;fs.writeFileSync(temp,JSON.stringify({status:'pending',startedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);chromeImportOnboardingState='pending';
+}
 const connectionPath = path.join(dataDir, 'control.json');
 const windowStatePath = path.join(dataDir, 'window-state.json');
 function normalizeBounds(saved) {
@@ -178,6 +186,7 @@ const describe = (record = activeRecord()) => {
     windowCount: [...windowRecords.values()].filter(item => !item.browserWindow.isDestroyed()).length,
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
+    needsChromeImportOnboarding,
     profiles,
     rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
   };
@@ -497,6 +506,13 @@ async function dispatch(method, args = {}, fromApi = false) {
     }
     case 'profiles': return {profiles};
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
+    case 'finishChromeImportOnboarding': {
+      if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
+      if(!needsChromeImportOnboarding)return {ok:true};
+      const temp=`${chromeImportOnboardingPath}.tmp`;
+      fs.writeFileSync(temp,JSON.stringify({status:'completed',completedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);
+      chromeImportOnboardingState='completed';needsChromeImportOnboarding=false;update();return {ok:true};
+    }
     case 'chooseChromeImportSource': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
       const home=app.getPath('home');
