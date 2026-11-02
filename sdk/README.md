@@ -18,6 +18,8 @@ try {
 
 `client.rooms()` and `client.room(id)` find rooms. `client.profiles()` and `client.createProfile(name)` manage browser profiles; `client.createRoom(name, {profileId})` selects one. A room can `open(url)`, list `tabs()`, access `page(tabId)`, and request `yieldControl()` / `resumeControl()`. A page supports `navigate`, `snapshot`, `click`, `fill`, `press`, `selectOption`, `select`, `wait`, `screenshot`, `evaluate`, `text` and `close`. Actions accept a snapshot reference or a CSS selector. `evaluate` executes supplied JavaScript and therefore requires agent control.
 
+Administrators can call `client.createAgentClient(name, roomIds)` to issue a scoped credential once, `client.agentClients()` to review grants, and `client.revokeAgentClient(id)` to revoke one immediately. Connect a scoped client with `connect({baseUrl, token})`; both values are required, and explicit credentials are sent only to a `127.0.0.1` HTTP endpoint. This avoids reading the administrator `control.json`. Scoped clients can enumerate and operate only their granted Rooms and cannot access global Profile, history, bookmark, download, or window endpoints. Credentials are stored as SHA-256 hashes with owner-only file permissions. The administrator credential remains available to local processes that can read the Corvid data directory, so scoped clients do not provide OS-level isolation against a malicious process running as the same user.
+
 `client.openRoom(nameOrId, {profileId})` creates or resumes a uniquely named agent-owned room; a user-owned, ambiguous, manually controlled, or risk-blocked room is not silently taken over. New agent rooms have a `p1` page. `room.page('p1')` creates a lazy handle, `room.pages()` lists labeled pages, and `room.newPage()` allocates the next label. Labels and page identity survive application restart and used labels are not reused. `roomId` and `goto()` are aliases for `id` and `navigate()`. Legacy pages with unknown origin remain unlabeled; agent requests cannot close user-created or unknown-origin tabs or a room containing them.
 
 `await room.waitForControl({interval, timeout})` polls until the room is agent-controlled with no pending user resumeControl or unresolved execution risk; it never requests or takes control. Defaults are 20,000 ms and 600,000 ms. Both options must be positive milliseconds no greater than 2,147,483,647. A closed room or an unavailable desktop connection fails the wait. The observed state may change again immediately, so each subsequent action still checks control independently.
@@ -105,6 +107,7 @@ Operational failures raise `CorvidError` with a stable `code`:
 | `CORVID_TIMEOUT` | A bounded wait or chooser expired |
 | `CORVID_UNSUPPORTED` | The requested capability is not implemented |
 | `CORVID_UNAUTHORIZED` | The control service rejected the credential |
+| `CORVID_FORBIDDEN` | The credential is valid but lacks access to the requested resource |
 | `CORVID_DESKTOP_ERROR` | Desktop error without a more specific classification |
 
 Argument shape problems keep raising `TypeError` or `RangeError`; only operational failures carry a `CORVID_*` code. Desktop error classification is message-based, so new desktop errors must add a mapping and a regression assertion.

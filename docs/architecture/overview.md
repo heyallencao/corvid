@@ -11,7 +11,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，
 - 应用负责浏览器窗口、Room、标签以及控制权的生命周期；Agent 通过本地认证接口操作获得授权的 Room。
 - **Profile** 是浏览身份及其 Cookie、存储的边界；**Room** 是同一 Profile 下的工作区与控制权边界。不能把 Room 隔离误称为浏览数据隔离。
 - 桌面端维护 Room、Page、控制权状态；页面由 Electron `WebContentsView` 承载，同一 Profile 的页面使用同一持久化 session，不同 Profile 使用不同 session。
-- Agent SDK 与 CLI 连接本地控制服务。服务统一校验房间所有权，维护稳定的 Room ID、标签 ID 和 Page label 映射；显示名称不充当唯一标识。
+- Agent SDK 与 CLI 连接本地控制服务。管理员 Bearer 凭据保存在权限为 0600 的 `control.json`；可由管理员为 Agent 客户端签发仅保存 SHA-256 摘要的独立凭据，并将每个客户端限制到明确的 Room ID 列表。服务在每次请求中校验身份和 Room 范围；撤销立即生效。Scoped 客户端只能列出/访问已授权 Room，不能访问全局 Profile、历史、书签、下载或窗口接口。稳定 Room ID、标签 ID 和 Page label 映射由服务维护；显示名称不充当唯一标识。
 - 内置 Agent 通过 Corvid 运行时适配层执行会话与模型调用。当前适配器使用 Pi SDK，但其名称、专属类型、配置格式和错误不得进入用户可见的界面、帮助文档或持久化产品合同；Corvid 拥有任务 UI、模型配置、对话记录、Profile/Room/Page 绑定、浏览器工具授权与用户接管合同。替换运行时时由适配层转换供应商格式，并由 Corvid 负责既有配置与对话记录的兼容迁移。任何运行时默认文件与 shell 工具均不作为浏览器 Agent 的隐式能力。
 - 页面动作通过被授权页面的 Chromium 调试能力执行。用户控制期间拒绝自动操作；执行超时或异常退出后保留"结果未知"的风险状态，直到用户确认。
 
@@ -20,7 +20,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，
 | 决策 | 说明 |
 | --- | --- |
 | Electron + Chromium | 先保证桌面能力与可验证性；单窗口起步，多窗口后置 |
-| 控制服务只监听 `127.0.0.1` | 使用随机端口 + Bearer token，token 写入 `control.json`（0600），不暴露远程调试端口 |
+| 控制服务只监听 `127.0.0.1` | 使用随机端口 + 管理员 Bearer token，token 写入 `control.json`（0600），不暴露远程调试端口；Agent 客户端凭据独立签发，可按 Room 授权与撤销 |
 | 每个 Room 一条串行队列 | 页面动作、交还、取回按 Room 排队；用户接管优先，新动作被拒绝而不是抢占 |
 | 状态文件原子写 | `rooms.json`、`library.json`、`profiles.json` 使用 tmp + rename，权限 0600；文件带 `schemaVersion` |
 | Page label 稳定 | `p1`、`p2` 跨轮次、跨重启保持，已用 label 不复用；Agent 创建的页面与用户页面用 `openedBy` 区分 |
@@ -31,7 +31,8 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，
 
 ## 已知限制
 
-- 本地控制服务只有一个共享凭据，没有按 Agent 的身份隔离：任何持有 token 的本地客户端都可以按名称或 ID 恢复 Agent 的 Room。
+- Agent 客户端的 Room 范围现由服务端校验，但授权管理界面、内置 Agent/MCP 的统一凭据注入与更完整的操作能力合同仍待交付，不能据此宣称完整的多 Agent 隔离已完成。
+- 当前管理员凭据仍能访问所有本地数据，并可签发/撤销 Agent 凭据；控制服务面向同一操作系统用户。本机进程若能读取 Corvid 数据目录中的 `control.json`，即可取得管理员权限，因此该机制不是针对恶意同用户进程的操作系统级安全边界。
 - Snapshot 覆盖主文档、单层同源 iframe 与开放 Shadow DOM；跨源 iframe、closed Shadow DOM、复杂嵌套尚未支持（列入 Snapshot v2）。
 - 部分输入路径使用合成事件（例如清空文件选择、select 变更）；真实网站兼容性需要逐站验证。
 - 系统级交互（权限确认、保存对话框）在自动化测试中使用测试替身；原生对话框交互尚未验证。
