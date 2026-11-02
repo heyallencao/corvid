@@ -517,6 +517,18 @@ function focusOutsideSiteTools(backward){
 }
 document.querySelector('#site-permissions').onclick = async () => {closeSiteTools(true);const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
 document.querySelector('#clear-site').onclick = async () => {closeSiteTools(true);const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
+async function requestPagePrint(tabId){
+  siteDataNotice=null;
+  try{
+    const result=await api.invoke('printPage',{id:tabId});
+    if(result.cancelled)siteDataNotice={tabId,message:'已取消打印。'};
+    else if(result.error)siteDataNotice={tabId,message:result.error};
+    else siteDataNotice={tabId,message:'打印任务已发送。'};
+  }catch(error){siteDataNotice={tabId,message:`无法打印此页：${error.message}`};}
+  if(state)draw(state);
+}
+document.querySelector('#print-page').onclick=()=>{closeSiteTools(true);const tab=activeTab();if(tab)void requestPagePrint(tab.id);};
+api.onPrintPage(({id})=>{if(typeof id==='string')void requestPagePrint(id);});
 siteToolsTrigger.onclick=()=>siteToolsMenu.hidden?openSiteTools():closeSiteTools(true);
 siteToolsTrigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openSiteTools(event.key==='ArrowUp');}};
 siteToolsMenu.onkeydown=event=>{
