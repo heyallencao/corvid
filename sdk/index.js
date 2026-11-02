@@ -7,7 +7,14 @@ import { CODES, CorvidError, errorFromResponse } from './errors.js';
 
 /** Connect to the desktop control service without exposing a browser debugging endpoint. */
 export async function connect({ dataDir = process.env.CORVID_DATA_DIR || join(homedir(), '.corvid'), baseUrl, token } = {}) {
-  const config = baseUrl && token ? { baseUrl, token } : JSON.parse(await readFile(join(dataDir, 'control.json'), 'utf8'));
+  let config;
+  if (baseUrl !== undefined || token !== undefined) {
+    if (typeof baseUrl !== 'string' || typeof token !== 'string' || !token) throw new TypeError('baseUrl and token must be provided together');
+    let endpoint;
+    try { endpoint = new URL(baseUrl); } catch { throw new TypeError('baseUrl must be a valid local Corvid control URL'); }
+    if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new TypeError('baseUrl must be a local Corvid control URL on 127.0.0.1');
+    config = { baseUrl: endpoint.origin, token };
+  } else config = JSON.parse(await readFile(join(dataDir, 'control.json'), 'utf8'));
   if (!config.baseUrl || !config.token) throw new Error('Invalid corvid control file');
   const api = async (path, options = {}) => {
     const response = await fetch(new URL(path, config.baseUrl), {

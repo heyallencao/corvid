@@ -51,6 +51,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(createTabA.status, 200, 'a scoped client can operate inside its granted Room');
     assert.equal((await request(grantA.token, `/tabs/${tabBId}/activate`, 'POST', {})).status, 403, 'a guessed tab ID from another Room remains forbidden');
     const { connect } = await import('../sdk/index.js');
+    await assert.rejects(() => connect({ token: grantB.token }), /provided together/, 'a partial scoped credential must not fall back to the administrator control file');
+    await assert.rejects(() => connect({ baseUrl: 'https://example.com', token: grantB.token }), /127\.0\.0\.1/, 'explicit credentials cannot be sent to a nonlocal host');
     const adminSdk = await connect({ baseUrl: control.baseUrl, token: control.token });
     const sdkGrant = await adminSdk.createAgentClient('SDK issued', [roomA.id]);
     assert.ok(sdkGrant.id && sdkGrant.token);
