@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-02 Agent Room 空态与内置 Agent 引导（Issue #16）
+
+- REA 对隔离 Corvid Electron 运行态的结构观察与 CUA 可访问树/截图检查发现：Agent 工作区空态只提外部 SDK/CLI，没有引导用户进入内置 Corvid Agent；在 `about:blank` 上打开 Agent 时，页面绑定状态也未说明需先打开 HTTP(S) 页面。
+- 修复：空态增加“打开 Corvid Agent”按钮，并说明页面内容须先检查和确认；Agent 工作台在当前页面不是 HTTP(S) 时显示可操作指引，不把 `about:blank` 当作可绑定上下文。
+- 定向验证：先运行新增断言确认旧空态不能满足验收；修复后 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0，覆盖空态入口、不可绑定页面、关闭焦点、并行 Room、Profile 隔离、窄窗、键盘接管/交还及风险复核。
+- 当前截图/可访问树目视检查：隔离 `CORVID_TEST_MODE=1` Electron 窗口中 CTA 与 Corvid Agent 界面可见；GPT-6 Luna 账号显示未连接，未触发授权或模型调用。REA 结构 Evidence：`ev_35a2bd3b4ae11b542121538c93e8dfef506a4ad7132e9d9809ebc65ed84163c5`；REA 不支持对此 `file://` 页面截图，截图由 CUA 捕获。
+- 全量验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；43 条独立脚本命令与 3 项 `node:test`，共 46 项自动化检查通过。没有调用真实模型或 OAuth。
+- 限制：不代表真实模型、真实网页、暗色、辅助技术、Windows/Linux 或其他窗口尺寸的视觉验收。
+
 ## 2026-11-02 Corvid Agent 产品语义独立于运行时（Issue #70）
 
 - 约束：用户只接触 Corvid Agent、模型、对话、授权与恢复语义；具体执行引擎只作为可替换的内部实现。源码文件、依赖与隔离测试可保留实现名，便于诊断。

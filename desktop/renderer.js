@@ -143,7 +143,16 @@ function renderAgentRooms(){
     if(room.executionRisk){const review=button('复核',()=>api.invoke('reviewExecutionRisk',{id:room.id}));review.setAttribute('aria-label',`复核 ${room.name} 的执行状态`);row.append(review);}
     items.append(row);
   }
-  if(!rooms.length){const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent='当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。';items.append(empty);}
+  if(!rooms.length){
+    const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent='当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。';items.append(empty);
+    const start=button('打开 Corvid Agent',async()=>{
+      document.querySelector('#library-search').value='';
+      setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
+      await api.invoke('setPanel',{open:true,workspace:true});
+      renderPiWorkbench();
+      document.querySelector('#pi-task-prompt')?.focus();
+    });start.className='workspace-empty-action';items.append(start);
+  }
 }
 async function renderPiTasks(){
   if(libraryKind!=='pi-workbench')return;
@@ -276,7 +285,7 @@ function renderPiWorkbench(){
   const page=document.createElement('div');page.className='pi-page-binding';page.setAttribute('role','status');
   const bound=piBinding&&state.rooms.find(room=>room.id===piBinding.roomId)?.tabs.find(tab=>tab.id===piBinding.tabId);
   if(bound){const room=state.rooms.find(value=>value.id===piBinding.roomId);page.textContent=`任务页面：${room.name} / ${bound.label} · ${bound.title||bound.url}`;}
-  else page.textContent=current?`当前页面：${current.title||current.url}`:'请先打开一个 HTTP(S) 页面';
+  else page.textContent=current&&/^https?:/i.test(current.url)?`当前页面：${current.title||current.url}`:'请先打开一个 HTTP(S) 页面，再连接 Corvid Agent';
   form.append(page);
   if(!bound&&current&&/^https?:/i.test(current.url)){
     const create=button('连接当前页面',async()=>{try{const room=await api.invoke('createPiRoom',{sourceTabId:current.id,sourceUrl:current.url,name:'Corvid Agent 对话'});piBinding={roomId:room.id,tabId:room.tabs[0].id,profileId:room.profileId};piContextPreview=null;renderPiWorkbench();}catch(error){page.textContent=`无法连接当前页面：${userFacingAgentError(error)}`;}});create.className='pi-create-room';form.append(create);

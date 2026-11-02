@@ -62,7 +62,16 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const agentRoomsTrigger=shell.getByRole('button', { name: 'Agent 工作区' });
     await agentRoomsTrigger.click();
-    await shell.getByText('当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。').waitFor();
+    await shell.getByText('当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
+    await shell.getByRole('button', { name: '打开 Corvid Agent', exact: true }).click();
+    await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
+    await shell.getByText('请先打开一个 HTTP(S) 页面，再连接 Corvid Agent').waitFor();
+    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), '描述要完成的浏览任务', 'empty-state CTA moves focus into the Corvid Agent composer');
+    await shell.getByRole('button', { name: '关闭面板' }).click();
+    await shell.locator('#library').waitFor({ state: 'hidden' });
+    assert.equal(await shell.evaluate(() => document.activeElement.id), 'show-pi-workbench', 'closing the CTA-opened workbench restores focus to its sidebar entry');
+    await agentRoomsTrigger.click();
+    await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
     assert.equal(await shell.locator('#library-search').isVisible(), false);
     await shell.locator('#close-library').focus();
     await shell.keyboard.press('Enter');
@@ -84,7 +93,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.evaluate(() => document.activeElement.id),'show-pi-workbench','closing Pi workbench restores focus to its sidebar control');
     await agentRoomsTrigger.click();
-    await shell.getByText('当前 Profile 暂无 Agent Room。通过 SDK/CLI 启动的工作区会显示在这里。').waitFor();
+    await shell.getByText('当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
 
     const defaultRoom = await call('/rooms', 'POST', { name: 'Default agent room' });
     await shell.getByRole('button', { name: '查看 Default agent room' }).waitFor();
