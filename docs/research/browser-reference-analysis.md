@@ -21,6 +21,22 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 | Kaze REA 包分析 | 已安装 `app.asar` SHA-256 `c168a2ef9b3586a9de0965972ec82bebb9391fa68dfbf876e4b7c173ce6682d4`。精确选择 `out/main/agent.js` 与 `out/preload/shell.cjs` 后，REA 发现静态引用 `@earendil-works/pi-coding-agent`（本图谱标记 unavailable），Preload 有 `browserAction.update` 事件监听与动态 `kaze` bridge 声明。 | 入口/Preload 选择分析父 Evidence `ev_0107a3a03ec7fa62018621015fae94f3ea74df50b36a291387717e28da7f8333`；精确查询视图 Evidence `ev_7c1d6b6f18501ac3989aeeb0d6999371eab92b8895605f53b07ba80042618f82`。另有 BrowserMCP adapter SDK 小范围 Evidence `ev_d7e6ba8a3a19e4de954ce6ec1eabcaf991118eb6e4ce28c5ca76ef0b1f0f9dee`。 | REA 记录 5 个 unpacked 原生文件完整性矛盾并标为 observed-untrusted。选择分析只覆盖 2 个源码文件，14,852 个其他文件未分析；图谱/语义节点与 unknowns 有截断；JavaScript 未执行，不能证明运行时加载、可达性、权限效果或授权执行。 |
 | Kaze 开源仓库 [`jackwener/Kaze`](https://github.com/jackwener/Kaze/tree/ddd85ed3fb4a492438df7cc27e04a800c82bbcfd)，commit `ddd85ed3fb4a492438df7cc27e04a800c82bbcfd` | README 声称内置 Agent 可选模型端点、任务拥有独立标签组织、用户可接管，并能从设置连接外部 Agent/MCP；还将 BrowserMCP 描述为操作已登录浏览器、带 JavaScript 工作区与可复用网站适配器的开源 MCP 服务。 | 仓库 README/README.zh-CN.md 与安装包模块清单。 | README 是产品方公开说明，不等同于独立端到端验证；本次没有操作已登录网站或连接真实 MCP host。 |
 
+## 2026-11-02 当前安装版本窗口复核
+
+本轮复核了两款已安装浏览器的真实窗口。版本来自各自已安装应用包的 `CFBundleShortVersionString`；可见界面来自当前窗口，不把当前页面状态解释为全部产品行为。
+
+| 产品 | 本轮现场观察 | REA Evidence 与额外观察 | 限制 |
+| --- | --- | --- | --- |
+| EGO lite `0.6.2.5` | 当前窗口是 Google 新标签页；顶部保留多标签，下面是地址/搜索栏和书签栏，主画布仍是普通网页。底部无障碍树可见创建 Space、选择 Profile、打开 Space 的入口。 | 当前截图由桌面无障碍读取，窗口 18761，画面 2880×1696（Retina）；项目此前的 REA `observe_native_ui` 记录见 Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`。本轮对同窗口调用 REA 时，系统窗口几何未匹配到 AX window，未产生新的 REA Evidence。 | 当前可见的多个标签含登录页、网站错误和新标签页；它们是此用户窗口的瞬时状态，不作为 EGO 稳定功能证据。上一条 REA 截图与当前桌面截图可支持浏览器布局；本轮不能据此核实 Agent 是否正在后台运行或 Space 隔离实现。 |
+| Kaze `0.26.0` | 当前窗口的左侧栏分成 Browser、Skills、Scheduled、Activity；侧栏中有 Personal Space、该 Space 的标签列表和新建 Space 入口。主区域独立显示地址栏及网站画布，工具栏有下载、书签、扩展、更多和 Show agent 入口。 | REA `observe_native_ui` Evidence `ev_ff99b513f1812a97433d873a916b24cd302c814e8828d4950013c9e4e306422d`；窗口 46150，截图 1440×851，SHA-256 `ab893b400776d262e4dda9385cbade9df45a544672c5a883a3bdf9ac6b8e3b6b`，应用 SHA-256 `540cc257fb5f0657e22bcc5a9d55887b0e92c7db0d619f02da2053887cddf531`。无障碍树确认上述导航、标签、地址栏与 Agent 入口。 | 当前只观察到 Personal Space 中一个 X 标签。Agent 面板没有在这次截图中展开；REA 后续窗口匹配失败，桌面点击也未成功，因此本轮不对 Agent 工作区内部任务状态与操作流程作运行时判断。早先的 REA 窗口观察与 Kaze 包分析仍按原范围引用。 |
+
+### 对 Corvid 的界面取舍
+
+- 日常浏览的第一视觉层按 EGO 处理：熟悉的标签、地址/搜索、书签和网页画布必须一直像一个完整浏览器，首次打开也应落在可浏览的页面。
+- Space 与 Agent 协作信息吸收 Kaze 的持久分区和常驻入口；Corvid 应把 Room/Profile/标签关系讲清楚，并让 Pi 任务有稳定、可恢复的工作区，而不是让工具导航占掉浏览画布。
+- EGO 提供主产品的浏览器形态，Kaze 提供 Agent 导航和任务组织的参照；这是一项基于当前窗口布局、现有研究与 Corvid 合同的产品判断，不代表本轮已验证 Kaze Agent 内部流程或 EGO 后台隔离实现。
+- 下一轮 D21 的失败/等待 UI 需分别呈现 Agent 运行状态、页面/Room 上下文和用户控制权；“等待用户”不能被画成任务失败，“失败”应提供可理解原因与针对性恢复动作。继续保持该项为部分，直到键盘、窄屏和真实 Provider 边界补齐。
+
 ## REA 特别限制
 
 - Kaze 完整 `app.asar` 第一次分析返回 resource constraint：父结果预算耗尽于第三方语言包文件，剩余源文件未分析。保留的完整包级 Evidence 是 partial，不能用来声称整包无某种功能。
