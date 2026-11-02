@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-02 Agent Room 任务状态与原对话回跳（Issue #73）
+
+- Agent 工作区现在按 Room 展示其 Corvid Agent 任务状态及“查看对话”入口。状态取自任务存储，任务更新时刷新；Profile/面板发生变化后，过期异步结果会被丢弃。Room 控制权与任务运行状态分开呈现，不展示任务 prompt 或页面内容。
+- 入口选中原 task ID 并回到原 transcript；不创建新任务。所有用户可见状态和按钮都使用 Corvid Agent 语义，底层运行时名称只保留在内部实现与测试标识中。
+- 定向验证：`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0。真实 Electron + 临时 Corvid 数据目录 + 本地 HTTP 页面 + 确定性 fixture，覆盖两个 Room 上同时运行的任务、运行/等待接管/中断/完成/失败状态、状态更新、Room 控制权独立呈现、prompt 不泄露、原 task ID 回跳、停止后状态更新及 Profile 过滤。
+- 全量验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；43 条独立脚本命令与 3 项 `node:test`，共 46 项自动化检查通过，包含 #73 新增并行任务状态断言。此前仍为 OPEN 的 [Issue #34](https://github.com/heyallencao/corvid/issues/34) 本轮没有复现；单次全量通过不视为其间歇性挂起问题已解决。
+- 限制：未调用 OAuth 或真实模型额度；未验证多窗口、辅助技术、跨平台，也未做独立视觉截图复核。
+
 ## 2026-11-02 Agent Room 空态与内置 Agent 引导（Issue #16）
 
 - REA 对隔离 Corvid Electron 运行态的结构观察与 CUA 可访问树/截图检查发现：Agent 工作区空态只提外部 SDK/CLI，没有引导用户进入内置 Corvid Agent；在 `about:blank` 上打开 Agent 时，页面绑定状态也未说明需先打开 HTTP(S) 页面。

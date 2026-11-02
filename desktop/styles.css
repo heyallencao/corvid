@@ -245,6 +245,12 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .agent-room-entry { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 6px; padding: 10px 5px; border-bottom: 1px solid #eff0f2; }
 .agent-room-entry .agent-room-name { grid-column: 1 / -1; min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .agent-room-entry .agent-room-state { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-room-tasks { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 5px 8px; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.agent-room-task-state { min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-room-task-state[data-status="running"], .agent-room-task-state[data-status="preparing"] { color: var(--accent-ink); }
+.agent-room-task-state[data-status="waiting_for_user"] { color: var(--warning); }
+.agent-room-task-state[data-status="completed"] { color: var(--success); }
+.agent-room-task-state[data-status="failed"] { color: var(--danger); }
 .agent-room-entry button { padding: 5px 8px; font-size: 11px; }
 .entry { min-height: 42px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #eff0f2; }
 .entry a { min-width: 0; flex: 1; overflow: hidden; padding: 9px 0; color: var(--accent-ink); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
