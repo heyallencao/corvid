@@ -27,6 +27,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   const sendShortcut=async(key,modifier)=>{const mods=modifier?[modifier==='Meta'?'meta':'control']:[];await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>{const contents=BrowserWindow.getAllWindows()[0].webContents;contents.sendInputEvent({type:'keyDown',keyCode,modifiers});contents.sendInputEvent({type:'keyUp',keyCode,modifiers});},{keyCode:key,modifiers:mods});};
   const activeHomeTabId=async()=>{const snapshot=await call('/rooms');return snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs.find(tab=>tab.active)?.id;};
   const homeEval=async source=>{const tabId=await activeHomeTabId();return app.evaluate(async({webContents},{source,tabId})=>{for(const contents of webContents.getAllWebContents()){let matches=false;try{matches=await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`);}catch{}if(matches)return contents.executeJavaScript(source);}return null;},{source,tabId});};
+  let homeThemeDebuggerAttachedByTest=false;
+  const setHomeColorScheme=async colorScheme=>{const tabId=await activeHomeTabId();const result=await app.evaluate(async({webContents},{tabId,colorScheme})=>{for(const contents of webContents.getAllWebContents()){let matches=false;try{matches=await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`);}catch{}if(matches){const attachedByTest=!contents.debugger.isAttached();if(attachedByTest)contents.debugger.attach('1.3');await contents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:colorScheme}]});return {found:true,attachedByTest};}}return {found:false,attachedByTest:false};},{tabId,colorScheme});homeThemeDebuggerAttachedByTest ||=result.attachedByTest;return result.found;};
   const captureHome=async output=>{const tabId=await activeHomeTabId();const base64=await app.evaluate(async({webContents},{tabId})=>{for(const contents of webContents.getAllWebContents()){try{if(await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`))return (await contents.capturePage()).toPNG().toString('base64');}catch{}}return null;},{tabId});assert.ok(base64,'the active blank tab provides a capturable browser start page');fs.writeFileSync(output,Buffer.from(base64,'base64'));};
   try{
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
@@ -72,6 +74,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await delay(150);
     assert.equal(bookmarkFaviconRequests,faviconRequestsBeforeHome,'the new-tab surface must not load remote bookmark favicons');
     assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),1,'the new tab lists only current Profile bookmarks');
+    const homeTheme=()=>homeEval("(()=>{const host=document.querySelector('[data-corvid-home-surface]');const style=getComputedStyle(host);return {background:style.getPropertyValue('--home-page-background').trim(),text:style.getPropertyValue('--home-text-color').trim()}})()");
+    assert.deepEqual(await homeTheme(),{background:'#fbfbfd',text:'#202334'},'the new-tab home starts with its light palette');
+    assert.equal(await setHomeColorScheme('dark'),true,'the test can emulate the active page color scheme');
+    await until(async()=>JSON.stringify(await homeTheme())===JSON.stringify({background:'#171b23',text:'#e7eaf0'}),'new-tab home follows dark color scheme');
+    assert.deepEqual(await homeTheme(),{background:'#171b23',text:'#e7eaf0'},'the new-tab home switches to its dark palette');
+    if(process.env.CORVID_DARK_THEME_SCREENSHOT_PATH)await captureHome(process.env.CORVID_DARK_THEME_SCREENSHOT_PATH);
+    await setHomeColorScheme('light');
+    await until(async()=>JSON.stringify(await homeTheme())===JSON.stringify({background:'#fbfbfd',text:'#202334'}),'new-tab home restores light color scheme');
+    const themeTabId=await activeHomeTabId();
+    if(homeThemeDebuggerAttachedByTest)await app.evaluate(async({webContents},{themeTabId})=>{for(const contents of webContents.getAllWebContents()){if(contents.debugger.isAttached()){try{if(await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(themeTabId)}`)){contents.debugger.detach();break;}}catch{}}}},{themeTabId});
     await captureHome(path.join(os.tmpdir(),'corvid-new-tab-surface.png'));
     await homeEval(`window.browserHome.action('navigate',${JSON.stringify(base+'/saved')})`);
     await until(async()=>(await tabs.nth(1).textContent()).includes('Saved Fixture'),'bookmark shortcut navigation');
