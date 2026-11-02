@@ -168,7 +168,7 @@ async function selectAllExtensions(shell){
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
-    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}:{ }));
+    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1'}:{ }));
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     assert.equal(await app.evaluate(()=>globalThis.chromeImportDialogCalls||0),0,'first launch must not scan or open Chrome');
     await installDialogFixture(app,chromeRoot);
@@ -176,11 +176,30 @@ async function selectAllExtensions(shell){
     await shell.getByRole('heading',{name:'从 Google Chrome 导入'}).waitFor();
     await chooseSource(shell);
     await shell.locator('#chrome-import-preview').getByText(/2 个可读取扩展/).waitFor();
+    if(supportsCookieImport){
+      await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+      await shell.locator('#confirm-chrome-import').click();
+      await shell.locator('#chrome-import-error').getByText('测试注入：Chrome Cookie 持久化失败').waitFor();
+      const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
+      assert.equal(rolledBackCookies.length,0,'failed Cookie flush must remove every imported Cookie');
+      assert.equal((await call('/bookmarks')).bookmarks.length,0,'failed Cookie import must not start importing unselected library categories');
+      assert.equal((await call('/history')).history.length,0,'failed Cookie import must leave history unchanged');
+      await shell.locator('#confirm-chrome-import').click();
+      await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项（不支持 2 项）/).waitFor();
+      const retriedCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
+      assert.equal(retriedCookies.length,2,'Cookie import must be retryable after a rolled-back flush failure');
+      await shell.locator('#cancel-chrome-import').click();
+      await shell.locator('#show-settings').click();
+      await shell.locator('#start-chrome-import').click();
+      await chooseSource(shell);
+    }
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
     if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 2 项（不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,1);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');

@@ -37,6 +37,11 @@ const piWorkbench = createPiWorkbench({ dataDir, createSession:process.env.CORVI
 } });
 let panelOpen = false;
 const selectedChromeSources = new Map();
+let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
+async function flushChromeCookies(destinationSession){
+  if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
+  await destinationSession.cookies.flushStore();
+}
 function activeRecord() {
   if (window && !window.isDestroyed()) {
     for (const record of windowRecords.values()) if (record.browserWindow === window) return record;
@@ -584,7 +589,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             await destinationSession.cookies.set(restored).catch(()=>{});
           }
         }
-        if(addedCookies.length)await destinationSession.cookies.flushStore().catch(()=>{});
+        if(addedCookies.length)await flushChromeCookies(destinationSession).catch(()=>{});
       };
       try{
         if(args.categories.includes('cookies')){
@@ -599,7 +604,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             try{await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;}
             catch{cookieResult.unsupported++;}
           }
-          await destinationSession.cookies.flushStore();
+          await flushChromeCookies(destinationSession);
         }
         const libraryCategories=args.categories.filter(category=>category!=='extensions');
         const result=libraryCategories.length?library.importChromeData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
