@@ -519,20 +519,37 @@ async function dispatch(method, args = {}, fromApi = false) {
       const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
       if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
-      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,unsupported:['Cookie 与登录状态','扩展程序']};
+      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,canImportCookies:process.platform==='darwin',extensions:null};
     }
     case 'importChromeData': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
       const selectedRoot=selectedChromeSources.get(args.sourceToken);
       if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
       const profileId=findProfile(args.profileId ?? activeProfileId).id;
-      if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history'].includes(category)))throw new Error('请选择可导入的资料类别');
+      if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history','cookies'].includes(category)))throw new Error('请选择可导入的资料类别');
+      if(args.categories.includes('cookies') && process.platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
       const sources=chromeImport.profiles(selectedRoot);
       if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
-      const result=library.importChromeData(content,profileId,args.categories);
-      selectedChromeSources.delete(args.sourceToken);
-      return {...result,profileId};
+      const destinationSession=session.fromPartition(partitionFor(profileId));
+      const cookieResult={imported:0,skipped:0,unsupported:0},addedCookies=[];
+      const rollbackCookies=async()=>{for(const cookie of addedCookies)await destinationSession.cookies.remove(cookie.url,cookie.name).catch(()=>{});if(addedCookies.length)await destinationSession.cookies.flushStore().catch(()=>{});};
+      try{
+        if(args.categories.includes('cookies')){
+          const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId));
+          cookieResult.unsupported=sourceCookies.unsupported;
+          for(const cookie of sourceCookies.cookies){
+            const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
+            if(existing.some(item=>item.domain===cookie.domain && item.path===cookie.path)){cookieResult.skipped++;continue;}
+            try{await destinationSession.cookies.set(cookie);addedCookies.push(cookie);cookieResult.imported++;}
+            catch{cookieResult.unsupported++;}
+          }
+          await destinationSession.cookies.flushStore();
+        }
+        const result=library.importChromeData(content,profileId,args.categories);
+        selectedChromeSources.delete(args.sourceToken);
+        return {...result,cookies:cookieResult,profileId};
+      }catch(error){await rollbackCookies();throw error;}
     }
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
     case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('Profile name required');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}

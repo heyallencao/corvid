@@ -1,6 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+const {execFile} = require('node:child_process');
+const {promisify} = require('node:util');
 const { DatabaseSync } = require('node:sqlite');
+const execFileAsync=promisify(execFile);
 
 const safeUrl = value => {
   try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; }
@@ -56,6 +60,7 @@ function readBookmarks(directory) {
 function readHistory(directory) {
   const file=sourceFile(directory,'History');
   if(!fs.existsSync(file)) return [];
+  sourceFile(directory,'History-wal');sourceFile(directory,'History-shm');
   let database;
   try {
     database=new DatabaseSync(file,{readOnly:true});
@@ -72,9 +77,66 @@ function readHistory(directory) {
   finally { database?.close(); }
 }
 
-function readProfile(root, relative) {
-  const directory=profilePath(root,relative);
-  return {bookmarks:readBookmarks(directory),history:readHistory(directory)};
+function readCookieRows(directory) {
+  const file=sourceFile(directory,'Cookies');
+  if(!fs.existsSync(file))return [];
+  sourceFile(directory,'Cookies-wal');sourceFile(directory,'Cookies-shm');
+  let database;
+  try{
+    database=new DatabaseSync(file,{readOnly:true});
+    const statement=database.prepare('SELECT * FROM cookies');statement.setReadBigInts(true);
+    return statement.all();
+  }catch(error){throw new Error(`无法只读读取 Chrome Cookie 数据库（请先关闭 Chrome 后重试）：${error.message}`);}
+  finally{database?.close();}
 }
 
-module.exports={profiles,readProfile};
+function cookieCount(directory){
+  try{return readCookieRows(directory).length;}catch{return null;}
+}
+
+async function chromeCookieKey(){
+  if(process.platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
+  let stdout;
+  try{({stdout}=await execFileAsync('/usr/bin/security',['find-generic-password','-w','-s','Chrome Safe Storage','-a','Chrome'],{timeout:15000,maxBuffer:4096,windowsHide:true}));}
+  catch(error){throw new Error(`无法通过 macOS 钥匙串读取 Chrome Safe Storage。请在系统提示中允许访问后重试。${error.message?`（${error.message}）`:''}`);}
+  const password=stdout.replace(/[\r\n]+$/,'');
+  if(!password)throw new Error('Chrome Safe Storage 钥匙串条目为空，无法导入 Cookie。');
+  return crypto.pbkdf2Sync(Buffer.from(password,'utf8'),Buffer.from('saltysalt'),1003,16,'sha1');
+}
+
+async function readCookies(directory){
+  const rows=readCookieRows(directory),key=await chromeCookieKey(),cookies=[];
+  let unsupported=0;
+  for(const row of rows){
+    const host=typeof row.host_key==='string'?row.host_key:'';
+    const name=typeof row.name==='string'?row.name:'';
+    const domain=host.replace(/^\./,'');
+    if(!domain || typeof row.name!=='string' || (typeof row.top_frame_site_key==='string' && row.top_frame_site_key)){unsupported++;continue;}
+    const encrypted=Buffer.from(row.encrypted_value || []);
+    let value=typeof row.value==='string'?row.value:'';
+    if(encrypted.length){
+      if(encrypted.subarray(0,3).toString('ascii')!=='v10'){unsupported++;continue;}
+      try{const decipher=crypto.createDecipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));value=Buffer.concat([decipher.update(encrypted.subarray(3)),decipher.final()]).toString('utf8');}
+      catch{unsupported++;continue;}
+    }
+    let url;
+    const cookiePath=typeof row.path==='string'&&row.path?row.path:'/';
+    try{const parsed=new URL(`${row.is_secure?'https':'http'}://${domain}/`);parsed.pathname=cookiePath;url=parsed.href;}catch{unsupported++;continue;}
+    const cookie={url,name,value,domain:host,path:cookiePath,secure:Boolean(row.is_secure),httpOnly:Boolean(row.is_httponly)};
+    if(row.has_expires){
+      try{const expiresUtc=BigInt(row.expires_utc),seconds=Number(expiresUtc-11644473600000000n)/1000000;if(Number.isFinite(seconds)&&seconds>0)cookie.expirationDate=seconds;else{unsupported++;continue;}}
+      catch{unsupported++;continue;}
+    }
+    const sameSite=Number(row.samesite);
+    cookie.sameSite=({0:'unspecified',1:'no_restriction',2:'lax',3:'strict'})[sameSite] || 'unspecified';
+    cookies.push(cookie);
+  }
+  return {cookies,unsupported};
+}
+
+function readProfile(root, relative) {
+  const directory=profilePath(root,relative);
+  return {bookmarks:readBookmarks(directory),history:readHistory(directory),cookieCount:process.platform==='darwin'?cookieCount(directory):null};
+}
+
+module.exports={profiles,readProfile,readCookies};
