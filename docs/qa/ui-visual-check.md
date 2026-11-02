@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 新标签起始页与后台 Agent Room 共存（Issue #98）
+
+- 环境：本机 macOS、真实 Electron、隔离数据目录、本地 HTTP fixture；未使用真实 Profile、Cookie、网站、模型或 OAuth。
+- 视觉与合成：全窗口检查确认侧栏、标签和地址栏仍由浏览器壳绘制；起始页内容位于当前空白标签 WebContentsView 中，背景页保持在活动起始页下方。起始页单页截图显示品牌、搜索、浏览身份书签、历史与 Corvid Agent 快捷入口；书签图标不发起远程 favicon 请求。内容通过闭合 Shadow DOM 绘制，不属于网页 Snapshot 内容。
+- 交互：真实 Electron E2E 从起始页打开书签、历史和 Corvid Agent 面板；另一个获准 Agent Room 在前台空白起始页保持不变时完成 Snapshot、fill、click 和 SDK PNG 截图。后台页面不激活、不抢占前台。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 均通过；全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（43 条独立脚本与 3 项串行 `node:test`，共 46 项）。起始页截图 SHA-256 `2747572393f3750117f6d03e3e2c8d85e827ecd130a962e5807da060beaba588`，保存在本机临时目录，不作为仓库二进制文件。
+- 限制：未验证暗色、窄窗、辅助技术、Windows/Linux、打包分发和真实网站。起始页快捷入口仍需键盘与屏幕阅读器人工复核。
+
 ## 2026-11-03 Corvid 新标签起始页
 
 - 环境：本机 macOS、真实 Electron、隔离测试数据与本地 HTTP fixture；测试窗口截图尺寸 2560×1636。没有使用真实 Profile、Cookie 或网页数据。

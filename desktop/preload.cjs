@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('browserShell', {
   onFindNext: callback => ipcRenderer.on('shell-find-next', (_event, options) => callback(options || {})),
   onPrintPage: callback => ipcRenderer.on('shell-print-page', (_event, request) => callback(request || {})),
   onFindResult: callback => ipcRenderer.on('shell-find-result', (_event, result) => callback(result)),
-  onFindReset: callback => ipcRenderer.on('shell-find-reset', (_event, result) => callback(result))
+  onFindReset: callback => ipcRenderer.on('shell-find-reset', (_event, result) => callback(result)),
+  onBrowserHomeAction: callback => ipcRenderer.on('shell-home-action', (_event, action) => callback(action))
 });
