@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 新标签起始页跟随系统深色主题（Issue #16）
+
+- 缺口：浏览器壳和 Agent 工作区已跟随系统主题，但独立 `WebContentsView` 的新标签起始页使用写死的浅色值，暗色下成为亮色孤岛。
+- 修复：在起始页闭合 Shadow DOM 中建立浅/深色语义变量；背景、搜索输入、书签、说明文字、标签和快捷入口统一引用变量。网站页面配色与 Agent 页面上下文合同不变。
+- 红绿验证：先增加主题变量断言，未修复时因变量缺失失败；完成后定向 E2E 通过。测试使用隔离 Electron/临时 `CORVID_DATA_DIR` 和本地 HTTP fixture，并对目标 WebContentsView 使用 CDP 模拟浅色→深色→浅色，确认视觉变量切换及恢复；既有 Profile 书签隔离、搜索/快捷入口、标签 favicon、查找、拖拽与中键关闭也通过。
+- 命令：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` EXIT 0；`CORVID_DARK_THEME_SCREENSHOT_PATH=/tmp/corvid-newtab-dark.png env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` EXIT 0；截图 SHA-256 `07d6e3ada314a66cafefbd61a1387ddb37a2a9c5c1f27ce95966603576686212`；`node --check desktop/new-tab-page.cjs`、`node --check tests/tab-ux-e2e.cjs`、`git diff --check` 均通过。
+- 限制：未运行全量 `npm test`；CDP 媒体模拟不是系统设置切换，未验证 Windows/Linux、打包版、窄窗、VoiceOver 或真实网页；不调用 OAuth/模型。
+
 ## 2026-11-03 浏览器壳层系统深色主题（Issue #16）
 
 - 实现：`desktop/styles.css` 将浅色与深色视觉值收敛为语义 token；壳层依据 `prefers-color-scheme` 跟随系统偏好。覆盖浏览器导航、菜单、标签、库面板、Agent 空态/对话输入、状态反馈、导入和设置对话框；实心主操作继续使用满足对比度的深色强调底。网站画布由独立 `WebContentsView` 承载，保持网站配色。

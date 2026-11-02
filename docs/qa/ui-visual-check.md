@@ -31,6 +31,13 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 均通过；全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（43 条独立脚本与 3 项串行 `node:test`，共 46 项）。起始页截图 SHA-256 `2747572393f3750117f6d03e3e2c8d85e827ecd130a962e5807da060beaba588`，保存在本机临时目录，不作为仓库二进制文件。
 - 限制：未验证暗色、窄窗、辅助技术、Windows/Linux、打包分发和真实网站。起始页快捷入口仍需键盘与屏幕阅读器人工复核。
 
+## 2026-11-03 新标签起始页深色主题（Issue #16）
+
+- 环境：本机 macOS、真实 Electron、隔离测试数据与本地 HTTP fixture；通过目标 `WebContentsView` CDP 媒体偏好模拟深色，再恢复浅色。没有使用真实 Profile、Cookie、网页数据、OAuth 或模型。
+- 观察：起始页过渡到深石墨色背景与低饱和靛蓝光晕；标题、说明和书签文字保持清晰；搜索框、书签卡片及快捷入口改用深色表面和描边，没有残留浅色块。
+- 证据：截图 SHA-256 `07d6e3ada314a66cafefbd61a1387ddb37a2a9c5c1f27ce95966603576686212`，尺寸 2096×1412；截图只保留在本机 `/tmp/corvid-newtab-dark.png`。定向 E2E 断言浅色→深色→浅色恢复，并覆盖原有导航、书签与标签流程。
+- 限制：截图只包含起始页 WebContentsView，不是窗口合成截图；CDP 媒体模拟不等同于系统外观切换。未验证窄窗、VoiceOver、Windows/Linux、打包版或真实网站。
+
 ## 2026-11-03 Corvid 新标签起始页
 
 - 环境：本机 macOS、真实 Electron、隔离测试数据与本地 HTTP fixture；测试窗口截图尺寸 2560×1636。没有使用真实 Profile、Cookie 或网页数据。
