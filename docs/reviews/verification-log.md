@@ -16,6 +16,13 @@
 
 # 验证记录
 
+## 2026-11-02 只读数据目录的启动诊断（Issue #60）
+
+- 复现：macOS 真实 Electron + 隔离目录 `chmod 0500`。修复前，模块加载阶段写入 `agent-tasks.json.tmp` 触发 `EACCES`，Electron 没有正常退出；测试在 10 秒后只能强制终止。
+- 修复：在加载会持久化状态的 Agent/浏览器模块之前，创建数据目录并验证读/写/进入权限，再用独占临时文件检查写入与删除。失败时跳过其余应用初始化；正式启动调用系统错误框，说明 Corvid 数据目录、权限建议和系统原因，然后以状态码 1 退出。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/data-directory-e2e.cjs` 通过；只读目录下真实 Electron 5 秒内以状态码 1 退出，诊断包含具体目录与 `EACCES`，目录中无部分状态/探测文件。`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：40 条独立脚本与 3 项 `node:test`，共 43 项检查通过；`git diff --check` 通过。
+- 限制：E2E 使用 `CORVID_TEST_MODE=1` 检查诊断文本和快速退出，因此不验证 macOS 原生错误框的实际呈现；未触碰真实 Corvid 数据目录或浏览器资料。
+
 ## 2026-11-02 SIGKILL 后浏览会话与 Agent 任务恢复（Issue #54）
 
 - 环境：macOS、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；确定性 Agent fixture，不调用真实模型/provider，不读写真实浏览器资料。

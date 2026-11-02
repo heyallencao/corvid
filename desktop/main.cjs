@@ -5,7 +5,31 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
-fs.mkdirSync(dataDir,{recursive:true});
+let dataDirectoryError = null;
+try {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.accessSync(dataDir, fs.constants.R_OK | fs.constants.W_OK | fs.constants.X_OK);
+  const probe = path.join(dataDir, `.corvid-write-check-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(probe, 'wx', 0o600);
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+    try { fs.unlinkSync(probe); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+} catch (error) {
+  dataDirectoryError = new Error(`Corvid 无法使用数据目录：${dataDir}\n请检查当前用户是否有读取、写入和执行权限，然后重试。\n系统错误：${error.message}`);
+}
+
+if (dataDirectoryError) {
+  console.error(dataDirectoryError.message);
+  void app.whenReady().then(() => {
+    if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox('Corvid 启动失败', dataDirectoryError.message);
+    app.exit(1);
+  });
+} else {
 app.setPath('userData', dataDir);
 const hadExistingCorvidData=[path.join(dataDir,'rooms.json'),path.join(dataDir,'spaces.json'),path.join(dataDir,'profiles.json'),path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json'),path.join(dataDir,'managed-extensions.json')].some(file=>fs.existsSync(file));
 const token = crypto.randomBytes(32).toString('hex');
@@ -1120,3 +1144,4 @@ app.whenReady().then(async () => {
 app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
 app.on('window-all-closed',() => app.quit());
 app.on('will-quit',()=>{try{agentDownloads.cleanup();}catch(error){console.error('Agent download cleanup failed:',error.message);}});
+}
