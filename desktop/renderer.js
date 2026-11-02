@@ -150,12 +150,15 @@ async function renderPiTasks(){
   const items=document.querySelector('#library-items'),list=document.querySelector('#pi-task-list');
   if(!list)return;
   list.replaceChildren();
-  const labels={preparing:'准备中',running:'Pi 正在运行',waiting_for_user:'等待用户交还 Room',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
+  const labels={preparing:'准备中',running:'Pi 正在运行',waiting_for_user:'等待用户',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
   for(const task of piTasks){
     const row=document.createElement('article');row.className='pi-task-entry';
+    const title=document.createElement('strong');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||'浏览任务';title.title=title.textContent;row.append(title);
+    const context=document.createElement('div');context.className='pi-task-context';context.textContent=`${task.runtime||'Pi SDK'} · ${task.page?.title||task.page?.url||'页面'}`;row.append(context);
     const meta=document.createElement('div');meta.className='pi-task-meta';
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?'页面执行状态未知':roomState?.userResumePending?'接管中':roomState?.ownership==='user'?'用户控制中':'';
-    const status=document.createElement('span');status.className='pi-task-state';status.dataset.status=task.status;status.textContent=`${labels[task.status]||task.status}${controlLabel?` · ${controlLabel}`:''} · ${task.runtime||'Pi SDK'} · ${task.page?.title||task.page?.url||'页面'}`;meta.append(status);
+    const status=document.createElement('span');status.className='pi-task-state';status.dataset.status=task.status;status.textContent=labels[task.status]||task.status;status.setAttribute('role','status');meta.append(status);
+    if(controlLabel){const control=document.createElement('span');control.className='pi-task-control-state';control.textContent=controlLabel;control.setAttribute('role','status');meta.append(control);}
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
