@@ -286,7 +286,12 @@ function layout(record = activeRecord()) {
   const roomId = record.activeRoomId;
   const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
   const tab = room && tabs.get(room.activeTabId);
-  const [width,height] = browserWindow.getContentSize(); const top = record.panelOpen ? 352 : 112;
+  const [width,height] = browserWindow.getContentSize();
+  const top = 112;
+  const sidebarWidth = width <= 860 ? 64 : 232;
+  const workspaceWidth = record.panelOpen
+    ? Math.max(0, Math.min(420, width - sidebarWidth - 320))
+    : 0;
   for (const item of tabs.values()) {
     // Every view is owned by the window that hosts its room: it is sized in that
     // window and left hidden in any other window. Background Rooms keep their
@@ -294,8 +299,8 @@ function layout(record = activeRecord()) {
     // that the user is not currently looking at.
     const owner = rooms.find(entry => entry.id === item.roomId);
     if (owner?.windowId !== record.id) continue;
-    item.view.setBounds({x:0,y:top,width,height:Math.max(0,height-top)});
-    item.view.setVisible(Boolean(tab));
+    item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth),height:Math.max(0,height-top)});
+    item.view.setVisible(Boolean(tab) && !record.modalOpen);
   }
   if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
 }
@@ -506,7 +511,8 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'addBookmark': return library.addBookmark(args.url,args.title,findProfile(args.profileId ?? activeProfileId).id);
     case 'removeBookmark': return {removed:library.removeBookmark(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'removeHistory': return {removed:library.removeHistory(target,findProfile(args.profileId ?? activeProfileId).id)};
-    case 'setPanel': {const record=requireFocusedRecord();record.panelOpen=Boolean(args.open);panelOpen=record.panelOpen;layout(record);return {ok:true};}
+    case 'setPanel': {const record=requireFocusedRecord();record.panelOpen=Boolean(args.open&&args.workspace);panelOpen=record.panelOpen;layout(record);return {ok:true};}
+    case 'setShellModal': {const record=requireFocusedRecord();record.modalOpen=Boolean(args.open);layout(record);return {ok:true};}
     case 'listWindows': return {windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(windowStateSnapshot),focusedWindowId:activeRecord()?.id ?? null};
     case 'createWindow': {
       if(fromApi) throw new Error('User action required');
@@ -787,7 +793,7 @@ async function startServer() {
 }
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   const browserWindow = new BrowserWindow({...bounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
-  const record = {id:recordId,browserWindow,panelOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default'};
+  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default'};
   windowRecords.set(recordId,record);
   focusWindow(record);
   browserWindow.on('resize',()=>{scheduleWindowStateSave();layout(record);});
