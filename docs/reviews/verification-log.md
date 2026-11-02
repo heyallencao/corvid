@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-02 Chrome Cookie 回滚保留旧值（Issue #77）
+
+- 根因确认：Electron `cookies.remove(url, name)` 无 path 参数；同名旧 Cookie 可与本次导入的不同 path Cookie 同时匹配 URL。先 broad-remove 再 `cookies.set` 旧值会把安全性押在第二步恢复成功上。
+- 修复改为保守回滚：若导入前存在同 URL/name Cookie，跳过不可按 path 限定的删除，保留旧 Cookie 与本轮新增 Cookie；明确显示部分回滚和“为保护目标 Profile 原有 Cookie，跳过删除回滚”，同一来源/目标仍可重试。只有没有旧 Cookie 时才调用 remove；remove 失败同样检查残留并展示告警。
+- 真实 Electron E2E 注入 flush/remove 故障，分别验证无旧值时删除失败告警，以及旧 `/` Cookie 与新增 `/app` Cookie 在回滚和重试后都保留；未读取真实 Chrome Profile 或系统钥匙串。
+- `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE npm test` 均通过；全量 43 条独立脚本与 3 项 `node:test` 共 46 项（EXIT 0）。真实文件系统 flush 失败后的跨重启持久恢复仍是未知，需要继续评估受保护恢复记录；Issue #77 保持开放到该边界收敛。
+
 ## 2026-11-02 Corvid 对话跨 runtime checkpoint 续聊（Issue #78）
 
 - 差异复核确认旧任务记录的对话和任务 ID 虽保留，但不同 runtime 无法恢复 checkpoint，原流程只能提示用户切换兼容环境。
