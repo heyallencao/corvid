@@ -147,8 +147,9 @@ async function renderPiTasks(){
   if(libraryKind!=='pi-workbench'||state.activeProfileId!==profileId)return;
   piTasks=result.tasks;
   if(piContinueTaskId&&!piTasks.some(task=>task.id===piContinueTaskId)){piContinueTaskId=null;piContinuationPreview=null;}
-  const items=document.querySelector('#library-items'),list=document.querySelector('#pi-task-list');
+  const list=document.querySelector('#pi-task-list');
   if(!list)return;
+  const historyTop=list.scrollTop,historyAtEnd=historyTop+list.clientHeight>=list.scrollHeight-24;
   list.replaceChildren();
   const labels={preparing:'准备中',running:'Pi 正在运行',waiting_for_user:'等待用户',completed:'已完成',failed:'失败',interrupted:'结果待检查'};
   for(const task of piTasks){
@@ -173,6 +174,7 @@ async function renderPiTasks(){
     list.append(row);
   }
   if(!piTasks.length){const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent='任务发起后会显示在这里。每项任务都有自己的 Agent Room；发送前可以检查并确认页面上下文。';list.append(empty);}
+  list.scrollTop=historyAtEnd?list.scrollHeight:historyTop;
 }
 function appendContinuationComposer(row,task){
   const form=document.createElement('section');form.className='pi-task-entry';
@@ -188,7 +190,7 @@ function appendContinuationComposer(row,task){
 function renderPiWorkbench(){
   if(piBinding&&piBinding.profileId!==state.activeProfileId){piBinding=null;piContextPreview=null;}
   const panel=document.querySelector('#library'),items=document.querySelector('#library-items');
-  panel.dataset.kind='pi-workbench';document.querySelector('#library-title').textContent='Pi Agent 工作台';document.querySelector('#library-search').hidden=true;items.replaceChildren();
+  panel.dataset.kind='pi-workbench';document.querySelector('#library-title').textContent='Pi Agent 工作台';document.querySelector('#library-search').hidden=true;items.replaceChildren();panel.querySelector('#pi-workbench-content')?.remove();
   const activeRoom=state.rooms.find(room=>room.id===state.activeRoomId),current=activeRoom?.tabs.find(tab=>tab.active);
   if(!piBinding&&activeRoom?.ownership==='agent'&&current?.label)piBinding={roomId:activeRoom.id,tabId:current.id,profileId:activeRoom.profileId};
   const form=document.createElement('section');form.id='pi-task-form';
@@ -207,8 +209,8 @@ function renderPiWorkbench(){
     const consent=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.id='pi-context-consent';consent.className='pi-consent';consent.append(check,document.createTextNode('我已检查以上内容，同意将此页面上下文和任务发送给当前 Pi 模型'));form.append(consent);
     const start=button('启动 Pi Agent',async()=>{try{await api.invoke('startPiTask',{...piBinding,prompt:prompt.value,includePageContext:check.checked,contextPreview:piContextPreview});piContextPreview=null;piPromptDraft='';renderPiWorkbench();}catch(error){page.textContent=`Pi Agent 未启动：${error.message}`;}});start.className='pi-primary-action';start.disabled=!bound||!check.checked||!prompt.value.trim();check.onchange=()=>{start.disabled=!bound||!check.checked||!prompt.value.trim();};prompt.oninput=()=>{piPromptDraft=prompt.value;start.disabled=!bound||!check.checked||!prompt.value.trim();};form.append(start);
   }
-  items.append(form);
-  const list=document.createElement('div');list.id='pi-task-list';items.append(list);void renderPiTasks();
+  const workspace=document.createElement('div');workspace.id='pi-workbench-content';
+  const list=document.createElement('div');list.id='pi-task-list';workspace.append(list,form);panel.append(workspace);void renderPiTasks();
 }
 async function showLibrary(kind) {if(libraryKind!==kind)document.querySelector('#library-search').value='';libraryKind=kind;document.querySelector('#library').hidden=false; await api.invoke('setPanel',{open:true,workspace:true});await renderLibrary();}
 let bookmarksRenderVersion=0;
