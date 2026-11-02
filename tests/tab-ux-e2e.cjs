@@ -10,8 +10,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-tabux-'));
   const favicon='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6cdf"/></svg>';
   const page=(title,body)=>`<!doctype html><title>${title}</title><link rel="icon" href="/favicon.svg?for=${encodeURIComponent(title)}"><body>${body}</body>`;
+  let bookmarkFaviconRequests=0;
   const server=http.createServer((req,res)=>{
     if(new URL(req.url,'http://fixture').pathname==='/favicon.svg'){res.writeHead(200,{'content-type':'image/svg+xml','cache-control':'no-store'});res.end(favicon);return;}
+    if(new URL(req.url,'http://fixture').pathname==='/favicon.ico')bookmarkFaviconRequests++;
     res.writeHead(200,{'content-type':'text/html'});
     const url=new URL(req.url,'http://fixture');
     if(url.pathname==='/search'){res.end(page('Search Fixture',`<p>${url.searchParams.get('q')||''}</p>`));return;}
@@ -51,9 +53,13 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 
     // A new tab shows only bookmarks from its active Profile; another Profile
     // gets an empty state and cannot see this saved site.
+    await until(async()=>bookmarkFaviconRequests>0,'existing bookmark bar favicon request');
+    const faviconRequestsBeforeHome=bookmarkFaviconRequests;
     await shell.locator('#new-tab').click();
     await shell.locator('#new-tab-surface').waitFor({state:'visible'});
     await shell.locator('#bookmarks-bar').waitFor({state:'hidden'});
+    await delay(150);
+    assert.equal(bookmarkFaviconRequests,faviconRequestsBeforeHome,'the new-tab surface must not load remote bookmark favicons');
     const homeBookmark=shell.getByRole('button',{name:'打开书签：Saved Fixture'});
     await homeBookmark.waitFor();
     await shell.screenshot({path:path.join(os.tmpdir(),'corvid-new-tab-surface.png')});

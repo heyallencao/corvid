@@ -361,6 +361,9 @@ async function renderBookmarksBar() {
   if(version!==bookmarksRenderVersion || state?.activeProfileId!==profileId)return;
   renderNewTabBookmarks(result.bookmarks,profileId);
   const bar=document.querySelector('#bookmarks-bar');bar.replaceChildren();
+  const active=activeTab(),isBrowserHome=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
+  bar.toggleAttribute('hidden',isBrowserHome);
+  if(isBrowserHome)return;
   const items=result.bookmarks.slice(0,12);
   for(const item of items){
     const link=document.createElement('a');link.className='bookmark-item';link.href='#';link.title=item.url;
