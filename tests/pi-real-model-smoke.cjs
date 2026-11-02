@@ -37,11 +37,11 @@ const selected = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
     await authUrl.waitFor({ state: 'visible' });
     await authUrl.click();
 
-    const authFile = path.join(agentDir, 'auth.json');
+    const credentialFile = path.join(dataDir, 'agent-credentials.json');
     const loginDeadline = Date.now() + 240_000;
     let credentials = [];
     while (Date.now() < loginDeadline) {
-      if (fs.existsSync(authFile)) {
+      if (fs.existsSync(credentialFile)) {
         const manager = createPiModelManager({ dataDir, agentDir });
         const modelRuntime = (await manager.getModel(selected).catch(() => null))?.runtime;
         if (modelRuntime) {
@@ -84,7 +84,8 @@ const selected = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
     });
     await created.session.prompt('仅回复精确文本 CORVID_LUNA_OK，不要调用浏览器工具。');
     assert.match(responseText, /CORVID_LUNA_OK/);
-    assert.ok(fs.existsSync(authFile), 'Corvid stores ChatGPT/Codex OAuth inside its own application data directory');
+    assert.ok(fs.existsSync(credentialFile), 'Corvid stores ChatGPT/Codex OAuth in its credential store');
+    assert.equal(fs.statSync(credentialFile).mode & 0o777, 0o600, 'Corvid credentials are owner-only');
     assert.equal(fs.statSync(agentDir).mode & 0o777, 0o700, 'Corvid Agent configuration directory is owner-only');
     console.log(JSON.stringify({ result: 'passed', provider: created.session.model.provider, model: created.session.model.id, responseMarkerReceived: true, authentication: 'Corvid-owned Pi OAuth (openai-codex)', agentConfig: 'inside isolated CORVID_DATA_DIR', page: 'local HTTP fixture' }));
   } finally {

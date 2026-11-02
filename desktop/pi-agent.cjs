@@ -45,7 +45,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
 
   const pi = await import('@earendil-works/pi-coding-agent');
   const { Type } = await import('typebox');
-  const { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, defineTool } = pi;
+  const { createAgentSession, DefaultResourceLoader, SessionManager, defineTool } = pi;
   const piAgentDir = path.join(dataDir, 'pi-agent');
   await fs.mkdir(piAgentDir, { recursive: true, mode: 0o700 });
   await fs.chmod(piAgentDir, 0o700);
@@ -116,9 +116,10 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   });
   await resourceLoader.reload();
 
-  const modelRuntime = selectedModel ? (suppliedModelRuntime || await ModelRuntime.create({ authPath: path.join(piAgentDir, 'auth.json'), modelsPath: path.join(piAgentDir, 'models.json'), refreshOnCreate: false })) : undefined;
+  if (selectedModel && !suppliedModelRuntime) throw new Error('Corvid must provide the selected model and its account authorization through the Agent adapter');
+  const modelRuntime = selectedModel ? suppliedModelRuntime : undefined;
   const model = selectedModel ? (selectedPiModel || modelRuntime.getModel(selectedModel.providerId, selectedModel.modelId)) : undefined;
-  if (selectedModel && (!model || (model.type && model.type !== 'chat'))) throw new Error(`Pi 模型不存在：${selectedModel.providerId}/${selectedModel.modelId}`);
+  if (selectedModel && (!model || (model.type && model.type !== 'chat'))) throw new Error(`所选模型不可用：${selectedModel.providerId}/${selectedModel.modelId}`);
   if (selectedModel && requiresAuth && !await modelRuntime.checkAuth(selectedModel.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selectedModel.providerId)) throw new Error(`请先连接 ${selectedModel.providerId} 账号`);
 
   const { session, modelFallbackMessage } = await createAgentSession({
@@ -134,13 +135,13 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   const actualModel = session.model;
   if (selectedModel && (actualModel?.provider !== selectedModel.providerId || actualModel?.id !== selectedModel.modelId)) {
     session.dispose();
-    throw new Error(`Pi session 模型不匹配：期望 ${selectedModel.providerId}/${selectedModel.modelId}，实际 ${actualModel?.provider || 'unknown'}/${actualModel?.id || 'unknown'}`);
+    throw new Error(`Corvid 会话使用的模型与当前选择不一致：期望 ${selectedModel.providerId}/${selectedModel.modelId}，实际 ${actualModel?.provider || 'unknown'}/${actualModel?.id || 'unknown'}`);
   }
   const activeTools = session.getActiveToolNames().slice().sort();
   const expectedTools = [TOOL_SNAPSHOT, TOOL_NAVIGATE].sort();
   if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
     session.dispose();
-    throw new Error(`Pi tool boundary mismatch: expected ${expectedTools.join(', ')}, got ${activeTools.join(', ')}`);
+    throw new Error('Corvid Agent 会话的浏览器工具配置不符合安全要求');
   }
 
   const activeSessionFile = session.sessionFile || null;

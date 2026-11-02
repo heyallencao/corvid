@@ -12,14 +12,17 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 (async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-custom-endpoint-'));
   const dataDir = path.join(root, 'corvid');
-  let modelId, modelPath, app;
+  let modelId, modelPath, discoveryAuthorization, requestAuthorization, app;
+  const endpointApiKey = 'sk-test-corvid-endpoint-secret';
   const models = http.createServer(async (request, response) => {
     if (request.method === 'GET' && request.url === '/v1/models') {
+      discoveryAuthorization = request.headers.authorization;
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify({ data: [{ id: 'fixture-model' }] }));
       return;
     }
     if (request.method === 'POST' && request.url === '/v1/chat/completions') {
+      requestAuthorization = request.headers.authorization;
       const chunks = [];
       for await (const chunk of request) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -54,6 +57,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: '管理 Corvid Agent 模型' }).click();
     await shell.locator('#pi-endpoint-name').fill('Fixture Endpoint');
     await shell.locator('#pi-endpoint-url').fill(`http://127.0.0.1:${models.address().port}/v1`);
+    await shell.locator('#pi-endpoint-key').fill(endpointApiKey);
     await shell.getByRole('button', { name: '从端点读取模型列表' }).click();
     await shell.locator('#pi-endpoint-model-ids').waitFor();
     await shell.waitForFunction(() => document.querySelector('#pi-endpoint-model-ids').value === 'fixture-model');
@@ -66,7 +70,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(customOption.length, 1, `custom model missing from selector; status=${await shell.locator('.pi-model-status').textContent()}`);
     assert.ok(latestCatalog.providers.some(provider => provider.id === 'corvid-fixture-endpoint'), 'custom provider appears in the model catalog');
     await selection.selectOption(customOption[0].value);
-    await shell.getByText('无需密钥').waitFor();
+    await shell.getByText('已连接').waitFor();
     await shell.getByRole('button', { name: '关闭模型设置' }).click();
 
     await shell.getByRole('button', { name: '连接当前页面' }).click();
@@ -82,12 +86,18 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.match(tasksAfterRequest[0].output, /CUSTOM_ENDPOINT_OK/);
     assert.equal(modelId, 'fixture-model', 'Pi sends the selected configured model ID');
     assert.equal(modelPath, '/v1/chat/completions', 'Pi uses the OpenAI Chat Completions endpoint');
+    assert.equal(discoveryAuthorization, `Bearer ${endpointApiKey}`, 'endpoint discovery uses the key provided by the user');
+    assert.equal(requestAuthorization, `Bearer ${endpointApiKey}`, 'model calls resolve the key from Corvid credential storage');
     const config = JSON.parse(fs.readFileSync(path.join(dataDir, 'pi-models.json'), 'utf8'));
     assert.equal(config.providers['corvid-fixture-endpoint'].models[0].id, 'fixture-model');
+    assert.equal(config.providers['corvid-fixture-endpoint'].apiKey, '$CORVID_AGENT_ENDPOINT_CREDENTIAL');
+    assert.equal(JSON.stringify(config).includes(endpointApiKey), false, 'runtime model configuration contains no endpoint credential');
+    const credentials = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-credentials.json'), 'utf8'));
+    assert.deepEqual(credentials.providers['corvid-fixture-endpoint'], { kind: 'api_key', secret: endpointApiKey });
     assert.equal(fs.statSync(path.join(dataDir, 'pi-models.json')).mode & 0o777, 0o600, 'custom model config uses owner-only permissions');
     assert.equal(fs.statSync(path.join(dataDir, 'pi-agent')).mode & 0o777, 0o700, 'Pi runtime uses a Corvid-owned private config directory');
     assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-model.json'), 'utf8')).modelId, 'fixture-model');
-    console.log('PASS custom endpoint discovery, persistence, no-key auth, model selection, and real Pi Agent request');
+    console.log('PASS custom endpoint discovery, Corvid credential persistence, model selection, and local Agent request');
   } finally {
     if (app) await app.close().catch(() => {});
     await Promise.all([new Promise(resolve => models.close(resolve)), new Promise(resolve => site.close(resolve))]);

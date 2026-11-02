@@ -54,6 +54,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       error => error.code === 'CORVID_CONTROL_LOST',
     );
 
+    await assert.rejects(
+      createPiAgentSession({ dataDir, taskId: 'missing-corvid-model-adapter', profileId, roomId: room.id, tabId, includePageContext: true, selectedModel: { providerId: 'openai-codex', modelId: 'gpt-6-luna' } }),
+      /Corvid must provide the selected model and its account authorization through the Agent adapter/,
+      'the runtime session factory cannot create or read its own provider credential file',
+    );
+    assert.equal(fs.existsSync(path.join(dataDir, 'pi-agent', 'auth.json')), false, 'no runtime-owned auth file is created without Corvid credentials');
+
     createdSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true });
     assert.deepEqual(createdSession.tools, ['corvid_navigate', 'corvid_page_snapshot']);
     assert.deepEqual(createdSession.session.getActiveToolNames().slice().sort(), ['corvid_navigate', 'corvid_page_snapshot']);

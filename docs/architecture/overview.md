@@ -4,6 +4,8 @@ Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的
 
 当前实现包括桌面日常浏览器、Profile/Room、用户控制权交接、外部 Agent SDK/CLI，以及 Corvid Agent 工作台：用户可从当前网页创建独立 Agent Room，预览并确认页面上下文后开始任务，查看运行状态，并在保存的对话记录上继续多轮交流。Agent 的运行时、SDK 类型、认证流程和会话文件格式均为内部实现，不构成用户可见的产品概念；Corvid 拥有任务与对话记录、模型设置、OAuth/API Key 配置、浏览器工具授权、Profile/Room/Page 绑定、用户接管和恢复语义。更换或升级运行时必须由 Corvid 适配层承接，并维持用户界面、持久化数据和控制权合同；需要迁移时由 Corvid 负责兼容或明确迁移，不要求用户安装、配置或了解某个运行时。当前使用的 SDK 实现细节仅记录在内部验证材料中。模型选择和自定义 OpenAI 兼容端点由 [Issue #55](https://github.com/heyallencao/corvid/issues/55) 交付；对话工作台由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 迭代。接管后仍需用户显式确认上下文再续聊，自动续跑和更完整的中断恢复尚未实现。详见 [执行任务板](../execution/feature-board.md) 的 D19。
 
+Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，并通过运行时适配层提供给当前执行引擎；内置引擎不再拥有账号凭据文件。首次读取时兼容迁移旧版引擎凭据与自定义端点 API Key，写入并校验 Corvid 凭据记录后才清理旧明文副本。模型目录只保留无凭据的端点配置引用；OAuth/API Key、令牌刷新与登出继续经 Provider 的授权合同执行。迁移实现和未覆盖的真实 OAuth 故障/跨平台持久性边界见 D19 与验证记录。
+
 ## 系统边界
 
 - 应用负责浏览器窗口、Room、标签以及控制权的生命周期；Agent 通过本地认证接口操作获得授权的 Room。

@@ -1,13 +1,18 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { createAgentCredentialStore } = require('./agent-credential-store.cjs');
 
 const DEFAULT_SELECTION = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
 const NO_AUTH_API_KEY = 'corvid-no-auth';
+const ENDPOINT_CREDENTIAL_REFERENCE = '$CORVID_AGENT_ENDPOINT_CREDENTIAL';
 
 function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, openExternal = async () => {}, onAuthEvent = () => {}, promptAuth = async (_providerId, prompt) => { throw new Error(`Corvid cannot complete this ${prompt.type} authentication prompt yet`); } }) {
   const file = path.join(dataDir, 'agent-model.json');
   const endpointsFile = path.join(dataDir, 'pi-models.json');
+  const agentDir = configuredAgentDir || path.join(dataDir, 'pi-agent');
+  const credentialStore = createAgentCredentialStore({ dataDir, legacyAuthPath: path.join(agentDir, 'auth.json') });
   let runtimePromise;
+  let endpointMigrationPromise;
 
   function readEndpoints() {
     try {
@@ -52,8 +57,27 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
     return { id, name: id, input: ['text'], contextWindow: 128_000, maxTokens: 16_384, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
   }
 
-  function describeEndpoint(id, provider) {
-    return { id, name: provider.name || id, baseUrl: provider.baseUrl, modelIds: (provider.models || []).map(model => model.id), configuredKey: Boolean(provider.apiKey && provider.apiKey !== NO_AUTH_API_KEY), customEndpoint: true };
+  function describeEndpoint(id, provider, hasCredential = false) {
+    return { id, name: provider.name || id, baseUrl: provider.baseUrl, modelIds: (provider.models || []).map(model => model.id), configuredKey: hasCredential, customEndpoint: true };
+  }
+
+  async function migrateLegacyEndpointCredentials() {
+    if (!endpointMigrationPromise) endpointMigrationPromise = (async () => {
+      const providers = readEndpoints();
+      let changed = false;
+      for (const [providerId, provider] of Object.entries(providers)) {
+        const key = provider.apiKey;
+        if (typeof key !== 'string' || !key || key === NO_AUTH_API_KEY || key === ENDPOINT_CREDENTIAL_REFERENCE) continue;
+        const storedCredential = await credentialStore.modify(providerId, current => current?.type === 'api_key' ? current : { type: 'api_key', key });
+        const verifiedCredential = await credentialStore.read(providerId);
+        if (verifiedCredential?.type !== 'api_key' || verifiedCredential.key !== storedCredential?.key) throw new Error(`自定义端点“${provider.name || providerId}”的 API Key 迁移未通过校验；原模型设置已保留`);
+        provider.apiKey = ENDPOINT_CREDENTIAL_REFERENCE;
+        changed = true;
+      }
+      if (changed) writeEndpoints(providers);
+      return providers;
+    })();
+    return endpointMigrationPromise;
   }
 
   async function applyEndpointChange(providers) {
@@ -80,11 +104,11 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
 
   async function runtime() {
     if (!runtimePromise) runtimePromise = (async () => {
+      await migrateLegacyEndpointCredentials();
       const pi = await import('@earendil-works/pi-coding-agent');
-      const agentDir = configuredAgentDir || path.join(dataDir, 'pi-agent');
       fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
       fs.chmodSync(agentDir, 0o700);
-      return pi.ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: endpointsFile, refreshOnCreate: false });
+      return pi.ModelRuntime.create({ credentials: credentialStore, modelsPath: endpointsFile, refreshOnCreate: false });
     })();
     return runtimePromise;
   }
@@ -92,11 +116,12 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function list() {
     const modelRuntime = await runtime();
     const credentialProviders = new Set((await modelRuntime.listCredentials()).map(credential => credential.providerId));
+    const customEndpoints = readEndpoints();
     const providers = (await Promise.all(modelRuntime.getProviders().map(async provider => {
       const auth = provider.auth || {};
-      const configured = credentialProviders.has(provider.id) || modelRuntime.hasConfiguredAuth(provider.id);
-      const customEndpoint = readEndpoints()[provider.id];
+      const customEndpoint = customEndpoints[provider.id];
       const noKeyRequired = Boolean(customEndpoint && (!customEndpoint.apiKey || customEndpoint.apiKey === NO_AUTH_API_KEY));
+      const configured = customEndpoint ? noKeyRequired || credentialProviders.has(provider.id) : credentialProviders.has(provider.id) || modelRuntime.hasConfiguredAuth(provider.id);
       return {
         id: provider.id,
         name: provider.id === 'openai-codex' ? 'ChatGPT / Codex' : provider.name,
@@ -108,7 +133,7 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
         models: modelRuntime.getModels(provider.id).filter(model => !model.type || model.type === 'chat').map(model => ({ id: model.id, name: model.name })),
       };
     }))).filter(provider => provider.models.length);
-    return { providers, selection: readSelection(), endpoints: Object.entries(readEndpoints()).map(([id, provider]) => describeEndpoint(id, provider)) };
+    return { providers, selection: readSelection(), endpoints: Object.entries(customEndpoints).map(([id, provider]) => describeEndpoint(id, provider, credentialProviders.has(id))) };
   }
 
   async function discoverEndpointModels({ baseUrl, apiKey = '' }) {
@@ -131,21 +156,26 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   }
 
   async function saveEndpoint(input) {
+    await runtime();
     const value = validateEndpoint(input), providers = readEndpoints();
     const existingId = typeof input.id === 'string' && providers[input.id] ? input.id : null;
     const id = providerIdFor(value.name, providers, existingId);
-    const previous = existingId ? providers[existingId] : null;
-    const storedKey = input.clearApiKey ? '' : value.apiKey || (previous?.apiKey === NO_AUTH_API_KEY ? '' : previous?.apiKey) || '';
-    providers[id] = { apiKey: storedKey || NO_AUTH_API_KEY, name: value.name, baseUrl: value.baseUrl, api: 'openai-completions', models: value.modelIds.map(modelEntry) };
+    const currentCredential = await credentialStore.read(id);
+    if (input.clearApiKey) await credentialStore.delete(id);
+    else if (value.apiKey) await credentialStore.modify(id, () => ({ type: 'api_key', key: value.apiKey }));
+    const hasApiKey = !input.clearApiKey && (Boolean(value.apiKey) || currentCredential?.type === 'api_key' && Boolean(currentCredential.key));
+    providers[id] = { apiKey: hasApiKey ? ENDPOINT_CREDENTIAL_REFERENCE : NO_AUTH_API_KEY, name: value.name, baseUrl: value.baseUrl, api: 'openai-completions', models: value.modelIds.map(modelEntry) };
     await applyEndpointChange(providers);
-    return { id, endpoint: describeEndpoint(id, providers[id]), catalog: await list() };
+    return { id, endpoint: describeEndpoint(id, providers[id], hasApiKey), catalog: await list() };
   }
 
   async function removeEndpoint(id) {
+    await runtime();
     const providers = readEndpoints();
     if (!providers[id]) throw new Error('自定义端点不存在');
     delete providers[id];
     await applyEndpointChange(providers);
+    await credentialStore.delete(id);
     if (readSelection().providerId === id) writeSelection(DEFAULT_SELECTION);
     return list();
   }
@@ -201,7 +231,8 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
     const model = modelRuntime.getModel(selection.providerId, selection.modelId);
     if (!model || (model.type && model.type !== 'chat')) throw new Error(`模型不存在于 Corvid 目录：${selection.providerId}/${selection.modelId}`);
     const customEndpoint = readEndpoints()[selection.providerId];
-    if (!customEndpoint && !await modelRuntime.checkAuth(selection.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selection.providerId)) throw new Error(`请先连接 ${selection.providerId} 账号`);
+    const noKeyRequired = Boolean(customEndpoint && (!customEndpoint.apiKey || customEndpoint.apiKey === NO_AUTH_API_KEY));
+    if (!noKeyRequired && !await modelRuntime.checkAuth(selection.providerId).catch(() => undefined) && (customEndpoint || !modelRuntime.hasConfiguredAuth(selection.providerId))) throw new Error(`请先连接 ${selection.providerId} 账号`);
     return { runtime: modelRuntime, model, requiresAuth: customEndpoint ? Boolean(customEndpoint.apiKey && customEndpoint.apiKey !== NO_AUTH_API_KEY) : true };
   }
 
