@@ -213,14 +213,22 @@ dialog form > button[type="submit"] { background: var(--accent); color: white; }
   #library-search { width: 120px; }
 }
 
+@media (max-width: 720px) {
+  :root { --workspace-width: min(420px, max(280px, calc(100vw - 394px))); }
+  #library { right: 10px; }
+}
+
 @media (max-width: 600px) {
   #chrome-tools { gap: 1px; padding-inline: 5px; }
   .icon-button { width: 28px; }
   #address-form { margin-inline: 2px; padding-inline: 8px; }
   #library { top: 98px; right: 6px; bottom: 6px; }
-  .panel-header { gap: 6px; padding: 10px; }
+  .panel-header { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 8px; padding: 10px; }
+  .panel-header > div { grid-column: 1; grid-row: 1; }
+  .panel-header .close-button { grid-column: 2; grid-row: 1; }
+  #library-search { grid-column: 1 / -1; grid-row: 2; width: 100%; }
   .panel-eyebrow { font-size: 8px; }
-  #library-search { width: 96px; min-width: 80px; }
+  #library-search { width: 100%; min-width: 80px; }
   #library-items { padding: 9px; }
   .agent-room-entry { grid-template-columns: minmax(0,1fr) auto auto; }
   .agent-room-entry .agent-room-name { grid-column: 1 / -1; }

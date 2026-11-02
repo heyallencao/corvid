@@ -290,8 +290,11 @@ function layout(record = activeRecord()) {
   const top = 112;
   const sidebarWidth = width <= 860 ? 64 : 232;
   const workspaceWidth = record.panelOpen
-    ? Math.max(0, Math.min(420, width - sidebarWidth - 320))
+    ? width > 720
+      ? Math.min(420, width - sidebarWidth - 320)
+      : Math.min(420, Math.max(280, width - sidebarWidth - 330))
     : 0;
+  const workspaceGap = workspaceWidth ? (width > 720 ? 12 : 10) : 0;
   for (const item of tabs.values()) {
     // Every view is owned by the window that hosts its room: it is sized in that
     // window and left hidden in any other window. Background Rooms keep their
@@ -299,7 +302,7 @@ function layout(record = activeRecord()) {
     // that the user is not currently looking at.
     const owner = rooms.find(entry => entry.id === item.roomId);
     if (owner?.windowId !== record.id) continue;
-    item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth),height:Math.max(0,height-top)});
+    item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)});
     item.view.setVisible(Boolean(tab) && !record.modalOpen);
   }
   if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
@@ -792,7 +795,14 @@ async function startServer() {
   fs.writeFileSync(connectionPath,JSON.stringify(connection),{mode:0o600}); fs.chmodSync(connectionPath,0o600);
 }
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
-  const browserWindow = new BrowserWindow({...bounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
+  const area=screen.getDisplayMatching(bounds).workArea;
+  const minimumWidth=Math.min(694,area.width),minimumHeight=Math.min(420,area.height);
+  const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
+  const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
+  const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
+  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  browserWindow.setMinimumSize(minimumWidth,minimumHeight);
   const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default'};
   windowRecords.set(recordId,record);
   focusWindow(record);
