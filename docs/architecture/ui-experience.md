@@ -43,10 +43,10 @@ Provider 凭据也由 Corvid 管理：账号授权写入版本化的 Corvid 凭�
 
 ## 交付顺序与当前进度
 
-1. **首轮已实现**：统一 CSS token、结构化样式文件、持久左侧 Profile/Space/常用入口、收敛浏览器顶部工具层级，并将 Corvid Agent 工作区放到右侧；保持现有浏览和 Room 合同。隔离 Electron 下已人工检查书签/历史/下载/设置和约 770px 窄窗；修复 HTML modal 被网页 view 覆盖的问题。证据见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-02-corvid-浏览器壳与-pi-工作区人工检查)。
+1. **首轮已实现**：统一 CSS token、结构化样式文件、持久左侧 Profile/Space/常用入口、收敛浏览器顶部工具层级，并将 Corvid Agent 工作区放到右侧；保持现有浏览和 Room 合同。浏览器壳层跟随系统浅色/深色偏好，网页画布保留网站自身配色。隔离 Electron 下已人工检查书签/历史/下载/设置和约 770px 窄窗；修复 HTML modal 被网页 view 覆盖的问题。证据见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-02-corvid-浏览器壳与-pi-工作区人工检查)和[系统深色主题检查](../qa/ui-visual-check.md#2026-11-03-系统深色主题适配)。
 2. **继续打磨**：Corvid Agent 任务卡分开呈现任务目标、页面来源、执行状态与用户控制状态；单线程消息流、历史选择、固定输入区与模型选择已进入本轮。流式工具活动、停止、失败重试和辅助技术验收由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 继续跟踪。
 3. **后续统一**：History/Bookmarks/Downloads、设置、站点权限/站点数据对话框、菜单、错误/空态与动态状态；补运行中停止、失败重试、键盘与辅助技术体验。
-4. **完整视觉验收**：宽/窄最小窗口、多 Room/标签、多 Profile、长内容、键盘、屏幕阅读器、对比度、减少动态效果，并按 macOS/Windows 分别留存复验结论。
+4. **完整视觉验收**：宽/窄最小窗口、多 Room/标签、多 Profile、长内容、键盘、屏幕阅读器、对比度、减少动态效果，并按 macOS/Windows 分别留存复验结论。当前深色主题已通过 macOS Electron 的系统偏好模拟与截图检查；尚未验证 Windows、Linux、打包版的原生系统主题切换。
 
 ## 不在本次视觉方向中改变
 
