@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 地址栏草稿在状态刷新中丢失（Issue #101）
+
+- 根因：创建空间对话框关闭后，延迟到达的 `shell-state` 会触发 `draw()`；如果这时地址栏已失焦，旧逻辑会用当前页面 URL 覆盖刚输入但尚未提交的地址，导致 Enter 提交空字符串，页面仍停留在 `about:blank`。问题是浏览器交互缺陷，不是标签无障碍角色选错。
+- 修复：地址栏输入时记录草稿及所属 Tab。shell 状态刷新不会覆盖当前 Tab 未提交的草稿；提交后清除草稿状态；切换 Tab 或无活动空间时清除旧草稿。
+- 回归：`tests/library-e2e.cjs` 在输入 URL、主动失焦并触发一次真实 `activateRoom` shell 状态刷新后，断言地址栏仍保留草稿并通过 Enter 完成导航、保存书签/历史、重启持久化与删除。红测验证临时恢复旧实现会稳定失败，实际值为空字符串。
+- 验证环境：macOS、Node.js 24.14.1、Electron 45.2.1、隔离临时数据目录、本地 HTTP fixture。`env -u ELECTRON_RUN_AS_NODE node tests/library-e2e.cjs` 通过；完整 `env -u ELECTRON_RUN_AS_NODE npm test` 通过，45 条独立脚本命令与 3 项 `node:test` 共 48 项。`node --check desktop/renderer.js`、`node --check tests/library-e2e.cjs` 与 `git diff --check` 通过。
+- 限制：不访问真实用户资料，不连接真实网站；没有触发 OAuth 或真实模型。完整回归只覆盖当前 macOS Electron 环境。
+
 ## 2026-11-03 内置 Agent 任务级 Room 身份（Issue #96）
 
 - 实现：每个内置 Agent 任务轮次由 Corvid 主进程签发单 Room 内存 scoped credential；续聊重新签发，完成、失败、停止及用户接管时撤销；会话仍在初始化时发生接管也会撤销身份，并丢弃随后才返回的会话，不向模型发送该轮 prompt。运行时连接页面读取与浏览器工具时显式使用该身份，缺少身份时失败关闭，不回退管理员凭据。原始凭据不写入 `agent-clients.json`、`agent-tasks.json` 或对话 transcript；外部 SDK/CLI 与 Browser MCP 继续沿用独立 scoped token 合同。
