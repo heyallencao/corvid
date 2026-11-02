@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-02 浏览器与 Agent 面板宽度边界复查（Issue #16）
+
+- 真实 Electron 基线证伪了布局合同：760px 内容宽度与 861–972px 区间的网页 `WebContentsView` 只有 308px；973–983px 为 309–319px。失败由新增 E2E 首次在 760px 断言中稳定复现。
+- 主进程扣除网页/Agent 间距后的 12px 空间预算；CSS 侧同步按 874–984px 与 ≤873px 使用相同预算。最小窗口从 694px 提升到 704px，以保证窄窗也有 320px 网页与 280px Agent 内容。
+- `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` 通过：在 704/720/721/800/860/873/874/900/972/983/984/1024/1280px 读取所有 WebContentsView bounds，均 ≥320px；Agent Room 卡片内容均 ≥280px；原多 Room、Profile、控制权与 704×568 窄窗断言继续通过。
+- 全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：43 条独立脚本与 3 项 `node:test` 全部通过，共 46 项检查；本轮 `restore-loading-e2e` 正常通过，未复现长停顿。截图不能覆盖独立 WebContentsView 正文；平台、辅助技术和高 DPI 缩放变化未验证。详情见[视觉检查](../qa/ui-visual-check.md#2026-11-02-窗口空间分配边界复查)。
+
 ## 2026-11-02 Agent Room 多任务状态最小窗口复核（Issue #16）
 
 - 确定性 Electron fixture 在请求 640×600 窗口时受 Electron 最小尺寸约束，实际 renderer viewport 为 694×568 CSS px（2×）。两个并行 Room、四个运行/接管/停止/终态 task 状态与操作按钮均留在卡片内，无水平溢出。
