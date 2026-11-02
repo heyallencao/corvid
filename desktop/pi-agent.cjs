@@ -31,7 +31,7 @@ function assertReadableRoom(room, profileId) {
   if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
@@ -45,7 +45,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
 
   const pi = await import('@earendil-works/pi-coding-agent');
   const { Type } = await import('typebox');
-  const { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, defineTool } = pi;
+  const { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager, defineTool } = pi;
   const piAgentDir = getAgentDir();
   const sessionDirectory = path.join(dataDir, 'agent-sessions', taskId);
   let sessionManager;
@@ -114,15 +114,26 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   });
   await resourceLoader.reload();
 
+  const modelRuntime = selectedModel ? (suppliedModelRuntime || await ModelRuntime.create({ authPath: path.join(piAgentDir, 'auth.json'), modelsPath: path.join(piAgentDir, 'models.json'), refreshOnCreate: false })) : undefined;
+  const model = selectedModel ? (selectedPiModel || modelRuntime.getModel(selectedModel.providerId, selectedModel.modelId)) : undefined;
+  if (selectedModel && (!model || model.type !== 'chat')) throw new Error(`Pi 模型不存在：${selectedModel.providerId}/${selectedModel.modelId}`);
+  if (selectedModel && !await modelRuntime.checkAuth(selectedModel.providerId).catch(() => undefined)) throw new Error(`请先连接 ${selectedModel.providerId} 账号`);
+
   const { session, modelFallbackMessage } = await createAgentSession({
     cwd: dataDir,
     agentDir: piAgentDir,
     resourceLoader,
     sessionManager,
+    ...(modelRuntime ? { modelRuntime, model } : {}),
     noTools: 'all',
     tools: [TOOL_SNAPSHOT, TOOL_NAVIGATE],
     customTools: [pageSnapshot, navigate],
   });
+  const actualModel = session.model;
+  if (selectedModel && (actualModel?.provider !== selectedModel.providerId || actualModel?.id !== selectedModel.modelId)) {
+    session.dispose();
+    throw new Error(`Pi session 模型不匹配：期望 ${selectedModel.providerId}/${selectedModel.modelId}，实际 ${actualModel?.provider || 'unknown'}/${actualModel?.id || 'unknown'}`);
+  }
   const activeTools = session.getActiveToolNames().slice().sort();
   const expectedTools = [TOOL_SNAPSHOT, TOOL_NAVIGATE].sort();
   if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {

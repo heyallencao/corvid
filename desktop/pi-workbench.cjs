@@ -5,8 +5,14 @@ const { createPiAgentSession, readPiPageContext } = require('./pi-agent.cjs');
 
 const MAX_OUTPUT = 24_000;
 const copy = value => JSON.parse(JSON.stringify(value));
+const safeError = error => String(error?.message || error)
+  .replace(/((?:x-)?api[-_ ]?key\s*[:=]\s*)["']?[^"'\s,;]+/gi, '$1[redacted]')
+  .replace(/(authorization\s*[:=]\s*(?:bearer\s+)?)[^\s,;]+/gi, '$1[redacted]')
+  .replace(/(bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi, '$1[redacted]')
+  .replace(/\b(sk-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,})\b/g, '[redacted]')
+  .slice(0, 1_000);
 
-function createPiWorkbench({ dataDir, onChange = () => {}, createSession = createPiAgentSession, readContext = readPiPageContext }) {
+function createPiWorkbench({ dataDir, onChange = () => {}, createSession = createPiAgentSession, readContext = readPiPageContext, getModelSelection = () => null, resolveModel = async () => null }) {
   const file = path.join(dataDir, 'agent-tasks.json');
   let tasks = [];
   const sessions = new Map();
@@ -74,7 +80,9 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     const context = await readContext({ dataDir, profileId, roomId, tabId });
     const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
     if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
-    const task = { id: crypto.randomUUID(), profileId, roomId, tabId, prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    const selectedModel = getModelSelection();
+    const modelInfo = selectedModel ? await resolveModel(selectedModel) : null;
+    const task = { id: crypto.randomUUID(), profileId, roomId, tabId, ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.model?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
     tasks.push(task); changed();
     await run(task, { message: task.prompt, context, consentedSnapshot, sessionFile: null, initial: true });
     return copy(task);
@@ -99,7 +107,8 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   }
   async function run(task, { message, context, consentedSnapshot, sessionFile, initial }) {
     try {
-      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(sessionFile ? { sessionFile } : {}) });
+      const modelInfo = task.selectedModel ? await resolveModel(task.selectedModel) : null;
+      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(modelInfo ? { selectedModel: task.selectedModel, model: modelInfo.model, modelRuntime: modelInfo.runtime } : {}), ...(sessionFile ? { sessionFile } : {}) });
       task.runtime = created.fixture ? '本地确定性 fixture（无真实模型）' : 'Pi SDK';
       task.piSessionFile = created.sessionFile || sessionFile || null;
       changed();
@@ -119,12 +128,12 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
         task.piSessionFile = created.session.sessionFile || task.piSessionFile;
         const assistantTurn = task.conversation?.at(-1);
         if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
-        task.status = 'failed'; task.error = String(error?.message || error).slice(0, 1_000); addEvent(task, 'error', `Pi Agent 未完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
+        task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Pi Agent 未完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
       });
     } catch (error) {
       const assistantTurn = task.conversation?.at(-1);
       if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
-      task.status = 'failed'; task.error = String(error?.message || error).slice(0, 1_000); addEvent(task, 'error', `无法启动 Pi Agent：${task.error}`); throw error;
+      task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Pi Agent：${task.error}`); throw new Error(task.error);
     }
   }
   function stop(taskId) {

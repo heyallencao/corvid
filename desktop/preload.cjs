@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld('browserShell', {
   invoke: (method, args) => ipcRenderer.invoke('shell-action', method, args),
   onState: callback => ipcRenderer.on('shell-state', (_event, state) => callback(state)),
   onPiTasks: callback => ipcRenderer.on('pi-task-state', (_event, tasks) => callback(tasks)),
+  onPiAuthEvent: callback => ipcRenderer.on('pi-auth-event', (_event, event) => callback(event)),
   onFindOpen: callback => ipcRenderer.on('shell-find-open', () => callback()),
   onFindNext: callback => ipcRenderer.on('shell-find-next', (_event, options) => callback(options || {})),
   onFindResult: callback => ipcRenderer.on('shell-find-result', (_event, result) => callback(result)),
