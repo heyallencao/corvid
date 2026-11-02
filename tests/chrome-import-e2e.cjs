@@ -74,6 +74,7 @@ function writeChromeCookies(profileDir,key){
   add.run('auth.example.test','encrypted_session','',encryptCookie(key,'fixture-login-token'),'/',0,1,0,0,2,'');
   const expiresUtc=BigInt(Date.parse('2030-01-01T00:00:00.000Z'))*1000n+11644473600000000n;
   add.run('.example.test','domain_session','fixture-domain-value',Buffer.alloc(0),'/',0,0,1,expiresUtc,0,'');
+  add.run('.example.test','persistent_import','fixture-persistent-value',Buffer.alloc(0),'/',0,0,1,expiresUtc,0,'');
   add.run('auth.example.test','unknown_cipher','',Buffer.from('v20unsupported'), '/',1,0,0,0,1,'');
   add.run('auth.example.test','partitioned_session','partitioned-value',Buffer.alloc(0),'/',1,0,0,0,1,'https://top.example.test');
   database.close();
@@ -179,20 +180,27 @@ async function selectAllExtensions(shell){
     await chooseSource(shell);
     await shell.locator('#chrome-import-preview').getByText(/2 个可读取扩展/).waitFor();
     if(supportsCookieImport){
+      await app.evaluate(async({session})=>{
+        const destination=session.fromPartition('persist:corvid');
+        await destination.cookies.set({url:'http://example.test/',domain:'.example.test',name:'domain_session',value:'corvid-existing-value',path:'/',expirationDate:1893456000});
+        await destination.cookies.flushStore();
+      },{});
       await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
       await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
       await shell.locator('input[name="chrome-category"][value="cookies"]').check();
       await shell.locator('#confirm-chrome-import').click();
       await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*可能仍留有部分 Cookie/).waitFor();
       const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
-      assert.equal(rolledBackCookies.length,0,'failed Cookie flush must remove every imported Cookie');
+      assert.equal(rolledBackCookies.length,1,'failed Cookie flush must remove newly imported Cookies and preserve the preexisting conflict');
+      assert.equal(rolledBackCookies[0].value,'corvid-existing-value','failed Cookie flush rollback must not change the existing conflicting Cookie');
       assert.equal((await call('/bookmarks')).bookmarks.length,0,'failed Cookie import must not start importing unselected library categories');
       assert.equal((await call('/history')).history.length,0,'failed Cookie import must leave history unchanged');
       await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.flushStore(),{});
       await shell.locator('#confirm-chrome-import').click();
-      await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项（不支持 2 项）/).waitFor();
+      await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项（跳过 1 项、不支持 2 项）/).waitFor();
       const retriedCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
-      assert.equal(retriedCookies.length,2,'Cookie import must be retryable after a rolled-back flush failure');
+      assert.equal(retriedCookies.length,3,'Cookie import must be retryable after a rolled-back flush failure while preserving existing state');
+      assert.equal(retriedCookies.find(cookie=>cookie.name==='domain_session')?.value,'corvid-existing-value','Chrome import must skip rather than overwrite a conflicting target Cookie');
       await shell.locator('#cancel-chrome-import').click();
       await shell.locator('#show-settings').click();
       await shell.locator('#start-chrome-import').click();
@@ -210,7 +218,7 @@ async function selectAllExtensions(shell){
     assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved'],'failed import must not partially append Chrome bookmarks');
     assert.equal((await call('/history')).history.length,0,'failed import must not partially append Chrome history');
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 3 项、不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
@@ -218,7 +226,8 @@ async function selectAllExtensions(shell){
       const cookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://auth.example.test/'});
       assert.equal(cookies.find(cookie=>cookie.name==='encrypted_session')?.value,'fixture-login-token','decrypted host-only Chrome Cookie must reach the selected Corvid Profile');
       const domainCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://example.test/'});
-      assert.equal(domainCookies.find(cookie=>cookie.name==='domain_session')?.value,'fixture-domain-value','domain Cookie must reach the selected Corvid Profile');
+      assert.equal(domainCookies.find(cookie=>cookie.name==='domain_session')?.value,'corvid-existing-value','conflicting Chrome Cookie must not overwrite the target Profile value');
+      assert.equal(domainCookies.find(cookie=>cookie.name==='persistent_import')?.value,'fixture-persistent-value','non-conflicting persistent Chrome Cookie must reach the selected Corvid Profile');
     }
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
@@ -238,7 +247,7 @@ async function selectAllExtensions(shell){
     if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 3 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2,'repeat import must be idempotent');
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'repeat extension import must skip the existing extension');
     await shell.locator('#cancel-chrome-import').click();
@@ -249,6 +258,7 @@ async function selectAllExtensions(shell){
       assert.equal(workCookies.some(cookie=>cookie.name==='encrypted_session'),false,'Chrome Cookies imported to default must not leak into Work Profile');
       const workDomainCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:`persist:corvid-profile-${work.id}`,url:'http://example.test/'});
       assert.equal(workDomainCookies.some(cookie=>cookie.name==='domain_session'),false,'persistent Chrome Cookies imported to default must not leak into Work Profile');
+      assert.equal(workDomainCookies.some(cookie=>cookie.name==='persistent_import'),false,'non-conflicting persistent Chrome Cookies imported to default must not leak into Work Profile');
     }
     await shell.locator('#profile-select').selectOption(work.id);
     await shell.locator('#show-settings').click();
@@ -294,7 +304,8 @@ async function selectAllExtensions(shell){
     await until(async()=>await extensionValue(app,extensionUrl,'corvidDefaultExtension')==='loaded','default extension restored after restart');
     if(supportsCookieImport){
       const persistentCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://example.test/'});
-      assert.equal(persistentCookies.find(cookie=>cookie.name==='domain_session')?.value,'fixture-domain-value','persistent Chrome Cookie must persist after restart');
+      assert.equal(persistentCookies.find(cookie=>cookie.name==='domain_session')?.value,'corvid-existing-value','preexisting conflicting Cookie must persist unchanged after restart');
+      assert.equal(persistentCookies.find(cookie=>cookie.name==='persistent_import')?.value,'fixture-persistent-value','non-conflicting imported Cookie must persist after restart');
       const sessionCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://auth.example.test/'});
       assert.equal(sessionCookies.some(cookie=>cookie.name==='encrypted_session'),false,'session Chrome Cookie must expire when Corvid exits');
     }
