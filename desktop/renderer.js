@@ -1,5 +1,5 @@
 const api = window.browserShell;
-let state, libraryKind = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false;
+let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false;
 let chromeImportOnboardingPrompted=false;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
@@ -17,8 +17,7 @@ function draw(value) {
   const dialogView=document.querySelector('#page-dialog');
   if(dialogView.open && !state.rooms.some(room=>room.tabs.some(tab=>tab.id===dialogTabId && tab.dialog))) dialogView.close();
   if (libraryKind === 'pi-workbench') void renderPiTasks(); else if (libraryKind) void renderLibrary();
-  document.querySelector('#show-agent-rooms').setAttribute('aria-expanded',String(libraryKind==='agent-rooms'));
-  document.querySelector('#show-pi-workbench').setAttribute('aria-expanded',String(libraryKind==='pi-workbench'));
+  for(const kind of ['bookmarks','history','downloads','agent-rooms','pi-workbench'])document.querySelector(`#show-${kind}`).setAttribute('aria-expanded',String(libraryKind===kind));
   void renderBookmarksBar();
   const profileSelect=document.querySelector('#profile-select');profileSelect.replaceChildren();
   for(const profile of state.profiles){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.name;option.selected=profile.id===state.activeProfileId;profileSelect.append(option);}
@@ -126,7 +125,7 @@ function renderAgentRooms(){
     const status=document.createElement('span');status.className='agent-room-state';
     const ownershipLabel=room.executionRisk?'页面执行状态未知':room.userResumePending?'正在接管':room.finished?'已结束':room.ownership==='agent'?'Agent 控制中':room.yielded?'用户控制中':'空闲';
     status.textContent=`${ownershipLabel} · ${room.tabs.length} 个标签`;
-    const view=button('查看',async()=>{libraryKind=null;panel.hidden=true;delete panel.dataset.kind;await api.invoke('setPanel',{open:false});await api.invoke('activateRoom',{id:room.id});});
+    const view=button('查看',async()=>{await closeLibraryPanel({restoreFocus:true});await api.invoke('activateRoom',{id:room.id});});
     view.setAttribute('aria-label',`查看 ${room.name}`);
     row.append(name,status,view);
     if(room.ownership==='agent'){
@@ -243,7 +242,20 @@ function renderPiWorkbench(){
   const workspace=document.createElement('div');workspace.id='pi-workbench-content';
   const list=document.createElement('div');list.id='pi-task-list';workspace.append(list,form);panel.append(workspace);void renderPiTasks();
 }
-async function showLibrary(kind) {if(libraryKind!==kind)document.querySelector('#library-search').value='';libraryKind=kind;document.querySelector('#library').hidden=false; await api.invoke('setPanel',{open:true,workspace:true});await renderLibrary();}
+function setLibraryPanel(kind,trigger=null){
+  libraryKind=kind;libraryTrigger=kind?trigger:null;
+  const panel=document.querySelector('#library');
+  if(kind){panel.hidden=false;panel.setAttribute('aria-label',kind==='pi-workbench'?'Pi Agent 工作台':kind==='agent-rooms'?'Agent 工作区':kind==='bookmarks'?'书签':kind==='history'?'浏览历史':'下载');}
+  else{panel.hidden=true;delete panel.dataset.kind;panel.setAttribute('aria-label','工作区面板');}
+  for(const name of ['bookmarks','history','downloads','agent-rooms','pi-workbench'])document.querySelector(`#show-${name}`).setAttribute('aria-expanded',String(kind===name));
+}
+function closeLibraryPanel({restoreFocus=false}={}){
+  const trigger=libraryTrigger;setLibraryPanel(null);
+  const closed=api.invoke('setPanel',{open:false});
+  if(restoreFocus&&trigger?.isConnected)trigger.focus();
+  return closed;
+}
+async function showLibrary(kind,trigger=document.activeElement) {if(libraryKind!==kind)document.querySelector('#library-search').value='';setLibraryPanel(kind,trigger);await api.invoke('setPanel',{open:true,workspace:true});await renderLibrary();}
 let bookmarksRenderVersion=0;
 async function renderBookmarksBar() {
   const version=++bookmarksRenderVersion, profileId=state?.activeProfileId;
@@ -403,9 +415,9 @@ chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChr
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
 document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};
-document.querySelector('#show-bookmarks').onclick = () => showLibrary('bookmarks');
-document.querySelector('#show-history').onclick = () => {if(libraryKind==='history'){libraryKind=null;document.querySelector('#library').hidden=true;void api.invoke('setPanel',{open:false});}else void showLibrary('history');};
-document.querySelector('#show-downloads').onclick = () => showLibrary('downloads');
+document.querySelector('#show-bookmarks').onclick = event => showLibrary('bookmarks',event.currentTarget);
+document.querySelector('#show-history').onclick = event => {if(libraryKind==='history')closeLibraryPanel();else void showLibrary('history',event.currentTarget);};
+document.querySelector('#show-downloads').onclick = event => showLibrary('downloads',event.currentTarget);
 document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
 const siteToolsMenu=document.querySelector('#site-tools'),siteToolsTrigger=document.querySelector('#more-tools');
 function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
@@ -430,9 +442,9 @@ siteToolsMenu.onkeydown=event=>{
   if(event.key==='Tab'){event.preventDefault();focusOutsideSiteTools(event.shiftKey);}
 };
 document.addEventListener('pointerdown',event=>{if(!siteToolsMenu.hidden&&!siteToolsMenu.contains(event.target)&&!siteToolsTrigger.contains(event.target))closeSiteTools();});
-document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','false');api.invoke('setPanel',{open:false});};
-document.querySelector('#show-agent-rooms').onclick=async()=>{if(libraryKind==='agent-rooms'){libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');await api.invoke('setPanel',{open:false});}else{libraryKind='agent-rooms';document.querySelector('#library-search').value='';document.querySelector('#library').hidden=false;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','true');await api.invoke('setPanel',{open:true,workspace:true});await renderAgentRooms();}};
-document.querySelector('#show-pi-workbench').onclick=async()=>{if(libraryKind==='pi-workbench'){libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','false');await api.invoke('setPanel',{open:false});}else{libraryKind='pi-workbench';document.querySelector('#library-search').value='';document.querySelector('#library').hidden=false;document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','true');await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};
+document.querySelector('#close-library').onclick = () => closeLibraryPanel({restoreFocus:true});
+document.querySelector('#show-agent-rooms').onclick=async event=>{if(libraryKind==='agent-rooms'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('agent-rooms',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});await renderAgentRooms();}};
+document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKind==='pi-workbench'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('pi-workbench',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
 const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');

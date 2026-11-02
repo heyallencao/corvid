@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-02 工作区面板关闭后的键盘焦点恢复（Issue #52）
+
+- 基线复现：真实 Electron 中从书签打开右侧面板，键盘激活“关闭面板”后，焦点仍停在已隐藏的 `#close-library`（期望 `#show-bookmarks`）。
+- 修复：统一工作区打开/关闭状态，记录最近的侧栏触发按钮；关闭按钮隐藏面板后将焦点还给该按钮。增加 `aria-controls`、`aria-expanded` 和动态面板名称，切换面板同步更新语义状态。
+- 验证：`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check`、`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` 均通过（EXIT 0）。完整 `npm test` 返回 EXIT 0，37 个串行 E2E 脚本与 3 项 `node:test` 共 40 项自动化检查全部通过。真实 Electron 检查书签、历史、下载、Agent Rooms、Pi 工作台关闭焦点恢复、Pi→Agent 切换后目标更新，以及既有窄窗口、Profile 隔离、键盘接管/交还和 Room 激活。
+- 限制：使用隔离数据目录与 `about:blank`，未运行真实 Agent；不替代 macOS/Windows 屏幕阅读器与完整键盘人工走查。跟踪于 [Issue #52](https://github.com/heyallencao/corvid/issues/52)，属于 [Issue #16](https://github.com/heyallencao/corvid/issues/16) 的 D21 UI 打磨。
+
 ## 2026-11-02 Pi Agent 窄短窗口模型与输入栏可见性（Issue #50）
 
 ### 执行与结果
