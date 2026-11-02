@@ -401,11 +401,11 @@ function layout(record = activeRecord()) {
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
   const top = 112;
-  const sidebarWidth = width <= 860 ? 64 : 232;
+  const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
-      ? Math.min(420, width - sidebarWidth - 320)
-      : Math.min(420, Math.max(280, width - sidebarWidth - 330))
+      ? Math.min(420, width - sidebarWidth - 332)
+      : Math.min(420, Math.max(310, width - sidebarWidth - 330))
     : 0;
   const workspaceGap = workspaceWidth ? (width > 720 ? 12 : 10) : 0;
   for (const item of tabs.values()) {
@@ -1085,7 +1085,7 @@ async function startServer() {
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
-  const minimumWidth=Math.min(694,area.width),minimumHeight=Math.min(420,area.height);
+  const minimumWidth=Math.min(704,area.width),minimumHeight=Math.min(420,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
