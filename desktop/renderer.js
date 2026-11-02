@@ -4,7 +4,7 @@ function userFacingAgentError(error, fallback='Corvid Agent 暂时无法完成�
   const implementationName=/\bpi(?:[\s_-]+(?:coding[\s_-]*agent|runtime|sdk|session|agent))?\b|@earendil-works\/pi-[a-z0-9-]+/i;
   return implementationName.test(message) ? fallback : (message||fallback);
 }
-let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null;
+let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
 let chromeImportOnboardingPrompted=false;
 const piModelControlVersions=new WeakMap();
 let agentRoomRenderVersion=0;
@@ -56,11 +56,13 @@ function draw(value) {
   newWindow.className='new-window-button';
   roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
   updateNewTabSurface(active);
-  if(document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
+  // 对话框关闭后的状态事件可能晚于输入和失焦到达；同标签草稿应保留到提交。
+  if(addressDraftDirty && (addressDraftTabId!==active?.id || addressDraftBaseUrl!==active?.url)){addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;}
+  if(!addressDraftDirty && document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
   const status=document.querySelector('#status'); status.replaceChildren();
   if(active?.isLoading){const loading=document.createElement('span');loading.className='navigation-loading';loading.textContent='正在加载';status.append(loading);}
@@ -579,7 +581,8 @@ document.querySelector('#chrome-cookie-consent-check').onchange=updateChromeImpo
 document.querySelector('#chrome-extension-choices').onchange=updateChromeImportButton;
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
 chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
-document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
+document.querySelector('#address').addEventListener('input',()=>{const tab=activeTab();if(!addressDraftDirty||addressDraftTabId!==tab?.id)addressDraftBaseUrl=tab?.url ?? null;addressDraftDirty=true;addressDraftTabId=tab?.id ?? null;});
+document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(),url=document.querySelector('#address').value;addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;if(tab) api.invoke('navigate',{id:tab.id,url}); };
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
 document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};
 document.querySelector('#show-bookmarks').onclick = event => showLibrary('bookmarks',event.currentTarget);
