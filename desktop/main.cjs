@@ -35,6 +35,7 @@ const piWorkbench = createPiWorkbench({ dataDir, createSession:process.env.CORVI
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
 } });
 let panelOpen = false;
+const selectedChromeSources = new Map();
 function activeRecord() {
   if (window && !window.isDestroyed()) {
     for (const record of windowRecords.values()) if (record.browserWindow === window) return record;
@@ -111,6 +112,7 @@ function saveWindowState() {
 }
 function scheduleWindowStateSave() { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(saveWindowState, 300); }
 const library = require('./library.cjs')(dataDir);
+const chromeImport = require('./chrome-import.cjs');
 const activeDownloads = new Map();
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
@@ -495,6 +497,43 @@ async function dispatch(method, args = {}, fromApi = false) {
     }
     case 'profiles': return {profiles};
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
+    case 'chooseChromeImportSource': {
+      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
+      const home=app.getPath('home');
+      const suggested=process.platform==='darwin'?path.join(home,'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(home,'.config','google-chrome');
+      const result=await dialog.showOpenDialog(window,{title:'选择 Google Chrome 用户资料目录',defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
+      if(result.canceled || !result.filePaths[0]) return {canceled:true};
+      const root=result.filePaths[0];
+      try { const sources=chromeImport.profiles(root);if(!sources.length)throw new Error('所选目录中没有找到可导入的 Chrome Profile');const sourceToken=id();selectedChromeSources.set(sourceToken,root);return {canceled:false,sourceToken,sources}; }
+      catch(error){throw error;}
+    }
+    case 'releaseChromeImportSource': {
+      if(typeof args.sourceToken==='string')selectedChromeSources.delete(args.sourceToken);
+      return {released:true};
+    }
+    case 'previewChromeImport': {
+      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
+      const selectedRoot=selectedChromeSources.get(args.sourceToken);
+      if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
+      if(typeof args.sourceId!=='string')throw new Error('请选择 Chrome Profile');
+      const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
+      if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
+      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,unsupported:['Cookie 与登录状态','扩展程序']};
+    }
+    case 'importChromeData': {
+      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
+      const selectedRoot=selectedChromeSources.get(args.sourceToken);
+      if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
+      const profileId=findProfile(args.profileId ?? activeProfileId).id;
+      if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history'].includes(category)))throw new Error('请选择可导入的资料类别');
+      const sources=chromeImport.profiles(selectedRoot);
+      if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
+      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const result=library.importChromeData(content,profileId,args.categories);
+      selectedChromeSources.delete(args.sourceToken);
+      return {...result,profileId};
+    }
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
     case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('Profile name required');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
     case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('Profile name required');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}

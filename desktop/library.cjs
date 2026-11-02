@@ -16,7 +16,7 @@ module.exports = function createLibrary(directory) {
   if (!Array.isArray(data.history) || !Array.isArray(data.bookmarks)) throw new Error('Invalid library data');
   if (data.downloads === undefined) data.downloads = [];
   if (!Array.isArray(data.downloads)) throw new Error('Invalid download history');
-  const save = () => { const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(data), {mode: 0o600}); fs.renameSync(tmp,file); };
+  const save = (next=data) => { const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(next), {mode: 0o600}); fs.renameSync(tmp,file); };
   let interrupted = false;
   for (const item of data.downloads) if (item.status === 'progressing') { item.status = 'interrupted'; interrupted = true; }
   if (interrupted) save();
@@ -31,6 +31,20 @@ module.exports = function createLibrary(directory) {
     title(id,title) { const item=data.history.find(x=>x.id===id); if(item && title && item.title!==title){item.title=title;save();} },
     removeHistory(id,profileId) { const before=data.history.length; data.history=data.history.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId); if(before!==data.history.length) save(); return before!==data.history.length; },
     addBookmark(url,title,profileId) { if(!validUrl(url)) throw new Error('Bookmark URL must be HTTP or HTTPS'); const existing=data.bookmarks.find(x=>x.url===url && (x.profileId ?? 'default')===profileId); if(existing) return existing; const item={id:randomUUID(),profileId,url,title:typeof title==='string' && title ? title : url,createdAt:new Date().toISOString()}; data.bookmarks.push(item);save();return item; },
+    importChromeData({bookmarks=[],history=[]},profileId,categories) {
+      const next={...data,bookmarks:[...data.bookmarks],history:[...data.history]};
+      const result={bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
+      if(categories.includes('bookmarks')){
+        const seen=new Set(next.bookmarks.filter(item=>(item.profileId ?? 'default')===profileId).map(item=>item.url));
+        for(const source of bookmarks){if(!validUrl(source.url)||seen.has(source.url)){result.bookmarks.skipped++;continue;}seen.add(source.url);next.bookmarks.push({id:randomUUID(),profileId,url:source.url,title:typeof source.title==='string'&&source.title?source.title:source.url,createdAt:new Date().toISOString()});result.bookmarks.imported++;}
+      }
+      if(categories.includes('history')){
+        const seen=new Set(next.history.filter(item=>(item.profileId ?? 'default')===profileId).map(item=>`${item.url}\u0000${item.visitedAt}`));
+        for(const source of history){if(!validUrl(source.url)||typeof source.visitedAt!=='string'){result.history.skipped++;continue;}const key=`${source.url}\u0000${source.visitedAt}`;if(seen.has(key)){result.history.skipped++;continue;}seen.add(key);next.history.push({id:randomUUID(),profileId,url:source.url,title:typeof source.title==='string'&&source.title?source.title:source.url,visitedAt:source.visitedAt});result.history.imported++;}
+      }
+      if(result.bookmarks.imported || result.history.imported){save(next);data=next;}
+      return result;
+    },
     removeBookmark(id,profileId) { const before=data.bookmarks.length;data.bookmarks=data.bookmarks.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId);if(before!==data.bookmarks.length) save();return before!==data.bookmarks.length; }
   };
 };
