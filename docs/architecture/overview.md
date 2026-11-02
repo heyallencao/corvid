@@ -11,8 +11,8 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，
 - 应用负责浏览器窗口、Room、标签以及控制权的生命周期；Agent 通过本地认证接口操作获得授权的 Room。
 - **Profile** 是浏览身份及其 Cookie、存储的边界；**Room** 是同一 Profile 下的工作区与控制权边界。不能把 Room 隔离误称为浏览数据隔离。
 - 桌面端维护 Room、Page、控制权状态；页面由 Electron `WebContentsView` 承载，同一 Profile 的页面使用同一持久化 session，不同 Profile 使用不同 session。
-- Agent SDK 与 CLI 连接本地控制服务。管理员 Bearer 凭据保存在权限为 0600 的 `control.json`；可由管理员为 Agent 客户端签发仅保存 SHA-256 摘要的独立凭据，并将每个客户端限制到明确的 Room ID 列表。服务在每次请求中校验身份和 Room 范围；撤销立即生效。Scoped 客户端只能列出/访问已授权 Room，Profile 列表只返回授权 Room 所属身份，并拒绝历史、书签、下载和窗口接口。用户可在设置中签发/查看/撤销客户端凭据；Browser MCP 仅接受 `CORVID_AGENT_TOKEN` scoped credential，不再回退到管理员 token。稳定 Room ID、标签 ID 和 Page label 映射由服务维护；显示名称不充当唯一标识。
-- 内置 Agent 通过 Corvid 运行时适配层执行会话与模型调用。当前适配器使用 Pi SDK，但其名称、专属类型、配置格式和错误不得进入用户可见的界面、帮助文档或持久化产品合同；Corvid 拥有任务 UI、模型配置、对话记录、Profile/Room/Page 绑定、浏览器工具授权与用户接管合同。替换运行时时由适配层转换供应商格式，并由 Corvid 负责既有配置与对话记录的兼容迁移。任何运行时默认文件与 shell 工具均不作为浏览器 Agent 的隐式能力。
+- Agent SDK 与 CLI 连接本地控制服务。管理员 Bearer 凭据保存在权限为 0600 的 `control.json`；可由管理员为 Agent 客户端签发仅保存 SHA-256 摘要的独立凭据，并将每个客户端限制到明确的 Room ID 列表。服务在每次请求中校验身份和 Room 范围；撤销立即生效。Scoped 客户端只能列出/访问已授权 Room，Profile 列表只返回授权 Room 所属身份，并拒绝历史、书签、下载和窗口接口。用户可在设置中签发/查看/撤销客户端凭据；Browser MCP 仅接受 `CORVID_AGENT_TOKEN` scoped credential，不再回退到管理员 token。内置 Agent 每个任务轮次使用只存在于主进程内存、绑定单一任务和 Room 的短期 scoped credential；续聊重新签发，完成、失败、停止及用户接管时撤销。该凭据不写入客户端授权文件、任务记录或对话记录。稳定 Room ID、标签 ID 和 Page label 映射由服务维护；显示名称不充当唯一标识。
+- 内置 Agent 通过 Corvid 运行时适配层执行会话与模型调用，并用与 SDK/CLI、Browser MCP 一致的服务端身份和 Room 授权检查。当前适配器名称、专属类型、配置格式和错误不得进入用户可见的界面、帮助文档或持久化产品合同；Corvid 拥有任务 UI、模型配置、对话记录、Profile/Room/Page 绑定、浏览器工具授权与用户接管合同。替换运行时时由适配层转换供应商格式，并由 Corvid 负责既有配置与对话记录的兼容迁移。任何运行时默认文件与 shell 工具均不作为浏览器 Agent 的隐式能力。
 - 页面动作通过被授权页面的 Chromium 调试能力执行。用户控制期间拒绝自动操作；执行超时或异常退出后保留"结果未知"的风险状态，直到用户确认。
 - 新标签起始页渲染在用户打开的 `about:blank` WebContentsView 内，通过闭合 Shadow DOM 与网页 DOM 隔离；仅用户拥有的 Room 可注入，Agent 拥有的页面不会收到该 UI 或用户书签。窗口布局保留后台 WebContentsView，由当前活动用户标签置顶，因此授权 Agent 可在后台页进行操作与截图，且不会改写前台页面。壳层模态框打开期间页面视图仍隐藏；主进程重新校验起始页动作所属 Room、当前标签和窗口状态。该设计的 E2E 覆盖与跨平台边界见 D22、D20 和验证记录。
 
@@ -32,7 +32,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，
 
 ## 已知限制
 
-- Room 范围的客户端凭据现可从设置签发、查看和撤销，Browser MCP 使用 scoped token；内置 Agent 的统一身份合同和同一 OS 用户进程间的安全隔离仍未完成，不能据此宣称完整的多 Agent 隔离已完成。
+- Room 范围的客户端凭据现可从设置签发、查看和撤销；Browser MCP 与内置 Agent 均使用 scoped token，后者以任务为边界在内存中签发并撤销。SDK/CLI 与外部客户端凭据仍由用户管理。该合同不构成同一 OS 用户进程间的安全隔离，不能据此宣称可抵御能读取管理员 `control.json` 或控制 Corvid 主进程的恶意同用户进程。
 - 当前管理员凭据仍能访问所有本地数据，并可签发/撤销 Agent 凭据；控制服务面向同一操作系统用户。本机进程若能读取 Corvid 数据目录中的 `control.json`，即可取得管理员权限，因此该机制不是针对恶意同用户进程的操作系统级安全边界。
 - Snapshot 覆盖主文档、单层同源 iframe 与开放 Shadow DOM；跨源 iframe、closed Shadow DOM、复杂嵌套尚未支持（列入 Snapshot v2）。
 - 部分输入路径使用合成事件（例如清空文件选择、select 变更）；真实网站兼容性需要逐站验证。
