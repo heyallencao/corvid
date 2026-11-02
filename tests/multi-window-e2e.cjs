@@ -58,7 +58,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     for (const page of shells) {
       await page.locator('#rooms').waitFor();
       const labels=await page.locator('#rooms button').allTextContents();
-      roomTitlesPerWindow.push(labels.filter(label=>label.startsWith('我的 Room')||label.startsWith('新窗口的 Room')));
+      roomTitlesPerWindow.push(labels.filter(label=>label.startsWith('我的空间')||label.startsWith('新窗口的空间')));
     }
     assert.deepEqual(roomTitlesPerWindow.map(labels=>labels.length),[1,1],JSON.stringify(roomTitlesPerWindow));
     assert.notDeepEqual(roomTitlesPerWindow[0],roomTitlesPerWindow[1],'each window shows its own Room');
