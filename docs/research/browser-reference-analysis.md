@@ -1,7 +1,7 @@
 # EGO 与 Kaze 浏览器参照分析
 
-观察日期：2026-11-02  
-用途：指导 Corvid 的日常浏览器、内置 Agent 与外部 BrowserMCP 组合路线。  
+观察日期：2026-11-02
+用途：指导 Corvid 的日常浏览器、内置 Agent 与外部 BrowserMCP 组合路线。
 对应战略：[统一桌面体验设计](../architecture/ui-experience.md)；对应执行板：[D21 统一浏览器与 Agent 桌面体验](../execution/feature-board.md#d21-部分)。
 
 ## 产品结论
