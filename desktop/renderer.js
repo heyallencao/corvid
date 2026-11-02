@@ -241,6 +241,43 @@ document.querySelector('#search-template').oninput=()=>{document.querySelector('
 document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};
 document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#settings').close();
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
+let chromeSources=[],chromeSourceId='',chromeSourceToken='';
+const chromeImportDialog=document.querySelector('#chrome-import');
+function showChromePreview(preview){
+  document.querySelector('#chrome-import-preview').textContent=`来源：${preview.sourceName}。找到 ${preview.bookmarks} 个书签、${preview.history} 条历史记录。导入只会新增项目；已有书签和相同访问时间的历史会跳过。`;
+  document.querySelector('#chrome-bookmark-count').textContent=`${preview.bookmarks} 项`;
+  document.querySelector('#chrome-history-count').textContent=`${preview.history} 项`;
+  const checks=[...document.querySelectorAll('input[name="chrome-category"]')];
+  checks.find(input=>input.value==='bookmarks').disabled=preview.bookmarks===0;
+  checks.find(input=>input.value==='history').disabled=preview.history===0;
+  for(const input of checks) if(input.disabled) input.checked=false;
+  document.querySelector('#chrome-import-categories').disabled=false;
+  document.querySelector('#confirm-chrome-import').disabled=preview.bookmarks+preview.history===0||![...document.querySelectorAll('input[name="chrome-category"]:checked')].length;
+}
+document.querySelector('#start-chrome-import').onclick=async()=>{
+  document.querySelector('#settings').close();
+  chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
+  document.querySelector('#chrome-import-error').removeAttribute('data-success');
+  document.querySelector('#chrome-import-target').textContent=`导入目标：${state.profiles.find(profile=>profile.id===settingsProfileId)?.name || '当前 Profile'}`;
+  document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
+  document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
+  document.querySelector('#chrome-import-preview').textContent='选择目录后会显示可导入项目数量。';
+  await openShellDialog('#chrome-import');
+};
+document.querySelector('#choose-chrome-source').onclick=async()=>{
+  const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
+  try{const result=await api.invoke('chooseChromeImportSource');if(result.canceled)return;if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSources=result.sources;chromeSourceToken=result.sourceToken;const select=document.querySelector('#chrome-source-profile');select.replaceChildren(...chromeSources.map(source=>new Option(`${source.name} (${source.id})`,source.id)));select.disabled=false;select.value=chromeSources[0]?.id || '';if(select.value){chromeSourceId=select.value;showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}}
+  catch(reason){error.textContent=reason.message;}
+};
+document.querySelector('#chrome-source-profile').onchange=async event=>{chromeSourceId=event.target.value;document.querySelector('#confirm-chrome-import').disabled=true;try{showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}catch(error){document.querySelector('#chrome-import-error').textContent=error.message;}};
+document.querySelector('#chrome-import-form').onsubmit=async event=>{
+  event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
+  try{const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories});error.dataset.success='true';error.textContent=`导入完成：书签新增 ${result.bookmarks.imported} 项（跳过 ${result.bookmarks.skipped} 项），历史新增 ${result.history.imported} 项（跳过 ${result.history.skipped} 项）。`;document.querySelector('#confirm-chrome-import').disabled=true;void renderBookmarksBar();if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();}
+  catch(reason){error.textContent=reason.message;}
+};
+document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=()=>{document.querySelector('#confirm-chrome-import').disabled=!chromeSourceId||![...document.querySelectorAll('input[name="chrome-category"]:checked')].length;});
+document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
+chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
 document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};

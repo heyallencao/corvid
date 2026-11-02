@@ -189,6 +189,26 @@ dialog label { display: grid; flex: 1 1 100%; gap: 6px; color: var(--text-second
 dialog input, dialog select { min-height: 36px; padding: 7px 9px; }
 dialog form > button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }
 dialog form > button[type="submit"] { background: var(--accent); color: white; }
+.settings-import { flex: 1 1 100%; padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
+.settings-import h2 { margin: 0 0 4px; font-size: 13px; }
+.settings-import p, .import-intro, .import-limitation { margin: 0 0 10px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.settings-import button { min-height: 34px; padding: 7px 11px; background: var(--surface); }
+#chrome-import { width: min(520px, calc(100vw - 36px)); max-height: min(88vh, 760px); overflow-y: auto; }
+.import-heading { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.import-heading h2 { margin: 3px 0 0; font-size: 17px; }
+#cancel-chrome-import { width: 32px; height: 32px; padding: 0; color: var(--text-muted); font-size: 21px; }
+#chrome-import-form > button:not(#cancel-chrome-import) { flex: 1 1 100%; }
+.import-preview { flex: 1 1 100%; padding: 10px 11px; border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.import-target { flex: 1 1 100%; margin: -4px 0 0; color: var(--text-muted); font-size: 11px; }
+#chrome-import-categories { display: grid; flex: 1 1 100%; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+#chrome-import-categories legend { padding: 0 4px; color: var(--text-secondary); font-size: 12px; }
+#chrome-import-categories label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: 12px; }
+#chrome-import-categories input { min-height: 0; margin: 0; accent-color: var(--accent); }
+#chrome-import-categories label span { margin-left: auto; color: var(--text-muted); font-size: 11px; }
+.import-limitation { flex-basis: 100%; margin: 0; color: var(--warning); }
+#chrome-import-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
+#chrome-import-error[data-success="true"] { color: var(--success); }
+dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: .55; }
 
 @media (max-width: 972px) and (min-width: 861px) {
   :root { --workspace-width: min(420px, max(0px, calc(100vw - 552px))); }
