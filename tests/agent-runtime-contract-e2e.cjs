@@ -190,6 +190,23 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(handoffWorkbench.list().find(task=>task.id===pauseTask.id).status,'waiting_for_user');
     for(const finish of pendingPrompts)finish({stopReason:'aborted'});
 
+    const preparingDir=path.join(root,'identity-preparation-handoff');fs.mkdirSync(preparingDir);
+    let finishSessionCreation,preparingPromptCount=0,preparingDisposeCount=0;
+    const preparingRuntime=makeRuntime('preparing-runtime');
+    preparingRuntime.createSession=()=>new Promise(resolve=>{finishSessionCreation=resolve;});
+    const preparingIdentity=testAgentIdentity();
+    const preparingWorkbench=createAgentWorkbench({dataDir:preparingDir,runtime:preparingRuntime,...preparingIdentity});
+    const preparingStart=preparingWorkbench.start({profileId:'profile-a',roomId:'room-preparing',tabId:'tab-preparing',prompt:'do not start after takeover',includePageContext:true,contextPreview});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(preparingWorkbench.list()[0].status,'preparing','the fixture keeps runtime session creation pending');
+    await preparingWorkbench.pauseRoom('room-preparing');
+    assert.equal(preparingWorkbench.list()[0].status,'interrupted','a handoff during preparation cancels the pending Agent turn');
+    assert.ok(preparingIdentity.revoked.includes('builtin:'+preparingWorkbench.list()[0].id),'a handoff during preparation immediately revokes the issued identity');
+    finishSessionCreation({checkpoint:()=>null,subscribe:()=>()=>{},prompt:()=>{preparingPromptCount++;return Promise.resolve();},dispose(){preparingDisposeCount++;}});
+    await preparingStart;
+    assert.equal(preparingPromptCount,0,'a late-created runtime session never sends the task to a model after user takeover');
+    assert.equal(preparingDisposeCount,1,'a late-created runtime session is disposed after user takeover');
+
     const unknownDir = path.join(root, 'unknown-schema');
     fs.mkdirSync(unknownDir);
     const unknownBytes = Buffer.from('{"schemaVersion":88,"tasks":[]}');

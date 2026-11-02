@@ -133,6 +133,10 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       sessionCredentialIds.set(task.id, credential.id);
       const session = await runtime.createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, agentCredential: { id: credential.id, token: credential.token }, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(task.selectedModel ? { selectedModel: task.selectedModel } : {}), checkpoint, ...(priorConversation ? { priorConversation } : {}) });
       if (!session || typeof session.checkpoint !== 'function' || typeof session.prompt !== 'function') throw new TypeError('Agent runtime returned an invalid session');
+      if (task.status !== 'preparing') {
+        try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
+        return;
+      }
       task.sessionRef = session.checkpoint() || (priorConversation ? null : task.sessionRef || null);
       changed();
       sessions.set(task.id, session);
@@ -191,11 +195,14 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     return copy(present(task));
   }
   async function pauseRoom(roomId) {
-    for (const task of tasks.filter(item => item.roomId === roomId && item.status === 'running')) {
+    for (const task of tasks.filter(item => item.roomId === roomId && ['preparing', 'running'].includes(item.status))) {
       const session = sessions.get(task.id);
       if (!session) {
         task.status = 'interrupted';
-        addEvent(task, 'interrupted', '空间已交给用户，但 Agent 会话不可用；结果未知。');
+        const assistantTurn = task.conversation?.at(-1);
+        if (assistantTurn?.role === 'assistant' && assistantTurn.status === 'running') assistantTurn.status = 'interrupted';
+        addEvent(task, 'interrupted', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
+        await revokeSessionCredential(task.id);
         continue;
       }
       task.status = 'waiting_for_user';
