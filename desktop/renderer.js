@@ -211,7 +211,7 @@ async function renderPiTasks(){
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
-      if(task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
+      if(task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.continuationMode==='saved-conversation'?'从已保存对话继续':task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
       meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;if(piSelectedTaskId===task.id)piSelectedTaskId=null;await renderPiTasks();}));
     }
     row.append(meta);
@@ -224,7 +224,7 @@ async function renderPiTasks(){
       if(!task.hasSession){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开 Room 检查页面后，再重新开始。';row.append(guidance);}
     } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=userFacingAgentError(task.error);row.append(error);}
     if(task.stopUnconfirmed){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='无法确认上一轮是否已停止。对话记录已保留；请检查模型服务和页面状态，再从新对话继续。';row.append(recovery);}
-    else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但当前运行环境暂不支持继续。可以切回兼容环境后再试，或从 Room 重新开始。';row.append(recovery);}
+    else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但暂时无法从这里继续。你可以打开 Room 检查页面，再开始一段新对话。';row.append(recovery);}
     list.append(row);
   }
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';empty.innerHTML='<span class="pi-welcome-mark">✳</span><h3>让 Corvid Agent 帮你读懂网页</h3><p>提问、总结或开始一项浏览任务。先检查页面内容，再决定是否分享给 Agent。</p>';list.append(empty);}
@@ -237,6 +237,7 @@ async function renderPiTasks(){
 function buildContinuationComposer(task){
   const form=document.createElement('section');form.id='pi-task-form';form.className='pi-continuation-form';form.setAttribute('aria-label','继续对话');
   const page=document.createElement('div');page.className='pi-page-binding';page.textContent=`继续此对话 · ${task.page?.title||task.page?.url||'当前页面'} · ${task.selectedModel?.name||'Corvid Agent'}`;form.append(page);
+  if(task.continuationMode==='saved-conversation'){const note=document.createElement('p');note.className='pi-task-recovery-note';note.textContent='Corvid 会把最近最多 40 条对话消息（最多 24,000 个字符）带入新一轮；更早或超出长度的内容不会发送。当前页面仍需重新检查并确认。';form.append(note);}
   const prompt=document.createElement('textarea');prompt.setAttribute('aria-label','继续这项浏览任务');prompt.placeholder='继续这段对话，或告诉 Agent 下一步做什么';prompt.value=piContinuationDraft;prompt.oninput=()=>{piContinuationDraft=prompt.value;};form.append(prompt);
   const preview=button('检查页面内容',async()=>{try{piContinuationPreview=await api.invoke('preparePiTask',{profileId:task.profileId,roomId:task.roomId,tabId:task.tabId});piContinuationConsent=false;renderPiTasks();}catch(error){message.textContent=`无法检查页面内容：${userFacingAgentError(error)}`;}});form.append(preview);
   if(piContinuationPreview){

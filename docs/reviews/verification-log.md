@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-02 Corvid 对话跨 runtime checkpoint 续聊（Issue #78）
+
+- 差异复核确认旧任务记录的对话和任务 ID 虽保留，但不同 runtime 无法恢复 checkpoint，原流程只能提示用户切换兼容环境。
+- 实现回退：checkpoint 不兼容时保留旧不透明引用，只将最多 40 条、24,000 字符的 Corvid user/assistant transcript 作为背景上下文创建新会话；不将旧 checkpoint 传给新 runtime。保留 task ID、模型偏好及 Profile/Room/Page 绑定，每次仍需重新预览并同意当前页面上下文。启动失败时旧 checkpoint 与已有对话不被覆盖。
+- Electron 工作台用例写入未知 runtime checkpoint fixture，验证 Corvid 自有“从已保存对话继续”入口、长度提示、页面重新同意、旧消息/task ID 保留、新 checkpoint 建立、无 runtime 标识泄露。模块合同验证替代 runtime、任务模型/对话保留、有界 transcript 和迁移启动失败回滚。
+- `node tests/agent-runtime-contract-e2e.cjs` 与 `node tests/pi-workbench-e2e.cjs` 通过；随后 `env -u ELECTRON_RUN_AS_NODE npm test` 全量 46 项检查通过（43 条独立脚本 + 3 项 `node:test`）。均使用确定性 fixture/假 runtime，无真实模型调用。升级真实 runtime 的 checkpoint 格式转换和 Provider 重新授权流程尚未由此验证。
+
 ## 2026-11-02 Chrome Cookie 回滚 delete/restore 故障复核（Issue #18）
 
 - 红测先在旧代码上失败：注入目标 Cookie store flush 失败后，界面只显示首发 flush 错误，没有说明 rollback delete/restore 失败。

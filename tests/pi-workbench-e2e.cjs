@@ -157,6 +157,33 @@ const readSavedTasks = dataDir => {
     assert.deepEqual(readSavedTasks(dataDir),[]);
     assert.equal(fs.existsSync(path.join(dataDir,'agent-sessions',restored.id.replaceAll('-','_'))),false,'removing a task also deletes its private Pi transcript directory');
 
+    const transcriptTask={...savedTasks[0],status:'completed',prompt:'总结当前页面内容',output:'这是之前保存的摘要。',conversation:[{role:'user',text:'总结当前页面内容'},{role:'assistant',text:'这是之前保存的摘要。',status:'completed'}],sessionRef:{runtimeId:'retired-runtime',runtimeVersion:'9.0.0',data:{handle:'opaque-retired-session'}}};
+    await app.close();app=null;
+    fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:2,tasks:[transcriptTask]}),{mode:0o600});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    const migrationShell=await app.firstWindow();
+    restoredShell=migrationShell;
+    control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for transcript continuation');})();
+    await migrationShell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
+    const transcriptCard=migrationShell.locator('.pi-task-entry').filter({hasText:'这是之前保存的摘要。'});
+    await transcriptCard.waitFor({timeout:5_000}).catch(async()=>{throw new Error(`Transcript task was not rendered: ${await migrationShell.locator('#pi-task-list').innerText()} | stored: ${JSON.stringify(readSavedTasks(dataDir))}`)});
+    await transcriptCard.getByRole('button',{name:'从已保存对话继续'}).click({timeout:5_000});
+    await migrationShell.getByText(/最近最多 40 条对话消息（最多 24,000 个字符）/).waitFor();
+    await migrationShell.getByRole('textbox',{name:'继续这项浏览任务'}).fill('请补充一句结论');
+    await migrationShell.getByRole('button',{name:'检查页面内容'}).click();
+    await migrationShell.getByLabel(/我已检查/).check();
+    await migrationShell.getByRole('button',{name:'发送'}).click();
+    await transcriptCard.getByText('这是本地确定性 Agent fixture 第 1 轮回复。没有调用真实模型。').waitFor();
+    await transcriptCard.locator('.pi-task-state[data-status="completed"]').waitFor();
+    const migratedConversation=readSavedTasks(dataDir)[0];
+    assert.equal(migratedConversation.id,transcriptTask.id,'transcript continuation keeps the original Corvid task ID');
+    assert.equal(migratedConversation.conversation[1].text,'这是之前保存的摘要。','the prior Corvid transcript remains visible');
+    assert.equal(migratedConversation.conversation.at(-2).text,'请补充一句结论');
+    assert.equal(migratedConversation.sessionRef.runtimeId,'pi','the new runtime creates a fresh private checkpoint');
+    assert.doesNotMatch(await transcriptCard.innerText(),/retired-runtime|opaque-retired-session|\bPi\b/i,'the recovery path describes the Corvid conversation, not a runtime switch');
+    await transcriptCard.getByRole('button',{name:'移除记录'}).click();
+    assert.deepEqual(readSavedTasks(dataDir),[]);
+
     await restoredShell.getByRole('button',{name:/新建对话/}).click();
     await restoredShell.getByRole('button',{name:'连接当前页面'}).click();
     await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:fail-once] 模拟 Provider 断连');
