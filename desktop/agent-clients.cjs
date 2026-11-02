@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function createAgentClientsStore(filePath) {
+  const internalClients = new Map();
   function read() {
     try {
       const store = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -31,7 +32,10 @@ function createAgentClientsStore(filePath) {
 
   function findByToken(token) {
     if (typeof token !== 'string' || !token) return null;
-    const candidate = Buffer.from(hash(token), 'hex');
+    const tokenHash = hash(token);
+    const internal = internalClients.get(tokenHash);
+    if (internal) return internal;
+    const candidate = Buffer.from(tokenHash, 'hex');
     return read().clients.find(client => {
       const stored = Buffer.from(client.tokenHash, 'hex');
       return !client.revoked && stored.length === candidate.length && crypto.timingSafeEqual(stored, candidate);
@@ -48,6 +52,21 @@ function createAgentClientsStore(filePath) {
     return { client: publicClient(client), token };
   }
 
+  function createInternal({ id, name, roomIds }) {
+    if (typeof id !== 'string' || !id || typeof name !== 'string' || !name || !Array.isArray(roomIds) || !roomIds.length || roomIds.some(roomId => typeof roomId !== 'string' || !roomId)) throw new TypeError('A built-in Agent identity requires an ID, name, and Room scope');
+    if ([...internalClients.values()].some(client => client.id === id)) throw new Error('This built-in Agent task already has an active session identity');
+    const token = `corvid_agent_${crypto.randomBytes(32).toString('base64url')}`;
+    const client = { id, name, roomIds: [...new Set(roomIds)], tokenHash: hash(token), internal: true, createdAt: new Date().toISOString(), revoked: false, revokedAt: null };
+    internalClients.set(client.tokenHash, client);
+    return { client: publicClient(client), token };
+  }
+
+  function revokeInternal(id) {
+    let revoked = false;
+    for (const [tokenHash, client] of internalClients) if (client.id === id) { internalClients.delete(tokenHash); revoked = true; }
+    return revoked;
+  }
+
   function list() { return read().clients.map(publicClient); }
 
   function revoke(id) {
@@ -58,7 +77,7 @@ function createAgentClientsStore(filePath) {
     return publicClient(client);
   }
 
-  return { create, list, revoke, findByToken };
+  return { create, createInternal, list, revoke, revokeInternal, findByToken };
 }
 
 function publicClient(client) {

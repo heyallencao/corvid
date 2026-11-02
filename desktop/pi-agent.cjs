@@ -31,14 +31,15 @@ function assertReadableRoom(room, profileId) {
   if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, agentCredential, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(taskId)) throw new TypeError('taskId must contain only letters, numbers, underscores, or hyphens');
   if (includePageContext !== true) throw new Error('The user must explicitly confirm sharing this page context before starting the Agent');
+  if (!agentCredential || typeof agentCredential.token !== 'string' || !agentCredential.token) throw localError('CORVID_UNAUTHORIZED', 'The built-in Agent requires a Room-scoped Corvid credential');
 
-  const context = await readPiPageContext({ dataDir, profileId, roomId, tabId });
+  const context = await readPiPageContext({ dataDir, profileId, roomId, tabId, agentCredential });
   if (expectedContext && (expectedContext.label !== context.label || expectedContext.url !== context.url || expectedContext.title !== context.title || expectedContext.snapshot !== JSON.stringify(context.snapshot).slice(0, 12_000))) {
     throw localError('CORVID_STALE_REFERENCE', 'Selected page changed after the user reviewed its context');
   }
@@ -71,7 +72,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
     parameters: Type.Object({}),
     execute: async (_toolCallId, _params, signal) => {
       if (signal?.aborted) throw signal.reason || new Error('Tool call cancelled');
-      const toolClient = await connect({ dataDir });
+      const toolClient = await connect({ dataDir, token: agentCredential.token });
       try {
         const targetRoom = await toolClient.room(roomId);
         assertReadableRoom(targetRoom, profileId);
@@ -92,7 +93,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
       let parsed;
       try { parsed = new URL(url); } catch { throw new TypeError('url must be an absolute HTTP or HTTPS URL'); }
       if (!['http:', 'https:'].includes(parsed.protocol)) throw new TypeError('Only HTTP and HTTPS navigation is supported');
-      const toolClient = await connect({ dataDir });
+      const toolClient = await connect({ dataDir, token: agentCredential.token });
       try {
         const targetRoom = await toolClient.room(roomId);
         assertReadableRoom(targetRoom, profileId);
@@ -148,8 +149,9 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   return { session, context, sessionFile: activeSessionFile, modelFallbackMessage: modelFallbackMessage || null, tools: activeTools };
 }
 
-async function readPiPageContext({ dataDir, profileId, roomId, tabId }) {
-  const client = await connect({ dataDir });
+async function readPiPageContext({ dataDir, profileId, roomId, tabId, agentCredential }) {
+  if (agentCredential && (typeof agentCredential.token !== 'string' || !agentCredential.token)) throw localError('CORVID_UNAUTHORIZED', 'The built-in Agent requires a Room-scoped Corvid credential');
+  const client = await (agentCredential ? connect({ dataDir, token: agentCredential.token }) : connect({ dataDir }));
   try {
     const profiles = await client.profiles();
     if (!profiles.some(item => item.id === profileId)) throw localError('CORVID_NOT_FOUND', `Profile not found: ${profileId}`);

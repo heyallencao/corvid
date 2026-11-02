@@ -307,6 +307,8 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(resumedTask.roomId,handoffRoomId);
     assert.equal(resumedTask.tabId,handoffTabId);
     assert.equal(resumedTask.sessionRef?.data?.sessionFile,handoffTranscript);
+    assert.equal(fs.existsSync(path.join(dataDir,'agent-clients.json')),false,'built-in Agent session credentials stay in memory and never enter the external-client store');
+    assert.doesNotMatch(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'),/corvid_agent_[A-Za-z0-9_-]{32,}/,'built-in Agent tokens never enter task records or transcripts');
     console.log('PASS Pi workbench context consent, multi-turn transcript and restart recovery, user handoff and same-task continuation');
   } finally {
     if (app) await app.close().catch(() => {});

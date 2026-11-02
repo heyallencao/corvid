@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 内置 Agent 任务级 Room 身份（Issue #96）
+
+- 实现：每个内置 Agent 任务轮次由 Corvid 主进程签发单 Room 内存 scoped credential；续聊重新签发，完成、失败、停止及用户接管时撤销；会话仍在初始化时发生接管也会撤销身份，并丢弃随后才返回的会话，不向模型发送该轮 prompt。运行时连接页面读取与浏览器工具时显式使用该身份，缺少身份时失败关闭，不回退管理员凭据。原始凭据不写入 `agent-clients.json`、`agent-tasks.json` 或对话 transcript；外部 SDK/CLI 与 Browser MCP 继续沿用独立 scoped token 合同。
+- 定向验证：本机 macOS、Node.js 24.14.1、Electron 45.2.1、临时测试数据目录。`env -u ELECTRON_RUN_AS_NODE node tests/agent-runtime-contract-e2e.cjs`、`tests/pi-runtime-e2e.cjs`、`tests/pi-models-e2e.cjs`、`tests/agent-access-e2e.cjs` 与 `tests/pi-workbench-e2e.cjs` 均通过；覆盖签发/续聊重新签发、成功/失败/停止/接管撤销、初始化期间接管时不发送 prompt 并清理迟到的 session、任务与授权落盘检查、无身份不回退管理员、Room 越权拒绝，以及真实 Electron 工作台用户接管。修改的 JS/CJS 文件 `node --check` 与 `git diff --check` 通过。
+- 全量回归限制：`env -u ELECTRON_RUN_AS_NODE npm test` 未通过，在 `tests/library-e2e.cjs:58` 等待标签按钮“Fixture Page”时超时；RPC 集成检查已通过。随后单独重跑 `tests/library-e2e.cjs`，在同一断言再次超时。失败发生在内置 Agent 身份测试之前，尚未定位为产品缺陷还是测试/启动时序问题，由 [Issue #101](https://github.com/heyallencao/corvid/issues/101) 独立跟踪；因此本轮不宣称全量回归通过。
+- 边界：未登录 Provider、未触发 OAuth、未调用真实模型，也未消耗 GPT-6 Luna 额度。只验证本机 macOS 和确定性 fixture；同一 OS 用户进程读取管理员 `control.json` 或控制 Corvid 主进程的能力不受 scoped token 隔离，Windows/Linux 与打包构建尚未验证。
+
 ## 2026-11-03 Agent 访问管理界面与 Browser MCP scoped 身份（Issue #96、#98）
 
 - 实现：设置内新增 Agent 客户端签发、一次性显示/复制、已授权 Room 范围列表及即时撤销；只在本机保存 token 的 SHA-256 摘要，文件权限为 0600。Browser MCP 只接受 `CORVID_AGENT_TOKEN`，缺失时拒绝请求且不回退管理员凭据；Profile 列表只返回已授权 Room 所属浏览身份。SDK 可显式传入 scoped token，并从本机控制配置读取 endpoint，不读取其中管理员 token。

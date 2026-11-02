@@ -106,8 +106,11 @@ const { createAgentCredentialStore } = require('../desktop/agent-credential-stor
   let selection = { providerId: 'provider-a', modelId: 'model-a' };
   const selectedModels = [];
   const page = { label: 'p1', url: 'https://example.test/', title: 'Fixture', snapshot: { title: 'Fixture' } };
+  const revokedAgentCredentials=[];
   const workbench = createAgentWorkbench({
     dataDir,
+    issueAgentCredential: async ({taskId,roomId})=>({id:`builtin:${taskId}`,token:`secret:${taskId}:${roomId}`}),
+    revokeAgentCredential: async id=>{revokedAgentCredentials.push(id);},
     runtime: {
       id: 'fixture-runtime', version: '1.0.0',
       canResume: ref => ref?.runtimeId === 'fixture-runtime' && ref.runtimeVersion === '1.0.0',
@@ -132,6 +135,7 @@ const { createAgentCredentialStore } = require('../desktop/agent-credential-stor
     { providerId: 'provider-a', modelId: 'model-a', name: 'model-a' },
     { providerId: 'provider-a', modelId: 'model-a', name: 'model-a' },
   ], 'transcript continuation keeps the model selected when the task was created');
+  assert.ok(revokedAgentCredentials.includes(`builtin:${task.id}`),'built-in Agent scoped credentials are revoked when a model turn completes');
   fs.rmSync(root, { recursive: true, force: true });
   console.log('Corvid model preferences, provider credential storage and transcript model continuity passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

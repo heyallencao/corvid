@@ -100,7 +100,15 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
 const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
-const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime, onChange: tasks => {
+const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
+  issueAgentCredential: ({taskId,roomId}) => {
+    const room=rooms.find(item=>item.id===roomId);
+    if(typeof taskId!=='string'||!taskId||!room||room.ownership!=='agent'||room.userResumePending||room.executionRisk)throw Object.assign(new Error('Corvid Agent 只能获得仍由 Agent 控制且没有待处理风险的任务空间授权'),{code:'CORVID_CONTROL_LOST'});
+    const issued=agentClients.createInternal({id:`builtin:${taskId}`,name:'Corvid Agent',roomIds:[roomId]});
+    return {id:issued.client.id,token:issued.token};
+  },
+  revokeAgentCredential: credentialId => agentClients.revokeInternal(credentialId),
+  onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
 } });
 let panelOpen = false;
