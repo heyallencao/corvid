@@ -108,7 +108,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   async function run(task, { message, context, consentedSnapshot, sessionFile, initial }) {
     try {
       const modelInfo = task.selectedModel ? await resolveModel(task.selectedModel) : null;
-      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(modelInfo ? { selectedModel: task.selectedModel, model: modelInfo.model, modelRuntime: modelInfo.runtime } : {}), ...(sessionFile ? { sessionFile } : {}) });
+      const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(modelInfo ? { selectedModel: task.selectedModel, model: modelInfo.model, modelRuntime: modelInfo.runtime, requiresAuth: modelInfo.requiresAuth } : {}), ...(sessionFile ? { sessionFile } : {}) });
       task.runtime = created.fixture ? '本地确定性 fixture（无真实模型）' : 'Pi SDK';
       task.piSessionFile = created.sessionFile || sessionFile || null;
       changed();

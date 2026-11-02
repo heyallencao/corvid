@@ -1,6 +1,7 @@
 const api = window.browserShell;
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false;
 let chromeImportOnboardingPrompted=false;
+const piModelControlVersions=new WeakMap();
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
@@ -192,10 +193,11 @@ function appendContinuationComposer(row,task){
   const message=document.createElement('div');message.setAttribute('role','alert');form.append(message);row.append(form);
 }
 async function renderPiModelControls(target){
+  const version=(piModelControlVersions.get(target)||0)+1;piModelControlVersions.set(target,version);
   target.replaceChildren();
   const status=document.createElement('span');status.className='pi-model-status';status.setAttribute('role','status');status.textContent='读取模型目录…';
   try{
-    const catalog=await api.invoke('piModels'),select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label','内置 Agent 模型');
+    const catalog=await api.invoke('piModels');if(piModelControlVersions.get(target)!==version)return;const select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label','内置 Agent 模型');
     for(const provider of catalog.providers){
       const group=document.createElement('optgroup');group.label=provider.name;
       for(const model of provider.models){const option=document.createElement('option');option.value=JSON.stringify({providerId:provider.id,modelId:model.id});option.textContent=model.name;option.selected=provider.id===catalog.selection.providerId&&model.id===catalog.selection.modelId;group.append(option);}
@@ -205,16 +207,38 @@ async function renderPiModelControls(target){
     if(!select.options.length)throw new Error('Pi 没有可用的聊天模型');
     select.onchange=async()=>{try{const next=JSON.parse(select.value);await api.invoke('selectPiModel',next);const provider=catalog.providers.find(item=>item.id===next.providerId);status.textContent=provider?.configured?'新任务将使用此模型':'请先连接此模型的账号';renderPiModelActions(target,catalog,next,status);}catch(error){status.textContent=`无法选择模型：${error.message}`;}};
     target.append(select,status);renderPiModelActions(target,catalog,catalog.selection,status);
-  }catch(error){status.textContent=`模型设置不可用：${error.message}`;target.append(status);}
+    const manage=button('管理模型',()=>void openPiModelSettings());manage.type='button';manage.className='pi-model-action pi-model-manage';manage.setAttribute('aria-label','管理内置 Agent 模型');target.append(manage);
+  }catch(error){if(piModelControlVersions.get(target)!==version)return;status.textContent=`模型设置不可用：${error.message}`;target.append(status);}
 }
 function renderPiModelActions(target,catalog,selection,status){
-  target.querySelectorAll('.pi-model-action,.pi-model-key').forEach(node=>node.remove());
+  target.querySelectorAll('.pi-model-action:not(.pi-model-manage),.pi-model-key').forEach(node=>node.remove());
   const provider=catalog.providers.find(item=>item.id===selection.providerId);if(!provider)return;
-  status.textContent=provider.configured?'已连接':'未连接';status.setAttribute('aria-label',`${provider.name} ${status.textContent}`);status.title=`${provider.name} · ${status.textContent}`;
-  if(provider.configured){const logout=button('退出',async()=>{logout.disabled=true;try{await api.invoke('logoutPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){logout.disabled=false;status.textContent=`退出失败：${error.message}`;}});logout.className='pi-model-action';target.append(logout);return;}
+  status.textContent=provider.authStatus|| (provider.configured?'已连接':'未连接');status.setAttribute('aria-label',`${provider.name} ${status.textContent}`);status.title=`${provider.name} · ${status.textContent}`;
+  if(provider.configured&&!provider.customEndpoint){const logout=button('退出',async()=>{logout.disabled=true;try{await api.invoke('logoutPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){logout.disabled=false;status.textContent=`退出失败：${error.message}`;}});logout.className='pi-model-action';target.append(logout);return;}
+  if(provider.customEndpoint)return;
   if(provider.supportsOAuth){const connect=button('连接账号',async()=>{connect.disabled=true;status.textContent='正在打开账号授权页…完成授权后请返回 Corvid';try{await api.invoke('loginPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){connect.disabled=false;status.textContent=`登录未完成：${error.message}`;}});connect.className='pi-model-action';target.append(connect);}
   if(provider.supportsApiKey){const key=document.createElement('input');key.className='pi-model-key';key.type='password';key.autocomplete='off';key.spellcheck=false;key.placeholder='API Key';key.setAttribute('aria-label',`${provider.name} API Key`);const save=button('连接 Key',async()=>{save.disabled=true;try{await api.invoke('loginPiProviderApiKey',{providerId:provider.id,apiKey:key.value});key.value='';await renderPiModelControls(target);}catch(error){save.disabled=false;status.textContent=`连接失败：${error.message}`;}});save.className='pi-model-action';target.append(key,save);}
   if(!provider.supportsOAuth&&!provider.supportsApiKey)status.textContent+=' · 请在 Pi 设置中完成认证';
+}
+function resetPiEndpointForm(){
+  document.querySelector('#pi-endpoint-id').value='';document.querySelector('#pi-endpoint-name').value='';document.querySelector('#pi-endpoint-url').value='';document.querySelector('#pi-endpoint-key').value='';document.querySelector('#pi-endpoint-model-ids').value='';document.querySelector('#pi-endpoint-clear-key').checked=false;document.querySelector('#pi-endpoint-form-title').textContent='添加自定义端点';document.querySelector('#pi-endpoint-error').textContent='';document.querySelector('#pi-endpoint-discovered').textContent='';
+}
+async function renderPiCustomEndpoints(){
+  const list=document.querySelector('#pi-custom-endpoints');list.replaceChildren();
+  try{
+    const catalog=await api.invoke('piModels');
+    if(!catalog.endpoints.length){const empty=document.createElement('p');empty.className='pi-endpoint-empty';empty.textContent='还没有自定义端点。添加后，模型会出现在 Agent 工作台的模型选择器中。';list.append(empty);return;}
+    for(const endpoint of catalog.endpoints){
+      const row=document.createElement('div');row.className='pi-endpoint-row';row.setAttribute('role','listitem');
+      const info=document.createElement('div'),name=document.createElement('strong'),details=document.createElement('span');name.textContent=endpoint.name;details.textContent=`${endpoint.baseUrl} · ${endpoint.modelIds.join(', ')}${endpoint.configuredKey?' · API Key 已保存':''}`;info.append(name,details);
+      const edit=button('编辑',()=>{document.querySelector('#pi-endpoint-id').value=endpoint.id;document.querySelector('#pi-endpoint-name').value=endpoint.name;document.querySelector('#pi-endpoint-url').value=endpoint.baseUrl;document.querySelector('#pi-endpoint-key').value='';document.querySelector('#pi-endpoint-model-ids').value=endpoint.modelIds.join('\n');document.querySelector('#pi-endpoint-clear-key').checked=false;document.querySelector('#pi-endpoint-form-title').textContent='编辑自定义端点';document.querySelector('#pi-endpoint-error').textContent='';document.querySelector('#pi-endpoint-name').focus();});edit.type='button';
+      const remove=button('移除',async()=>{if(!window.confirm(`移除“${endpoint.name}”端点？已有任务的 transcript 不会删除。`))return;remove.disabled=true;try{await api.invoke('removePiEndpoint',{id:endpoint.id});await renderPiCustomEndpoints();await renderPiModelControls(document.querySelector('.pi-model-controls'));}catch(error){remove.disabled=false;document.querySelector('#pi-endpoint-error').textContent=error.message;}});remove.type='button';
+      row.append(info,edit,remove);list.append(row);
+    }
+  }catch(error){document.querySelector('#pi-endpoint-error').textContent=`无法读取模型设置：${error.message}`;}
+}
+async function openPiModelSettings(){
+  resetPiEndpointForm();await renderPiCustomEndpoints();await openShellDialog('#pi-model-settings','#pi-endpoint-name');
 }
 function renderPiWorkbench(){
   if(piBinding&&piBinding.profileId!==state.activeProfileId){piBinding=null;piContextPreview=null;}
@@ -272,7 +296,27 @@ async function renderBookmarksBar() {
   }
   if(result.bookmarks.length>items.length){const more=button('更多书签',()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
 }
-api.onState(draw); api.onPiTasks(()=>void renderPiTasks()); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(!status)return;if(event.type==='device_code')status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;else if(event.type==='auth_url')status.textContent='已打开授权页，请在浏览器完成登录';else if(event.type==='progress'||event.type==='info')status.textContent=event.message||'正在连接模型账号…';}); api.invoke('state').then(draw);
+api.onState(draw); api.onPiTasks(()=>void renderPiTasks()); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=`无法打开授权页：${error.message}`;}};if(status)status.textContent='请在浏览器完成授权，或从授权框打开登录页';return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=event.message||'正在连接模型账号…';});
+api.onPiAuthPrompt(async request=>{
+  const prompt=request.prompt||{},dialog=document.querySelector('#pi-auth-dialog'),form=document.querySelector('#pi-auth-form'),message=document.querySelector('#pi-auth-message'),label=document.querySelector('#pi-auth-input-label');let input=document.querySelector('#pi-auth-input');
+  message.textContent=prompt.message||prompt.instructions||'请完成账号授权步骤';label.replaceChildren(document.createTextNode(prompt.type==='manual_code'?'授权码或回调链接':'授权信息'));
+  let cancelled=false,value;
+  if(prompt.type==='select'){
+    const options=prompt.options||prompt.choices||{},select=document.createElement('select');select.id='pi-auth-input';select.setAttribute('aria-label','授权方式');
+    for(const option of options){const item=document.createElement('option');item.value=option.id;item.textContent=option.label||option.id;select.append(item);}
+    label.append(select);input=select;
+  }else{input.type=prompt.type==='secret'?'password':'text';input.value='';input.placeholder=prompt.placeholder||'';input.autocomplete='off';label.append(input);}
+  const result=await new Promise(resolve=>{
+    const finish=()=>{dialog.removeEventListener('close',closed);resolve(dialog.returnValue==='continue'?input.value:null);};
+    const closed=()=>finish();dialog.addEventListener('close',closed,{once:true});
+    form.onsubmit=event=>{event.preventDefault();dialog.close('continue');};
+    document.querySelector('#pi-auth-cancel').onclick=()=>dialog.close('cancel');
+    dialog.showModal();input.focus();
+  });
+  cancelled=result===null;value=result;
+  if(input.tagName==='SELECT'){const replacement=document.createElement('input');replacement.id='pi-auth-input';replacement.autocomplete='off';input.replaceWith(replacement);}
+  try{await api.invoke('resolvePiAuthPrompt',{id:request.id,value,cancelled});}catch(error){const status=document.querySelector('.pi-model-status');if(status)status.textContent=`授权步骤未完成：${error.message}`;}
+}); api.invoke('state').then(draw);
 for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);trigger.onclick=()=>{const next=menu.hidden;for(const item of document.querySelectorAll('#profile-menu,#room-menu'))item.hidden=true;menu.hidden=!next;trigger.setAttribute('aria-expanded',String(!menu.hidden));};}
 document.addEventListener('pointerdown',event=>{for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}}});
@@ -316,6 +360,23 @@ document.querySelector('#search-template').oninput=()=>{document.querySelector('
 document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};
 document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#settings').close();
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
+document.querySelector('#close-pi-model-settings').onclick=()=>document.querySelector('#pi-model-settings').close();
+document.querySelector('#reset-pi-endpoint-form').onclick=resetPiEndpointForm;
+document.querySelector('#discover-pi-endpoint-models').onclick=async event=>{
+  const action=event.currentTarget;action.disabled=true;const status=document.querySelector('#pi-endpoint-discovered');status.textContent='正在读取模型列表…';
+  try{const ids=await api.invoke('discoverPiEndpointModels',{baseUrl:document.querySelector('#pi-endpoint-url').value,apiKey:document.querySelector('#pi-endpoint-key').value});document.querySelector('#pi-endpoint-model-ids').value=ids.join('\n');status.textContent=`已发现 ${ids.length} 个模型；可编辑后保存。`;}
+  catch(error){status.textContent=`读取失败：${error.message}`;}
+  finally{action.disabled=false;}
+};
+document.querySelector('#pi-model-endpoint-form').onsubmit=async event=>{
+  event.preventDefault();const save=document.querySelector('#save-pi-endpoint'),error=document.querySelector('#pi-endpoint-error');save.disabled=true;error.textContent='';
+  try{
+    const id=document.querySelector('#pi-endpoint-id').value;
+    await api.invoke('savePiEndpoint',{...(id?{id}:{}),name:document.querySelector('#pi-endpoint-name').value,baseUrl:document.querySelector('#pi-endpoint-url').value,apiKey:document.querySelector('#pi-endpoint-key').value,clearApiKey:document.querySelector('#pi-endpoint-clear-key').checked,modelIds:document.querySelector('#pi-endpoint-model-ids').value});
+    resetPiEndpointForm();document.querySelector('#pi-endpoint-discovered').textContent='端点已保存；模型已加入 Agent 工作台选择器。';await renderPiCustomEndpoints();const controls=document.querySelector('.pi-model-controls');if(controls)await renderPiModelControls(controls);
+  }catch(cause){error.textContent=`保存失败：${cause.message}`;}
+  finally{save.disabled=false;}
+};
 let chromeSources=[],chromeSourceId='',chromeSourceToken='',chromeImportProfileId='',chromeImportProfileLocked=false;
 const chromeImportDialog=document.querySelector('#chrome-import');
 async function openChromeImportDialog(){

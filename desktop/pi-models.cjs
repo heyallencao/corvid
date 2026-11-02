@@ -2,10 +2,65 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_SELECTION = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
+const NO_AUTH_API_KEY = 'corvid-no-auth';
 
-function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, openExternal = async () => {}, onAuthEvent = () => {} }) {
+function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, openExternal = async () => {}, onAuthEvent = () => {}, promptAuth = async (_providerId, prompt) => { throw new Error(`Corvid cannot complete this ${prompt.type} authentication prompt yet`); } }) {
   const file = path.join(dataDir, 'agent-model.json');
+  const endpointsFile = path.join(dataDir, 'pi-models.json');
   let runtimePromise;
+
+  function readEndpoints() {
+    try {
+      const value = JSON.parse(fs.readFileSync(endpointsFile, 'utf8'));
+      return value && typeof value.providers === 'object' && value.providers ? value.providers : {};
+    } catch (error) { if (error.code === 'ENOENT') return {}; throw new Error(`无法读取自定义模型设置：${error.message}`); }
+  }
+
+  function writeEndpoints(providers) {
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    const temp = `${endpointsFile}.tmp`;
+    fs.writeFileSync(temp, JSON.stringify({ '$schema': 'https://pi.dev/schemas/models.schema.json', providers }, null, 2), { mode: 0o600 });
+    fs.chmodSync(temp, 0o600);
+    fs.renameSync(temp, endpointsFile);
+    try { fs.chmodSync(endpointsFile, 0o600); } catch {}
+  }
+
+  function validateEndpoint(input) {
+    if (!input || typeof input !== 'object') throw new TypeError('请填写端点信息');
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    const baseUrlText = typeof input.baseUrl === 'string' ? input.baseUrl.trim() : '';
+    const modelIds = [...new Set((Array.isArray(input.modelIds) ? input.modelIds : String(input.modelIds || '').split(/[\n,]/)).map(item => String(item).trim()).filter(Boolean))];
+    if (!name || name.length > 80) throw new Error('名称需为 1 到 80 个字符');
+    let baseUrl;
+    try { baseUrl = new URL(baseUrlText); } catch { throw new Error('请输入有效的 HTTP 或 HTTPS Base URL'); }
+    if (!['http:', 'https:'].includes(baseUrl.protocol) || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) throw new Error('Base URL 只支持不含账号、密码、查询参数或片段的 HTTP(S) 地址');
+    if (!modelIds.length || modelIds.length > 64 || modelIds.some(id => id.length > 200 || /[\u0000-\u001f]/.test(id))) throw new Error('请填写 1 到 64 个有效模型 ID');
+    const apiKey = typeof input.apiKey === 'string' ? input.apiKey.trim() : '';
+    if (apiKey.length > 8_000 || /[\r\n]/.test(apiKey)) throw new Error('API Key 无效');
+    return { name, baseUrl: baseUrlText.replace(/\/+$/, ''), modelIds, apiKey };
+  }
+
+  function providerIdFor(name, providers, existingId) {
+    if (existingId && providers[existingId]) return existingId;
+    const slug = name.normalize('NFKD').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 38) || 'endpoint';
+    let id = `corvid-${slug}`, suffix = 2;
+    while (providers[id]) id = `corvid-${slug}-${suffix++}`;
+    return id;
+  }
+
+  function modelEntry(id) {
+    return { id, name: id, input: ['text'], contextWindow: 128_000, maxTokens: 16_384, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+  }
+
+  function describeEndpoint(id, provider) {
+    return { id, name: provider.name || id, baseUrl: provider.baseUrl, modelIds: (provider.models || []).map(model => model.id), configuredKey: Boolean(provider.apiKey && provider.apiKey !== NO_AUTH_API_KEY), customEndpoint: true };
+  }
+
+  async function applyEndpointChange(providers) {
+    writeEndpoints(providers);
+    runtimePromise = null;
+    await runtime();
+  }
 
   function readSelection() {
     try {
@@ -26,8 +81,10 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function runtime() {
     if (!runtimePromise) runtimePromise = (async () => {
       const pi = await import('@earendil-works/pi-coding-agent');
-      const agentDir = configuredAgentDir || pi.getAgentDir();
-      return pi.ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: path.join(agentDir, 'models.json'), refreshOnCreate: false });
+      const agentDir = configuredAgentDir || path.join(dataDir, 'pi-agent');
+      fs.mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+      fs.chmodSync(agentDir, 0o700);
+      return pi.ModelRuntime.create({ authPath: path.join(agentDir, 'auth.json'), modelsPath: endpointsFile, refreshOnCreate: false });
     })();
     return runtimePromise;
   }
@@ -38,24 +95,66 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
     const providers = (await Promise.all(modelRuntime.getProviders().map(async provider => {
       const auth = provider.auth || {};
       const configured = credentialProviders.has(provider.id) || modelRuntime.hasConfiguredAuth(provider.id);
+      const customEndpoint = readEndpoints()[provider.id];
+      const noKeyRequired = Boolean(customEndpoint && (!customEndpoint.apiKey || customEndpoint.apiKey === NO_AUTH_API_KEY));
       return {
         id: provider.id,
         name: provider.id === 'openai-codex' ? 'ChatGPT / Codex' : provider.name,
-        configured,
-        authStatus: configured ? '已连接' : '未连接',
+        configured: configured || noKeyRequired,
+        authStatus: noKeyRequired ? '无需密钥' : configured ? '已连接' : '未连接',
         supportsOAuth: Boolean(auth.oauth),
         supportsApiKey: Boolean(auth.apiKey?.login),
-        models: modelRuntime.getModels(provider.id).filter(model => model.type === 'chat').map(model => ({ id: model.id, name: model.name })),
+        customEndpoint: Boolean(customEndpoint),
+        models: modelRuntime.getModels(provider.id).filter(model => !model.type || model.type === 'chat').map(model => ({ id: model.id, name: model.name })),
       };
     }))).filter(provider => provider.models.length);
-    return { providers, selection: readSelection() };
+    return { providers, selection: readSelection(), endpoints: Object.entries(readEndpoints()).map(([id, provider]) => describeEndpoint(id, provider)) };
+  }
+
+  async function discoverEndpointModels({ baseUrl, apiKey = '' }) {
+    const parsed = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) throw new Error('Base URL 只支持不含账号、密码、查询参数或片段的 HTTP(S) 地址');
+    const url = new URL(`${parsed.toString().replace(/\/+$/, '')}/models`);
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch(url, { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {}, signal: controller.signal });
+      if (!response.ok) throw new Error(`模型目录请求失败（HTTP ${response.status}）`);
+      const payload = await response.json();
+      const models = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : [];
+      const ids = [...new Set(models.map(model => model?.id).filter(id => typeof id === 'string' && id.trim() && id.length <= 200).map(id => id.trim()))].slice(0, 64);
+      if (!ids.length) throw new Error('端点没有返回可用模型 ID');
+      return ids;
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('读取模型目录超时（10 秒）');
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+
+  async function saveEndpoint(input) {
+    const value = validateEndpoint(input), providers = readEndpoints();
+    const existingId = typeof input.id === 'string' && providers[input.id] ? input.id : null;
+    const id = providerIdFor(value.name, providers, existingId);
+    const previous = existingId ? providers[existingId] : null;
+    const storedKey = input.clearApiKey ? '' : value.apiKey || (previous?.apiKey === NO_AUTH_API_KEY ? '' : previous?.apiKey) || '';
+    providers[id] = { apiKey: storedKey || NO_AUTH_API_KEY, name: value.name, baseUrl: value.baseUrl, api: 'openai-completions', models: value.modelIds.map(modelEntry) };
+    await applyEndpointChange(providers);
+    return { id, endpoint: describeEndpoint(id, providers[id]), catalog: await list() };
+  }
+
+  async function removeEndpoint(id) {
+    const providers = readEndpoints();
+    if (!providers[id]) throw new Error('自定义端点不存在');
+    delete providers[id];
+    await applyEndpointChange(providers);
+    if (readSelection().providerId === id) writeSelection(DEFAULT_SELECTION);
+    return list();
   }
 
   async function select(selection) {
     if (!selection || typeof selection.providerId !== 'string' || typeof selection.modelId !== 'string') throw new TypeError('providerId and modelId are required');
     const modelRuntime = await runtime();
     const model = modelRuntime.getModel(selection.providerId, selection.modelId);
-    if (!model || model.type !== 'chat') throw new Error('所选聊天模型不存在于 Pi 模型目录');
+    if (!model || (model.type && model.type !== 'chat')) throw new Error('所选聊天模型不存在于 Pi 模型目录');
     const next = { providerId: model.provider, modelId: model.id };
     writeSelection(next);
     return next;
@@ -68,7 +167,7 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
     const controller = new AbortController();
     return modelRuntime.login(providerId, 'oauth', {
       signal: controller.signal,
-      prompt: async () => { throw new Error('该 Provider 登录要求额外交互输入；请从 Pi 设置完成登录后重试'); },
+      prompt: prompt => promptAuth(providerId, prompt),
       notify: event => {
         onAuthEvent(event);
         if (event.type === 'auth_url') void Promise.resolve(openExternal(event.url)).catch(error => controller.abort(error));
@@ -100,12 +199,13 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function getModel(selection = readSelection()) {
     const modelRuntime = await runtime();
     const model = modelRuntime.getModel(selection.providerId, selection.modelId);
-    if (!model || model.type !== 'chat') throw new Error(`Pi 模型不存在：${selection.providerId}/${selection.modelId}`);
-    if (!await modelRuntime.checkAuth(selection.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selection.providerId)) throw new Error(`请先连接 ${selection.providerId} 账号`);
-    return { runtime: modelRuntime, model };
+    if (!model || (model.type && model.type !== 'chat')) throw new Error(`Pi 模型不存在：${selection.providerId}/${selection.modelId}`);
+    const customEndpoint = readEndpoints()[selection.providerId];
+    if (!customEndpoint && !await modelRuntime.checkAuth(selection.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selection.providerId)) throw new Error(`请先连接 ${selection.providerId} 账号`);
+    return { runtime: modelRuntime, model, requiresAuth: customEndpoint ? Boolean(customEndpoint.apiKey && customEndpoint.apiKey !== NO_AUTH_API_KEY) : true };
   }
 
-  return { list, select, login, logout, loginApiKey, getModel, getSelection: readSelection };
+  return { list, select, login, logout, loginApiKey, discoverEndpointModels, saveEndpoint, removeEndpoint, getModel, getSelection: readSelection };
 }
 
 module.exports = { createPiModelManager, DEFAULT_SELECTION };

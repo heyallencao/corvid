@@ -2,7 +2,7 @@
 
 Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的主产品。产品主线采用 Ego 式浏览器协作模式：用户日常浏览与 Agent 在独立 Room 中并行工作；Room 控制权可见、可接管、可交还，任务可以跨调用和重启继续。浏览器日常功能、内置 Agent 工作台、外部 Agent SDK/CLI 必须汇入同一套 Profile、Room、Page 与控制权合同，而不是成为彼此割裂的产品入口。统一桌面信息架构与视觉体验见[统一桌面体验设计](ui-experience.md)，按[执行任务板 D21](../execution/feature-board.md)分阶段交付。
 
-当前实现包括桌面日常浏览器、Profile/Room、用户控制权交接、外部 Agent SDK/CLI，以及 Pi Agent 工作台：用户可从当前网页创建独立 Agent Room，预览并确认页面上下文后启动 Pi，查看任务事件，并在保存 transcript 上继续多轮对话。任务与 transcript 目录按 task 绑定，未完成任务重启后显示为结果未知。模型配置已支持选择 Pi 聊天模型、显示 provider 状态、发起 OAuth/API Key 登录入口，并将实际选定模型绑定到新任务；GPT-6 Luna 已用现有 ChatGPT/Codex OAuth 做过一次真实调用。尚未验证交互式 OAuth 回调与 API Key UI 登录/退出；接管后仍需用户显式确认上下文再续聊，自动续跑和更完整的中断恢复尚未实现。详见 [执行任务板](../execution/feature-board.md) 的 D19。
+当前实现包括桌面日常浏览器、Profile/Room、用户控制权交接、外部 Agent SDK/CLI，以及 Pi Agent 工作台：用户可从当前网页创建独立 Agent Room，预览并确认页面上下文后启动 Pi，查看任务事件，并在保存 transcript 上继续多轮对话。Pi SDK、OAuth/API Key 凭据、模型目录和 transcript 均由 Corvid 自己管理在应用数据目录；内置 Agent 不依赖用户安装 Pi CLI 或本机 Pi 全局配置。模型选择和自定义 OpenAI 兼容端点正在通过 [Issue #55](https://github.com/heyallencao/corvid/issues/55) 交付；Kaze 式友好对话工作台由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 单独迭代。GPT-6 Luna 真实调用曾使用本机 Pi OAuth，不能作为 Corvid 独立登录流程验收。接管后仍需用户显式确认上下文再续聊，自动续跑和更完整的中断恢复尚未实现。详见 [执行任务板](../execution/feature-board.md) 的 D19。
 
 ## 系统边界
 

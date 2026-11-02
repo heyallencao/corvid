@@ -11,12 +11,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-workbench-'));
-  const piAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-agent-config-'));
+  const legacyPiDir = path.join(os.tmpdir(), `corvid-ignored-pi-dir-${process.pid}`);
   const site = http.createServer((_request, response) => response.end('<!doctype html><title>Corvid Fixture Page</title><h1>Fixture page content</h1><p>Only this page is shared.</p>'));
   await new Promise(resolve => site.listen(0, '127.0.0.1', resolve));
   let app;
   try {
-    app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, PI_CODING_AGENT_DIR: piAgentDir, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
+    app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, PI_CODING_AGENT_DIR: legacyPiDir, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
     const shell = await app.firstWindow();
     let control = await (async () => {
       for (let i = 0; i < 200; i++) { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'control.json'), 'utf8')); } catch { await delay(25); } }
@@ -31,7 +31,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await (async()=>{for(let i=0;i<200;i++){const response=await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}});const latest=await response.json();if(latest.rooms.flatMap(room=>room.tabs).some(tab=>tab.url===sourceUrl))return;await delay(25);}throw new Error('Fixture page did not navigate');})();
 
     await shell.getByRole('button', { name: 'Pi Agent 工作台' }).click();
-    const modelSelect=shell.getByLabel('内置 Agent 模型');
+    const ownedPiDir=path.join(dataDir,'pi-agent');
+    assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
+    assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
+    const modelSelect=shell.getByLabel('内置 Agent 模型', { exact: true });
     await modelSelect.waitFor();
     assert.ok(await modelSelect.locator('option').filter({hasText:'GPT-6 Luna'}).count());
     const codexModelValue=await modelSelect.locator('option').evaluateAll(options=>options.find(option=>option.textContent==='GPT-6 Sol'&&option.value.includes('openai-codex'))?.value);
@@ -120,7 +123,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow().setSize(1280,850));
     await app.close(); app=null;
     afterFollowup.status='running';afterFollowup.conversation[3].status='running';fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify([afterFollowup]),{mode:0o600});
-    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,PI_CODING_AGENT_DIR:piAgentDir,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     let restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart');})();
     await restoredShell.getByRole('button',{name:'Pi Agent 工作台'}).click();
@@ -164,7 +167,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
 
     await app.close();app=null;
-    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,PI_CODING_AGENT_DIR:piAgentDir,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_INIT_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_INIT_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for the no-transcript fixture');})();
     await restoredShell.getByRole('button',{name:'Pi Agent 工作台'}).click();
@@ -185,7 +188,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
 
     await app.close();app=null;
-    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,PI_CODING_AGENT_DIR:piAgentDir,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart before the handoff fixture');})();
     await restoredShell.getByRole('button',{name:'Pi Agent 工作台'}).click();
@@ -229,6 +232,5 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     if (app) await app.close().catch(() => {});
     await new Promise(resolve => site.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
-    fs.rmSync(piAgentDir, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
