@@ -24,7 +24,7 @@
 - 自动化中的系统对话框是测试替身（`dialog.showMessageBox` / `showMessageBoxSync` / `showSaveDialogSync` 被替换）；下载测试用测试模式与临时下载目录绕开保存对话框。相关条目只能证明应用状态流转，不能证明原生对话框交互。
 
 - 2026-11-02 D21 窗口宽度合同复核：新回归在旧代码上复现 760px 时网页画布仅 308px；修正主进程/CSS 的间距预算后，13 个宽度点（含 704px 最小窗与 873/874px 侧栏断点）均满足网页 ≥320px、Agent 内容 ≥280px。全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，43 条独立脚本与 3 项 `node:test` 全部通过（46 项）；详见[验证记录](../reviews/verification-log.md)及[视觉检查](../qa/ui-visual-check.md#2026-11-02-窗口空间分配边界复查)。
-- 2026-11-02 Corvid Agent 用户界面运行时品牌隔离：`pi-workbench-e2e.cjs` 复用统一检查器，覆盖工作台和模型管理弹窗的窗口标题、可见文本、辅助名称与元素标题；任务失败和 checkpoint 恢复卡片已有运行时错误/旧检查点不泄漏断言。定向真实 Electron 与全量 `env -u ELECTRON_RUN_AS_NODE npm test` 均通过，43 条独立脚本与 3 项 `node:test` 共 46 项；不调用真实 Provider/OAuth 或模型。详情见[验证记录](../reviews/verification-log.md)。
+- 2026-11-03 Corvid Agent 授权提示运行时品牌隔离：定向真实 Electron 用例从 renderer 事件 fixture 注入带运行时名称的授权提示，检查弹窗文案与取消路径不泄漏；不触发真实 Provider/OAuth 或模型。工作台、模型管理和授权表面回归入口与边界见[端到端测试索引](../qa/e2e-suites.md)及[验证记录](../reviews/verification-log.md)。
 
 ## 状态定义与证据要求
 
