@@ -2,7 +2,7 @@
 
 Corvid 是一个本地优先的桌面浏览器，也是用户与 Agent 协作的主产品：用户照常使用完整浏览器，Agent 在各自独立的 **Room** 里执行任务；用户能看到状态、接管控制并在需要时交还 Agent。内置 Agent 工作台与外部 Agent SDK/CLI 将共用 Room、Profile、页面上下文和控制权模型。
 
-项目仍在开发中。当前提供桌面浏览器、Pi 内置 Agent 工作台和外部 Agent SDK/CLI。用户浏览与 Agent Room 共用 Profile、页面和控制权模型；Agent 操作前需要明确页面上下文。功能覆盖、验收状态和待办事项见 [执行任务板](docs/execution/feature-board.md)；架构与边界见 [系统设计](docs/architecture/overview.md)。
+项目仍在开发中。当前提供桌面浏览器、Corvid Agent 工作台和外部 Agent SDK/CLI。用户浏览与 Agent Room 共用 Profile、页面和控制权模型；Agent 操作前需要明确页面上下文。Agent 运行时属于 Corvid 内部实现，可在不改变用户界面、任务记录和配置语义的前提下替换或升级。功能覆盖、验收状态和待办事项见 [执行任务板](docs/execution/feature-board.md)；架构与边界见 [系统设计](docs/architecture/overview.md)。
 
 ## 核心概念
 

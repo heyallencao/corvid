@@ -31,10 +31,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await (async()=>{for(let i=0;i<200;i++){const response=await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}});const latest=await response.json();if(latest.rooms.flatMap(room=>room.tabs).some(tab=>tab.url===sourceUrl))return;await delay(25);}throw new Error('Fixture page did not navigate');})();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
+    const visibleAgentSurface=await shell.locator('body').evaluate(body=>({text:body.innerText,labels:[...body.querySelectorAll('[aria-label],[title]')].flatMap(node=>[node.getAttribute('aria-label'),node.getAttribute('title')]).filter(Boolean)}));
+    assert.doesNotMatch(`${visibleAgentSurface.text}\n${visibleAgentSurface.labels.join('\n')}`,/\bPi\b|pi-coding-agent/i,'user-visible Agent UI must not expose the embedded runtime name');
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
-    const modelSelect=shell.getByLabel('内置 Agent 模型', { exact: true });
+    const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
     await modelSelect.waitFor();
     assert.ok(await modelSelect.locator('option').filter({hasText:'GPT-6 Luna'}).count());
     const codexModelValue=await modelSelect.locator('option').evaluateAll(options=>options.find(option=>option.textContent==='GPT-6 Luna'&&option.value.includes('openai-codex'))?.value);
@@ -57,7 +59,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByText('这是本地确定性 Agent fixture 第 1 轮回复。没有调用真实模型。').waitFor();
     await shell.locator('.pi-task-title').getByText('总结当前页面内容').waitFor();
     assert.equal(await shell.locator('.pi-task-state').textContent(),'已完成','task state is shown separately from its target page and runtime');
-    assert.match(await shell.locator('.pi-task-context').textContent(),/本地确定性 fixture（无真实模型） · Corvid Fixture Page/);
+    assert.match(await shell.locator('.pi-task-context').textContent(),/Corvid Agent · Corvid Fixture Page/);
+    assert.doesNotMatch(await shell.locator('.pi-task-context').textContent(),/\bPi\b/i,'task context describes the Corvid product, not its runtime');
 
     const savedTasks = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
     assert.equal(savedTasks.length, 1);
@@ -149,6 +152,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
     assert.equal(fs.existsSync(path.join(dataDir,'agent-sessions',restored.id.replaceAll('-','_'))),false,'removing a task also deletes its private Pi transcript directory');
 
+    await restoredShell.getByRole('button',{name:/新建对话/}).click();
     await restoredShell.getByRole('button',{name:'连接当前页面'}).click();
     await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:fail-once] 模拟 Provider 断连');
     await restoredShell.getByRole('button',{name:'检查并预览页面上下文'}).click();
@@ -171,6 +175,17 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(recoveredTask.id,failedTask.id);
     assert.equal(recoveredTask.piSessionFile,failedTask.piSessionFile);
     await failedCard.getByRole('button',{name:'移除记录'}).click();
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
+
+    await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:runtime-name-leak] 模拟运行时错误');
+    await restoredShell.getByRole('button',{name:'检查并预览页面上下文'}).click();
+    await restoredShell.getByLabel(/我已检查/).check();
+    await restoredShell.getByRole('button',{name:'发送'}).click();
+    const runtimeErrorCard=restoredShell.locator('.pi-task-entry').filter({hasText:'[fixture:runtime-name-leak] 模拟运行时错误'});
+    await runtimeErrorCard.locator('.pi-task-state[data-status="failed"]').waitFor();
+    assert.match(await runtimeErrorCard.locator('.pi-task-error').innerText(),/Agent 未能完成此轮对话，请检查模型连接后重试/);
+    assert.doesNotMatch(await runtimeErrorCard.innerText(),/\bPi\b|pi-coding-agent/i,'runtime-specific errors are translated into Corvid product language');
+    await runtimeErrorCard.getByRole('button',{name:'移除记录'}).click();
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8')),[]);
 
     await app.close();app=null;
