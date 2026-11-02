@@ -17,20 +17,9 @@ async function openShellDialog(selector, focusSelector) {
 }
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{void api.invoke('setShellModal',{open:false});});
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
-let newTabFocusId=null;
 function updateNewTabSurface(active) {
-  const surface=document.querySelector('#new-tab-surface');
   const isNewTab=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
-  surface.hidden=!isNewTab;
   document.querySelector('#bookmarks-bar').toggleAttribute('hidden',isNewTab);
-  if(isNewTab && newTabFocusId!==active.id){newTabFocusId=active.id;requestAnimationFrame(()=>{if(!surface.hidden)document.querySelector('#new-tab-search').focus();});}
-  if(!isNewTab)newTabFocusId=null;
-}
-function openNewTabDestination(destination) {
-  const value=String(destination||'').trim();
-  if(!value)return;
-  document.querySelector('#address').value=value;
-  document.querySelector('#address-form').requestSubmit();
 }
 function draw(value) {
   state = value;
@@ -67,7 +56,7 @@ function draw(value) {
   newWindow.className='new-window-button';
   roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {document.querySelector('#new-tab-surface').hidden=true;newTabFocusId=null;document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
   updateNewTabSurface(active);
@@ -359,7 +348,6 @@ async function renderBookmarksBar() {
   if(!profileId)return;
   const result=await api.invoke('bookmarks',{profileId});
   if(version!==bookmarksRenderVersion || state?.activeProfileId!==profileId)return;
-  renderNewTabBookmarks(result.bookmarks,profileId);
   const bar=document.querySelector('#bookmarks-bar');bar.replaceChildren();
   const active=activeTab(),isBrowserHome=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
   bar.toggleAttribute('hidden',isBrowserHome);
@@ -373,22 +361,11 @@ async function renderBookmarksBar() {
   }
   if(result.bookmarks.length>items.length){const more=button('更多书签',()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
 }
-function renderNewTabBookmarks(bookmarks,profileId) {
-  const grid=document.querySelector('#new-tab-bookmark-grid'),empty=document.querySelector('#new-tab-bookmark-empty');
-  if(state?.activeProfileId!==profileId)return;
-  grid.replaceChildren();
-  const items=(Array.isArray(bookmarks)?bookmarks:[]).slice(0,8);
-  for(const item of items){
-    let host='网站';try{host=new URL(item.url).hostname.replace(/^www\./,'')||host;}catch{}
-    const card=button('',()=>openNewTabDestination(item.url));card.className='new-tab-bookmark';card.title=item.url;card.setAttribute('aria-label',`打开书签：${item.title||host}`);
-    const mark=document.createElement('span');mark.className='new-tab-bookmark-mark';mark.setAttribute('aria-hidden','true');mark.textContent=(host[0]||'网').toLocaleUpperCase();
-    const label=document.createElement('span');label.className='new-tab-bookmark-label';
-    const title=document.createElement('strong');title.textContent=item.title||host;
-    const domain=document.createElement('small');domain.textContent=host;
-    label.append(title,domain);card.append(mark,label);grid.append(card);
-  }
-  empty.hidden=items.length>0;
-}
+api.onBrowserHomeAction(kind=>{
+  if(kind==='bookmarks')void showLibrary('bookmarks',document.querySelector('#show-bookmarks'));
+  else if(kind==='history')void showLibrary('history',document.querySelector('#show-history'));
+  else if(kind==='agent')void document.querySelector('#show-pi-workbench').click();
+});
 api.onState(draw); api.onPiTasks(()=>{if(libraryKind==='pi-workbench')void renderPiTasks();else if(libraryKind==='agent-rooms')void renderAgentRooms();}); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=`登录码 ${event.userCode} · ${event.verificationUri}`;return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=`无法打开授权页：${userFacingAgentError(error)}`;}};if(status)status.textContent='请在浏览器完成授权，或从授权框打开登录页';return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=userFacingAgentError(event.message,'正在连接模型账号…');});
 api.onPiAuthPrompt(async request=>{
   const prompt=request.prompt||{},dialog=document.querySelector('#pi-auth-dialog'),form=document.querySelector('#pi-auth-form'),message=document.querySelector('#pi-auth-message'),label=document.querySelector('#pi-auth-input-label');let input=document.querySelector('#pi-auth-input');
@@ -603,10 +580,6 @@ document.querySelector('#chrome-extension-choices').onchange=updateChromeImportB
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
 chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
-document.querySelector('#new-tab-form').onsubmit=event=>{event.preventDefault();openNewTabDestination(document.querySelector('#new-tab-search').value);};
-document.querySelector('#new-tab-all-bookmarks').onclick=event=>void showLibrary('bookmarks',event.currentTarget);
-document.querySelector('#new-tab-history').onclick=event=>void showLibrary('history',event.currentTarget);
-document.querySelector('#new-tab-agent').onclick=()=>document.querySelector('#show-pi-workbench').click();
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
 document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};
 document.querySelector('#show-bookmarks').onclick = event => showLibrary('bookmarks',event.currentTarget);

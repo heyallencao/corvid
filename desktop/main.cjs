@@ -38,6 +38,7 @@ const tabs = new Map();
 const queues = new Map();
 const roomResolutions = new Map();
 const runAction = require('./actions.cjs');
+const installNewTabPage = require('./new-tab-page.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
 const { createAgentWorkbench } = require('./agent-workbench.cjs');
@@ -361,6 +362,14 @@ function update(record = activeRecord()) {
     activeProfileId = record.activeProfileId;
   }
   layout(record);
+  for (const room of rooms) {
+    if (room.windowId !== record.id) continue;
+    const tab = tabs.get(room.activeTabId);
+    if (tab?.homeSurfaceInstalled && !tab.view.webContents.isDestroyed()) {
+      const bookmarks=room.ownership==='user'&&tab.openedBy==='user'?library.bookmarks(room.profileId).slice(0,8):[];
+      tab.view.webContents.send('browser-home-state', {bookmarks});
+    }
+  }
   record.browserWindow.webContents.send('shell-state', describe(record));
   if (!restoring) persist();
 }
@@ -434,7 +443,6 @@ function layout(record = activeRecord()) {
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
   const top = 112;
-  const isBrowserHome = Boolean(tab && tab.view.webContents.getURL() === 'about:blank' && !tab.isLoading && !tab.navigationError);
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
@@ -443,17 +451,13 @@ function layout(record = activeRecord()) {
     : 0;
   const workspaceGap = workspaceWidth ? (width > 720 ? 12 : 10) : 0;
   for (const item of tabs.values()) {
-    // Every view is owned by the window that hosts its room: it is sized in that
-    // window and left hidden in any other window. Background Rooms keep their
-    // views visible-but-behind, which is what lets agent actions reach a Room
-    // that the user is not currently looking at.
+    // Every view is owned by exactly one window. Keep background pages visible
+    // behind the selected page so trusted Agent input and screenshots keep a
+    // live compositor; the active about:blank page paints Corvid's home UI.
     const owner = rooms.find(entry => entry.id === item.roomId);
     if (owner?.windowId !== record.id) continue;
     item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)});
-    // WebContentsView is layered above the shell, so hide all page views while
-    // a shell-owned home surface is active. The background webContents remain
-    // alive and accessible to their authorized Agent Rooms.
-    item.view.setVisible(Boolean(tab) && !record.modalOpen && !isBrowserHome);
+    item.view.setVisible(Boolean(tab) && !record.modalOpen);
   }
   if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
 }
@@ -492,7 +496,15 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const view = new WebContentsView({webPreferences:{partition,sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(__dirname,'page-preload.cjs')}});
   const openedBy=metadata.openedBy ?? 'unknown';
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
-  const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,isLoading:false,navigationError:null,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[]};
+  const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,isLoading:false,navigationError:null,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[],homeSurfaceInstalled:false,homeInjection:null};
+  const installHomeSurface=()=>{
+    if(s.ownership!=='user'||openedBy!=='user')return Promise.resolve();
+    if(tab.homeSurfaceInstalled)return Promise.resolve();
+    if(tab.homeInjection)return tab.homeInjection;
+    if(view.webContents.isDestroyed()||view.webContents.getURL()!=='about:blank')return Promise.resolve();
+    tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
+    return tab.homeInjection;
+  };
   view.webContents.on('did-navigate',()=>{tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;});
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
@@ -508,7 +520,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   if(url!=='about:blank'||metadata.notifyInitialState) update(owner);
   const changed = () => { if (!quitting && tabs.has(tabId)) update(owner); };
   view.webContents.on('did-start-navigation',(_event,url,_isInPlace,isMainFrame)=>{if(!isMainFrame||url==='about:blank')return;if(tab.navigationError&&url.startsWith('chrome-error://'))return;tab.isLoading=true;tab.navigationError=null;changed();});
-  view.webContents.on('did-finish-load',()=>{if(view.webContents.getURL()!=='about:blank')changed();});
+  view.webContents.on('did-finish-load',()=>{if(view.webContents.getURL()==='about:blank'&&s.ownership==='user'&&openedBy==='user')void installHomeSurface().catch(error=>console.error('Corvid start page failed to load:',error.message));else{tab.homeSurfaceInstalled=false;changed();}});
   view.webContents.on('did-fail-load',(_event,errorCode,_errorDescription,validatedURL,isMainFrame)=>{
     if(!isMainFrame || errorCode===-3)return;
     tab.isLoading=false;tab.navigationError={url:validatedURL || tab.pendingNavigationUrl || view.webContents.getURL(),message:navigationFailureMessage(errorCode,_errorDescription)};changed();
@@ -518,6 +530,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   // document exists. Bind the debugger before navigating to the requested URL.
   await view.webContents.loadURL('about:blank');
   await pageDebugger.ensure(view.webContents,changed);
+  await installHomeSurface();
   view.webContents.on('page-title-updated',(_event,title) => { if (tab.visitId) library.title(tab.visitId,title); changed(); });
   view.webContents.on('page-favicon-updated',(_event,favicons) => { if (!Array.isArray(favicons) || !favicons.length) return; tab.faviconUrl=favicons[0]; changed(); });
   view.webContents.on('found-in-page',(_event,result) => { if (window && !window.isDestroyed()) window.webContents.send('shell-find-result',{tabId,...result}); });
@@ -973,7 +986,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'closeRoom': {const s=findRoom(target);for(const tabId of s.tabIds)await runAction.releasePointer(findTab(tabId).view.webContents);await closeRoom(target); return {ok:true};}
     case 'closeTab': await runAction.releasePointer(findTab(target).view.webContents);await closeTab(target); return {ok:true};
     case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError)t.navigationError={url,message:navigationFailureMessage(error.errno,error.message)};update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
-    case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const beforePopup=t.popupSequence; const result=await runAction(t.view.webContents,args.operation,args.args); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
+    case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);const beforePopup=t.popupSequence;const result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground}); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}
     case 'getPopupEvents': {const tab=findTab(target);if(args.after===undefined)return {cursor:tab.popupSequence,event:null};const after=Number(args.after);if(!Number.isSafeInteger(after) || after<0 || after>tab.popupSequence)throw new Error('Invalid popup cursor');if(tab.popupEvents.length && after<tab.popupEvents[0].sequence-1)throw new Error('Popup event history expired');const event=tab.popupEvents.find(item=>item.sequence>after);if(!event)return {cursor:tab.popupSequence,event:null};const popup=tabs.get(event.tabId);return {cursor:tab.popupSequence,event:{...event,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}: {})}};}
     case 'armDownload': return agentDownloads.arm(target,args.timeoutMs);
@@ -1191,6 +1204,20 @@ app.whenReady().then(async () => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
     if (record) { focusWindow(record); syncRecordFromAliases(record); }
     return dispatchQueued(method,args);
+  });
+  ipcMain.handle('browser-home-action',(event,action,value)=>{
+    const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);
+    if(!tab||!tab.homeSurfaceInstalled||tab.openedBy!=='user'||tab.view.webContents.getURL()!=='about:blank'||tab.isLoading)throw new Error('Corvid 起始页当前不可用');
+    const room=findRoom(tab.roomId),record=windowRecords.get(room.windowId);
+    if(room.ownership!=='user')throw new Error('起始页仅在用户拥有的空间中可用');
+    if(room.activeTabId!==tab.id)throw new Error('起始页标签已不再活动');
+    if(record?.activeRoomId!==room.id||record.modalOpen||record.browserWindow.isDestroyed())throw new Error('起始页尚未准备好，请稍后重试');
+    if(action==='navigate'&&typeof value==='string'){
+      if(value.length>4096)throw new Error('搜索内容过长');
+      return dispatchQueued('navigate',{id:tab.id,url:value},false);
+    }
+    if(action==='panel'&&['bookmarks','history','agent'].includes(value)){record.browserWindow.webContents.send('shell-home-action',value);return {ok:true};}
+    throw new Error('不支持此起始页操作');
   });
   ipcMain.on('page-prompt',(event,message,defaultPrompt)=>{
     const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);

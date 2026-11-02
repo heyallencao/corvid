@@ -754,3 +754,11 @@
 已知限制（与当前一致）：系统对话框为测试替身；跨源 iframe 与 closed Shadow DOM 不支持；select 与清空文件选择使用非 `isTrusted` 事件；截图未逐像素；`waitForURL` 轮询可能错过短暂 URL；未覆盖真实网站、真实用户数据、Windows、打包分发、崩溃恢复与性能。
 
 基线结论：当前 32 项是这些历史主题在概念重命名、API 合同、Snapshot v2 与产品化前两批后的回归集合；历史计数不再维护，后续以本文件的时间倒序记录为准。
+
+## 2026-11-03 后台 Agent Room 与新标签起始页共存（Issue #98）
+
+- 基线复现：旧布局在前台用户停留 `about:blank` 起始页时隐藏 WebContentsView；未激活的授权 Agent Room 的 `page_fill` 返回 `Element is not visible or is covered`。此行为在未修复基线 `23236f0` 的 `tests/mcp-e2e.cjs` 复现。
+- 修复：起始页改在用户空白 Tab 的闭合 Shadow DOM 内绘制；布局保持同窗口页面视图可见并将活动用户 Tab 放在最前。主进程校验起始页动作必须来自当前活动的、用户打开的、用户拥有 Room 的空白 Tab，且无 shell modal；页面 UI 和 Profile 书签不暴露给 Agent 所有的 Tab。
+- 回归：本机 macOS、真实 Electron、临时 Corvid 数据目录、本地 HTTP fixture。`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` 通过（首页搜索、Profile 书签隔离、三项快捷入口、标签/查找/拖拽/中键关闭）；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 三项通过（未激活后台授权 Room 的页信息、Snapshot、fill/click、前台起始页保持及 SDK PNG 截图）；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 通过。截图目视检查见[UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-新标签起始页与后台-agent-room-共存-issue-98)。
+- 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，43 条独立脚本与 3 项串行 `node:test` 共 46 项通过。
+- 限制：测试不验证真实 MCP host、真实网站、Windows/Linux、打包应用、多窗口与 VoiceOver；自动化截图是起始页 WebContentsView 内容，不是系统合成全窗口截图。Issue #98 在合并前继续保持打开。

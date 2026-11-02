@@ -22,28 +22,39 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
-  let app;
+  let app,call;
   const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   const sendShortcut=async(key,modifier)=>{const mods=modifier?[modifier==='Meta'?'meta':'control']:[];await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>{const contents=BrowserWindow.getAllWindows()[0].webContents;contents.sendInputEvent({type:'keyDown',keyCode,modifiers});contents.sendInputEvent({type:'keyUp',keyCode,modifiers});},{keyCode:key,modifiers:mods});};
+  const activeHomeTabId=async()=>{const snapshot=await call('/rooms');return snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs.find(tab=>tab.active)?.id;};
+  const homeEval=async source=>{const tabId=await activeHomeTabId();return app.evaluate(async({webContents},{source,tabId})=>{for(const contents of webContents.getAllWebContents()){let matches=false;try{matches=await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`);}catch{}if(matches)return contents.executeJavaScript(source);}return null;},{source,tabId});};
+  const captureHome=async output=>{const tabId=await activeHomeTabId();const base64=await app.evaluate(async({webContents},{tabId})=>{for(const contents of webContents.getAllWebContents()){try{if(await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`))return (await contents.capturePage()).toPNG().toString('base64');}catch{}}return null;},{tabId});assert.ok(base64,'the active blank tab provides a capturable browser start page');fs.writeFileSync(output,Buffer.from(base64,'base64'));};
   try{
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     const shell=await app.firstWindow();
     let config;
     for(let i=0;i<200;i++){try{config=JSON.parse(fs.readFileSync(path.join(dataDir,'control.json')));break}catch{await delay(50)}}
     assert.ok(config);
-    const call=async(route)=>{const response=await fetch(config.baseUrl+route,{headers:{authorization:`Bearer ${config.token}`}});const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));return data;};
+    call=async(route)=>{const response=await fetch(config.baseUrl+route,{headers:{authorization:`Bearer ${config.token}`}});const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));return data;};
     const primary=process.platform==='darwin'?'Meta':'Control';
     const tabs=shell.locator('.tab');
 
-    // Corvid owns an accessible home surface for blank tabs. Search resolves
-    // through the Profile's browser search template and the existing navigate path.
-    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
-    await shell.getByRole('searchbox',{name:'搜索网页或输入网址'}).waitFor();
+    // Corvid paints its home surface inside the user-owned about:blank WebContentsView.
+    await until(()=>homeEval("document.visibilityState==='visible'"),'visible Corvid home view');
+    assert.equal(await homeEval('typeof window.browserHome'),'object','blank user tabs receive the scoped Corvid home bridge');
+    for(const [action,kind] of [['bookmarks','bookmarks'],['history','history'],['agent','pi-workbench']]){
+      await homeEval(`window.browserHome.action('panel',${JSON.stringify(action)})`);
+      await until(async()=>await shell.locator('#library').getAttribute('data-kind')===kind,`${action} shortcut opens ${kind} panel`);
+      await shell.locator('#close-library').click();
+      await until(async()=>await shell.locator('#library').isHidden(),'shortcut panel closes');
+    }
     await shell.locator('#show-settings').click();
     await shell.locator('#search-template').fill(`${base}/search?q={query}`);
     await shell.locator('#settings-form button[type="submit"]').click();
-    await shell.locator('#new-tab-search').fill('corvid home');
-    await shell.locator('#new-tab-search').press('Enter');
+    await until(()=>homeEval("document.visibilityState==='visible'"),'home surface restored after settings closes');
+    await until(async()=>!(await shell.locator('#settings').evaluate(dialog=>dialog.open)),'settings dialog closes');
+    await delay(100);
+    await homeEval("window.browserHome.action('navigate','corvid home')");
+    await delay(250);
     await until(async()=>(await tabs.first().textContent()).includes('Search Fixture'),'Corvid home search navigation');
     await shell.locator('#address').fill(base+'/saved');
     await shell.locator('#address').press('Enter');
@@ -56,14 +67,13 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>bookmarkFaviconRequests>0,'existing bookmark bar favicon request');
     const faviconRequestsBeforeHome=bookmarkFaviconRequests;
     await shell.locator('#new-tab').click();
-    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
+    await until(()=>homeEval("document.visibilityState==='visible'"),'visible home after opening a blank tab');
     await shell.locator('#bookmarks-bar').waitFor({state:'hidden'});
     await delay(150);
     assert.equal(bookmarkFaviconRequests,faviconRequestsBeforeHome,'the new-tab surface must not load remote bookmark favicons');
-    const homeBookmark=shell.getByRole('button',{name:'打开书签：Saved Fixture'});
-    await homeBookmark.waitFor();
-    await shell.screenshot({path:path.join(os.tmpdir(),'corvid-new-tab-surface.png')});
-    await homeBookmark.click();
+    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),1,'the new tab lists only current Profile bookmarks');
+    await captureHome(path.join(os.tmpdir(),'corvid-new-tab-surface.png'));
+    await homeEval(`window.browserHome.action('navigate',${JSON.stringify(base+'/saved')})`);
     await until(async()=>(await tabs.nth(1).textContent()).includes('Saved Fixture'),'bookmark shortcut navigation');
     await shell.locator('#profile-menu-trigger').click();
     await shell.getByRole('menuitem',{name:'新建浏览身份'}).click();
@@ -72,9 +82,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#create-room-trigger').click();
     await shell.locator('#room-name').fill('隔离空间');
     await shell.locator('#new-room-form button[type="submit"]').click();
-    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
-    await shell.locator('#new-tab-bookmark-empty').waitFor({state:'visible'});
-    assert.equal(await shell.locator('#new-tab-bookmark-grid button').count(),0,'a new Profile must not see another Profile bookmarks');
+    await until(()=>homeEval("document.visibilityState==='visible'"),'new Profile home surface');
+    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),0,'a new Profile must not see another Profile bookmarks');
     await shell.locator('#profile-select').selectOption('default');
     await until(async()=>(await tabs.count())===2 && await shell.locator('#profile-select').inputValue()==='default','return to original Profile');
     await shell.locator('.tab[aria-selected="true"] .tab-close').click();

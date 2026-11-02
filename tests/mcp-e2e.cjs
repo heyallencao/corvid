@@ -111,7 +111,26 @@ class McpProcess {
     const room = created.room || created;
     const authorization = await call('/agent-clients', 'POST', { name: 'MCP E2E 客户端', roomIds: [room.id] });
     const roomCountBefore = (await call('/rooms')).rooms.length;
-    await call(`/rooms/${room.id}/activate`, 'POST', {});
+    const foregroundRoomId = (await call('/rooms')).activeRoomId;
+    assert.notEqual(foregroundRoomId, room.id, 'the authorized Agent Room must remain in the background');
+    const currentBrowserHome = async () => {
+      const state=await call('/rooms');
+      const activeTabId=state.rooms.find(item=>item.id===state.activeRoomId)?.tabs.find(item=>item.active)?.id;
+      return app.evaluate(async ({ webContents },{activeTabId}) => {
+      for (const contents of webContents.getAllWebContents()) {
+        try {
+          const matches = await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(activeTabId)}`);
+          if (matches) return {id:contents.id,url:contents.getURL(),visible:await contents.executeJavaScript("document.visibilityState==='visible'")};
+        } catch {}
+      }
+      return null;
+      },{activeTabId});
+    };
+    let home = null;
+    for (let i=0;i<200&&!home;i++) {home=await currentBrowserHome();if(!home)await delay(25);}
+    const contentsSummary=await app.evaluate(({webContents})=>webContents.getAllWebContents().map(contents=>({id:contents.id,url:contents.getURL(),type:contents.getType()})));
+    assert.ok(home?.visible,JSON.stringify(contentsSummary));
+    assert.equal(home.url,'about:blank','the foreground remains on the browser start page');
     mcp = new McpProcess(dataDir, authorization.token);
     await mcp.connect();
 
@@ -138,6 +157,18 @@ class McpProcess {
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
 
+    const { connect } = await import('../sdk/index.js');
+    const scopedSdk = await connect({ dataDir, token: authorization.token });
+    try {
+      const hiddenRoom = await scopedSdk.room(room.id);
+      assert.ok(tab.label, 'the Agent-owned page has a stable label for SDK access');
+      const hiddenPage = hiddenRoom.page(tab.label);
+      const screenshot = await hiddenPage.screenshot();
+      assert.ok(screenshot.length > 100, 'SDK captures the background page while Corvid home remains visible');
+      assert.deepEqual([...screenshot.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'background SDK screenshot is a PNG');
+      if (process.env.CORVID_BACKGROUND_SCREENSHOT_PATH) await hiddenPage.screenshot({ path: process.env.CORVID_BACKGROUND_SCREENSHOT_PATH });
+    } finally { await scopedSdk.disconnect(); }
+
     const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
@@ -155,6 +186,9 @@ class McpProcess {
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     const afterToggle = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterToggle.value), /Clicked/);
+    assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'background Agent actions never activate or steal the foreground Room');
+    home = await currentBrowserHome();
+    assert.ok(home?.visible,'the home surface remains visible after background Agent actions');
     const unsafeUrl = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: 'javascript:alert(1)' });
     assert.equal(unsafeUrl.result.isError, true);
     assert.equal(unsafeUrl.value.code, 'CORVID_INVALID_INPUT');
