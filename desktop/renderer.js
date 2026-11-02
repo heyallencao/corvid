@@ -376,11 +376,29 @@ document.querySelector('#show-bookmarks').onclick = () => showLibrary('bookmarks
 document.querySelector('#show-history').onclick = () => {if(libraryKind==='history'){libraryKind=null;document.querySelector('#library').hidden=true;void api.invoke('setPanel',{open:false});}else void showLibrary('history');};
 document.querySelector('#show-downloads').onclick = () => showLibrary('downloads');
 document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
-document.querySelector('#site-permissions').onclick = async () => {document.querySelector('#site-tools').hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
-document.querySelector('#clear-site').onclick = async () => {document.querySelector('#site-tools').hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
-document.querySelector('#more-tools').onclick=event=>{const menu=document.querySelector('#site-tools');menu.hidden=!menu.hidden;event.currentTarget.setAttribute('aria-expanded',String(!menu.hidden));};
-document.addEventListener('pointerdown',event=>{const menu=document.querySelector('#site-tools'),trigger=document.querySelector('#more-tools');if(!menu.hidden && !menu.contains(event.target) && !trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){const menu=document.querySelector('#site-tools');if(!menu.hidden){menu.hidden=true;document.querySelector('#more-tools').setAttribute('aria-expanded','false');document.querySelector('#more-tools').focus();}}});
+const siteToolsMenu=document.querySelector('#site-tools'),siteToolsTrigger=document.querySelector('#more-tools');
+function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
+function closeSiteTools(returnFocus=false){if(siteToolsMenu.hidden)return;siteToolsMenu.hidden=true;siteToolsTrigger.setAttribute('aria-expanded','false');if(returnFocus)siteToolsTrigger.focus();}
+function openSiteTools(last=false){siteToolsMenu.hidden=false;siteToolsTrigger.setAttribute('aria-expanded','true');(last?siteToolsItems().at(-1):siteToolsItems()[0])?.focus();}
+function focusOutsideSiteTools(backward){
+  const controls=[...document.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')]
+    .filter(element=>!element.closest('[hidden]')&&element.getClientRects().length>0&&getComputedStyle(element).visibility!=='hidden'&&!siteToolsMenu.contains(element));
+  const index=controls.indexOf(siteToolsTrigger),target=controls[index+(backward?-1:1)]||(backward?controls.at(-1):controls[0]);
+  closeSiteTools();(target||siteToolsTrigger).focus();
+}
+document.querySelector('#site-permissions').onclick = async () => {closeSiteTools(true);const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('reviewSitePermissions',{id:tab.id});if(result.revoked)siteDataNotice={tabId:tab.id,message:`已撤销 ${result.origin} 的本次授权。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法管理站点权限：${error.message}`};}draw(state);};
+document.querySelector('#clear-site').onclick = async () => {closeSiteTools(true);const tab=activeTab();if(!tab)return;siteDataNotice=null;try{const result=await api.invoke('clearSiteData',{id:tab.id});if(result.cleared)siteDataNotice={tabId:tab.id,message:`已清理 ${result.origin} 的站点数据；请重新加载页面检查。`};}catch(error){siteDataNotice={tabId:tab.id,message:`无法清理站点数据：${error.message}`};}draw(state);};
+siteToolsTrigger.onclick=()=>siteToolsMenu.hidden?openSiteTools():closeSiteTools(true);
+siteToolsTrigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openSiteTools(event.key==='ArrowUp');}};
+siteToolsMenu.onkeydown=event=>{
+  const items=siteToolsItems(),index=items.indexOf(document.activeElement);
+  if(event.key==='Escape'){event.preventDefault();closeSiteTools(true);return;}
+  if(event.key==='ArrowDown'||event.key==='ArrowUp'||event.key==='Home'||event.key==='End'){
+    event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?items.length-1:(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next]?.focus();return;
+  }
+  if(event.key==='Tab'){event.preventDefault();focusOutsideSiteTools(event.shiftKey);}
+};
+document.addEventListener('pointerdown',event=>{if(!siteToolsMenu.hidden&&!siteToolsMenu.contains(event.target)&&!siteToolsTrigger.contains(event.target))closeSiteTools();});
 document.querySelector('#close-library').onclick = () => {libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','false');api.invoke('setPanel',{open:false});};
 document.querySelector('#show-agent-rooms').onclick=async()=>{if(libraryKind==='agent-rooms'){libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','false');await api.invoke('setPanel',{open:false});}else{libraryKind='agent-rooms';document.querySelector('#library-search').value='';document.querySelector('#library').hidden=false;document.querySelector('#show-agent-rooms').setAttribute('aria-expanded','true');await api.invoke('setPanel',{open:true,workspace:true});await renderAgentRooms();}};
 document.querySelector('#show-pi-workbench').onclick=async()=>{if(libraryKind==='pi-workbench'){libraryKind=null;document.querySelector('#library').hidden=true;delete document.querySelector('#library').dataset.kind;document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','false');await api.invoke('setPanel',{open:false});}else{libraryKind='pi-workbench';document.querySelector('#library-search').value='';document.querySelector('#library').hidden=false;document.querySelector('#show-pi-workbench').setAttribute('aria-expanded','true');await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};

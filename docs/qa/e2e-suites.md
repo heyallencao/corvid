@@ -26,7 +26,7 @@
 | 9 | `tests/browser-shortcuts-e2e.cjs` | 通过 Electron `sendInputEvent` 验证 Cmd/Ctrl+T/L/W/R/`[`/`]`、Control+Tab、数字切标签、缩放 `+`/`-`/`0`；地址栏导航；搜索模板校验/保存与 `{query}` 搜索；设置按 Profile 隔离并跨重启保持。 | 只覆盖清单内快捷键；以 macOS 键位为主；未验证 Windows 键位；本地夹具。 |
 | 10 | `tests/evaluation-risk-e2e.cjs` | `evaluate` 永不返回触发 `timed_out`；桌面出现风险提示；重启变为 `unknown_after_restart`；动作被阻止；确认保留风险后仍由用户控制；确认清除后可交还并继续操作。 | 系统确认框为替身；未覆盖同步 renderer 卡死；本地夹具。 |
 | 11 | `tests/recovery-e2e.cjs` | 坏 JSON、无效结构、重复 Room/标签 ID 三类会话文件下，启动退出码 1、stderr 提示原文件未修改、文件字节不变、不产生 `control.json`。 | 只覆盖启动失败路径；不覆盖版本升级、权限错误、强杀恢复。 |
-| 12 | `tests/permissions-e2e.cjs` | 通知权限：请求先转交用户并拒绝/允许；查询 `Notification.permission` 与 `navigator.permissions.query`；同 Profile 共享、跨 Profile 隔离；桌面 UI 撤销；确认期间导航竞态不授予原来源；重启后不保留。 | 系统权限弹窗为替身；只验证通知（地理位置仅有查询状态），真实地理位置服务与设备权限未覆盖；本地夹具。 |
+| 12 | `tests/permissions-e2e.cjs` | 通知权限：请求先转交用户并拒绝/允许；查询 `Notification.permission` 与 `navigator.permissions.query`；同 Profile 共享、跨 Profile 隔离；桌面 UI 撤销；确认期间导航竞态不授予原来源；重启后不保留；站点工具菜单由键盘触发、方向/Home/End 导航、Tab 离开、Escape 恢复焦点、点外关闭与 `aria-expanded` 同步。 | 系统权限弹窗为替身；只验证通知（地理位置仅有查询状态），真实地理位置服务与设备权限未覆盖；菜单使用本地 HTTP fixture，不是屏幕阅读器验收。 |
 | 13 | `tests/dialogs-ui-e2e.cjs` | 桌面"网页对话框"面板显示页面 prompt、编辑答复并提交，触发动作完成且 Room 仍归 Agent。 | 只覆盖 prompt 的 UI 路径，单次；无重启与跨 frame。 |
 | 14 | `tests/user-control-e2e.cjs` | 动作进行中点击"接管"→ 显示挂起状态、新 Agent 动作被拒、其他 Room 可用、`waitForControl` 超时；动作完成后控制权归用户且跨重启保持；Agent `resumeControl` 被拒直到用户"交还"；接管中退出产生未知风险、复核后可交还；Room 删除后等待报错。 | 风险确认框为替身；未覆盖强制退出与清理失败；本地夹具。 |
 | 15 | `tests/site-data-e2e.cjs` | "站点数据"确认/取消；确认期间页面或 Profile 改变则拒绝；按来源清理 Cookie/localStorage/IndexedDB/Cache Storage/Service Worker；跨 Profile、跨站点隔离；同主机不同端口共享 Cookie 但 localStorage 分开。 | 系统确认框为替身；未覆盖 Profile 级清理、子域、filesystem storage；不清理 HTTP 缓存与历史。 |
