@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 Agent 客户端 Room 授权基础切片（Issue #96）
+
+- 实现范围：管理员可创建、列出与撤销外部 Agent 客户端凭据；每个客户端绑定明确 Room ID。原始 scoped token 仅创建响应返回，磁盘只保存 SHA-256 摘要，`agent-clients.json` 权限为 0600。服务端按身份与 Room scope 限制 `/rooms`、Room 与 Tab 路由；scoped client 无法读取全局 Profile、历史、书签、下载和窗口路由。SDK 支持 `connect({baseUrl, token})`、签发/列出/撤销授权，并新增 `CORVID_FORBIDDEN`。
+- 验证通过：Node 24.14.1/macOS、本机 Electron 45.2.1、临时 `CORVID_DATA_DIR`；`node tests/agent-access-e2e.cjs` EXIT 0，覆盖两个客户端各自只列出授权 Room、Room 内创建标签、猜测另一 Room 的 Tab ID 返回 403、全局数据接口拒绝、SDK 授权管理、仅存哈希与 0600 权限、撤销即时生效、未撤销授权重启后仍有效和已撤销授权重启后继续失效。`node --test --test-concurrency=1 tests/browser.e2e.mjs` EXIT 0，既有主控制服务 401/Bearer 与浏览器操作合同通过。`node --check` 覆盖桌面模块、授权存储模块、SDK 与新 E2E；`git diff --check` 通过。
+- 回归限制：同一分支 `tests/rpc-e2e.cjs` 功能断言打印 PASS 后，清理临时数据目录时报 `ENOTEMPTY`；在本地 `main` worktree 同脚本 EXIT 0。该分支 `tests/sdk-e2e.cjs` 在截图 PNG 签名断言失败，本地 `main` worktree 同脚本 EXIT 0。当前比较的本地 `main` 含有尚未进入 `origin/main` 的 Chrome Cookie 回滚和新标签 WebContentsView 变更；尚不能把这两项差异归因于本次授权改动，故本轮不宣称 RPC/SDK 全回归通过。全量 `npm test` 未运行。
+- 安全/产品边界：此切片未提供桌面授权管理 UI，内置 Corvid Agent 与 MCP 还未统一接入 scoped identity；管理员 `control.json` 仍对能读取同一用户 Corvid 数据目录的进程可见，不构成 OS 级恶意同用户进程隔离。后续完成范围见 D22 和 Issue #96。
+
 ## 2026-11-03 Corvid 新标签起始页（Issue #93）
 
 - 方向依据：已安装 EGO 0.6.2.5 的既有 REA 页面证据 `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（Google 新标签起始体验）；Kaze 0.26.0 仅有浏览器/Agent 工作区观察，未核实其新标签行为。此轮 REA 对两款应用的原生窗口截图因窗口与进程不匹配而失败，故不把失败当成产品证据，也不据此推断 Kaze。

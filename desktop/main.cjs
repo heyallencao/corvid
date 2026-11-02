@@ -3,6 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { createAgentClientsStore } = require('./agent-clients.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 let dataDirectoryError = null;
@@ -187,6 +188,7 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
   const temp=`${chromeImportOnboardingPath}.tmp`;fs.writeFileSync(temp,JSON.stringify({status:'pending',startedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);chromeImportOnboardingState='pending';
 }
 const connectionPath = path.join(dataDir, 'control.json');
+const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
 function normalizeBounds(saved) {
   if (!saved || typeof saved !== 'object') return null;
@@ -1057,6 +1059,10 @@ function dispatchQueued(method,args={},fromApi=false) {
 function apiRoute(req, url) {
   const pieces = url.pathname.split('/').filter(Boolean), [kind, target, action] = pieces;
   if (req.method==='GET' && url.pathname==='/health') return ['health',{}];
+  if (kind==='agent-clients' && !target && req.method==='GET') return ['listAgentClients',{}];
+  if (kind==='agent-clients' && !target && req.method==='POST') return ['createAgentClient',{}];
+  if (kind==='agent-clients' && target && req.method==='DELETE' && !action) return ['revokeAgentClient',{clientId:target}];
+  if (kind==='rooms' && target && !action && req.method==='GET') return ['roomDetails',{id:target}];
   if (req.method==='POST' && url.pathname==='/shutdown' && process.env.CORVID_TEST_MODE==='1') return ['shutdown',{}];
   if (req.method==='GET' && url.pathname==='/rooms') return ['state',{}];
   if (req.method==='GET' && url.pathname==='/windows') return ['listWindows',{}];
@@ -1096,14 +1102,41 @@ function errorCode(message) {
 async function startServer() {
   server=http.createServer(async (req,res) => {
     res.setHeader('Content-Type','application/json');
-    if (req.headers.authorization !== `Bearer ${token}`) {res.writeHead(401); res.end(JSON.stringify({error:'Unauthorized',code:'CORVID_UNAUTHORIZED'})); return;}
     try {
-      const [method,routeArgs]=apiRoute(req,new URL(req.url,'http://localhost')); if (!method) {res.writeHead(404); res.end(JSON.stringify({error:'Not found',code:'CORVID_NOT_FOUND'})); return;}
+      const credential=String(req.headers.authorization || '').replace(/^Bearer\s+/i,'');
+      const agentClient=credential && credential!==token ? agentClients.findByToken(credential) : null;
+      const principal=credential && credential===token ? {kind:'admin'} : agentClient ? {kind:'agent',client:agentClient} : null;
+      if(!principal){res.writeHead(401);res.end(JSON.stringify({error:'Unauthorized',code:'CORVID_UNAUTHORIZED'}));return;}
+      const url=new URL(req.url,'http://localhost');
+      const [method,routeArgs]=apiRoute(req,url); if (!method) {res.writeHead(404); res.end(JSON.stringify({error:'Not found',code:'CORVID_NOT_FOUND'})); return;}
+      if(principal.kind==='agent'){
+        let roomId=null;
+        const pieces=url.pathname.split('/').filter(Boolean);
+        if(pieces[0]==='rooms'&&pieces[1]) roomId=pieces[1];
+        else if(pieces[0]==='tabs'&&pieces[1]) {try{roomId=findTab(pieces[1]).roomId;}catch{}}
+        const permittedMethods=new Set(['state','roomDetails','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
+        if(!permittedMethods.has(method)||!roomId&&method!=='state'||roomId&&!principal.client.roomIds.includes(roomId)){
+          res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
+        }
+      }
       let raw=''; for await (const chunk of req) {raw+=chunk; if(raw.length>65536) throw new Error('Request too large');}
-      const body=raw ? JSON.parse(raw) : {}; const result=method==='health' ? {ok:true} : method==='shutdown' ? {ok:true} : await dispatchQueued(method,{...body,...routeArgs},true);
+      const body=raw ? JSON.parse(raw) : {};
+      let result;
+      if(method==='health') result={ok:true};
+      else if(method==='listAgentClients') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});result={clients:agentClients.list()};}
+      else if(method==='createAgentClient') {
+        if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});
+        if(typeof body.name!=='string'||!body.name.trim()||body.name.trim().length>80||!Array.isArray(body.roomIds)||!body.roomIds.length||body.roomIds.some(id=>typeof id!=='string'||!rooms.some(room=>room.id===id)))throw Object.assign(new Error('Agent 名称和有效的空间授权列表为必填项'),{status:400,code:'CORVID_INVALID_ARGUMENT'});
+        const created=agentClients.create({name:body.name.trim(),roomIds:body.roomIds});result={...created.client,token:created.token};
+      }
+      else if(method==='revokeAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});const client=agentClients.revoke(routeArgs.clientId);if(!client)throw Object.assign(new Error('Agent 授权不存在'),{status:404,code:'CORVID_NOT_FOUND'});result={revoked:true,client};}
+      else if(method==='roomDetails') result=describeRoom(findRoom(routeArgs.id));
+      else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
+      else if(method==='shutdown') result={ok:true};
+      else result=await dispatchQueued(method,{...body,...routeArgs},true);
       res.end(JSON.stringify(result));
       if(method==='shutdown') setImmediate(()=>app.quit());
-    } catch (error) {res.writeHead(400);res.end(JSON.stringify({error:error.message,code:errorCode(error.message)}));}
+    } catch (error) {res.writeHead(error.status||400);res.end(JSON.stringify({error:error.message,code:error.code||errorCode(error.message)}));}
   });
   await new Promise((resolve,reject) => {server.once('error',reject);server.listen(Number(process.env.CORVID_PORT || 0),'127.0.0.1',resolve);});
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};
