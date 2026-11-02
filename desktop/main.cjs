@@ -112,6 +112,29 @@ async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
   await destinationSession.cookies.flushStore();
 }
+function verifyChromeCookiesPersisted(destinationSession,addedCookies){
+  const persistentCookies=addedCookies.filter(({cookie})=>Number.isFinite(cookie.expirationDate));
+  if(!persistentCookies.length)return;
+  const storagePath=destinationSession.getStoragePath();
+  let database;
+  try{
+    // Chromium can resolve flushStore while a read-only Profile directory prevents persistent Cookies from reaching disk. Verify identity metadata only; never read Cookie values.
+    if(!storagePath)throw new Error('Cookie 存储目录不可用');
+    const databasePath=[path.join(storagePath,'Cookies'),path.join(storagePath,'Network','Cookies')].find(candidate=>fs.existsSync(candidate));
+    if(!databasePath||!fs.lstatSync(databasePath).isFile())throw new Error('Cookie 数据库不可用');
+    const {DatabaseSync}=require('node:sqlite');
+    database=new DatabaseSync(databasePath,{readOnly:true});
+    const hasCookie=database.prepare('SELECT 1 FROM cookies WHERE host_key = ? AND name = ? AND path = ? LIMIT 1');
+    for(const {cookie} of persistentCookies){
+      const hostKey=cookie.domain||new URL(cookie.url).hostname;
+      if(!hasCookie.get(hostKey,cookie.name,cookie.path||'/'))throw new Error('Cookie 未写入数据库');
+    }
+  }catch{
+    throw new Error('Chrome Cookie 持久化校验失败，未能确认本次导入的持久 Cookie 已写入磁盘。为保护目标 Profile 原有 Cookie，已撤回可安全撤回的本次修改。请确认目标 Profile 数据目录可写后，在同一来源和目标 Profile 下重试。');
+  }finally{
+    try{database?.close();}catch{}
+  }
+}
 function activeRecord() {
   if (window && !window.isDestroyed()) {
     for (const record of windowRecords.values()) if (record.browserWindow === window) return record;
@@ -708,6 +731,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             }catch{cookieResult.failed++;}
           }
           await flushChromeCookies(destinationSession);
+          verifyChromeCookiesPersisted(destinationSession,addedCookies);
         }
         const libraryCategories=args.categories.filter(category=>category!=='extensions');
         const result=libraryCategories.length?library.importChromeData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};

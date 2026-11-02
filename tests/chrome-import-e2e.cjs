@@ -171,7 +171,7 @@ async function allowCookieImport(shell){
   const chromeProfiles=makeChromeFixture(chromeRoot);
   const cookieKey=fixtureCookieKey(),supportsCookieImport=process.platform==='darwin';
   if(supportsCookieImport)writeChromeCookies(path.join(chromeRoot,'Default'),cookieKey);
-  let server;
+  let server;const restrictedPaths=[];
   let app,shell,call;
   server=http.createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/html'});response.end('<title>Extension Fixture</title><html><body>local extension test</body></html>');});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -457,6 +457,58 @@ async function allowCookieImport(shell){
         assert.equal(afterRetry.find(cookie=>cookie.path==='/app')?.value,'fixture-rollback-value','retry must not duplicate the selected Chrome Cookie');
         await app.close();app=undefined;
       }
+
+      const diskFailureData=path.join(tempRoot,'cookie-readonly-store-data');
+      const cookieStorePath=path.join(diskFailureData,'Partitions','corvid');
+      fs.mkdirSync(cookieStorePath,{recursive:true});fs.chmodSync(cookieStorePath,0o500);restrictedPaths.push(cookieStorePath);
+      ({app,shell,call}=await boot(diskFailureData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+      try{
+        assert.throws(()=>fs.writeFileSync(path.join(cookieStorePath,'write-probe'),'x'),error=>error.code==='EACCES','the fixture must actually deny writes to the Cookie store directory');
+        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.locator('#skip-chrome-import').click();
+        await shell.locator('#show-settings').click();
+        await shell.locator('#start-chrome-import').click();
+        await installDialogFixture(app,chromeRoot);
+        await chooseSource(shell);
+        await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+        await allowCookieImport(shell);
+        await shell.locator('#confirm-chrome-import').click();
+        const diskFailureStatus=shell.locator('#chrome-import-error');
+        const diskFailureText=await until(async()=>await diskFailureStatus.textContent()||false,'Cookie import result under a read-only profile');
+        assert.match(diskFailureText,/Cookie.*持久化/,'a disk write failure must be surfaced instead of reporting Cookie import success');
+        assert.equal(await diskFailureStatus.getAttribute('data-success'),null,'a silently resolved flushStore must not be reported as a successful import when disk data is absent');
+        const inMemoryAfterFailure=await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/'}));
+        assert.equal(inMemoryAfterFailure.some(cookie=>cookie.name==='persistent_import'),false,'an unpersisted Cookie should be removed from the live store before retry');
+
+        fs.chmodSync(cookieStorePath,0o700);
+        const child=app.process();const exited=new Promise(resolve=>child.once('exit',resolve));
+        app=undefined;shell=undefined;call=undefined;child.kill('SIGKILL');await exited;
+        ({app,shell,call}=await boot(diskFailureData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+        const beforeDiskRetry=await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/'}));
+        assert.equal(beforeDiskRetry.some(cookie=>cookie.name==='persistent_import'),false,'a silently resolved flushStore must not survive a process restart when the store directory is not writable');
+        await shell.locator('#show-settings').click();
+        await shell.locator('#start-chrome-import').click();
+        await installDialogFixture(app,chromeRoot);
+        await chooseSource(shell);
+        await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+        await allowCookieImport(shell);
+        await shell.locator('#confirm-chrome-import').click();
+        const retryStatus=shell.locator('#chrome-import-error');
+        await retryStatus.getByText(/Cookie 新增 5 项/).waitFor();
+        assert.equal(await retryStatus.getAttribute('data-success'),'true','the same source can be selected and retried after storage permissions are restored');
+        await shell.locator('#cancel-chrome-import').click();
+        await app.close();app=undefined;
+        ({app}=await boot(diskFailureData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+        const afterDiskRecovery=await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/'}));
+        assert.equal(afterDiskRecovery.find(cookie=>cookie.name==='persistent_import')?.value,'fixture-persistent-value','re-import after restoring disk access must persist across restart');
+      }finally{
+        try{fs.chmodSync(cookieStorePath,0o700);}catch{}
+        if(app)await app.close().catch(()=>{});app=undefined;
+      }
     }
 
     const pendingData=path.join(tempRoot,'pending-corvid-data');
@@ -482,6 +534,7 @@ async function allowCookieImport(shell){
     await app.close();app=undefined;
     console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, per-Cookie write failure/retry, rollback deletion failure and old-Cookie preservation, post-SIGKILL re-import recovery, extension version/failure handling, content execution, disable/remove and restart restore');
   }finally{
+    for(const restrictedPath of restrictedPaths)try{fs.chmodSync(restrictedPath,0o700);}catch{}
     if(app)await app.close().catch(()=>{});
     if(server)await new Promise(resolve=>server.close(resolve));
     fs.rmSync(tempRoot,{recursive:true,force:true});
