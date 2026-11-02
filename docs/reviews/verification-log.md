@@ -3,9 +3,9 @@
 ## 2026-11-03 Corvid 新标签起始页（Issue #93）
 
 - 方向依据：已安装 EGO 0.6.2.5 的既有 REA 页面证据 `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（Google 新标签起始体验）；Kaze 0.26.0 仅有浏览器/Agent 工作区观察，未核实其新标签行为。此轮 REA 对两款应用的原生窗口截图因窗口与进程不匹配而失败，故不把失败当成产品证据，也不据此推断 Kaze。
-- 实现合同：用户空白标签仍为 `about:blank`，Corvid shell 显示搜索/地址输入、当前浏览身份的常用书签、全部书签、历史和 Corvid Agent 入口。导航复用地址栏现有搜索模板及 URL 验证；书签仅从当前 Profile 读取，不加载远程 favicon；起始面板不作为 Agent 页面上下文。活动起始页期间隐藏该 BrowserWindow 的页面 WebContentsView，离开时恢复常规浏览画布。
-- 验证：本机 macOS、真实 Electron、隔离临时数据目录及本地 HTTP fixture；`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` 通过，覆盖空白页显示、本地搜索模板导航、书签快捷打开、跨 Profile 书签隔离及既有标签操作。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check tests/tab-ux-e2e.cjs` 及 `git diff --check` 通过。未调用 OAuth 或模型；未运行全量测试套件。
-- 视觉检查：隔离窗口截图 2560×1636，SHA-256 `cfb67d4c41a0ab01b7d91f8bd6da48c45ef1df3be8dbcf23cee78dee9f1bbf4a`；画面包含 Corvid 品牌、明确搜索入口、书签卡片和历史/Agent 快捷入口。截图只保存在本机临时目录，未提交；细节与限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-新标签起始页)。
+- 实现合同：用户空白标签仍为 `about:blank`，Corvid shell 显示搜索/地址输入、当前浏览身份的常用书签、全部书签、历史和 Corvid Agent 入口。导航复用地址栏现有搜索模板及 URL 验证；书签仅从当前 Profile 读取，不加载远程 favicon；起始页显示时收起浏览器书签栏，避免与起始页书签重复；起始面板不作为 Agent 页面上下文。活动起始页期间隐藏该 BrowserWindow 的页面 WebContentsView，离开时恢复常规浏览画布。
+- 验证：本机 macOS、真实 Electron、隔离临时数据目录及本地 HTTP fixture；`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` 通过，覆盖空白页显示、本地搜索模板导航、书签快捷打开、跨 Profile 书签隔离、空白页收起书签栏及既有标签操作。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check tests/tab-ux-e2e.cjs` 及 `git diff --check` 通过。未调用 OAuth 或模型；未运行全量测试套件。
+- 视觉检查：隔离窗口截图 2560×1636，SHA-256 `abd17037dde5f348c264c3515eff4931037dc83ebaab206e1d7a5e507317555d`；画面包含 Corvid 品牌、明确搜索入口、常用书签卡片和历史/Agent 快捷入口，浏览器书签栏在空白页收起。截图只保存在本机临时目录，未提交；细节与限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-新标签起始页)。
 - 限制：本地 fixture，不验证真实搜索服务/网站、键盘与 VoiceOver、暗色、窄窗、Windows/Linux；起始 UI 采用 shell 本地视图，不宣称复刻 EGO 页面实现。EGO 当前版本由安装包元数据复核为 0.6.2.5；Kaze 当前版本 0.26.0。
 
 ## 2026-11-03 空间产品语义与 Electron 测试焦点竞争修复（Issue #16、#86）

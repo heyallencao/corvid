@@ -53,6 +53,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     // gets an empty state and cannot see this saved site.
     await shell.locator('#new-tab').click();
     await shell.locator('#new-tab-surface').waitFor({state:'visible'});
+    await shell.locator('#bookmarks-bar').waitFor({state:'hidden'});
     const homeBookmark=shell.getByRole('button',{name:'打开书签：Saved Fixture'});
     await homeBookmark.waitFor();
     await shell.screenshot({path:path.join(os.tmpdir(),'corvid-new-tab-surface.png')});

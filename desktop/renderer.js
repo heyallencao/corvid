@@ -22,6 +22,7 @@ function updateNewTabSurface(active) {
   const surface=document.querySelector('#new-tab-surface');
   const isNewTab=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
   surface.hidden=!isNewTab;
+  document.querySelector('#bookmarks-bar').toggleAttribute('hidden',isNewTab);
   if(isNewTab && newTabFocusId!==active.id){newTabFocusId=active.id;requestAnimationFrame(()=>{if(!surface.hidden)document.querySelector('#new-tab-search').focus();});}
   if(!isNewTab)newTabFocusId=null;
 }

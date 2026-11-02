@@ -108,6 +108,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .address-action:hover { color: var(--accent); }
 #bookmarks-bar { min-height: 31px; display: flex; align-items: center; gap: 4px; overflow: auto; padding: 2px 12px; border-bottom: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
 #bookmarks-bar:empty { display: none; }
+#bookmarks-bar[hidden] { display: none; }
 .bookmark-item { max-width: 190px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 7px; color: var(--text-secondary); text-decoration: none; cursor: pointer; }
 .bookmark-item:hover { background: var(--surface-hover); }
 .bookmark-item img { width: 14px; height: 14px; object-fit: contain; }
