@@ -268,13 +268,17 @@ document.querySelector('#search-template').oninput=()=>{document.querySelector('
 document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};
 document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#settings').close();
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
-let chromeSources=[],chromeSourceId='',chromeSourceToken='';
+let chromeSources=[],chromeSourceId='',chromeSourceToken='',chromeImportProfileId='',chromeImportProfileLocked=false;
 const chromeImportDialog=document.querySelector('#chrome-import');
 async function openChromeImportDialog(){
   chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
   document.querySelector('#chrome-import-error').removeAttribute('data-success');
   document.querySelector('#chrome-import-error').removeAttribute('data-partial');
-  document.querySelector('#chrome-import-target').textContent=`导入目标：${state.profiles.find(profile=>profile.id===settingsProfileId)?.name || '当前 Profile'}`;
+  const targetProfile=document.querySelector('#chrome-import-target-profile');
+  targetProfile.replaceChildren(...state.profiles.map(profile=>new Option(profile.name,profile.id)));
+  chromeImportProfileId=state.profiles.some(profile=>profile.id===settingsProfileId)?settingsProfileId:state.activeProfileId;
+  chromeImportProfileLocked=false;targetProfile.disabled=false;
+  targetProfile.value=chromeImportProfileId;
   document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
   document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
   document.querySelector('#chrome-extension-choices').replaceChildren();
@@ -337,7 +341,8 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
   event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');error.removeAttribute('data-partial');
   const extensionIds=[...document.querySelectorAll('#chrome-extension-choices input:checked')].map(input=>input.value);
   try{
-    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,cookieConsent:categories.includes('cookies')&&document.querySelector('#chrome-cookie-consent-check').checked,...(categories.includes('extensions')?{extensionIds}:{})});
+    chromeImportProfileLocked=true;document.querySelector('#chrome-import-target-profile').disabled=true;
+    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:chromeImportProfileId,categories,cookieConsent:categories.includes('cookies')&&document.querySelector('#chrome-cookie-consent-check').checked,...(categories.includes('extensions')?{extensionIds}:{})});
     if(result.cookies.failed)error.dataset.partial='true';else error.dataset.success='true';
     const failed=result.extensions.failed.map(item=>`${item.name}：${item.error}`).join('；');
     const cookieNotes=[];
@@ -354,6 +359,7 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
   catch(reason){error.textContent=reason.message;}
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
+document.querySelector('#chrome-import-target-profile').onchange=event=>{if(!chromeImportProfileLocked)chromeImportProfileId=event.target.value;};
 document.querySelector('#chrome-cookie-consent-check').onchange=updateChromeImportButton;
 document.querySelector('#chrome-extension-choices').onchange=updateChromeImportButton;
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
