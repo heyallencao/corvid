@@ -27,14 +27,14 @@ function sourceFile(directory,name) {
 function profiles(root) {
   const base = path.resolve(root);
   let info = {};
-  try { info = JSON.parse(fs.readFileSync(path.join(base, 'Local State'), 'utf8'))?.profile?.info_cache || {}; }
+  try { info = JSON.parse(fs.readFileSync(sourceFile(base, 'Local State'), 'utf8'))?.profile?.info_cache || {}; }
   catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw new Error(`无法读取 Chrome Profile 清单：${error.message}`); }
   const dirs = fs.readdirSync(base, {withFileTypes:true}).filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
   const found = dirs.map(entry => {
     const relative = entry.name;
     const directory = profilePath(base, relative);
-    const hasBookmarks = fs.existsSync(path.join(directory, 'Bookmarks'));
-    const hasHistory = fs.existsSync(path.join(directory, 'History'));
+    const hasBookmarks = fs.existsSync(sourceFile(directory, 'Bookmarks'));
+    const hasHistory = fs.existsSync(sourceFile(directory, 'History'));
     if (!hasBookmarks && !hasHistory) return null;
     const metadata = info[relative] || {};
     return {id:relative,name:typeof metadata.name==='string' && metadata.name.trim()?metadata.name.trim():(relative==='Default'?'默认资料':relative),hasBookmarks,hasHistory};
