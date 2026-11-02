@@ -1,5 +1,19 @@
 # 验证记录
 
+## 2026-11-02 Chrome 书签/历史导入原子替换与重试 E2E
+
+### 执行与结果
+
+- 在已有书签库上，从真实 Electron 导入 UI 注入一次 `library.json` 替换失败；验证旧库字节不变、临时文件已清理、Chrome 书签与历史没有部分追加。
+- 同一导入窗重试后，书签/历史与所选扩展成功导入；Cookie 类别按既有去重合同处理。
+- 故障注入仅在 `CORVID_TEST_MODE=1` 且显式设置 `CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE=1` 时生效。
+- 命令：`node --check desktop/library.cjs`、`node --check tests/chrome-import-e2e.cjs`、`git diff --check`、`node tests/chrome-import-e2e.cjs`；全部通过（EXIT 0）。
+
+### 覆盖与限制
+
+- 用可控的写入后、重命名前故障验证原子替换的失败合同；真实磁盘满、只读权限、文件系统与崩溃时序仍未覆盖。
+- 未访问开发机真实 Chrome Profile 或系统钥匙串。
+
 ## 2026-11-02 Chrome Cookie 回滚失败提示 E2E
 
 ### 执行与结果

@@ -16,7 +16,15 @@ module.exports = function createLibrary(directory) {
   if (!Array.isArray(data.history) || !Array.isArray(data.bookmarks)) throw new Error('Invalid library data');
   if (data.downloads === undefined) data.downloads = [];
   if (!Array.isArray(data.downloads)) throw new Error('Invalid download history');
-  const save = (next=data) => { const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(next), {mode: 0o600}); fs.renameSync(tmp,file); };
+  let failChromeImportSaveForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE==='1';
+  const save = (next=data,purpose='general') => {
+    const tmp=`${file}.tmp`;
+    try{
+      fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});
+      if(purpose==='chrome-import'&&failChromeImportSaveForTest){failChromeImportSaveForTest=false;throw new Error('测试注入：Chrome 导入浏览资料库替换失败');}
+      fs.renameSync(tmp,file);
+    }catch(error){try{fs.rmSync(tmp,{force:true});}catch{}throw error;}
+  };
   let interrupted = false;
   for (const item of data.downloads) if (item.status === 'progressing') { item.status = 'interrupted'; interrupted = true; }
   if (interrupted) save();
@@ -42,7 +50,7 @@ module.exports = function createLibrary(directory) {
         const seen=new Set(next.history.filter(item=>(item.profileId ?? 'default')===profileId).map(item=>`${item.url}\u0000${item.visitedAt}`));
         for(const source of history){if(!validUrl(source.url)||typeof source.visitedAt!=='string'){result.history.skipped++;continue;}const key=`${source.url}\u0000${source.visitedAt}`;if(seen.has(key)){result.history.skipped++;continue;}seen.add(key);next.history.push({id:randomUUID(),profileId,url:source.url,title:typeof source.title==='string'&&source.title?source.title:source.url,visitedAt:source.visitedAt});result.history.imported++;}
       }
-      if(result.bookmarks.imported || result.history.imported){save(next);data=next;}
+      if(result.bookmarks.imported || result.history.imported){save(next,'chrome-import');data=next;}
       return result;
     },
     removeBookmark(id,profileId) { const before=data.bookmarks.length;data.bookmarks=data.bookmarks.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId);if(before!==data.bookmarks.length) save();return before!==data.bookmarks.length; }
