@@ -140,6 +140,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await shell.locator('.pi-task-entry').waitFor();
     assert.equal(await shell.locator('.pi-task-entry').getAttribute('data-task-id'),firstTaskRoom.taskId,'opening a Room task selects its existing conversation and task ID');
+    assert.match(await shell.locator('.pi-page-binding').textContent(),/任务页面：Default agent room\s*\//,'the composer stays bound to the opened task page without activating a different Room');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await shell.locator('.pi-task-state[data-status="interrupted"]').waitFor();
     await agentRoomsTrigger.click();

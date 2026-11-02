@@ -142,7 +142,7 @@ async function renderAgentRooms(){
     for(const task of roomTasks){
       const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||'状态未知'}`;taskStatus.setAttribute('role','status');taskStates.append(taskStatus);
       const openTask=button('查看对话',async()=>{
-        piSelectedTaskId=task.id;piHistoryOpen=false;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding=null;piContextPreview=null;
+        piSelectedTaskId=task.id;piHistoryOpen=false;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding={profileId:task.profileId,roomId:task.roomId,tabId:task.tabId};piContextPreview=null;
         setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
         await api.invoke('setPanel',{open:true,workspace:true});
         renderPiWorkbench();
