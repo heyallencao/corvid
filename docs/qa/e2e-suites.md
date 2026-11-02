@@ -5,6 +5,7 @@
 ## 共同前提与限制
 
 - 环境：本机 macOS、Electron 45.2.1、Node.js v24.22.1；最近一次全量回归为 2026-11-02，37 条命令 / 39 项通过。
+- 全量回归限制：最近一次重跑在 `restore-loading-e2e` 已打印 PASS 后，Electron/Node 进程未退出，6 分钟后人工终止；因此不能证明该次 `npm test` 最终退出码或后续用例状态。跟踪见 [Issue #34](https://github.com/heyallencao/corvid/issues/34)。此前完成的全量通过记录见 [验证记录](../reviews/verification-log.md)。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、按 Agent 身份隔离。
@@ -51,7 +52,7 @@
 | 35 | `tests/mcp-e2e.cjs` | stdio MCP initialize/tools/list/tools/call；只读工具列表与 annotations；显式 Profile/Room 选择；页信息和 snapshot；未知 ID 与桌面离线错误；用户接管后拒绝页面读取；调用前后 Room 数量不变。 | 真实 Electron + 隔离数据目录；使用 `about:blank`；以 JSON-RPC 子进程夹具验证协议，不是 Claude Desktop/Cursor UI 配置或真实网站兼容性测试。 |
 | 36 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型/provider；使用隔离 Pi 配置目录与 `about:blank` 页面，以 SDK 打开合成 transcript 验证恢复路径、task 目录边界与工具 allowlist。 |
 | 37 | `tests/pi-workbench-e2e.cjs` | 真实 Electron 桌面：本地页面导航、创建独立 Pi Room、页面上下文预览与未勾选时禁止启动；本地确定性 session fixture 的文本事件、完成态、Profile/Room/Page 绑定落盘；重启将未完成任务恢复为“结果待检查”，并可重新预览确认后从同一 transcript 继续；用户接管会暂停运行中 task，交还并确认后续跑同 transcript；移除记录会删除该 task 的 transcript 目录。 | 不调用真实 Pi 模型或 provider；fixture 仅验证 Corvid 工作台的事件与状态合同；浏览器页面为本地 HTTP 夹具。 |
-| 38 | `tests/chrome-import-e2e.cjs` | 合成 Chrome User Data 多 Profile 发现；书签/历史解析与 UI 导入；扩展逐项选择、多个版本选最新、无效 manifest 过滤、符号链接失败清理、权限展示、真实 content script 执行、目标 Profile 隔离、重复导入、启停/移除与跨重启恢复；合成 v10 Cookie 解密及属性保留；首次导入/稍后选择持久化；选择 Cookie 时需单独确认敏感数据说明后才启用导入；Cookie flushStore 故障时回滚并可重试、回滚持久化失败明确告警；同域/名称/路径下不同值 Cookie 冲突保留目标值，非冲突持久 Cookie 导入并跨重启保留；library.json 替换失败时旧数据与临时文件清理正确并可重试；源 Chrome 书签/历史哈希不变。 | Cookie 密钥通过仅测试模式环境覆盖为合成值，不读系统钥匙串；验证 HostOnly/Domain Cookie 写入 Corvid Session、Profile 隔离、持久 Cookie 重启恢复与会话 Cookie 退出失效；不覆盖密码、扩展更新及完整 Chrome API；原生文件选择器替身；macOS 真实 Electron + 临时 Profile fixture，不读真实 Chrome 数据。 |
+| 38 | `tests/chrome-import-e2e.cjs` | 合成 Chrome User Data 多 Profile 发现；书签/历史解析与 UI 导入；扩展逐项选择、多个版本选最新、无效 manifest 过滤、符号链接失败清理、权限展示、真实 content script 执行、目标 Profile 隔离、重复导入、启停/移除与跨重启恢复；合成 v10 Cookie 解密及属性保留；首次导入/稍后选择持久化；选择 Cookie 时需单独确认敏感数据说明后才启用导入；Cookie flushStore 故障时回滚并可重试、回滚持久化失败明确告警；单 Cookie set 故障单独计数、提示部分导入、保留来源重试且已写 Cookie 去重；同域/名称/路径下不同值 Cookie 冲突保留目标值，非冲突持久 Cookie 导入并跨重启保留；library.json 替换失败时旧数据与临时文件清理正确并可重试；源 Chrome 书签/历史哈希不变。 | Cookie 密钥通过仅测试模式环境覆盖为合成值，不读系统钥匙串；故障只针对测试环境配置的 Cookie 名称并注入一次；验证 HostOnly/Domain Cookie 写入 Corvid Session、Profile 隔离、持久 Cookie 重启恢复与会话 Cookie 退出失效；不覆盖密码、扩展更新及完整 Chrome API；原生文件选择器替身；macOS 真实 Electron + 临时 Profile fixture，不读真实 Chrome 数据。 |
 | 39 | `tests/navigation-error-e2e.cjs` | 真实 Electron 主框架导航失败时显示用户可读错误、保留失败 URL 并提供重试；恢复本地服务后重试成功且清除错误；加载状态可见；新建空白标签立即选中并接收地址栏导航；新导航替代挂起请求后不遗留旧失败状态。 | 临时 Corvid 数据目录与本地 HTTP fixture；只映射少数网络错误到中文说明，证书失败显示通用安全连接提示；不覆盖所有 Chromium 错误码、代理/DNS 环境及原生证书详情页面。 |
 
 ## 工作块与测试的映射

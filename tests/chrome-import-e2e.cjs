@@ -80,6 +80,13 @@ function writeChromeCookies(profileDir,key){
   database.close();
 }
 
+function addChromeCookie(profileDir,name,value){
+  const database=new DatabaseSync(path.join(profileDir,'Cookies'));
+  const add=database.prepare('INSERT INTO cookies VALUES(?,?,?,?,?,?,?,?,?,?,?)');
+  add.run('auth.example.test',name,value,Buffer.alloc(0),'/',0,0,0,0,2,'');
+  database.close();
+}
+
 function verifyCookieDecryption(tempRoot){
   const profileDir=path.join(tempRoot,'cookie-decrypt');fs.mkdirSync(profileDir,{recursive:true});
   const key=fixtureCookieKey();
@@ -330,6 +337,44 @@ async function allowCookieImport(shell){
     assert.equal(await extensionValue(app,extensionUrl,'corvidWorkExtension'),'','removed work extension must stay absent after restart');
     await app.close();app=undefined;
 
+    if(supportsCookieImport){
+      addChromeCookie(path.join(chromeRoot,'Default'),'write_retry_cookie','retry-cookie-value');
+      const sourceAfterFixture=crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex');
+      const retryData=path.join(tempRoot,'cookie-write-retry-data');
+      ({app,shell,call}=await boot(retryData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'write_retry_cookie'}));
+      await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+      await shell.locator('#skip-chrome-import').click();
+      await shell.locator('#show-settings').click();
+      await shell.locator('#start-chrome-import').click();
+      await installDialogFixture(app,chromeRoot);
+      await chooseSource(shell);
+      await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+      await allowCookieImport(shell);
+      await shell.locator('#confirm-chrome-import').click();
+      const importStatus=shell.locator('#chrome-import-error');
+      await importStatus.getByText(/写入失败 1 项，可再次点击导入重试/).waitFor();
+      assert.equal(await importStatus.getAttribute('data-partial'),'true','a per-cookie write error must be presented as a partial import');
+      assert.equal(await importStatus.getAttribute('data-success'),null,'a partial Cookie import must not appear fully successful');
+      assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'the same source must remain available for retry');
+      assert.match(await importStatus.textContent(),/不支持 2 项/,'unsupported source rows must remain distinct from the write failure');
+      assert.match(await importStatus.textContent(),/Cookie 新增 3 项/,'other valid cookies must still import');
+      const beforeRetry=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
+      assert.equal(beforeRetry.some(cookie=>cookie.name==='write_retry_cookie'),false,'the injected write failure must leave that Cookie absent');
+      await shell.locator('#confirm-chrome-import').click();
+      await importStatus.getByText(/Cookie 新增 1 项（跳过 3 项、不支持 2 项）/).waitFor();
+      assert.equal(await importStatus.getAttribute('data-success'),'true','successful retry must return to success state');
+      assert.equal(await importStatus.getAttribute('data-partial'),null);
+      assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'a successful retry must finish the import');
+      const afterRetry=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
+      assert.equal(afterRetry.find(cookie=>cookie.name==='write_retry_cookie')?.value,'retry-cookie-value','retry must import the previously failed Cookie');
+      assert.equal(afterRetry.filter(cookie=>['encrypted_session','domain_session','persistent_import','write_retry_cookie'].includes(cookie.name)).length,4,'successful existing Cookie values must not be duplicated');
+      assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex'),sourceAfterFixture,'partial and retried imports must not modify Chrome source data');
+      await shell.locator('#cancel-chrome-import').click();
+      await app.close();app=undefined;
+    }
+
     const pendingData=path.join(tempRoot,'pending-corvid-data');
     ({app,shell}=await boot(pendingData));
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
@@ -351,7 +396,7 @@ async function allowCookieImport(shell){
     await delay(300);
     assert.equal(await shell.locator('#chrome-import-onboarding').evaluate(element=>element.open),false,'existing Corvid profiles must not get first-run onboarding');
     await app.close();app=undefined;
-    console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, extension version/failure handling, content execution, disable/remove and restart restore');
+    console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, per-Cookie write failure reporting/retry, extension version/failure handling, content execution, disable/remove and restart restore');
   }finally{
     if(app)await app.close().catch(()=>{});
     if(server)await new Promise(resolve=>server.close(resolve));
