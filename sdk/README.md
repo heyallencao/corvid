@@ -18,7 +18,27 @@ try {
 
 `client.rooms()` and `client.room(id)` find rooms. `client.profiles()` and `client.createProfile(name)` manage browser profiles; `client.createRoom(name, {profileId})` selects one. A room can `open(url)`, list `tabs()`, access `page(tabId)`, and request `yieldControl()` / `resumeControl()`. A page supports `navigate`, `snapshot`, `click`, `fill`, `press`, `selectOption`, `select`, `wait`, `screenshot`, `evaluate`, `text` and `close`. Actions accept a snapshot reference or a CSS selector. `evaluate` executes supplied JavaScript and therefore requires agent control.
 
-Administrators can call `client.createAgentClient(name, roomIds)` to issue a scoped credential once, `client.agentClients()` to review grants, and `client.revokeAgentClient(id)` to revoke one immediately. Connect a scoped client with `connect({baseUrl, token})`; both values are required, and explicit credentials are sent only to a `127.0.0.1` HTTP endpoint. This avoids reading the administrator `control.json`. Scoped clients can enumerate and operate only their granted Rooms and cannot access global Profile, history, bookmark, download, or window endpoints. Credentials are stored as SHA-256 hashes with owner-only file permissions. The administrator credential remains available to local processes that can read the Corvid data directory, so scoped clients do not provide OS-level isolation against a malicious process running as the same user.
+Administrators can call `client.createAgentClient(name, roomIds)` to issue a scoped credential once, `client.agentClients()` to review grants, and `client.revokeAgentClient(id)` to revoke one immediately. Connect a scoped client with `connect({token})`; the SDK reads only the current local control endpoint from `control.json` and uses the explicitly supplied scoped token, never the administrator token. An explicit `baseUrl` must be paired with `token` and point to a `127.0.0.1` HTTP endpoint. Scoped clients can enumerate and operate only their granted Rooms and cannot enumerate Profiles without a granted Room, and cannot access history, bookmark, download, or window endpoints. Credentials are stored as SHA-256 hashes with owner-only file permissions. The administrator credential remains available to local processes that can read the Corvid data directory, so scoped clients do not provide OS-level isolation against a malicious process running as the same user.
+
+## Browser MCP scoped access
+
+Create a named client from Corvid **设置 → 管理 Agent 访问**, select its allowed spaces, then copy the one-time key into the MCP host's local environment configuration. Configure the server with `CORVID_AGENT_TOKEN` (and `CORVID_DATA_DIR` when Corvid uses a non-default data directory):
+
+```json
+{
+  "mcpServers": {
+    "corvid": {
+      "command": "corvid-mcp",
+      "env": {
+        "CORVID_AGENT_TOKEN": "<paste the one-time key>",
+        "CORVID_DATA_DIR": "<optional Corvid data directory>"
+      }
+    }
+  }
+}
+```
+
+The MCP server refuses to start tool requests without `CORVID_AGENT_TOKEN`; it never falls back to the administrator credential. Keep the host configuration local and private. Revoke a client in Corvid settings to invalidate its key immediately. When the active browser view is the new-tab start surface, page actions for a background Room are still limited; see [Issue #98](https://github.com/heyallencao/corvid/issues/98).
 
 `client.openRoom(nameOrId, {profileId})` creates or resumes a uniquely named agent-owned room; a user-owned, ambiguous, manually controlled, or risk-blocked room is not silently taken over. New agent rooms have a `p1` page. `room.page('p1')` creates a lazy handle, `room.pages()` lists labeled pages, and `room.newPage()` allocates the next label. Labels and page identity survive application restart and used labels are not reused. `roomId` and `goto()` are aliases for `id` and `navigate()`. Legacy pages with unknown origin remain unlabeled; agent requests cannot close user-created or unknown-origin tabs or a room containing them.
 

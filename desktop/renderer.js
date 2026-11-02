@@ -447,7 +447,43 @@ async function renderProfileExtensions(){
     row.append(actions);list.append(row);
   }
 }
+async function renderAgentAccess(){
+  const roomOptions=document.querySelector('#agent-room-options'),list=document.querySelector('#agent-client-list');
+  roomOptions.replaceChildren();list.replaceChildren();
+  const rooms=state?.rooms||[];
+  if(!rooms.length){const empty=document.createElement('p');empty.className='agent-client-empty';empty.textContent='当前没有可授权的空间。请先创建 Agent 空间。';roomOptions.append(empty);}
+  else for(const room of rooms){
+    const label=document.createElement('label');label.className='agent-room-choice';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.name='agent-room-id';checkbox.value=room.id;checkbox.setAttribute('aria-label',`${room.name} · ${state.profiles.find(profile=>profile.id===room.profileId)?.name||'浏览身份'}`);
+    const name=document.createElement('span');name.textContent=`${room.name} · ${state.profiles.find(profile=>profile.id===room.profileId)?.name||'浏览身份'}`;
+    label.append(checkbox,name);roomOptions.append(label);
+  }
+  document.querySelector('#create-agent-client').disabled=!rooms.length;
+  try{
+    const {clients}=await api.invoke('listAgentClients');
+    if(!clients.length){const empty=document.createElement('p');empty.className='agent-client-empty';empty.textContent='还没有已授权的外部客户端。';list.append(empty);return;}
+    for(const client of clients){
+      const row=document.createElement('article');row.className='agent-client-row';row.dataset.revoked=String(client.revoked);
+      const summary=document.createElement('div');summary.className='agent-client-summary';
+      const name=document.createElement('strong');name.textContent=client.name;summary.append(name);
+      const scope=(client.roomIds||[]).map(id=>rooms.find(room=>room.id===id)?.name||'已移除的空间').join('、')||'无空间授权';
+      const status=document.createElement('span');status.textContent=client.revoked?`已撤销 · ${scope}`:`可访问：${scope}`;summary.append(status);
+      const created=document.createElement('span');created.textContent=`创建于 ${new Date(client.createdAt).toLocaleDateString()}`;summary.append(created);row.append(summary);
+      if(!client.revoked){const revoke=button('撤销',async()=>{
+        if(!window.confirm(`撤销“${client.name}”的访问权限？撤销后该客户端会立即无法连接。`))return;
+        revoke.disabled=true;try{await api.invoke('revokeAgentClient',{id:client.id});document.querySelector('#agent-access-error').textContent='';await renderAgentAccess();}catch(error){revoke.disabled=false;document.querySelector('#agent-access-error').textContent=error.message;}
+      });revoke.setAttribute('aria-label',`撤销 ${client.name} 的访问权限`);row.append(revoke);}
+      else row.append(document.createElement('span'));
+      list.append(row);
+    }
+  }catch(error){document.querySelector('#agent-access-error').textContent=`无法读取授权客户端：${error.message}`;}
+}
 document.querySelector('#show-settings').onclick=async()=>{settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===settings.searchTemplate);preset.value=known?settings.searchTemplate:'custom';document.querySelector('#search-template').value=settings.searchTemplate;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();await openShellDialog('#settings');};
+document.querySelector('#open-agent-access').onclick=async()=>{document.querySelector('#settings').close();document.querySelector('#agent-access-error').textContent='';document.querySelector('#agent-client-token-panel').hidden=true;document.querySelector('#agent-client-token').value='';document.querySelector('#agent-client-form').reset();await renderAgentAccess();await openShellDialog('#agent-access-dialog','#agent-client-name');};
+document.querySelector('#close-agent-access').onclick=()=>document.querySelector('#agent-access-dialog').close();
+document.querySelector('#agent-access-dialog').addEventListener('close',()=>{document.querySelector('#agent-client-token').value='';document.querySelector('#agent-client-token-panel').hidden=true;document.querySelector('#agent-client-copy-status').textContent='';});
+document.querySelector('#agent-client-form').onsubmit=async event=>{event.preventDefault();const roomIds=[...document.querySelectorAll('input[name="agent-room-id"]:checked')].map(input=>input.value);const error=document.querySelector('#agent-access-error');error.textContent='';if(!roomIds.length){error.textContent='至少选择一个空间。';return;}const submit=document.querySelector('#create-agent-client');submit.disabled=true;try{const client=await api.invoke('createAgentClient',{name:document.querySelector('#agent-client-name').value,roomIds});document.querySelector('#agent-client-form').reset();document.querySelector('#agent-client-token').value=client.token;document.querySelector('#agent-client-token-panel').hidden=false;await renderAgentAccess();document.querySelector('#agent-client-token').focus();}catch(failure){error.textContent=failure.message;}finally{submit.disabled=!(state?.rooms?.length);}};
+document.querySelector('#copy-agent-client-token').onclick=async()=>{const status=document.querySelector('#agent-client-copy-status');try{await api.invoke('copyTextToClipboard',{text:document.querySelector('#agent-client-token').value});status.textContent='已复制到剪贴板';}catch(error){status.textContent=`复制失败：${error.message}`;}};
 document.querySelector('#search-preset').onchange=event=>{if(event.target.value!=='custom')document.querySelector('#search-template').value=event.target.value;};
 document.querySelector('#search-template').oninput=()=>{document.querySelector('#search-preset').value='custom';};
 document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};

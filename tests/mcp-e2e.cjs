@@ -13,8 +13,10 @@ const serverPath = path.join(project, 'mcp', 'corvid.mjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 class McpProcess {
-  constructor(dataDir) {
-    this.child = spawn(process.execPath, [serverPath], { cwd: project, env: { ...process.env, CORVID_DATA_DIR: dataDir }, stdio: ['pipe', 'pipe', 'pipe'] });
+  constructor(dataDir, agentToken) {
+    const env={...process.env,CORVID_DATA_DIR:dataDir};
+    if(agentToken)env.CORVID_AGENT_TOKEN=agentToken;else delete env.CORVID_AGENT_TOKEN;
+    this.child = spawn(process.execPath, [serverPath], { cwd: project, env, stdio: ['pipe', 'pipe', 'pipe'] });
     this.buffer = '';
     this.pending = new Map();
     this.stderr = '';
@@ -102,10 +104,15 @@ class McpProcess {
       return result;
     };
 
+    const hiddenProfile = await call('/profiles', 'POST', { name: 'MCP 隐藏浏览身份' });
+    const ungrantedCreated = await call('/rooms', 'POST', { name: 'MCP ungranted fixture', profileId: hiddenProfile.id });
+    const ungrantedRoom = ungrantedCreated.room || ungrantedCreated;
     const created = await call('/rooms', 'POST', { name: 'MCP read-only fixture' });
     const room = created.room || created;
+    const authorization = await call('/agent-clients', 'POST', { name: 'MCP E2E 客户端', roomIds: [room.id] });
     const roomCountBefore = (await call('/rooms')).rooms.length;
-    mcp = new McpProcess(dataDir);
+    await call(`/rooms/${room.id}/activate`, 'POST', {});
+    mcp = new McpProcess(dataDir, authorization.token);
     await mcp.connect();
 
     const listed = await mcp.request('tools/list');
@@ -118,6 +125,10 @@ class McpProcess {
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
     const rooms = await mcp.callTool('list_rooms', { profileId });
     assert.ok(rooms.value.rooms.some(item => item.id === room.id));
+    assert.equal(rooms.value.rooms.some(item => item.id === ungrantedRoom.id), false, 'MCP lists only Rooms granted to its client identity');
+    assert.deepEqual(profiles.value.map(profile => profile.id), ['default'], 'MCP profile discovery is limited to granted Room Profiles');
+    const hiddenProfileRooms = await mcp.callTool('list_rooms', { profileId: hiddenProfile.id });
+    assert.equal(hiddenProfileRooms.result.isError, true, 'MCP cannot enumerate a Profile with no granted Room');
     const tabs = await mcp.callTool('list_tabs', { roomId: room.id });
     const tab = tabs.value.tabs[0];
     assert.ok(tab?.id);
@@ -131,7 +142,7 @@ class McpProcess {
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
     const filled = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'textbox', name: 'Query' }, value: 'corvid mcp' });
-    assert.equal(filled.result.isError, undefined);
+    assert.equal(filled.result.isError, undefined, JSON.stringify(filled.value));
     const searched = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
     assert.equal(searched.result.isError, undefined);
     const afterSubmit = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
@@ -177,14 +188,21 @@ class McpProcess {
 
   const missingDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-missing-'));
   const disconnected = new McpProcess(missingDataDir);
+  const missingCredential = new McpProcess(missingDataDir, 'corvid_agent_test_missing');
   try {
     await disconnected.connect();
     const result = await disconnected.callTool('list_profiles', {});
     assert.equal(result.result.isError, true);
-    assert.equal(result.value.code, 'CORVID_DESKTOP_ERROR');
+    assert.equal(result.value.code, 'CORVID_UNAUTHORIZED');
+    console.log('PASS stdio MCP refuses to fall back to administrator credentials when no scoped identity is configured');
+    await missingCredential.connect();
+    const missing = await missingCredential.callTool('list_profiles', {});
+    assert.equal(missing.result.isError, true);
+    assert.equal(missing.value.code, 'CORVID_DESKTOP_ERROR');
     console.log('PASS stdio MCP returns protocol-valid tool errors when Corvid is unavailable');
   } finally {
     await disconnected.close();
+    await missingCredential.close();
     fs.rmSync(missingDataDir, { recursive: true, force: true });
   }
 })().catch(error => {
