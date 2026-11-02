@@ -215,6 +215,7 @@ async function allowCookieImport(shell){
       await allowCookieImport(shell);
       await shell.locator('#confirm-chrome-import').click();
       await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*可能仍留有部分 Cookie/).waitFor();
+      assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,'a failed write must keep the target fixed for a same-target retry');
       const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
       assert.equal(rolledBackCookies.length,1,'failed Cookie flush must remove newly imported Cookies and preserve the preexisting conflict');
       assert.equal(rolledBackCookies[0].value,'corvid-existing-value','failed Cookie flush rollback must not change the existing conflicting Cookie');
@@ -238,6 +239,7 @@ async function allowCookieImport(shell){
     if(supportsCookieImport){await shell.locator('input[name="chrome-category"][value="cookies"]').check();await allowCookieImport(shell);}
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText('测试注入：Chrome 导入浏览资料库替换失败').waitFor();
+    assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,'a library write failure must keep the target fixed for retry');
     assert.deepEqual(fs.readFileSync(path.join(appData,'library.json')),libraryBeforeFailedImport,'failed Chrome library replacement must preserve the existing library bytes');
     assert.equal(fs.existsSync(path.join(appData,'library.json.tmp')),false,'failed Chrome library replacement must remove its temporary file');
     assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved'],'failed import must not partially append Chrome bookmarks');
@@ -289,14 +291,30 @@ async function allowCookieImport(shell){
     await shell.locator('#show-settings').click();
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
-    await shell.locator('#chrome-import-target').getByText('Imported work').waitFor();
+    assert.equal(await shell.locator('#chrome-import-target-profile').inputValue(),work.id,'the import dialog should default to the active Corvid Profile');
     await shell.locator('#chrome-source-profile').selectOption('Profile 1');
     await shell.locator('#chrome-import-preview').getByText(/工作 Chrome/).waitFor();
+    await shell.locator('#chrome-import-target-profile').selectOption('default');
+    await shell.locator('#confirm-chrome-import').click();
+    await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 1 项、历史新增 1 项/).waitFor();
+    assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,'the target must be fixed after any successful or partial import result');
+    assert.equal((await call('/bookmarks?profileId=default')).bookmarks.some(item=>item.title==='书签 1'),true,'the chosen destination must receive Chrome bookmarks even when it is not active');
+    assert.equal((await call(`/bookmarks?profileId=${work.id}`)).bookmarks.length,0,'Chrome bookmarks must not be written to the active Profile when another target was selected');
+    assert.equal((await call('/history?profileId=default')).history.some(item=>item.title==='历史 1'),true,'the chosen destination must receive Chrome history');
+    await shell.locator('#cancel-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await chooseSource(shell);
+    await shell.locator('#chrome-source-profile').selectOption('Profile 1');
+    await shell.locator('#chrome-import-preview').getByText(/工作 Chrome/).waitFor();
+    await shell.locator('#chrome-import-target-profile').selectOption(work.id);
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(/扩展新增 1 项/).waitFor();
-    assert.equal((await call(`/bookmarks?profileId=${work.id}`)).bookmarks[0].title,'书签 1');
+    assert.equal((await call(`/bookmarks?profileId=${work.id}`)).bookmarks.length,0);
     assert.ok((await call('/bookmarks?profileId=default')).bookmarks.some(item=>item.title==='书签 0'));
     await shell.locator('#cancel-chrome-import').click();
     await shell.getByRole('button',{name:'新建标签'}).click();
@@ -358,6 +376,7 @@ async function allowCookieImport(shell){
       assert.equal(await importStatus.getAttribute('data-partial'),'true','a per-cookie write error must be presented as a partial import');
       assert.equal(await importStatus.getAttribute('data-success'),null,'a partial Cookie import must not appear fully successful');
       assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'the same source must remain available for retry');
+      assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,'a partial import must keep its original target fixed for retry');
       assert.match(await importStatus.textContent(),/不支持 2 项/,'unsupported source rows must remain distinct from the write failure');
       assert.match(await importStatus.textContent(),/Cookie 新增 3 项/,'other valid cookies must still import');
       const beforeRetry=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
