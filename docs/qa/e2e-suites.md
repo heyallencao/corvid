@@ -51,7 +51,7 @@
 | 35 | `tests/mcp-e2e.cjs` | stdio MCP initialize/tools/list/tools/call；只读工具列表与 annotations；显式 Profile/Room 选择；页信息和 snapshot；未知 ID 与桌面离线错误；用户接管后拒绝页面读取；调用前后 Room 数量不变。 | 真实 Electron + 隔离数据目录；使用 `about:blank`；以 JSON-RPC 子进程夹具验证协议，不是 Claude Desktop/Cursor UI 配置或真实网站兼容性测试。 |
 | 36 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型/provider；使用隔离 Pi 配置目录与 `about:blank` 页面，以 SDK 打开合成 transcript 验证恢复路径、task 目录边界与工具 allowlist。 |
 
-| 38 | `tests/chrome-import-e2e.cjs` | 合成 Chrome User Data 多 Profile 发现；书签/历史解析与 UI 导入；目标 Corvid Profile 隔离、重复导入去重、合成 v10 Cookie 解密及属性保留；首次导入/稍后选择跨重启持久化；现有 Corvid 数据不弹首启引导；源书签/历史哈希不变。 | Cookie 解密密钥为合成值，不读系统钥匙串、不验证 Cookie 写入 UI；扩展/密码未支持；原生文件选择器替身；macOS 真实 Electron + 临时 Profile fixture，非真实 Chrome 数据。 |
+| 38 | `tests/chrome-import-e2e.cjs` | 合成 Chrome User Data 多 Profile 发现；书签/历史解析与 UI 导入；扩展逐项选择、多个版本选最新、无效 manifest 过滤、符号链接失败清理、权限展示、真实 content script 执行、目标 Profile 隔离、重复导入、启停/移除与跨重启恢复；合成 v10 Cookie 解密及属性保留；首次导入/稍后选择持久化；源书签/历史哈希不变。 | Cookie 密钥为合成值，不读系统钥匙串或验证 Cookie 写入 UI；不覆盖密码、扩展更新及完整 Chrome API；原生文件选择器替身；macOS 真实 Electron + 临时 Profile fixture，不读真实 Chrome 数据。 |
 
 ## 工作块与测试的映射
 
@@ -70,7 +70,7 @@
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
 | D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-workbench-e2e`（页面同意、隔离 Agent Room、多轮 transcript 续聊、重启确认续跑、用户接管/交还后续跑；无真实模型） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e` |
-| D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、合成 v10 Cookie 解密、Profile 隔离、重复导入、引导状态；系统钥匙串与扩展尚未覆盖） |
+| D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、合成 v10 Cookie 解密、Profile 隔离、扩展执行与重启恢复、重复导入、引导状态；系统钥匙串未覆盖） |
 
 ## 单独运行
 

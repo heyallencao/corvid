@@ -1,5 +1,18 @@
 # 验证记录
 
+## 2026-11-02 Chrome 扩展迁移切片：定向真实 Electron E2E 通过
+
+### 执行与结果
+
+- 命令：`node --check desktop/main.cjs`、`node --check desktop/chrome-extensions.cjs`、`node --check desktop/renderer.js`、`node --check tests/chrome-import-e2e.cjs` 与 `node tests/chrome-import-e2e.cjs`；全部通过。随后运行 `env -u ELECTRON_RUN_AS_NODE npm test`，36 条命令、38 项通过（EXIT 0）。
+- 合成两份 Chrome Profile 与本地 HTTP 页面；验证扩展导入、最新版本选择、无效 manifest 过滤、扩展目录符号链接失败清理、实际 content script 执行、权限展示、Profile 隔离、重复导入、停用/移除、跨重启恢复及源 Profile 文件哈希不变。
+- 运行环境：macOS、Electron 45.2.1；不读取真实 Chrome Profile。
+
+### 覆盖与限制
+
+- 扩展导入前由用户逐项选择；复制到 Corvid 管理目录后按目标 Profile 加载，设置可启停/移除。合成 MV3 content script 在真实 Electron 页面中实际运行。
+- Electron 只支持部分 Chrome API；不代表 Chrome Web Store 扩展全面兼容。未覆盖扩展更新、真实扩展样本、完整权限撤销、Windows/打包版与真实 Chrome 目录。
+
 ## 2026-11-02 Google Chrome 导入首启与隔离验收：36 条命令、38 项通过
 
 ### 执行与结果
@@ -11,7 +24,7 @@
 ### 覆盖与限制
 
 - 验证多 Chrome Profile 发现，书签与历史解析、UI 导入、Corvid Profile 归属和隔离、重复导入去重、源书签/历史哈希不变、合成 macOS v10 Cookie 解密与属性保留、首次导入/稍后状态持久化。
-- 未访问真实 Chrome Profile；未读取系统钥匙串或验证 Cookie 写入目标 UI；扩展迁移、已保存密码、原生选择器、打包版与 Windows 未覆盖。D13 保持部分。
+- 未访问真实 Chrome Profile；未读取系统钥匙串或验证 Cookie 写入目标 UI；已保存密码、原生选择器、打包版与 Windows 未覆盖。扩展迁移已由后续切片覆盖，扩展更新与完整 API 兼容仍未覆盖。D13 保持部分。
 
 ## 2026-11-02 Pi Agent 用户接管与续聊回归：35 条命令、37 项通过
 

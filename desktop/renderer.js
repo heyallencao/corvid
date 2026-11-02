@@ -237,7 +237,29 @@ document.querySelector('#rename-profile-form').onsubmit=async event=>{event.prev
 document.querySelector('#cancel-rename-profile').onclick=()=>document.querySelector('#rename-profile').close();
 document.querySelector('#rename-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let settingsProfileId;
-document.querySelector('#show-settings').onclick=async()=>{settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===settings.searchTemplate);preset.value=known?settings.searchTemplate:'custom';document.querySelector('#search-template').value=settings.searchTemplate;document.querySelector('#settings-error').textContent='';await openShellDialog('#settings');};
+async function renderProfileExtensions(){
+  const list=document.querySelector('#profile-extension-list');list.replaceChildren();
+  const {extensions}=await api.invoke('listProfileExtensions',{profileId:settingsProfileId});
+  if(!extensions.length){const empty=document.createElement('p');empty.className='empty-extension-list';empty.textContent='尚未导入扩展。';list.append(empty);return;}
+  for(const extension of extensions){
+    const row=document.createElement('article');row.className='profile-extension';row.setAttribute('role','listitem');
+    const heading=document.createElement('div');heading.className='profile-extension-heading';
+    const title=document.createElement('strong');title.textContent=extension.name;heading.append(title);
+    const version=document.createElement('span');version.textContent=`v${extension.version} · MV${extension.manifestVersion}`;heading.append(version);row.append(heading);
+    const grants=[...(extension.permissions?.required||[]),...(extension.permissions?.hosts||[])];
+    const optional=[...(extension.permissions?.optional||[]),...(extension.permissions?.optionalHosts||[])];
+    const grantText=document.createElement('p');grantText.textContent=`必需权限：${grants.join('、')||'未声明'}${optional.length?'；可选权限：'+optional.join('、'):''}`;row.append(grantText);
+    if(extension.loadError){const warning=document.createElement('p');warning.className='extension-load-error';warning.textContent=`加载失败：${extension.loadError}`;row.append(warning);}
+    const actions=document.createElement('div');actions.className='profile-extension-actions';
+    const toggleLabel=document.createElement('label');toggleLabel.className='extension-enabled';
+    const toggle=document.createElement('input');toggle.type='checkbox';toggle.checked=extension.enabled;toggle.setAttribute('aria-label',`${extension.enabled?'停用':'启用'} ${extension.name}`);
+    toggle.onchange=async()=>{try{await api.invoke('setProfileExtensionEnabled',{profileId:settingsProfileId,extensionId:extension.id,enabled:toggle.checked});await renderProfileExtensions();}catch(error){toggle.checked=extension.enabled;document.querySelector('#settings-error').textContent=error.message;}};
+    toggleLabel.append(toggle,document.createTextNode('启用'));actions.append(toggleLabel);
+    const remove=document.createElement('button');remove.type='button';remove.textContent='移除';remove.onclick=async()=>{try{await api.invoke('removeProfileExtension',{profileId:settingsProfileId,extensionId:extension.id});await renderProfileExtensions();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};actions.append(remove);
+    row.append(actions);list.append(row);
+  }
+}
+document.querySelector('#show-settings').onclick=async()=>{settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===settings.searchTemplate);preset.value=known?settings.searchTemplate:'custom';document.querySelector('#search-template').value=settings.searchTemplate;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();await openShellDialog('#settings');};
 document.querySelector('#search-preset').onchange=event=>{if(event.target.value!=='custom')document.querySelector('#search-template').value=event.target.value;};
 document.querySelector('#search-template').oninput=()=>{document.querySelector('#search-preset').value='custom';};
 document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};
@@ -251,21 +273,41 @@ async function openChromeImportDialog(){
   document.querySelector('#chrome-import-target').textContent=`导入目标：${state.profiles.find(profile=>profile.id===settingsProfileId)?.name || '当前 Profile'}`;
   document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
   document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
+  document.querySelector('#chrome-extension-choices').replaceChildren();
+  for(const input of document.querySelectorAll('input[name="chrome-category"]'))input.checked=input.value==='bookmarks'||input.value==='history';
   document.querySelector('#chrome-import-preview').textContent='选择目录后会显示可导入项目数量。';
   await openShellDialog('#chrome-import');
 }
 function showChromePreview(preview){
-  document.querySelector('#chrome-import-preview').textContent=`来源：${preview.sourceName}。找到 ${preview.bookmarks} 个书签、${preview.history} 条历史记录${preview.cookies===null?'':`、${preview.cookies} 个 Cookie`}。导入只会新增项目；已有资料会跳过。`;
+  document.querySelector('#chrome-import-preview').textContent=`来源：${preview.sourceName}。找到 ${preview.bookmarks} 个书签、${preview.history} 条历史记录${preview.cookies===null?'':`、${preview.cookies} 个 Cookie`}、${preview.extensions.length} 个可读取扩展。导入只会新增项目；已有资料会跳过。`;
   document.querySelector('#chrome-bookmark-count').textContent=`${preview.bookmarks} 项`;
   document.querySelector('#chrome-history-count').textContent=`${preview.history} 项`;
   document.querySelector('#chrome-cookie-count').textContent=preview.cookies===null?(preview.canImportCookies?'数据库不可读取':'当前平台不支持'):`${preview.cookies} 项`;
+  document.querySelector('#chrome-extension-count').textContent=`${preview.extensions.length} 项`;
   const checks=[...document.querySelectorAll('input[name="chrome-category"]')];
   checks.find(input=>input.value==='bookmarks').disabled=preview.bookmarks===0;
   checks.find(input=>input.value==='history').disabled=preview.history===0;
   checks.find(input=>input.value==='cookies').disabled=!preview.canImportCookies||preview.cookies===null||preview.cookies===0;
+  checks.find(input=>input.value==='extensions').disabled=preview.extensions.length===0;
   for(const input of checks) if(input.disabled) input.checked=false;
+  const choices=document.querySelector('#chrome-extension-choices');choices.replaceChildren();
+  for(const extension of preview.extensions){
+    const label=document.createElement('label');label.className='chrome-extension-choice';
+    const input=document.createElement('input');input.type='checkbox';input.value=extension.id;input.checked=false;input.setAttribute('aria-label',`导入 ${extension.name}`);
+    const details=document.createElement('span');
+    const title=document.createElement('strong');title.textContent=`${extension.name} · v${extension.version}`;details.append(title);
+    const grantList=[...(extension.permissions?.required||[]),...(extension.permissions?.hosts||[])];
+    const optionalList=[...(extension.permissions?.optional||[]),...(extension.permissions?.optionalHosts||[])];
+    const permission=document.createElement('small');permission.textContent=`必需权限：${grantList.join('、')||'未声明'}${optionalList.length?'；可选权限：'+optionalList.join('、'):''}。${extension.warning}`;details.append(permission);
+    label.append(input,details);choices.append(label);
+  }
   document.querySelector('#chrome-import-categories').disabled=false;
-  document.querySelector('#confirm-chrome-import').disabled=preview.bookmarks+preview.history+(preview.cookies||0)===0||![...document.querySelectorAll('input[name="chrome-category"]:checked')].length;
+  updateChromeImportButton();
+}
+function updateChromeImportButton(){
+  const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);
+  const selectedExtensions=[...document.querySelectorAll('#chrome-extension-choices input:checked')];
+  document.querySelector('#confirm-chrome-import').disabled=!chromeSourceId||!categories.length||(categories.includes('extensions')&&!selectedExtensions.length);
 }
 document.querySelector('#start-chrome-import').onclick=async()=>{
   document.querySelector('#settings').close();
@@ -282,10 +324,12 @@ document.querySelector('#choose-chrome-source').onclick=async()=>{
 document.querySelector('#chrome-source-profile').onchange=async event=>{chromeSourceId=event.target.value;document.querySelector('#confirm-chrome-import').disabled=true;try{showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}catch(error){document.querySelector('#chrome-import-error').textContent=error.message;}};
 document.querySelector('#chrome-import-form').onsubmit=async event=>{
   event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
-  try{const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories});error.dataset.success='true';error.textContent=`导入完成：书签新增 ${result.bookmarks.imported} 项（跳过 ${result.bookmarks.skipped} 项），历史新增 ${result.history.imported} 项（跳过 ${result.history.skipped} 项），Cookie 新增 ${result.cookies.imported} 项（跳过 ${result.cookies.skipped} 项，无法导入 ${result.cookies.unsupported} 项）。`;document.querySelector('#confirm-chrome-import').disabled=true;void renderBookmarksBar();if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();}
+  const extensionIds=[...document.querySelectorAll('#chrome-extension-choices input:checked')].map(input=>input.value);
+  try{const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,...(categories.includes('extensions')?{extensionIds}:{})});error.dataset.success='true';const failed=result.extensions.failed.map(item=>`${item.name}：${item.error}`).join('；');error.textContent=`导入完成：书签新增 ${result.bookmarks.imported} 项、历史新增 ${result.history.imported} 项、Cookie 新增 ${result.cookies.imported} 项、扩展新增 ${result.extensions.imported.length} 项${result.extensions.skipped.length?`、扩展跳过 ${result.extensions.skipped.length} 项`:''}${failed?`。未导入：${failed}`:''}。`;document.querySelector('#confirm-chrome-import').disabled=true;void renderBookmarksBar();if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();if(document.querySelector('#settings').open)void renderProfileExtensions();}
   catch(reason){error.textContent=reason.message;}
 };
-document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=()=>{document.querySelector('#confirm-chrome-import').disabled=!chromeSourceId||![...document.querySelectorAll('input[name="chrome-category"]:checked')].length;});
+document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
+document.querySelector('#chrome-extension-choices').onchange=updateChromeImportButton;
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
 chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(); if(tab) api.invoke('navigate',{id:tab.id,url:document.querySelector('#address').value}); };
