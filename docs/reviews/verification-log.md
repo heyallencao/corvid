@@ -23,6 +23,12 @@
 - `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：41 条独立脚本命令与 3 项 `node:test`，共 44 项自动化检查通过；定向 runtime 合同、Pi 模型/工作台、自定义端点与 SIGKILL 恢复均包含在全量套件中。`node --check` 与 `git diff --check` 通过。
 - 本轮使用隔离临时数据与确定性 fixture，没有触发 OAuth 或真实模型请求，未消耗模型额度。限制：另一个 runtime 仅以合同 fake 验证；真实 runtime 替换、跨版本迁移、provider 断连时的 transcript 行为与 Windows 均未验证。
 
+## 2026-11-02 日常网页打印入口与快捷键（Issue #66）
+
+- 浏览器“更多浏览工具”菜单加入“打印网页…”；macOS `⌘P` 与 Windows/Linux `Ctrl+P` 调用当前选中用户 Room 的页面 `WebContents.print`，使用原生打印设置并包含网页背景。内置 Agent / MCP 路径不能调用打印；Agent 控制、接管等待、执行风险未复核或页面仍在加载时拒绝打印。
+- 定向隔离 Electron E2E 通过：菜单和快捷键只触发当前活动标签；断言 `silent:false` / `printBackground:true`；打印失败呈现可访问状态提示，原生对话框取消呈现为取消状态。`node --check` 覆盖主进程、preload、renderer 与 E2E；`git diff --check` 通过。
+- `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：42 条独立脚本命令及 3 项 `node:test`，共 45 项自动化检查通过。第二次串行全量回归走完整条链并退出；此前一次隔离运行曾在 `library-e2e` 卡住，单测和另一次全量均通过，未查明偶发挂起根因，继续由 [Issue #34](https://github.com/heyallencao/corvid/issues/34) 跟踪。本轮不调用真实模型/OAuth，不连接真实打印机；Electron 原生打印对话框的 macOS 人工复核以及 Windows/Linux 行为尚未完成。
+
 ## 2026-11-02 Corvid Agent 产品语义与运行时隔离（Issue #62）
 
 - 产品入口、对话来源和模型设置统一使用 Corvid Agent 语义；任务卡不再呈现运行时名称，原始错误/授权提示若泄露运行时标识则显示 Corvid 自有提示。README 与系统设计明确 Corvid 拥有模型设置、任务/对话合同和迁移责任，运行时可替换或升级。

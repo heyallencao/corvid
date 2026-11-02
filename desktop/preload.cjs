@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('browserShell', {
   onPiAuthPrompt: callback => ipcRenderer.on('pi-auth-prompt', (_event, prompt) => callback(prompt)),
   onFindOpen: callback => ipcRenderer.on('shell-find-open', () => callback()),
   onFindNext: callback => ipcRenderer.on('shell-find-next', (_event, options) => callback(options || {})),
+  onPrintPage: callback => ipcRenderer.on('shell-print-page', (_event, request) => callback(request || {})),
   onFindResult: callback => ipcRenderer.on('shell-find-result', (_event, result) => callback(result)),
   onFindReset: callback => ipcRenderer.on('shell-find-reset', (_event, result) => callback(result))
 });

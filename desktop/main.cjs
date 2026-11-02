@@ -551,6 +551,7 @@ function installShortcuts(contents) {
     else if(primary && key==='w' && !input.shift && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
     else if(primary && key==='l' && !input.shift) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
     else if(primary && key==='r' && !input.shift && tab) action=()=>dispatchQueued('reload',{id:tab.id});
+    else if(primary && key==='p' && !input.shift && tab) action=()=>{window.webContents.focus();window.webContents.send('shell-print-page',{id:tab.id});};
     else if(primary && key==='f' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
     else if(primary && key==='g' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
     else if(primary && key==='g' && input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
@@ -923,6 +924,23 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'back': {const c=findTab(target).view.webContents; if(c.navigationHistory.canGoBack()) c.navigationHistory.goBack(); return {ok:true};}
     case 'forward': {const c=findTab(target).view.webContents; if(c.navigationHistory.canGoForward()) c.navigationHistory.goForward(); return {ok:true};}
     case 'reload': findTab(target).view.webContents.reload(); return {ok:true};
+    case 'printPage': {
+      if(fromApi) throw new Error('打印只能由用户从 Corvid 界面发起');
+      const tab=findTab(target),room=findRoom(tab.roomId),contents=tab.view.webContents;
+      if(room.ownership!=='user') throw new Error('请先接管此 Room，再打印页面');
+      if(room.userResumePending) throw new Error('请等待接管完成后再打印页面');
+      if(room.executionRisk) throw new Error('页面执行状态未知；完成复核后再打印');
+      if(!tab.ready || contents.isDestroyed() || contents.isLoadingMainFrame()) throw new Error('页面尚未加载完成，请稍后再打印');
+      return new Promise(resolve=>{
+        try {
+          contents.print({silent:false,printBackground:true},(success,failureReason)=>{
+            if(success) resolve({ok:true});
+            else if(/cancel/i.test(String(failureReason||''))) resolve({ok:false,cancelled:true});
+            else resolve({ok:false,error:'打印失败，请检查打印机设置后重试。'});
+          });
+        } catch { resolve({ok:false,error:'无法打开打印设置，请稍后重试。'}); }
+      });
+    }
     default: throw new Error('Unknown action');
   }
 }
