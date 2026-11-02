@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 Corvid Agent Provider 凭据所有权与旧格式迁移（Issue #78）
+
+- Corvid 新增版本化 `agent-credentials.json`：API Key / OAuth 凭据使用 Corvid schema；模型运行时经 `CredentialStore` 适配器读取与刷新，凭据枚举只返回 Provider/type 元数据。文件与目录权限分别为 0600 / 0700；当前尚未接操作系统钥匙串加密。
+- 首次读取会把旧 runtime `auth.json` 和 `pi-models.json` 中的端点 API Key 合并进 Corvid 凭据文件；新记录回读校验成功后才清理旧授权副本、将旧端点密钥替换为无敏感引用。Corvid 中已有 API Key 优先于旧副本。凭据更新使用单文件串行队列，避免不同 Provider 同时写入时互相覆盖。
+- `pi-runtime-e2e.cjs` 验证没有 Corvid 模型适配器时 runtime 不创建/读取自有 auth 文件；`pi-models-e2e.cjs` 覆盖合成 API Key/OAuth 迁移、0600 权限、登出删除、元数据枚举、跨 Provider 并发写和模型偏好连续性；`pi-custom-endpoint-e2e.cjs` 以合成 Key 验证本地模型发现/调用、配置文件无明文 Key。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-runtime-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/pi-custom-endpoint-e2e.cjs` 均通过。最新源码全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：43 条独立脚本与 3 项 `node:test` 全部通过（46 项）。全量回归后另将三条会话配置错误改为 Corvid 产品语义，并用 `node --check` 和 `git diff --check` 验证；该纯文案改动后的 Agent 定向用例待复跑。
+- 边界：没有调用真实 OAuth、Provider 或模型；不验证 macOS Keychain、Windows 文件权限、跨进程同时启动时对同一数据目录的写入、以及升级被强制终止时的凭据迁移恢复。
+
 ## 2026-11-03 Corvid Agent 授权提示运行时品牌隔离
 
 - 在真实 Electron 的隔离工作台用例中注入带内部运行时名称的授权说明，验证授权弹窗将内容收敛到 Corvid 指引；检查窗口标题、可见文案、辅助名称和元素标题，并验证取消后界面仍无运行时品牌。

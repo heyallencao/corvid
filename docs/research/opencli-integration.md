@@ -81,7 +81,7 @@ BrowserMCP 是用户所指的 OpenCLI 作者 MCP 浏览器项目。它已实现�
 
 参考 Pi 官方 [SDK 文档](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md)：SDK 可嵌入 Node/Bun 进程、创建/打开持久化 Agent session，并订阅消息/工具/运行事件；本仓库锁定 `@earendil-works/pi-coding-agent@1.4.0`，Corvid Node 下限为 `>=22.19.0`。
 
-Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` session factory 禁用 filesystem/shell 工具以及 Pi extensions、skills、prompt templates、themes、context files，只注册 `corvid_page_snapshot` / `corvid_navigate` 并绑定一个显式 Room/Profile/Tab，单次工具输出上限 32 KiB。Pi transcript、模型配置与认证凭据都必须位于 Corvid 数据目录；不能读取用户 Pi CLI 的全局 `agentDir`。此前模型登录实现曾错误依赖用户 Pi 设置，本轮由 [Issue #55](https://github.com/heyallencao/corvid/issues/55) 修正并验证隔离 OAuth。为当前 Pi 依赖树的 `undici` 与 `minimatch` 安全公告增加固定 overrides，`npm audit --audit-level=high` 结果为 0。
+Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` session factory 禁用 filesystem/shell 工具以及 Pi extensions、skills、prompt templates、themes、context files，只注册 `corvid_page_snapshot` / `corvid_navigate` 并绑定一个显式 Room/Profile/Tab，单次工具输出上限 32 KiB。Agent transcript 与运行时配置位于 Corvid 数据目录；Provider OAuth/API Key 和自定义端点 Key 由 Corvid 版本化凭据 schema 管理，再通过适配器提供给当前运行时，不能读取用户 CLI 的全局配置。此前模型登录实现曾错误依赖用户 CLI 设置，由 [Issue #55](https://github.com/heyallencao/corvid/issues/55) 修正；旧 runtime 凭据文件由 Issue #78 的迁移切片处理。为当前 Pi 依赖树的 `undici` 与 `minimatch` 安全公告增加固定 overrides，`npm audit --audit-level=high` 结果为 0。
 
 当前用户可见首段见 [Pi Agent 工作台验证记录](../reviews/verification-log.md)：通过 Pi SDK 创建、打开 task 专属 transcript；桌面支持明确确认页面上下文、任务事件呈现、多轮续聊与 fixture 下的中断恢复。`tests/pi-runtime-e2e.cjs` 和 `tests/pi-workbench-e2e.cjs` 均隔离临时数据，不调用真实 provider/model。用户接管会暂停运行中的 Pi task，交还 Room 后可经显式页面确认继续同一 transcript；目前仍需用户发起继续。真实模型凭据/费用设置与真实 provider 断连恢复边界仍待实现。
 
