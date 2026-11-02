@@ -75,7 +75,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-model.json'),'utf8')),{providerId:'openai-codex',modelId:'gpt-6-luna'});
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     await shell.getByText(/任务页面：Corvid Agent 对话/).waitFor();
-    await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill('总结当前页面内容');
+    await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill('总结当前页面内容 [fixture:stream-and-tool-events]');
     await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
     await shell.getByText(/将分享给 Agent：/).waitFor();
     const consentPreview=await shell.locator('.pi-context').innerText();
@@ -86,7 +86,13 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByLabel(/我已检查/).check();
     assert.equal(await start.isDisabled(), false);
     await start.click();
-    await shell.getByText('这是本地确定性 Agent fixture 第 1 轮回复。没有调用真实模型。').waitFor();
+    const firstTaskCard=shell.locator('.pi-task-entry').first();
+    await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
+    await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor();
+    assert.equal(await firstTaskCard.locator('.pi-task-state').getAttribute('data-status'),'running','the first text delta is visible while the task is still running');
+    await firstTaskCard.getByText('当前页面读取完成',{exact:true}).waitFor({timeout:3_000});
+    await firstTaskCard.getByText('正在读取页面；页面要点已整理。',{exact:true}).waitFor();
+    assert.doesNotMatch(await firstTaskCard.innerText(),/corvid_page_snapshot/,'user-visible tool activity does not expose an internal API name');
     await shell.locator('.pi-task-title').getByText('总结当前页面内容').waitFor();
     assert.equal(await shell.locator('.pi-task-state').textContent(),'已完成','task state is shown separately from its target page and runtime');
     assert.match(await shell.locator('.pi-task-context').textContent(),/Corvid Agent · Corvid Fixture Page/);
@@ -99,7 +105,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(savedTasks[0].page.url, sourceUrl);
     assert.equal(savedTasks[0].profileId, activeRoom.profileId);
     assert.notEqual(savedTasks[0].roomId, activeRoom.id, 'task gets its own Agent Room');
-    assert.match(savedTasks[0].output, /没有调用真实模型/);
+    assert.equal(savedTasks[0].output,'正在读取页面；页面要点已整理。','the rendered streaming deltas are the persisted task output');
     const originalTaskId=savedTasks[0].id,originalRoomId=savedTasks[0].roomId,originalTranscript=savedTasks[0].sessionRef?.data?.sessionFile;
     assert.ok(originalTranscript&&fs.existsSync(originalTranscript));
     await shell.getByRole('button',{name:'继续对话'}).click();

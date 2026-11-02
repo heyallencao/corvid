@@ -8,6 +8,14 @@
 - 回归：将全屏菜单项放在原有首项之后，保持站点工具菜单初始焦点，权限 E2E 同步验证 ArrowDown 落到新增全屏项。`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` 均 EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，21 个 `node:test` 用例和 49 个独立脚本，共 70 项通过。`node --check` 和 `git diff --check` 通过。
 - 环境与边界：macOS、Node.js v24.14.1、Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture。未使用 OAuth、真实账号或模型，npm test 不含真实模型 smoke test。已目视检查菜单截图，范围与限制见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-全屏菜单桌面状态-issue-141)；未做人工屏幕阅读或原生窗口全屏截图。Windows/Linux、打包版本和真实网站未覆盖。
 
+## 2026-11-03 内置 Agent 流式文本与工具活动验收（Issue #5）
+
+- 缺口：Agent 事件适配器已映射文本片段和浏览器工具开始/结束事件，工作台也已有任务事件呈现，但既有真实 Electron 测试只断言最终回复，未证明中间流式进度与工具活动抵达用户界面；工具事件原先还会把 `corvid_page_snapshot` 内部名称直接显示给用户。
+- 回归：`tests/pi-workbench-e2e.cjs` 新增确定性事件 fixture；断言工具开始事件出现、第一段文本在 task 仍为 `running` 时显示、工具完成事件出现、拼合回复写入任务记录，并断言用户界面使用 Corvid 动作文案且不泄露内部工具名。
+- 红绿验证：只增加断言时，旧 fixture 未发出工具事件，测试等待失败；加入本地测试 fixture 的分段文本与工具开始/结束事件后，定向断言再次因旧 UI 暴露内部工具名而失败；更新活动文案后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 通过。
+- 定向回归：`agent-runtime-contract-e2e.cjs`、`pi-runtime-e2e.cjs`、`pi-models-e2e.cjs`、`pi-workbench-e2e.cjs`、`agent-stop-e2e.cjs` 与 `pi-custom-endpoint-e2e.cjs` 均通过；相关 JS `node --check` 和 `git diff --check` 通过。未运行全量 `npm test`。
+- 边界：事件来自确定性本地 fixture，不连接真实模型或 Provider；证明的是事件适配到 Corvid 任务卡的本地 UI 路径及用户可见名称映射，不证明真实 Provider 网络延迟、所有工具种类或真实服务的流式稳定性。
+
 ## 2026-11-03 主题色对比度修复（Issue #16）
 
 - 范围：浅/深主题的次要文本、warning/success 状态文字与焦点指示 token。浅色 `--text-muted` 从 `#858c98` 调整为 `#5f6878`，warning 从 `#a56a13` 调整为 `#8f5e16`，success 从 `#268461` 调整为 `#1d7352`，`--focus-ring` 改为复用 `--accent`；深色 `--text-muted` 调整为 `#a4afbf`。

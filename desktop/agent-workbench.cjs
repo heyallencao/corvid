@@ -2,6 +2,10 @@ const crypto = require('node:crypto');
 const { createAgentTaskStore } = require('./agent-task-store.cjs');
 const MAX_OUTPUT = 24_000;
 const MAX_IMPORTED_CONVERSATION = 24_000;
+const TOOL_ACTIVITY_LABELS = Object.freeze({
+  corvid_page_snapshot: { starting: '正在读取当前页面', completed: '当前页面读取完成', failed: '读取当前页面失败' },
+  corvid_navigate: { starting: '正在打开目标网页', completed: '目标网页已打开', failed: '目标网页打开失败' },
+});
 const copy = value => JSON.parse(JSON.stringify(value));
 function savedConversationContext(conversation = []) {
   const eligible = conversation.filter(turn => turn && ['user', 'assistant'].includes(turn.role) && typeof turn.text === 'string' && turn.text.trim());
@@ -75,9 +79,10 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         task.updatedAt = new Date().toISOString(); scheduleChanged();
       }
     } else if (event.type === 'tool_start') {
-      addEvent(task, 'tool', `正在使用浏览器工具：${event.name}`);
+      addEvent(task, 'tool', (TOOL_ACTIVITY_LABELS[event.name] || { starting: '正在执行浏览器操作' }).starting);
     } else if (event.type === 'tool_end') {
-      addEvent(task, event.failed ? 'error' : 'tool', `${event.name}${event.failed ? ' 执行失败' : ' 已完成'}`);
+      const activity=TOOL_ACTIVITY_LABELS[event.name] || { completed: '浏览器操作已完成', failed: '浏览器操作失败' };
+      addEvent(task, event.failed ? 'error' : 'tool', event.failed ? activity.failed : activity.completed);
     } else if (event.type === 'retry') {
       addEvent(task, 'retry', `连接暂时不稳定，Agent 正在重试（${event.attempt}/${event.maxAttempts}）`);
     }
