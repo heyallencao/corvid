@@ -1,7 +1,8 @@
 const api = window.browserShell;
 function userFacingAgentError(error, fallback='Corvid Agent 暂时无法完成此操作，请重试。') {
   const message=String(error?.message||error||'').trim();
-  return /\bPi\b|@earendil-works\/pi-coding-agent/i.test(message) ? fallback : (message||fallback);
+  const implementationName=/\bpi(?:[\s_-]+(?:coding[\s_-]*agent|runtime|sdk|session|agent))?\b|@earendil-works\/pi-[a-z0-9-]+/i;
+  return implementationName.test(message) ? fallback : (message||fallback);
 }
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null;
 let chromeImportOnboardingPrompted=false;

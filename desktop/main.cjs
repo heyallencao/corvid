@@ -71,7 +71,7 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
       const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;
       fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});
       if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');
-      if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('Pi session could not be resumed');
+      if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('pi runtime could not be resumed');
       if(message.includes('[fixture:hold-stop-late]'))return new Promise(resolve=>{abortActive=async()=>{
         await new Promise(done=>setTimeout(done,120));
         for(const listener of listeners){
