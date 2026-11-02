@@ -68,6 +68,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return {taskId,roomId:task?.roomId,pageBinding:await shell.locator('.pi-page-binding').textContent()};
     };
 
+    await shell.getByRole('button', { name: '空间选项' }).waitFor();
+    await shell.getByRole('button', { name: '新建空间' }).waitFor();
+    await shell.getByRole('button', { name: '我的空间', exact: true }).waitFor();
+    assert.equal(await shell.locator('#spaces-heading').textContent(), '空间');
+
     const bookmarksTrigger=shell.locator('#show-bookmarks');
     await bookmarksTrigger.click();
     await shell.locator('#library[data-kind="bookmarks"]').waitFor();
@@ -87,7 +92,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const agentRoomsTrigger=shell.getByRole('button', { name: 'Agent 工作区' });
     await agentRoomsTrigger.click();
-    await shell.getByText('当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
+    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
     await shell.getByRole('button', { name: '打开 Corvid Agent', exact: true }).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await shell.getByText('请先打开一个 HTTP(S) 页面，再连接 Corvid Agent').waitFor();
@@ -118,7 +123,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.evaluate(() => document.activeElement.id),'show-pi-workbench','closing Pi workbench restores focus to its sidebar control');
     await agentRoomsTrigger.click();
-    await shell.getByText('当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
+    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
 
     const defaultRoom = await call('/rooms', 'POST', { name: 'Default agent room' });
     await shell.getByRole('button', { name: '查看 Default agent room' }).waitFor();
@@ -161,7 +166,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await agentRoomsTrigger.click();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await shell.locator('.agent-room-task-state[data-status="failed"]').waitFor();
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getFocusedWindow().setSize(640,600));
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(640,600));
     await shell.waitForFunction(()=>window.innerWidth<=710);
     const taskViewport=await shell.evaluate(()=>({width:window.innerWidth,height:window.innerHeight,deviceScaleFactor:window.devicePixelRatio}));
     const taskRowLayouts=await shell.locator('.agent-room-entry').evaluateAll(rows=>rows.map(row=>{const tasks=row.querySelector('.agent-room-tasks');return{width:row.clientWidth,scrollWidth:row.scrollWidth,taskWidth:tasks?.clientWidth,taskScrollWidth:tasks?.scrollWidth,taskActions:[...(tasks?.querySelectorAll('button')||[])].map(action=>({left:action.getBoundingClientRect().left,right:action.getBoundingClientRect().right}))};}));
@@ -169,7 +174,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(await shell.locator('.agent-room-task-state').count(),4,'all parallel and terminal task states remain present in the narrow Agent Room list');
     assert.ok(taskRowLayouts.every(row=>row.scrollWidth<=row.width&&(!row.taskWidth||row.taskScrollWidth<=row.taskWidth)&&row.taskActions.every(action=>action.left>=0&&action.right<=taskViewport.width)),JSON.stringify({taskViewport,taskRowLayouts}));
     const minimumViewportLayout=await Promise.all([
-      app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getFocusedWindow();return{width:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
+      app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return{width:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
       shell.locator('#library').evaluate(panel=>panel.querySelector('.agent-room-entry')?.getBoundingClientRect().width||0),
     ]);
     assert.ok(minimumViewportLayout[0].width>=704&&minimumViewportLayout[0].pageWidths.every(width=>width>=320)&&minimumViewportLayout[1]>=280,JSON.stringify({taskViewport,minimumViewportLayout}));
@@ -179,13 +184,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: '查看 Default agent room' }).waitFor();
     assert.equal(await shell.getByText('Work agent room', { exact: true }).count(), 0);
 
-    await shell.getByLabel('Profile', { exact: true }).selectOption(otherProfile.id);
+    await shell.locator('#profile-select').selectOption(otherProfile.id);
     await shell.getByRole('button', { name: '查看 Work agent room' }).waitFor();
     assert.equal(await shell.getByText('Default agent room', { exact: true }).count(), 0);
     assert.equal(await shell.getByText('Parallel agent room', { exact: true }).count(), 0);
     assert.equal(await shell.locator('.agent-room-task-state').count(),0,'other Profile cannot see the active Profile task state');
 
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow().setSize(640, 600));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(640, 600));
     await shell.waitForFunction(() => window.innerWidth <= 710);
     const panelLayout = await shell.locator('#library').evaluate(panel => {
       const row = panel.querySelector('.agent-room-entry');
@@ -196,10 +201,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const responsiveLayouts=[];
     for(const requestedWidth of [704,720,721,800,860,873,874,900,972,983,984,1024,1280]){
-      await app.evaluate(({BrowserWindow},width)=>BrowserWindow.getFocusedWindow().setSize(width,600),requestedWidth);
+      await app.evaluate(({BrowserWindow},width)=>BrowserWindow.getAllWindows()[0].setSize(width,600),requestedWidth);
       await shell.waitForFunction(width=>window.innerWidth===width,requestedWidth);
       const layout=await Promise.all([
-        app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getFocusedWindow();return{windowWidth:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
+        app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return{windowWidth:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
         shell.locator('#library').evaluate(panel=>panel.querySelector('.agent-room-entry')?.getBoundingClientRect().width||0),
       ]);
       const [browser,agentWidth]=layout;
@@ -207,7 +212,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       assert.ok(browser.pageWidths.length>0&&browser.pageWidths.every(width=>width>=320),`web canvas must retain 320px at ${requestedWidth}px: ${JSON.stringify({browser,agentWidth})}`);
       assert.ok(agentWidth>=280,`Agent panel content must retain 280px at ${requestedWidth}px: ${JSON.stringify({browser,agentWidth})}`);
     }
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getFocusedWindow().setSize(640,600));
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(640,600));
     await shell.waitForFunction(()=>window.innerWidth<=710);
 
     const view = shell.getByRole('button', { name: '查看 Work agent room' });

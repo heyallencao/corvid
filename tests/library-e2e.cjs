@@ -48,8 +48,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   try {
     let { shell, request } = await boot();
-    await shell.getByRole('button', { name: 'Space 选项' }).click();
-    await shell.getByRole('menuitem', { name: '新建 Room' }).click();
+    await shell.getByRole('button', { name: '空间选项' }).click();
+    await shell.getByRole('menuitem', { name: '新建空间' }).click();
     await shell.locator('#room-name').fill('测试Room');
     await shell.getByRole('button', { name: '创建', exact: true }).click();
     await shell.getByRole('button', { name: '测试Room' }).waitFor();

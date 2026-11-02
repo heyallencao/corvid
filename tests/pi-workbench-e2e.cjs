@@ -56,7 +56,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
     await shell.getByRole('button', { name: '关闭模型设置' }).click();
     await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getFocusedWindow().webContents.send('pi-auth-prompt', {
+      BrowserWindow.getAllWindows()[0].webContents.send('pi-auth-prompt', {
         id: 'corvid-auth-ui-brand-fixture',
         providerId: 'openai-codex',
         prompt: { type: 'text', message: 'Pi SDK requires an account sign in' },
@@ -280,9 +280,9 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await restoredShell.locator('.pi-task-state[data-status="running"]').waitFor();
     let handoffTask=readSavedTasks(dataDir)[0];
     const handoffTaskId=handoffTask.id,handoffRoomId=handoffTask.roomId,handoffTabId=handoffTask.tabId,handoffTranscript=handoffTask.sessionRef?.data?.sessionFile;
-    await restoredShell.getByRole('button',{name:'打开 Room'}).click();
+    await restoredShell.getByRole('button',{name:'打开空间'}).click();
     await restoredShell.getByRole('button',{name:'接管',exact:true}).click();
-    await restoredShell.locator('.pi-task-event').getByText(/你已接管此 Room；Agent 已暂停/).waitFor();
+    await restoredShell.locator('.pi-task-event').getByText(/你已接管此空间；Agent 已暂停/).waitFor();
     assert.equal(await restoredShell.locator('.pi-task-state').textContent(),'等待你接管');
     assert.equal(await restoredShell.locator('.pi-task-control-state').textContent(),'用户控制中');
     handoffTask=readSavedTasks(dataDir)[0];

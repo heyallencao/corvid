@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 空间产品语义与 Electron 测试焦点竞争修复（Issue #16、#86）
+
+- 以隔离真实 Electron/CUA 检查空间导航、菜单、默认名称、Agent 空态和工作台。UI 将 Room 呈现为“空间”、Corvid Profile 呈现为“浏览身份”；Agent 入口与状态使用 Corvid 产品文案，运行时标识留在内部实现和 selector 中。运行时错误 fixture 仍验证错误卡片不泄漏底层运行库名称。
+- 修复顶层 Electron `node:test` 并行启动造成的 macOS 焦点竞争，将 test runner 改为 `--test-concurrency=1`；不改变独立 E2E 脚本和产品运行时。
+- `env -u ELECTRON_RUN_AS_NODE npm test` 最新运行 EXIT 0：43 条独立 E2E 脚本与 3 项串行 `node:test` 共 46 项通过。Corvid Profile 可见文案统一为“浏览身份”；受影响的 8 项 E2E（Profile 管理、快捷键设置、站点数据、权限、Chrome 导入、库搜索、Agent 空间面板、Agent 工作台）均单独串行通过。布局 E2E 改用测试应用自身的 BrowserWindow，避免依赖系统前台焦点；`node --check` 三个修改后的桌面模块与 `git diff --check` 通过。
+- 一次全量复跑遇到 [Issue #87](https://github.com/heyallencao/corvid/issues/87)：Electron 启动阶段未能产生隔离目录的 `control.json`，受影响脚本随后单独通过；修正焦点窗口定位后，最新全量复跑成功。Issue #87 继续跟踪偶发启动挂起的根因和启动诊断。
+- 边界：仅 macOS 浅色主题与隔离测试数据；没有 VoiceOver/屏幕阅读器、Windows/Linux、真实网页、OAuth 或真实模型调用验证。
+
 ## 2026-11-03 Corvid Agent Provider 凭据所有权与旧格式迁移（Issue #78）
 
 - Corvid 新增版本化 `agent-credentials.json`：API Key / OAuth 凭据使用 Corvid schema；模型运行时经 `CredentialStore` 适配器读取与刷新，凭据枚举只返回 Provider/type 元数据。文件与目录权限分别为 0600 / 0700；当前尚未接操作系统钥匙串加密。

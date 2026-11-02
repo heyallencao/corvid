@@ -38,7 +38,7 @@
 | 21 | `tests/claim-e2e.cjs` | 用户 Room 认领：`openRoom` 拒绝；确认框含私人数据提示；拒绝；确认期间 Room 改变则作废；批准后归 Agent；用户页不可关；`adopt` 后可操作；`finish` 归还用户；`claimRoom` 的 CLI 入口。 | 系统确认框为替身；本地夹具。 |
 | 22 | `tests/restore-loading-e2e.cjs` | 预置含慢请求的 `rooms.json`：慢标签未 ready 时其他 Room 与控制接口可用；保存 URL 不被空白页覆盖；用户/Agent 可改导航；历史不重复；重启保持替换后的 URL。 | 未覆盖强杀、不可写会话文件、大量标签资源消耗；本地夹具。 |
 | 23 | `tests/library-search-e2e.cjs` | UI 搜索历史/书签（标题/URL、大小写不敏感）、空结果、筛选后删除、切换面板清空搜索、Profile 切换隔离、重启保持。 | 本地子串筛选，无模糊/分词；未测大数据性能；本地夹具。 |
-| 24 | `tests/room-close-e2e.cjs` | UI 关闭 Room：取消保留；确认文案含标签数与书签；确认期间新增标签则拒绝；Agent 控制 Room 的提示；关闭后书签/历史保留；重启后 Room 不存在。 | 系统确认框为替身；未覆盖原生界面与异常关闭。 |
+| 24 | `tests/room-close-e2e.cjs` | UI 关闭空间：取消保留；确认文案含标签数与书签；确认期间新增标签则拒绝；Agent 控制空间的提示；关闭后书签/历史保留；重启后 Room 不存在。 | 系统确认框为替身；未覆盖原生界面与异常关闭。 |
 | 25 | `tests/beforeunload-e2e.cjs` | 页面 `beforeunload` 取消导航保留草稿并转交用户；确认后导航；多标签关闭的部分完成提示；标签关闭确认与调试器重连；Room 关闭/`finish` 遇到阻止关闭时报部分完成。 | beforeunload 与关闭确认对话框为替身；未覆盖调试器重连失败与崩溃。 |
 | 26 | `tests/popup-events-e2e.cjs` | 等待 popup 期间初始化中的弹出标签被用户关闭后，等待以"Popup closed before it could be observed"明确报错，事件仍可观察。 | 仅覆盖此边界；popup 事件为内存记录，不跨重启；本地夹具。 |
 | 27 | `tests/agent-download-e2e.cjs` | Agent 下载捕获（来源页归属、URL、文件名、失败、临时路径、`saveAs`、`delete`）；不弹出系统保存对话框；其他页面触发下载不被错误归属；下载中取消；交还时等待中断；`finish` 与退出清理临时文件。 | 跨 frame、异常退出、Windows 未验证；SDK 断开时临时文件是否保留未单测；本地夹具。 |
@@ -51,7 +51,7 @@
 | 34 | `tests/window-state-e2e.cjs` | 多窗口边界位置/尺寸写入 `window-state.json` 并按稳定窗口 ID 重启恢复；旧单窗口对象格式仍可读；状态文件损坏回退默认尺寸；已移除显示器上的位置回退到可见区域。 | macOS；最大化/全屏切换、多显示器热插拔、Windows 窗口管理规则未覆盖；窗口系统可能微调边界坐标。 |
 | 35 | `tests/multi-window-e2e.cjs` | 两个 BrowserWindow 与独立 shell UI；每窗 Room 列表隔离，控制 API 汇总所有 Room；Agent 可操作后台窗口 Room；关闭窗口将 Room 转移至剩余窗口；重启恢复窗口 ID 与 Room 归属，`rooms.json` 写为 schemaVersion=2。 | 真实 Electron + 本地 HTTP 页面夹具；macOS；未覆盖 Windows 焦点规则、多显示器窗口排列、窗口键盘切换与窗口崩溃恢复。 |
 | 36 | `tests/download-file-ops-e2e.cjs` | 下载完成后“打开文件”与“在文件夹中显示”转发保存路径给 `shell.openPath` / `shell.showItemInFolder`（测试替身）；操作系统返回错误时以 `role=alert` 呈现；下载文件内容不变。 | shell 调用被替身替换，未验证真实应用打开或文件管理器行为；本地夹具与临时下载目录。 |
-| 37 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：Agent 工作区面板开合与空态；空态可打开内置 Corvid Agent，焦点进入任务输入框且关闭后返回侧栏入口；`about:blank` 时明确提示先访问 HTTP(S) 页面；书签、历史、下载、Agent Rooms 与 Corvid Agent 面板经关闭按钮关闭后键盘焦点返回打开面板的侧栏项，面板切换时恢复目标随之更新；两个 Agent Room 上的并行任务显示各自运行状态，任务更新会实时刷新；Room 控制权状态与 Agent 任务状态分开显示；任务 prompt 不出现在 Room 列表；点任务入口返回原 task ID/对话；Profile 切换不泄露任务状态；704×568 CSS px 当前最小窄窗中多任务状态与操作完整显示且无横向溢出；704/720/721/800/860/873/874/900/972/983/984/1024/1280px 窗口宽度逐点断言网页视图至少 320px、Agent 卡片内容至少 280px；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看 Room 后面板关闭且活动 Room 更新。 | 风险复核的原生对话框由测试替身处理；任务运行使用本地确定性 fixture 与隔离数据目录，不连接真实模型；未覆盖辅助技术及多窗口实时刷新。 |
+| 37 | `tests/agent-rooms-panel-e2e.cjs` | 真实 Electron 桌面 UI：空间菜单、默认空间名称和创建标签使用统一中文空间语义；浏览身份切换时任务状态隔离；Agent 工作区面板开合与空态；空态可打开内置 Corvid Agent，焦点进入任务输入框且关闭后返回侧栏入口；`about:blank` 时明确提示先访问 HTTP(S) 页面；书签、历史、下载、Agent 空间与 Corvid Agent 面板经关闭按钮关闭后键盘焦点返回打开面板的侧栏项，面板切换时恢复目标随之更新；两个 Agent 空间上的并行任务显示各自运行状态，任务更新会实时刷新；空间控制权状态与 Agent 任务状态分开显示；任务 prompt 不出现在空间列表；点任务入口返回原 task ID/对话；704×568 CSS px 当前最小窄窗中多任务状态与操作完整显示且无横向溢出；704/720/721/800/860/873/874/900/972/983/984/1024/1280px 窗口宽度逐点断言网页视图至少 320px、Agent 卡片内容至少 280px；键盘 Tab/Enter 接管与交还；执行超时状态和复核入口；查看空间后面板关闭且活动空间更新；Agent 面板可见文案与辅助名称不暴露内部运行库品牌。 | 风险复核的原生对话框由测试替身处理；任务运行使用本地确定性 fixture 与隔离数据目录，不连接真实模型；未覆盖辅助技术及多窗口实时刷新。 |
 | 38 | `tests/mcp-e2e.cjs` | stdio MCP initialize/tools/list/tools/call；只读与写工具 annotations；显式 Profile/Room/Tab 选择；页信息与 snapshot；本地 HTTP 导航；role 定位器 fill/press/click 并通过后续 snapshot 检查页面实际状态；拒绝 `javascript:` 导航；未知 ID、桌面离线错误；用户接管后拒绝读取和写入。 | 真实 Electron + 隔离数据目录；页面使用本地 HTTP fixture；JSON-RPC 子进程验证，不是 Claude Desktop/Cursor UI 配置、真实 MCP host 或真实网站兼容性测试。 |
 | 39 | `tests/agent-runtime-contract-e2e.cjs` | 不启动 Electron 的模块合同测试：旧任务数组原子迁移到 Corvid schemaVersion 2；旧 session 路径保留在不透明的 runtime checkpoint 中；能续聊的旧 checkpoint 经 adapter 恢复；未知 runtime checkpoint 保留并可从有界 Corvid transcript 创建新会话；断言旧 checkpoint 不传入新 runtime、任务 ID/模型/原消息保留、上下文需重新确认、迁移启动失败保留原 checkpoint；不支持的 schema 拒绝改写；只读目录写入失败时旧文件字节不变；第二个独立假 runtime 通过相同任务/对话合同。 | 仅临时数据目录与确定性假 runtime；不验证 Pi SDK/真实 provider；Electron UI 启动与用户可见恢复提示由 `pi-workbench-e2e.cjs` 覆盖。 |
 | 40 | `tests/pi-runtime-e2e.cjs` | Pi SDK session 在隔离 Corvid Room/Profile/Tab 上启动；未确认上下文、跨 Profile 与用户控制 Room 均拒绝；Pi transcript 路径位于任务专属目录；活跃工具仅含 Corvid snapshot/navigation，默认文件系统/shell/扩展关闭。 | 不调用真实模型/provider；使用隔离 Pi 配置目录与 `about:blank` 页面，以 SDK 打开合成 transcript 验证恢复路径、task 目录边界与工具 allowlist。 |
@@ -85,7 +85,7 @@
 
 ## 单独运行
 
-- 3 个 `node:test` 文件：`node --test tests/browser.e2e.mjs`、`node --test tests/dialogs.e2e.mjs`、`node --test tests/uploads.e2e.mjs`。
+- 3 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs`。它们会同时启动真实 Electron 窗口，必须串行，避免窗口焦点竞争导致点击未派发。
 - 43 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。

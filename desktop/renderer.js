@@ -40,12 +40,12 @@ function draw(value) {
   }
   const profileMenu=document.querySelector('#profile-menu');profileMenu.replaceChildren();
   const profileAction=(label,fn)=>{const item=button(label,()=>{profileMenu.hidden=true;fn();});item.setAttribute('role','menuitem');profileMenu.append(item);};
-  profileAction('新建 Profile',async()=>{await openShellDialog('#new-profile','#profile-name');});
-  profileAction('重命名当前 Profile',async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profile.name;document.querySelector('#rename-profile-error').textContent='';await openShellDialog('#rename-profile','#renamed-profile-name');document.querySelector('#renamed-profile-name').select();});
+  profileAction('新建浏览身份',async()=>{await openShellDialog('#new-profile','#profile-name');});
+  profileAction('重命名当前浏览身份',async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profile.name;document.querySelector('#rename-profile-error').textContent='';await openShellDialog('#rename-profile','#renamed-profile-name');document.querySelector('#renamed-profile-name').select();});
   const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
   const roomAction=(label,fn)=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');roomMenu.append(item);};
-  roomAction('新建 Room',async()=>{await openShellDialog('#new-room','#room-name');});
-  if(state.activeRoomId)roomAction('关闭当前 Room',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
+  roomAction('新建空间',async()=>{await openShellDialog('#new-room','#room-name');});
+  if(state.activeRoomId)roomAction('关闭当前空间',async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
   const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
   const newWindow=button('＋  新建窗口',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
   newWindow.className='new-window-button';
@@ -164,7 +164,7 @@ async function renderAgentRooms(){
     items.append(row);
   }
   if(!rooms.length){
-    const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent='当前 Profile 还没有 Agent Room。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。';items.append(empty);
+    const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent='当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。';items.append(empty);
     const start=button('打开 Corvid Agent',async()=>{
       document.querySelector('#library-search').value='';
       setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
@@ -208,10 +208,10 @@ async function renderPiTasks(){
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?'页面执行状态未知':roomState?.userResumePending?'接管中':roomState?.ownership==='user'?'用户控制中':'';
     const status=document.createElement('span');status.className='pi-task-state';status.dataset.status=task.status;status.textContent=labels[task.status]||task.status;status.setAttribute('role','status');meta.append(status);
     if(controlLabel){const control=document.createElement('span');control.className='pi-task-control-state';control.textContent=controlLabel;control.setAttribute('role','status');meta.append(control);}
-    meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
+    meta.append(button('打开空间',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
-      if(task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.continuationMode==='saved-conversation'?'从已保存对话继续':task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
+      if(task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.continuationMode==='saved-conversation'?'从已保存对话继续':task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还空间控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
       meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;if(piSelectedTaskId===task.id)piSelectedTaskId=null;await renderPiTasks();}));
     }
     row.append(meta);
@@ -221,10 +221,10 @@ async function renderPiTasks(){
       const failure=document.createElement('div');failure.className='pi-task-error';failure.setAttribute('role','alert');
       const heading=document.createElement('strong');heading.textContent='任务未完成';failure.append(heading);
       const reason=document.createElement('span');reason.textContent=userFacingAgentError(task.error,'Agent 未能完成此轮对话，请检查模型连接后重试。');failure.append(reason);row.append(failure);
-      if(!task.hasSession){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开 Room 检查页面后，再重新开始。';row.append(guidance);}
+      if(!task.hasSession){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开对应空间检查页面后，再重新开始。';row.append(guidance);}
     } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=userFacingAgentError(task.error);row.append(error);}
     if(task.stopUnconfirmed){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='无法确认上一轮是否已停止。对话记录已保留；请检查模型服务和页面状态，再从新对话继续。';row.append(recovery);}
-    else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但暂时无法从这里继续。你可以打开 Room 检查页面，再开始一段新对话。';row.append(recovery);}
+    else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但暂时无法从这里继续。你可以打开对应空间检查页面，再开始一段新对话。';row.append(recovery);}
     list.append(row);
   }
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';empty.innerHTML='<span class="pi-welcome-mark">✳</span><h3>让 Corvid Agent 帮你读懂网页</h3><p>提问、总结或开始一项浏览任务。先检查页面内容，再决定是否分享给 Agent。</p>';list.append(empty);}

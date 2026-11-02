@@ -363,7 +363,7 @@ function installDownloads(partition,profileId) {
     const requestedUrl=details.requestingUrl;
     const media=Array.isArray(details.mediaTypes) && details.mediaTypes.length ? `（${details.mediaTypes.join('、')}）` : '';
     const scope=rememberable.has(permission) ? '允许后，本次运行期间此 Profile 的同来源页面可使用该权限。' : '此选择仅针对当前请求。';
-    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求 ${permission}${media} 权限`,detail:`Room：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
+    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求 ${permission}${media} 权限`,detail:`空间：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
       .then(({response})=>{const allowed=response===1 && !contents.isDestroyed() && contents.getURL()===requestedUrl;if(allowed && rememberable.has(permission))grants.add(grantKey(origin,permission));callback(allowed);},()=>callback(false));
   });
   browserSession.on('will-download',(event,item,contents) => {
@@ -463,7 +463,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('will-prevent-unload',event=>{
     if(!tabs.has(tabId))return;
     if(s.ownership==='agent'){for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
-    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:['留在页面','离开页面'],defaultId:0,cancelId:0,title:'离开此页面？',message:'此页面提示有未保存的更改。',detail:`Room：${s.name}。离开可能导致这些更改丢失。`});
+    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:['留在页面','离开页面'],defaultId:0,cancelId:0,title:'离开此页面？',message:'此页面提示有未保存的更改。',detail:`空间：${s.name}。离开可能导致这些更改丢失。`});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
   installShortcuts(view.webContents);
@@ -766,14 +766,14 @@ async function dispatch(method, args = {}, fromApi = false) {
       update();return {removed:true,id:extension.id};
     }
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
-    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('Profile name required');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
-    case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('Profile name required');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
+    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
+    case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');
       const room=findRoom(target),tabIds=[...room.tabIds],ownership=room.ownership,profileId=room.profileId;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭Room'],defaultId:0,cancelId:0,title:'关闭Room',message:`关闭“${room.name}”？`,detail:`此Room有 ${tabIds.length} 个标签${ownership==='agent' ? '，当前由 Agent 控制' : ''}。关闭会结束这些页面，未保存的内容可能丢失；Profile、书签、历史和下载记录会保留。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭空间'],defaultId:0,cancelId:0,title:'关闭空间',message:`关闭“${room.name}”？`,detail:`此空间有 ${tabIds.length} 个标签${ownership==='agent' ? '，当前由 Agent 控制' : ''}。关闭会结束这些页面，未保存的内容可能丢失；浏览身份、书签、历史和下载记录会保留。`});
       if(choice.response!==1)return {closed:false};
-      if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间Room已改变，请重新操作');
+      if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间空间已改变，请重新操作');
       await dispatch('closeRoom',{id:room.id},false);return {closed:true};
     }
     case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
@@ -792,7 +792,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const record=await createWindowRecord();
       const profileId=args.profileId ?? activeRecord()?.activeProfileId ?? 'default';
       findProfile(profileId);
-      const room=await createRoom(args.name || '新窗口的 Room','user',profileId);
+      const room=await createRoom(args.name || '新窗口的空间','user',profileId);
       record.activeRoomId=room.id; record.activeProfileId=profileId; update(record);
       return describeAll();
     }
@@ -909,10 +909,10 @@ async function dispatch(method, args = {}, fromApi = false) {
       const tab=findTab(target),room=findRoom(tab.roomId),profile=findProfile(room.profileId);
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可清理的 HTTP(S) 站点');}
       const affected=rooms.filter(item=>item.profileId===profile.id).length;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','清理站点数据'],defaultId:0,cancelId:0,title:'清理站点数据',message:`清理 ${origin} 的站点数据？`,detail:`Profile：${profile.name}，共有 ${affected} 个Room共享该 Profile。将清理此来源的站点存储、Service Worker 和 Cache Storage，以及该站点可用的 Cookie；Cookie 可能跨子域、端口或协议共享，相关页面可能退出登录。不会清理站点权限、浏览历史或整个 Profile 的 HTTP 缓存。清理不可撤销，打开的页面可能再次写入数据。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','清理站点数据'],defaultId:0,cancelId:0,title:'清理站点数据',message:`清理 ${origin} 的站点数据？`,detail:`浏览身份：${profile.name}，共有 ${affected} 个空间共享此身份。将清理此来源的站点存储、Service Worker 和 Cache Storage，以及该站点可用的 Cookie；Cookie 可能跨子域、端口或协议共享，相关页面可能退出登录。不会清理站点权限、浏览历史或整个浏览身份的 HTTP 缓存。清理不可撤销，打开的页面可能再次写入数据。`});
       if(choice.response!==1)return {cleared:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
-      if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或 Profile 已改变，请重新操作');
+      if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
       await session.fromPartition(partitionFor(profile.id)).clearStorageData({origin,storages:['cookies','filesystem','indexdb','localstorage','serviceworkers','cachestorage']});
       return {cleared:true,origin};
     }
@@ -920,12 +920,12 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(fromApi)throw new Error('User action required');
       const tab=findTab(target),room=findRoom(tab.roomId),profile=findProfile(room.profileId);
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可管理权限的 HTTP(S) 站点');}
-      const grants=permissionGrants.get(partitionFor(profile.id));if(!grants)throw new Error('Profile 权限状态不可用');
+      const grants=permissionGrants.get(partitionFor(profile.id));if(!grants)throw new Error('浏览身份权限状态不可用');
       const allowed=[...grants].map(key=>JSON.parse(key)).filter(([site])=>site===origin).map(([,permission])=>permission);
-      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`Profile：${profile.name}。${allowed.length ? allowed.join('、') : '暂无已记录的允许权限'}。同一 Profile 的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
+      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`浏览身份：${profile.name}。${allowed.length ? allowed.join('、') : '暂无已记录的允许权限'}。同一浏览身份的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
       if(choice.response!==1)return {revoked:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
-      if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或 Profile 已改变，请重新操作');
+      if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
       for(const key of [...grants])if(JSON.parse(key)[0]===origin)grants.delete(key);
       return {revoked:true,origin};
     }
@@ -950,7 +950,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'printPage': {
       if(fromApi) throw new Error('打印只能由用户从 Corvid 界面发起');
       const tab=findTab(target),room=findRoom(tab.roomId),contents=tab.view.webContents;
-      if(room.ownership!=='user') throw new Error('请先接管此 Room，再打印页面');
+      if(room.ownership!=='user') throw new Error('请先接管此空间，再打印页面');
       if(room.userResumePending) throw new Error('请等待接管完成后再打印页面');
       if(room.executionRisk) throw new Error('页面执行状态未知；完成复核后再打印');
       if(!tab.ready || contents.isDestroyed() || contents.isLoadingMainFrame()) throw new Error('页面尚未加载完成，请稍后再打印');
@@ -971,7 +971,7 @@ async function claimRoom(room) {
   if(room.ownership!=='user')throw new Error('Only a user-controlled room can be claimed');
   if(room.executionRisk || room.userResumePending)throw new Error('Resolve the pending execution or resumeControl before claiming this room');
   const profile=findProfile(room.profileId),tabIds=[...room.tabIds];
-  const choice=await dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许 Agent 使用'],defaultId:0,cancelId:0,title:'Agent 请求使用Room',message:`允许 Agent 使用Room“${room.name}”？`,detail:`Profile：${profile.name}；当前有 ${tabIds.length} 个标签。Agent 可以接管并操作这些页面，页面可能包含登录状态和私人数据。用户创建或来源不明的标签不会因此变成 Agent 创建。`});
+  const choice=await dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许 Agent 使用'],defaultId:0,cancelId:0,title:'Agent 请求使用空间',message:`允许 Agent 使用空间“${room.name}”？`,detail:`浏览身份：${profile.name}；当前有 ${tabIds.length} 个标签。Agent 可以接管并操作这些页面，页面可能包含登录状态和私人数据。用户创建或来源不明的标签不会因此变成 Agent 创建。`});
   if(choice.response!==1)throw new Error('User declined room claim');
   if(!rooms.includes(room) || room.ownership!=='user' || room.executionRisk || room.userResumePending || room.profileId!==profile.id || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('Room changed while awaiting approval; request it again');
   room.ownership='agent';room.finished=false;room.yielded=false;room.manualControl=false;update();
@@ -1177,7 +1177,7 @@ app.whenReady().then(async () => {
   // least one user room in the focused window.
   const primary=activeRecord();
   focusWindow(primary);
-  if (!rooms.length) await createRoom('我的 Room','user');
+  if (!rooms.length) await createRoom('我的空间','user');
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
   restoring = false;
   for (const record of windowRecords.values()) update(record);

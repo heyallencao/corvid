@@ -126,7 +126,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
     await call(`/rooms/${activeRoom.id}/claim`, 'POST');
     await openPrintMenu(shell);
-    await shell.locator('#status').getByText(/请先接管此 Room，再打印页面/).waitFor();
+    await shell.locator('#status').getByText(/请先接管此空间，再打印页面/).waitFor();
     assert.equal((await printCalls()).length, 4, 'printing is rejected while the Agent owns the Room');
 
     console.log('PASS page print menu, native options, cancel/error feedback, active-tab shortcut routing and isolated Electron fixture');
