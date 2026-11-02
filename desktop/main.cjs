@@ -402,6 +402,7 @@ function layout(record = activeRecord()) {
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
   const top = 112;
+  const isBrowserHome = Boolean(tab && tab.view.webContents.getURL() === 'about:blank' && !tab.isLoading && !tab.navigationError);
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
@@ -417,7 +418,10 @@ function layout(record = activeRecord()) {
     const owner = rooms.find(entry => entry.id === item.roomId);
     if (owner?.windowId !== record.id) continue;
     item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)});
-    item.view.setVisible(Boolean(tab) && !record.modalOpen);
+    // WebContentsView is layered above the shell, so hide all page views while
+    // a shell-owned home surface is active. The background webContents remain
+    // alive and accessible to their authorized Agent Rooms.
+    item.view.setVisible(Boolean(tab) && !record.modalOpen && !isBrowserHome);
   }
   if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
 }

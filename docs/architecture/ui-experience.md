@@ -1,7 +1,7 @@
 # Corvid 统一桌面体验设计
 
 状态：active · v0.1
-对应执行板：[D21 统一浏览器与 Agent 桌面体验](../execution/feature-board.md)
+对应执行板：[D21 统一浏览器与 Agent 桌面体验](../execution/feature-board.md)；新标签起始页由 [D22](../execution/feature-board.md) 跟踪。
 
 ## 产品方向
 
@@ -37,6 +37,7 @@ Provider 凭据也由 Corvid 管理：账号授权写入版本化的 Corvid 凭�
 - **左侧导航：** Corvid 品牌；Profile 切换；Spaces/Rooms 列表与新建；Agent 区（Corvid Agent 对话入口与 Agent Room 列表）；底部书签、历史、下载、设置。
 - **浏览器 chrome：** 标签行和新建标签；后退、前进、刷新；地址/搜索输入；收藏与当前站点工具。
 - **主画布：** 当前 Browser Page，由 Chromium `WebContentsView` 呈现。
+- **新标签起始页：** 用户新建的空白标签仍保持 `about:blank` 页面合同，由 Corvid 壳层显示本地起始体验：地址/搜索输入、当前浏览身份的常用书签、全部书签、历史和 Corvid Agent 入口。起始页收起重复的浏览器书签栏；导航使用现有地址栏提交路径，继续遵守用户配置的搜索模板和 URL 校验。起始页不创建网络页面，不进入 Agent 页面上下文；显示期间隐藏对应窗口中的 Chromium 页面视图，离开空白标签后按原布局恢复。视觉方向参考已核验的 EGO 日常浏览模式；Kaze 新标签行为没有足够运行态证据，本设计不对其作推断。
 - **Corvid Agent 对话工作区：** 右侧并行面板采用持续聊天布局，空态引导、单线程消息流、活动与状态位于上方，固定输入框、当前页面来源和模型选择位于底部；历史按对话收起，可选中后续聊。发送页面内容前提供可检查的预览和明确同意。运行、失败、停止、接管和继续状态就近显示在对话中，conversation 与 Agent Room/task/transcript 保持清晰对应。交互密度参考 REA 可见的 Kaze Agent 面板和模型/输入相对位置，Corvid 保留自己的视觉语言、EGO 式日常浏览主线及授权合同。当前切片由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 跟踪。
 - **通用列表与设置：** 复用统一的标题、搜索、空态、条目、错误和确认组件。
 

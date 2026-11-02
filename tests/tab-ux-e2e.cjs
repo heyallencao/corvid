@@ -9,11 +9,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-tabux-'));
   const favicon='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6cdf"/></svg>';
-  const page=(title,body)=>`<!doctype html><title>${title}</title><link rel="icon" href="/favicon.svg"><body>${body}</body>`;
+  const page=(title,body)=>`<!doctype html><title>${title}</title><link rel="icon" href="/favicon.svg?for=${encodeURIComponent(title)}"><body>${body}</body>`;
+  let bookmarkFaviconRequests=0;
   const server=http.createServer((req,res)=>{
-    if(req.url==='/favicon.svg'){res.writeHead(200,{'content-type':'image/svg+xml','cache-control':'no-store'});res.end(favicon);return;}
+    if(new URL(req.url,'http://fixture').pathname==='/favicon.svg'){res.writeHead(200,{'content-type':'image/svg+xml','cache-control':'no-store'});res.end(favicon);return;}
+    if(new URL(req.url,'http://fixture').pathname==='/favicon.ico')bookmarkFaviconRequests++;
     res.writeHead(200,{'content-type':'text/html'});
-    res.end(req.url==='/two'?page('Two','<p>second tab</p>'):page('Find Fixture','<p>needle one</p><p>needle two</p><p>needle three</p>'));
+    const url=new URL(req.url,'http://fixture');
+    if(url.pathname==='/search'){res.end(page('Search Fixture',`<p>${url.searchParams.get('q')||''}</p>`));return;}
+    if(url.pathname==='/saved'){res.end(page('Saved Fixture','<p>saved shortcut target</p>'));return;}
+    res.end(url.pathname==='/two'?page('Two','<p>second tab</p>'):page('Find Fixture','<p>needle one</p><p>needle two</p><p>needle three</p>'));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
@@ -29,11 +34,57 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const call=async(route)=>{const response=await fetch(config.baseUrl+route,{headers:{authorization:`Bearer ${config.token}`}});const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));return data;};
     const primary=process.platform==='darwin'?'Meta':'Control';
     const tabs=shell.locator('.tab');
+
+    // Corvid owns an accessible home surface for blank tabs. Search resolves
+    // through the Profile's browser search template and the existing navigate path.
+    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
+    await shell.getByRole('searchbox',{name:'搜索网页或输入网址'}).waitFor();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#search-template').fill(`${base}/search?q={query}`);
+    await shell.locator('#settings-form button[type="submit"]').click();
+    await shell.locator('#new-tab-search').fill('corvid home');
+    await shell.locator('#new-tab-search').press('Enter');
+    await until(async()=>(await tabs.first().textContent()).includes('Search Fixture'),'Corvid home search navigation');
+    await shell.locator('#address').fill(base+'/saved');
+    await shell.locator('#address').press('Enter');
+    await until(async()=>(await tabs.first().textContent()).includes('Saved Fixture'),'saved page title');
+    await shell.locator('#bookmark-current').click();
+    await shell.locator('#bookmarks-bar').getByRole('link',{name:/Saved Fixture/}).waitFor();
+
+    // A new tab shows only bookmarks from its active Profile; another Profile
+    // gets an empty state and cannot see this saved site.
+    await until(async()=>bookmarkFaviconRequests>0,'existing bookmark bar favicon request');
+    const faviconRequestsBeforeHome=bookmarkFaviconRequests;
+    await shell.locator('#new-tab').click();
+    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
+    await shell.locator('#bookmarks-bar').waitFor({state:'hidden'});
+    await delay(150);
+    assert.equal(bookmarkFaviconRequests,faviconRequestsBeforeHome,'the new-tab surface must not load remote bookmark favicons');
+    const homeBookmark=shell.getByRole('button',{name:'打开书签：Saved Fixture'});
+    await homeBookmark.waitFor();
+    await shell.screenshot({path:path.join(os.tmpdir(),'corvid-new-tab-surface.png')});
+    await homeBookmark.click();
+    await until(async()=>(await tabs.nth(1).textContent()).includes('Saved Fixture'),'bookmark shortcut navigation');
+    await shell.locator('#profile-menu-trigger').click();
+    await shell.getByRole('menuitem',{name:'新建浏览身份'}).click();
+    await shell.locator('#profile-name').fill('起始页隔离测试');
+    await shell.locator('#new-profile-form button[type="submit"]').click();
+    await shell.locator('#create-room-trigger').click();
+    await shell.locator('#room-name').fill('隔离空间');
+    await shell.locator('#new-room-form button[type="submit"]').click();
+    await shell.locator('#new-tab-surface').waitFor({state:'visible'});
+    await shell.locator('#new-tab-bookmark-empty').waitFor({state:'visible'});
+    assert.equal(await shell.locator('#new-tab-bookmark-grid button').count(),0,'a new Profile must not see another Profile bookmarks');
+    await shell.locator('#profile-select').selectOption('default');
+    await until(async()=>(await tabs.count())===2 && await shell.locator('#profile-select').inputValue()==='default','return to original Profile');
+    await shell.locator('.tab[aria-selected="true"] .tab-close').click();
+    await until(async()=>(await tabs.count())===1,'close shortcut tab');
+
     await shell.locator('#address').fill(base+'/');
     await shell.locator('#address').press('Enter');
     await until(async()=>(await tabs.count())===1 && (await tabs.first().textContent()).includes('Find Fixture'),'first tab title');
     const icon=tabs.first().locator('img.favicon');
-    await until(async()=>String(await icon.getAttribute('src')).includes('/favicon.svg'),'tab favicon from page');
+    await until(async()=>String(await icon.getAttribute('src')).includes('/favicon.svg'),`tab favicon from page; current src=${await icon.getAttribute('src')}; rooms=${JSON.stringify((await call('/rooms')).rooms.map(room=>({id:room.id,active:room.active,profileId:room.profileId,tabs:room.tabs.map(tab=>({id:tab.id,title:tab.title,url:tab.url,active:tab.active,faviconUrl:tab.faviconUrl}))})))}`);
 
     // Cmd/Ctrl+F opens the find bar against the active page; Enter/Shift+Enter
     // walk matches; Escape closes the bar.
