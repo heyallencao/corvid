@@ -199,6 +199,14 @@ async function renderPiTasks(){
   const labels={preparing:'准备中',running:'Agent 正在回复',waiting_for_user:'等待你接管',completed:'已完成',failed:'需要处理',interrupted:'等待检查'};
   if(piSelectedTaskId&&!piTasks.some(task=>task.id===piSelectedTaskId))piSelectedTaskId=null;
   const visibleTasks=piTasks.filter(task=>task.id===(piSelectedTaskId||piTasks.at(-1)?.id));
+  const announcement=document.querySelector('#pi-task-announcer'),activeTask=visibleTasks[0];
+  if(announcement){
+    if(activeTask){
+      const room=state.rooms.find(item=>item.id===activeTask.roomId),control=room?.executionRisk?'页面执行状态未知':room?.userResumePending?'接管中':room?.ownership==='user'?'用户控制中':'';
+      const signature=`${activeTask.id}:${activeTask.status}:${control}`,message=`Corvid Agent：${labels[activeTask.status]||activeTask.status}${control?`；${control}`:''}`;
+      if(announcement.dataset.signature!==signature){announcement.dataset.signature=signature;announcement.textContent=message;}
+    }else if(announcement.dataset.signature){announcement.dataset.signature='';announcement.textContent='';}
+  }
   if(piHistoryOpen){
     const history=document.createElement('div');history.id='pi-chat-history';history.className='pi-chat-history';
     for(const task of [...piTasks].reverse()){
@@ -328,7 +336,9 @@ function renderPiWorkbench(){
     const start=button('发送',async()=>{try{const task=await api.invoke('startPiTask',{...piBinding,prompt:prompt.value,includePageContext:check.checked,contextPreview:piContextPreview});piSelectedTaskId=task?.id||null;piContextPreview=null;piPromptDraft='';renderPiWorkbench();}catch(error){page.textContent=`消息未能发送：${userFacingAgentError(error)}`;}});start.className='pi-primary-action';start.disabled=!bound||!check.checked||!prompt.value.trim();check.onchange=()=>{start.disabled=!bound||!check.checked||!prompt.value.trim();};prompt.oninput=()=>{piPromptDraft=prompt.value;start.disabled=!bound||!check.checked||!prompt.value.trim();};form.append(start);
   }
   const workspace=document.createElement('div');workspace.id='pi-workbench-content';
-  const list=document.createElement('div');list.id='pi-task-list';workspace.append(list,form);panel.append(workspace);void renderPiTasks();
+  const list=document.createElement('div');list.id='pi-task-list';
+  const announcement=document.createElement('div');announcement.id='pi-task-announcer';announcement.className='visually-hidden';announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');announcement.setAttribute('aria-atomic','true');
+  workspace.append(list,form,announcement);panel.append(workspace);void renderPiTasks();
 }
 function setLibraryPanel(kind,trigger=null){
   libraryKind=kind;libraryTrigger=kind?trigger:null;
