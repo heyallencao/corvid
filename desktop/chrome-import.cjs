@@ -97,6 +97,11 @@ function cookieCount(directory){
 
 async function chromeCookieKey(){
   if(process.platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
+  if(process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_KEY){
+    const key=Buffer.from(process.env.CORVID_TEST_CHROME_COOKIE_KEY,'hex');
+    if(key.length!==16)throw new Error('合成 Chrome Cookie 测试密钥必须是 16 字节');
+    return key;
+  }
   let stdout;
   try{({stdout}=await execFileAsync('/usr/bin/security',['find-generic-password','-w','-s','Chrome Safe Storage','-a','Chrome'],{timeout:15000,maxBuffer:4096,windowsHide:true}));}
   catch(error){throw new Error(`无法通过 macOS 钥匙串读取 Chrome Safe Storage。请在系统提示中允许访问后重试。${error.message?`（${error.message}）`:''}`);}
