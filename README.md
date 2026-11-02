@@ -30,7 +30,7 @@ npm start
 - `Cmd/Ctrl + T/W/L/R`、`Cmd/Ctrl + 数字`、`Control + Tab` 等常用快捷键可用。
 - 历史、书签、下载面板支持搜索；下载完成后可以打开文件或在文件夹中显示。
 - 窗口位置、尺寸与最大化状态保存在数据目录的 `window-state.json`，重启后恢复。
-- 首次启动可选择从 Google Chrome 导入书签、历史、macOS Cookie 和逐项选择的扩展；设置中可以继续迁移。扩展按 Corvid Profile 隔离，权限与 Electron API 兼容边界会显示在界面中；扩展工具栏弹窗、更新、已保存密码及 Chrome Web Store 全面兼容尚未支持。Cookie 导入会调用 macOS 钥匙串读取 Chrome 加密密钥。
+- 首次启动可选择从 Google Chrome 导入书签、历史、macOS Cookie 和逐项选择的扩展；设置中可以继续迁移。扩展按 Corvid Profile 隔离，权限与 Electron API 兼容边界会显示在界面中；扩展工具栏弹窗、更新、已保存密码及 Chrome Web Store 全面兼容尚未支持。Cookie 导入会调用 macOS 钥匙串读取 Chrome 加密密钥。会话 Cookie 按原语义在 Corvid 退出时失效，带有效期的 Cookie 可跨重启保留。
 
 ## Agent 接入
 

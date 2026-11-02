@@ -325,7 +325,20 @@ document.querySelector('#chrome-source-profile').onchange=async event=>{chromeSo
 document.querySelector('#chrome-import-form').onsubmit=async event=>{
   event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
   const extensionIds=[...document.querySelectorAll('#chrome-extension-choices input:checked')].map(input=>input.value);
-  try{const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,...(categories.includes('extensions')?{extensionIds}:{})});error.dataset.success='true';const failed=result.extensions.failed.map(item=>`${item.name}：${item.error}`).join('；');error.textContent=`导入完成：书签新增 ${result.bookmarks.imported} 项、历史新增 ${result.history.imported} 项、Cookie 新增 ${result.cookies.imported} 项、扩展新增 ${result.extensions.imported.length} 项${result.extensions.skipped.length?`、扩展跳过 ${result.extensions.skipped.length} 项`:''}${failed?`。未导入：${failed}`:''}。`;document.querySelector('#confirm-chrome-import').disabled=true;void renderBookmarksBar();if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();if(document.querySelector('#settings').open)void renderProfileExtensions();}
+  try{
+    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,...(categories.includes('extensions')?{extensionIds}:{})});
+    error.dataset.success='true';
+    const failed=result.extensions.failed.map(item=>`${item.name}：${item.error}`).join('；');
+    const cookieNotes=[];
+    if(result.cookies.skipped)cookieNotes.push(`跳过 ${result.cookies.skipped} 项`);
+    if(result.cookies.unsupported)cookieNotes.push(`不支持 ${result.cookies.unsupported} 项`);
+    const cookieSummary=`Cookie 新增 ${result.cookies.imported} 项${cookieNotes.length?`（${cookieNotes.join('、')}）`:''}`;
+    error.textContent=`导入完成：书签新增 ${result.bookmarks.imported} 项、历史新增 ${result.history.imported} 项、${cookieSummary}、扩展新增 ${result.extensions.imported.length} 项${result.extensions.skipped.length?`、扩展跳过 ${result.extensions.skipped.length} 项`:''}${failed?`。未导入：${failed}`:''}。`;
+    document.querySelector('#confirm-chrome-import').disabled=true;
+    void renderBookmarksBar();
+    if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();
+    if(document.querySelector('#settings').open)void renderProfileExtensions();
+  }
   catch(reason){error.textContent=reason.message;}
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);

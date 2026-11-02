@@ -63,9 +63,25 @@ function makeChromeFixture(root){
   return profiles;
 }
 
+function fixtureCookieKey(){return crypto.pbkdf2Sync(Buffer.from('fixture chrome key'),Buffer.from('saltysalt'),1003,16,'sha1');}
+function encryptCookie(key,value){
+  const cipher=crypto.createCipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));
+  return Buffer.concat([Buffer.from('v10'),cipher.update(value),cipher.final()]);
+}
+function writeChromeCookies(profileDir,key){
+  const database=new DatabaseSync(path.join(profileDir,'Cookies'));
+  const add=database.prepare('INSERT INTO cookies VALUES(?,?,?,?,?,?,?,?,?,?,?)');
+  add.run('auth.example.test','encrypted_session','',encryptCookie(key,'fixture-login-token'),'/',0,1,0,0,2,'');
+  const expiresUtc=BigInt(Date.parse('2030-01-01T00:00:00.000Z'))*1000n+11644473600000000n;
+  add.run('.example.test','domain_session','fixture-domain-value',Buffer.alloc(0),'/',0,0,1,expiresUtc,0,'');
+  add.run('auth.example.test','unknown_cipher','',Buffer.from('v20unsupported'), '/',1,0,0,0,1,'');
+  add.run('auth.example.test','partitioned_session','partitioned-value',Buffer.alloc(0),'/',1,0,0,0,1,'https://top.example.test');
+  database.close();
+}
+
 function verifyCookieDecryption(tempRoot){
   const profileDir=path.join(tempRoot,'cookie-decrypt');fs.mkdirSync(profileDir,{recursive:true});
-  const key=crypto.pbkdf2Sync(Buffer.from('fixture chrome key'),Buffer.from('saltysalt'),1003,16,'sha1');
+  const key=fixtureCookieKey();
   const cipher=crypto.createCipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));
   const encrypted=Buffer.concat([Buffer.from('v10'),cipher.update('fixture-session'),cipher.final()]);
   const database=new DatabaseSync(path.join(profileDir,'Cookies'));
@@ -92,8 +108,8 @@ function verifyCookieDecryption(tempRoot){
   assert.equal(domainCookie.path,'/app');
 }
 
-async function boot(dataDir){
-  const app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_CHROME_IMPORT:'1'}});
+async function boot(dataDir,extraEnv={}){
+  const app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_CHROME_IMPORT:'1',...extraEnv}});
   const shell=await app.firstWindow();
   const config=await until(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'control.json');
   const call=async(route,method='GET',body)=>{
@@ -132,6 +148,8 @@ async function selectAllExtensions(shell){
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
   const chromeProfiles=makeChromeFixture(chromeRoot);
+  const cookieKey=fixtureCookieKey(),supportsCookieImport=process.platform==='darwin';
+  if(supportsCookieImport)writeChromeCookies(path.join(chromeRoot,'Default'),cookieKey);
   let server;
   let app,shell,call;
   server=http.createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/html'});response.end('<title>Extension Fixture</title><html><body>local extension test</body></html>');});
@@ -140,7 +158,7 @@ async function selectAllExtensions(shell){
   verifyCookieDecryption(tempRoot);
   try{
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
-    const sourceBefore={bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),history:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),extensionManifest:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex')};
+    const sourceBefore={bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),history:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),extensionManifest:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),cookies:supportsCookieImport?crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex'):null};
     const preview=chromeImport.readProfile(chromeRoot,'Default');
     assert.equal(preview.bookmarks[0].title,'书签 0');
     assert.equal(preview.history[0].title,'历史 0');
@@ -150,7 +168,7 @@ async function selectAllExtensions(shell){
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
-    ({app,shell,call}=await boot(appData));
+    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}:{ }));
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     assert.equal(await app.evaluate(()=>globalThis.chromeImportDialogCalls||0),0,'first launch must not scan or open Chrome');
     await installDialogFixture(app,chromeRoot);
@@ -159,12 +177,19 @@ async function selectAllExtensions(shell){
     await chooseSource(shell);
     await shell.locator('#chrome-import-preview').getByText(/2 个可读取扩展/).waitFor();
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
+    if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 1 项.*扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接/).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 2 项（不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,1);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
+    if(supportsCookieImport){
+      const cookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://auth.example.test/'});
+      assert.equal(cookies.find(cookie=>cookie.name==='encrypted_session')?.value,'fixture-login-token','decrypted host-only Chrome Cookie must reach the selected Corvid Profile');
+      const domainCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://example.test/'});
+      assert.equal(domainCookies.find(cookie=>cookie.name==='domain_session')?.value,'fixture-domain-value','domain Cookie must reach the selected Corvid Profile');
+    }
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
     await shell.locator('#profile-extension-list').getByText(/必需权限：storage、<all_urls>；可选权限：tabs、https:\/\/\*\.example\.com\/\*/).waitFor();
@@ -180,14 +205,21 @@ async function selectAllExtensions(shell){
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
+    if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 0 项.*扩展跳过 1 项/).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 2 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,1,'repeat import must be idempotent');
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'repeat extension import must skip the existing extension');
     await shell.locator('#cancel-chrome-import').click();
     const work=await call('/profiles','POST',{name:'Imported work'});
     await call('/rooms','POST',{name:'Imported work room',profileId:work.id});
+    if(supportsCookieImport){
+      const workCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:`persist:corvid-profile-${work.id}`,url:'http://auth.example.test/'});
+      assert.equal(workCookies.some(cookie=>cookie.name==='encrypted_session'),false,'Chrome Cookies imported to default must not leak into Work Profile');
+      const workDomainCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:`persist:corvid-profile-${work.id}`,url:'http://example.test/'});
+      assert.equal(workDomainCookies.some(cookie=>cookie.name==='domain_session'),false,'persistent Chrome Cookies imported to default must not leak into Work Profile');
+    }
     await shell.locator('#profile-select').selectOption(work.id);
     await shell.locator('#show-settings').click();
     await shell.locator('#start-chrome-import').click();
@@ -224,11 +256,18 @@ async function selectAllExtensions(shell){
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),sourceBefore.bookmarks);
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),sourceBefore.history);
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),sourceBefore.extensionManifest);
+    if(supportsCookieImport)assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex'),sourceBefore.cookies,'Chrome Cookie source must remain unchanged');
 
     ({app,shell,call}=await boot(appData));
     await shell.locator('#profile-select').selectOption('default');
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
     await until(async()=>await extensionValue(app,extensionUrl,'corvidDefaultExtension')==='loaded','default extension restored after restart');
+    if(supportsCookieImport){
+      const persistentCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://example.test/'});
+      assert.equal(persistentCookies.find(cookie=>cookie.name==='domain_session')?.value,'fixture-domain-value','persistent Chrome Cookie must persist after restart');
+      const sessionCookies=await app.evaluate(({session},input)=>session.fromPartition(input.partition).cookies.get({url:input.url}),{partition:'persist:corvid',url:'http://auth.example.test/'});
+      assert.equal(sessionCookies.some(cookie=>cookie.name==='encrypted_session'),false,'session Chrome Cookie must expire when Corvid exits');
+    }
     assert.equal(await extensionValue(app,extensionUrl,'corvidWorkExtension'),'','removed work extension must stay absent after restart');
     await app.close();app=undefined;
 
@@ -253,7 +292,7 @@ async function selectAllExtensions(shell){
     await delay(300);
     assert.equal(await shell.locator('#chrome-import-onboarding').evaluate(element=>element.open),false,'existing Corvid profiles must not get first-run onboarding');
     await app.close();app=undefined;
-    console.log('PASS Chrome import, highest extension version, invalid-manifest filtering, symlink failure cleanup, content script execution, Profile isolation, disable/remove and restart restore');
+    console.log('PASS Chrome import, Cookie decryption/write/Profile isolation and persistence semantics, extension version/failure handling, content execution, disable/remove and restart restore');
   }finally{
     if(app)await app.close().catch(()=>{});
     if(server)await new Promise(resolve=>server.close(resolve));
