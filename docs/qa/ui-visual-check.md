@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 系统深色主题适配
+
+- 环境：本机 macOS、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；真实 Electron E2E 通过 Playwright 将 `prefers-color-scheme` 分别设为 light/dark 检查。页面保持 `about:blank`，不连接 Provider，不调用模型或 OAuth。
+- 检查范围：浏览器主背景、持久侧栏、标签行、Agent 工作区空态、主操作按钮、空间菜单、原生 HTML 对话框、Corvid Agent 输入区与欢迎图标；浅色偏好恢复后再次读取相同表面。截图 SHA-256 `44ef80300da82fbfa8c55f82dd0ddc3844d0a97d997556c8448026a6356c0aea`，2560×1636 Retina，文件 `/tmp/corvid-dark-theme.png`，仅保留在本机。
+- 视觉结果：壳层以暗色背景、分层面板与适配后的边线呈现；正文、次级文字、占位符和状态色保持可辨；主操作按钮保留白字与深蓝底。色彩变量集中适配，页面 `WebContentsView` 内容不被强制改色。
+- 自动化：`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` 通过；断言浅/深配色切换、浏览器与 Agent 表面、对话框及输入控件的实际计算颜色，恢复浅色后颜色回到原值。
+- 限制：系统偏好通过 Chromium/Playwright 媒体模拟切换，未操作 macOS 系统外观设置；未覆盖 Windows/Linux、打包版、外接高对比度主题、网站自身的深色配色或真实屏幕阅读器。
+
 ## 2026-11-03 Agent 工作区任务状态播报合同
 
 - 环境：macOS 真实 Electron、临时 Corvid 数据目录、确定性任务 fixture；未连接真实模型或 Provider。

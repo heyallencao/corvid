@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 浏览器壳层系统深色主题（Issue #16）
+
+- 实现：`desktop/styles.css` 将浅色与深色视觉值收敛为语义 token；壳层依据 `prefers-color-scheme` 跟随系统偏好。覆盖浏览器导航、菜单、标签、库面板、Agent 空态/对话输入、状态反馈、导入和设置对话框；实心主操作继续使用满足对比度的深色强调底。网站画布由独立 `WebContentsView` 承载，保持网站配色。
+- 验收：真实 Electron `agent-rooms-panel-e2e.cjs` 先模拟 light 再切 dark，检查 `body`、侧栏、标签、地址栏、Agent 面板、CTA、空间对话框、Corvid Agent 输入区和空态图标的 computed style，并切回 light 断言原配色恢复。红测先纠正了对面板基础色的错误预期（应沿用 `--surface`）；地址栏还有 150ms CSS 过渡，因此测试等待目标颜色而不是采样中间帧。修正后通过。
+- 结果：`CORVID_THEME_SCREENSHOT_PATH=/tmp/corvid-dark-theme.png env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；隔离 Electron 目视检查通过，截图 SHA-256 `44ef80300da82fbfa8c55f82dd0ddc3844d0a97d997556c8448026a6356c0aea`。颜色对比抽查：主按钮白字/强调底 4.88:1、正文 14.16:1、次级文本 9.60:1、占位符 4.58:1、警告 7.83:1、错误 6.65:1、成功 6.86:1。
+- 限制：只模拟系统媒体偏好，未操作 macOS 外观设置；没有跑全量 `npm test`，也未验证 Windows/Linux、打包运行、网站页面自身主题或实际屏幕阅读器。
+
 ## 2026-11-03 Agent 工作区列表状态可访问播报（Issue #16）
 
 - 缺口：Agent 工作区列表整块重绘，列表中的临时 `role=status` 随节点销毁，状态变化无法依靠稳定的 live region 播报。
