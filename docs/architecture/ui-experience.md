@@ -14,8 +14,8 @@ Corvid 持有任务 ID、对话与消息、模型偏好、Profile/Room/Page 绑�
 ## 当前基线
 
 - 本机隔离启动的空白 Corvid 窗口显示 Profile/Room 横条、标签条、地址与九个图标操作；左侧没有持久导航或 Space 列表。
-- 浏览器日常入口、Agent Room 和 Pi Workbench 处于同一行，信息层级与图标语言不一致。
-- History/Bookmarks/Downloads、Agent Room、Pi Workbench 复用一个顶部展开并压缩网页高度的 `#library` 面板。
+- 浏览器日常入口、Agent Room 和 Corvid Agent 工作区处于同一行，信息层级与图标语言不一致。
+- History/Bookmarks/Downloads、Agent Room、Corvid Agent 工作区复用一个顶部展开并压缩网页高度的 `#library` 面板。
 - `desktop/index.html` 内存在重复覆盖的内联 CSS，浏览器 chrome、任务面板和对话框缺少共享设计 token。
 - 已安装产品的现场观察：Ego 当前窗口使用浏览器导航和可见 Space 入口，并保持普通网页浏览能力；Kaze 使用 Browser/Skills/Scheduled/Activity 侧栏与可见 Space/标签组织。Ego 的 AX 树包含多个旧/后台 WebContents，不能视作单窗 DOM；截图/观察仅作产品层参照，不采集或引用私人页面内容。
 - 参照边界：EGO 的公开 `ego-lite` 仓库是 Agent harness/技能，不是完整浏览器运行时；Kaze 的开源仓库主要提供公开产品说明、网站与技能，安装版 Electron 包包含实际运行时代码。对 EGO 的闭源浏览器本体不推断未观察到的实现；对 Kaze 的 REA 静态图谱不推断运行时可达性或授权效果。

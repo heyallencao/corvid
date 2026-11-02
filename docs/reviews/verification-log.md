@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-02 Corvid Agent 用户界面运行时品牌隔离回归
+
+- 将现有用户可见品牌断言提取为共用检查，并扩展到 Corvid Agent 模型管理弹窗的可见文案、辅助名称和标题；工作台本身与任务错误/恢复卡片继续由同一 Electron 用例检查。底层内部 selector、文件名和 fixture 可保留实现标识，不属于产品语义。
+- `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在本地 Electron、临时 Corvid 数据目录和确定性 Agent fixture 下通过；不触发 OAuth、不发起真实模型请求、不消耗模型额度。
+- 边界：本次只扩充自动化可见文案回归，不替代授权 UI 的人工辅助技术检查，也不证明未来替换运行时后的凭据或 checkpoint 迁移；相关合同仍由 D19 / Issue #78 跟踪。
+
 ## 2026-11-02 Chrome Cookie 回滚保留旧值（Issue #77）
 
 - 根因确认：Electron `cookies.remove(url, name)` 无 path 参数；同名旧 Cookie 可与本次导入的不同 path Cookie 同时匹配 URL。先 broad-remove 再 `cookies.set` 旧值会把安全性押在第二步恢复成功上。

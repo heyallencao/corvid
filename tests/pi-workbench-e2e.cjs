@@ -12,6 +12,16 @@ const readSavedTasks = dataDir => {
   const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
   return Array.isArray(saved) ? saved : saved.tasks;
 };
+const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
+  const content = await page.locator('body').evaluate(body => ({
+    title: document.title,
+    text: body.innerText,
+    labels: [...body.querySelectorAll('[aria-label],[title]')]
+      .flatMap(node => [node.getAttribute('aria-label'), node.getAttribute('title')])
+      .filter(Boolean)
+  }));
+  assert.doesNotMatch(`${content.title}\n${content.text}\n${content.labels.join('\n')}`, /\bPi\b|pi-coding-agent/i, `${surface} must use Corvid product language`);
+};
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-workbench-'));
@@ -35,13 +45,16 @@ const readSavedTasks = dataDir => {
     await (async()=>{for(let i=0;i<200;i++){const response=await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}});const latest=await response.json();if(latest.rooms.flatMap(room=>room.tabs).some(tab=>tab.url===sourceUrl))return;await delay(25);}throw new Error('Fixture page did not navigate');})();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
-    const visibleAgentSurface=await shell.locator('body').evaluate(body=>({text:body.innerText,labels:[...body.querySelectorAll('[aria-label],[title]')].flatMap(node=>[node.getAttribute('aria-label'),node.getAttribute('title')]).filter(Boolean)}));
-    assert.doesNotMatch(`${visibleAgentSurface.text}\n${visibleAgentSurface.labels.join('\n')}`,/\bPi\b|pi-coding-agent/i,'user-visible Agent UI must not expose the embedded runtime name');
+    await assertNoRuntimeBrandInVisibleAgentUi(shell, 'Agent workbench');
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
     const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
     await modelSelect.waitFor();
+    await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
+    await shell.locator('#pi-model-settings[open]').waitFor();
+    await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
+    await shell.getByRole('button', { name: '关闭模型设置' }).click();
     assert.ok(await modelSelect.locator('option').filter({hasText:'GPT-6 Luna'}).count());
     const codexModelValue=await modelSelect.locator('option').evaluateAll(options=>options.find(option=>option.textContent==='GPT-6 Luna'&&option.value.includes('openai-codex'))?.value);
     await modelSelect.selectOption(codexModelValue);
