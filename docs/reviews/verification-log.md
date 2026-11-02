@@ -1,5 +1,21 @@
 # 验证记录
 
+## 2026-11-02 Pi Agent 窄短窗口模型与输入栏可见性（Issue #50）
+
+### 执行与结果
+
+- 问题来自 700×420 隔离 Electron 截图：模型/连接设置藏在新任务表单的输入框下方。REA 参照中 Kaze 模型选择器位于 Agent 输入附近；本轮只用该已记录可见位置作布局启发，不推断 Kaze 的窄窗行为。
+- 将模型选择置于任务输入前；模型、连接状态和 OAuth 操作收为单行，表单滚动时模型行固定在顶部。短高窗口压缩 Pi 面板标题和上下留白，保持页面上下文、模型、连接操作及任务输入首屏可见；另切换至 Anthropic provider 确认 API Key 输入框与提交动作也完整可见，再切回 Codex provider。页面预览/同意仍由表单滚动区承载。
+- 先加入 700×420 可视区断言，基线运行确认模型选择、连接状态与操作均不可见；修复后 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 通过，断言模型选择、连接状态、连接按钮和任务输入框完整位于表单可视区且彼此无重叠。真实 Electron 覆盖宽窗 1280×850、短窗 700×420、长任务历史、页面上下文同意及 Pi 任务流程。
+- 全量 `env -u ELECTRON_RUN_AS_NODE npm test` 通过（EXIT 0）：`node --test` 3 项 + 37 个串行 E2E 脚本，共 40 项检查；Node.js v24.22.1、Electron 45.2.1、本机 macOS。
+- 按用户要求单独运行 `env -u ELECTRON_RUN_AS_NODE node tests/pi-real-model-smoke.cjs`，真实请求通过（EXIT 0）：使用现有 Pi `openai-codex` OAuth 登录（ChatGPT/Codex 账号），session 实际模型为 `openai-codex/gpt-6-luna`，本地页面上下文请求收到 `CORVID_LUNA_OK`。该模型调用独立于上述本地 fixture 全量回归，可能消耗账户用量；没有读取、输出或写入凭据。
+- 截图 SHA-256：宽窗 `75041b643948255a58ad9975005a70bd060827e7a5289c4de313276e8107d25a`；700×420 `8e47ddd6d485379360423b1a5dced6e3403c4de75c2c0595aa3ab5da04506e4c`。文件仅留在本机临时目录；图像只含 shell，不含独立 WebContentsView 页面。
+
+### 覆盖与限制
+
+- UI 全量回归的截图/fixture 使用本地 HTTP 页面和确定性 Pi session，不调用真实模型；单独的真实模型 smoke 使用同一隔离本地页面及用户 ChatGPT/Codex OAuth 凭据验证 GPT-6 Luna。
+- 尚未检查暗色主题、VoiceOver/屏幕阅读器、其他平台和真实页面与 Pi 面板同屏时的视觉效果。Issue [#50](https://github.com/heyallencao/corvid/issues/50) 属于持续 UI 打磨 Issue [#16](https://github.com/heyallencao/corvid/issues/16)。
+
 ## 2026-11-02 Pi Agent 多模型选择与 GPT-6 Luna 实际调用
 
 ### 执行与结果

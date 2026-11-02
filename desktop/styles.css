@@ -136,12 +136,12 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #library[data-kind="pi-workbench"] #pi-workbench-content { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; padding: 12px 14px; }
 #pi-task-list { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 #pi-task-form { display: grid; flex: none; max-height: 55%; gap: 10px; margin: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fafbfc; box-shadow: 0 -5px 16px #17203308; }
-#pi-task-form .pi-model-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
-#pi-task-form .pi-model-select { grid-column: 1 / -1; width: 100%; min-width: 0; min-height: 34px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); font: inherit; font-size: 12px; }
-#pi-task-form .pi-model-status { grid-column: 1; min-width: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
-#pi-task-form .pi-model-action { grid-column: 2; width: auto !important; min-height: 28px; justify-self: end; white-space: nowrap; border: 1px solid var(--line) !important; background: #fff !important; color: var(--text-secondary) !important; }
+#pi-task-form .pi-model-controls { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 8px; background: #fafbfc; }
+#pi-task-form .pi-model-select { grid-column: 1; width: 100%; min-width: 0; min-height: 34px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--text); font: inherit; font-size: 12px; }
+#pi-task-form .pi-model-status { grid-column: 2; min-width: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
+#pi-task-form .pi-model-action { grid-column: 3; width: auto !important; min-height: 28px; justify-self: end; white-space: nowrap; border: 1px solid var(--line) !important; background: #fff !important; color: var(--text-secondary) !important; }
 #pi-task-form .pi-model-action:last-child:not(:disabled) { background: #fff !important; color: var(--text-secondary) !important; }
-#pi-task-form .pi-model-key { grid-column: 1; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; }
+#pi-task-form .pi-model-key { grid-column: 1 / 3; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; }
 #pi-task-form textarea { width: 100%; min-height: 78px; resize: vertical; padding: 10px 11px; border-color: var(--line); line-height: 1.5; }
 #pi-task-form button { min-height: 32px; padding: 6px 10px; }
 #pi-task-form button:last-child:not(:disabled) { background: var(--accent); color: white; }
@@ -153,6 +153,16 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   #pi-task-form textarea { min-height: 52px; }
   .pi-page-binding { min-height: 30px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pi-context { max-height: 110px; }
+}
+@media (max-height: 480px) {
+  #library[data-kind="pi-workbench"] .panel-header { min-height: 52px; padding: 8px 12px; }
+  #library[data-kind="pi-workbench"] #pi-workbench-content { gap: 6px; padding: 8px 12px; }
+  #pi-task-form { max-height: 80%; gap: 3px; padding: 4px; }
+  #pi-task-form .pi-page-binding { min-height: 0; padding: 4px 6px; font-size: 10px; line-height: 1.2; }
+  #pi-task-form textarea { min-height: 36px; padding: 6px 8px; }
+  #pi-task-form .pi-model-controls { row-gap: 0; }
+  #pi-task-form .pi-model-status { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #pi-task-form .pi-model-action { min-height: 24px; }
 }
 .pi-create-room, .pi-primary-action { min-height: 36px !important; padding: 7px 12px !important; border: 1px solid transparent !important; background: var(--accent) !important; color: #fff !important; font-weight: 600 !important; }
 .pi-create-room:hover:not(:disabled), .pi-primary-action:hover:not(:disabled) { background: var(--accent-ink) !important; }
