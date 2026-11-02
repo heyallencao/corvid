@@ -22,6 +22,12 @@
 - 仅通过 renderer 事件 fixture 打开并取消弹窗；未登录 Provider、未触发 OAuth、未调用模型、未消耗模型额度。
 - 边界：这证明 Corvid UI 的错误归一化与取消呈现，不证明真实 Provider 登录流程、系统浏览器回调或屏幕阅读器体验。
 
+## 2026-11-03 Corvid Agent 运行时错误变体隔离（Issue #89）
+
+- 扩展界面错误归一化规则，覆盖大小写、空格/连字符/下划线组合的 Pi runtime/SDK/session/agent 标识及 Pi 包名；内部错误格式变体统一映射到 Corvid Agent 提示。
+- `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在真实 Electron、临时数据目录和确定性 fixture 下通过；fixture 注入小写 `pi runtime` 错误并确认错误卡片不暴露实现名称。`git diff --check` 通过。
+- 未触发 OAuth、Provider 登录或真实模型调用；本次只验证当前运行时的错误出口，不代表另一个运行时的配置/会话迁移已经完成。
+
 ## 2026-11-02 Corvid Agent 用户界面运行时品牌隔离回归
 
 - 将现有用户可见品牌断言提取为共用检查，并扩展到 Corvid Agent 模型管理弹窗的可见文案、辅助名称和标题；工作台本身与任务错误/恢复卡片继续由同一 Electron 用例检查。底层内部 selector、文件名和 fixture 可保留实现标识，不属于产品语义。
