@@ -28,6 +28,14 @@ function writeExtension(profileDir,name,marker){
   return id;
 }
 
+function addExtensionVersion(profileDir,id,version){
+  const source=path.join(profileDir,'Extensions',id,'1.0.0');
+  const destination=path.join(profileDir,'Extensions',id,version);fs.mkdirSync(destination,{recursive:true});
+  const manifest=JSON.parse(fs.readFileSync(path.join(source,'manifest.json'),'utf8'));manifest.version=version;
+  fs.writeFileSync(path.join(destination,'manifest.json'),JSON.stringify(manifest));
+  fs.copyFileSync(path.join(source,'content.js'),path.join(destination,'content.js'));
+}
+
 function makeChromeFixture(root){
   const profiles=[{id:'Default',name:'个人 Chrome'},{id:'Profile 1',name:'工作 Chrome'}];
   fs.writeFileSync(path.join(root,'Local State'),JSON.stringify({profile:{info_cache:Object.fromEntries(profiles.map(item=>[item.id,{name:item.name}]))}}));
@@ -45,6 +53,12 @@ function makeChromeFixture(root){
     cookies.close();
   }
   profiles[0].extensionId=writeExtension(path.join(root,'Default'),'Corvid Marker','corvidDefaultExtension');
+  addExtensionVersion(path.join(root,'Default'),profiles[0].extensionId,'2.0.0');
+  const invalidId=writeExtension(path.join(root,'Default'),'Invalid Manifest','invalidManifest');
+  fs.writeFileSync(path.join(root,'Default','Extensions',invalidId,'1.0.0','manifest.json'),'{invalid json');
+  profiles[0].symlinkExtensionId=writeExtension(path.join(root,'Default'),'Corvid Symlink','corvidSymlinkExtension');
+  const external=path.join(root,'..','extension-source-outside-profile.txt');fs.writeFileSync(external,'outside profile');
+  fs.symlinkSync(external,path.join(root,'Default','Extensions',profiles[0].symlinkExtensionId,'1.0.0','outside.txt'));
   profiles[1].extensionId=writeExtension(path.join(root,'Profile 1'),'Corvid Work Marker','corvidWorkExtension');
   return profiles;
 }
@@ -110,6 +124,10 @@ async function chooseSource(shell){
   await shell.locator('#chrome-import-preview').getByText(/找到 1 个书签、1 条历史记录/).waitFor();
 }
 
+async function selectAllExtensions(shell){
+  for(const checkbox of await shell.locator('#chrome-extension-choices input').all())await checkbox.check();
+}
+
 (async()=>{
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
@@ -122,11 +140,14 @@ async function chooseSource(shell){
   verifyCookieDecryption(tempRoot);
   try{
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
-    const sourceBefore={bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),history:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex')};
+    const sourceBefore={bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),history:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),extensionManifest:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex')};
     const preview=chromeImport.readProfile(chromeRoot,'Default');
     assert.equal(preview.bookmarks[0].title,'书签 0');
     assert.equal(preview.history[0].title,'历史 0');
     assert.equal(preview.history[0].visitedAt,'2026-10-01T12:00:00.000Z');
+    const discoveredExtensions=require('../desktop/chrome-extensions.cjs').discover(path.join(chromeRoot,'Default'));
+    assert.equal(discoveredExtensions.length,2,'invalid extension manifests must be excluded');
+    assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
     ({app,shell,call}=await boot(appData));
@@ -136,10 +157,11 @@ async function chooseSource(shell){
     await shell.locator('#begin-chrome-import').click();
     await shell.getByRole('heading',{name:'从 Google Chrome 导入'}).waitFor();
     await chooseSource(shell);
+    await shell.locator('#chrome-import-preview').getByText(/2 个可读取扩展/).waitFor();
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
-    await shell.locator('#chrome-extension-choices input').check();
+    await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 1 项.*扩展新增 1 项/).waitFor();
+    await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 1 项.*扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接/).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,1);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
@@ -151,13 +173,14 @@ async function chooseSource(shell){
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
     await shell.getByRole('button',{name:'Extension Fixture'}).waitFor();
     await until(async()=>await extensionValue(app,extensionUrl,'corvidDefaultExtension')==='loaded','default Chrome extension content script');
-    assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'failed extension copies must not remain in managed state');
+    assert.equal(fs.existsSync(require('../desktop/chrome-extensions.cjs').managedPath(appData,'default',chromeProfiles[0].symlinkExtensionId,'1.0.0')),false,'failed extension copies must be cleaned up');
 
     await shell.locator('#show-settings').click();
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
-    await shell.locator('#chrome-extension-choices input').check();
+    await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(/导入完成：书签新增 0 项.*扩展跳过 1 项/).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,1,'repeat import must be idempotent');
@@ -173,7 +196,7 @@ async function chooseSource(shell){
     await shell.locator('#chrome-source-profile').selectOption('Profile 1');
     await shell.locator('#chrome-import-preview').getByText(/工作 Chrome/).waitFor();
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
-    await shell.locator('#chrome-extension-choices input').check();
+    await selectAllExtensions(shell);
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(/扩展新增 1 项/).waitFor();
     assert.equal((await call(`/bookmarks?profileId=${work.id}`)).bookmarks[0].title,'书签 1');
@@ -200,6 +223,7 @@ async function chooseSource(shell){
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),chromeProfiles.map(item=>item.id));
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),sourceBefore.bookmarks);
     assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),sourceBefore.history);
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),sourceBefore.extensionManifest);
 
     ({app,shell,call}=await boot(appData));
     await shell.locator('#profile-select').selectOption('default');
@@ -229,7 +253,7 @@ async function chooseSource(shell){
     await delay(300);
     assert.equal(await shell.locator('#chrome-import-onboarding').evaluate(element=>element.open),false,'existing Corvid profiles must not get first-run onboarding');
     await app.close();app=undefined;
-    console.log('PASS synthetic Chrome profiles, bookmarks/history/Cookie and extension import, extension execution and Profile isolation, repeat-import idempotency, disable/remove, restart restore and first-run onboarding');
+    console.log('PASS Chrome import, highest extension version, invalid-manifest filtering, symlink failure cleanup, content script execution, Profile isolation, disable/remove and restart restore');
   }finally{
     if(app)await app.close().catch(()=>{});
     if(server)await new Promise(resolve=>server.close(resolve));

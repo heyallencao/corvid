@@ -5,7 +5,7 @@
 ### 执行与结果
 
 - 命令：`node --check desktop/main.cjs`、`node --check desktop/chrome-extensions.cjs`、`node --check desktop/renderer.js`、`node --check tests/chrome-import-e2e.cjs` 与 `node tests/chrome-import-e2e.cjs`；全部通过。随后运行 `env -u ELECTRON_RUN_AS_NODE npm test`，36 条命令、38 项通过（EXIT 0）。
-- 合成两份 Chrome Profile 与本地 HTTP 页面；验证扩展导入、实际 content script 执行、Profile 隔离、重复导入、停用/移除、跨重启恢复及源 Profile 书签/历史哈希不变。
+- 合成两份 Chrome Profile 与本地 HTTP 页面；验证扩展导入、最新版本选择、无效 manifest 过滤、扩展目录符号链接失败清理、实际 content script 执行、权限展示、Profile 隔离、重复导入、停用/移除、跨重启恢复及源 Profile 文件哈希不变。
 - 运行环境：macOS、Electron 45.2.1；不读取真实 Chrome Profile。
 
 ### 覆盖与限制
