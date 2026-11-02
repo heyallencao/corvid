@@ -18,6 +18,21 @@ const { createAgentWorkbench } = require('../desktop/agent-workbench.cjs');
   assert.equal(catalog.selection.modelId, 'gpt-6-luna');
   assert.equal(codex.configured, false, 'temporary Pi directory has no credentials');
   await assert.rejects(manager.getModel(catalog.selection), /请先连接 openai-codex 账号/);
+  await assert.rejects(manager.select({ providerId: 'openai-codex', modelId: 'corvid-missing-model' }), error => {
+    assert.match(error.message, /Corvid 模型目录/);
+    assert.doesNotMatch(error.message, /\bPi\b|pi-coding-agent/i);
+    return true;
+  });
+  await assert.rejects(manager.login('corvid-unknown-provider'), error => {
+    assert.match(error.message, /Provider 不支持 OAuth 登录/);
+    assert.doesNotMatch(error.message, /\bPi\b|pi-coding-agent/i);
+    return true;
+  });
+  await assert.rejects(manager.loginApiKey('openai-codex', 'sk-test-corvid-invalid-login'), error => {
+    assert.match(error.message, /Provider 不支持 API Key 登录/);
+    assert.doesNotMatch(error.message, /\bPi\b|pi-coding-agent/i);
+    return true;
+  });
   await manager.loginApiKey('anthropic', 'sk-test-corvid-persistent-key');
   const restartedManager = createPiModelManager({ dataDir, agentDir });
   const restartedCatalog = await restartedManager.list();

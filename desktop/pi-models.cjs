@@ -154,7 +154,7 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
     if (!selection || typeof selection.providerId !== 'string' || typeof selection.modelId !== 'string') throw new TypeError('providerId and modelId are required');
     const modelRuntime = await runtime();
     const model = modelRuntime.getModel(selection.providerId, selection.modelId);
-    if (!model || (model.type && model.type !== 'chat')) throw new Error('所选聊天模型不存在于 Pi 模型目录');
+    if (!model || (model.type && model.type !== 'chat')) throw new Error('所选聊天模型不存在于 Corvid 模型目录');
     const next = { providerId: model.provider, modelId: model.id };
     writeSelection(next);
     return next;
@@ -163,7 +163,7 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function login(providerId) {
     const modelRuntime = await runtime();
     const provider = modelRuntime.getProvider(providerId);
-    if (!provider?.auth?.oauth) throw new Error('当前 Provider 没有 Pi OAuth 登录方式');
+    if (!provider?.auth?.oauth) throw new Error('当前 Provider 不支持 OAuth 登录');
     const controller = new AbortController();
     return modelRuntime.login(providerId, 'oauth', {
       signal: controller.signal,
@@ -184,12 +184,12 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function loginApiKey(providerId, apiKey) {
     if (typeof apiKey !== 'string' || apiKey.trim().length < 8 || apiKey.length > 8_000) throw new Error('API Key 长度无效');
     const modelRuntime = await runtime();
-    if (!modelRuntime.getProvider(providerId)?.auth?.apiKey?.login) throw new Error('当前 Provider 不支持 Pi API Key 登录');
+    if (!modelRuntime.getProvider(providerId)?.auth?.apiKey?.login) throw new Error('当前 Provider 不支持 API Key 登录');
     const controller = new AbortController();
     await modelRuntime.login(providerId, 'api_key', {
       signal: controller.signal,
       prompt: async prompt => {
-        if (prompt.type !== 'secret') throw new Error('该 Provider 需要额外交互输入；请从 Pi 设置完成登录后重试');
+        if (prompt.type !== 'secret') throw new Error('该 Provider 需要额外交互输入；请重新检查 Corvid 中的账号授权步骤');
         return apiKey.trim();
       },
       notify: onAuthEvent,
@@ -199,7 +199,7 @@ function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, op
   async function getModel(selection = readSelection()) {
     const modelRuntime = await runtime();
     const model = modelRuntime.getModel(selection.providerId, selection.modelId);
-    if (!model || (model.type && model.type !== 'chat')) throw new Error(`Pi 模型不存在：${selection.providerId}/${selection.modelId}`);
+    if (!model || (model.type && model.type !== 'chat')) throw new Error(`模型不存在于 Corvid 目录：${selection.providerId}/${selection.modelId}`);
     const customEndpoint = readEndpoints()[selection.providerId];
     if (!customEndpoint && !await modelRuntime.checkAuth(selection.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selection.providerId)) throw new Error(`请先连接 ${selection.providerId} 账号`);
     return { runtime: modelRuntime, model, requiresAuth: customEndpoint ? Boolean(customEndpoint.apiKey && customEndpoint.apiKey !== NO_AUTH_API_KEY) : true };
