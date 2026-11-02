@@ -66,7 +66,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     } else if (event.type === 'tool_execution_end') {
       addEvent(task, event.isError ? 'error' : 'tool', `${event.toolName}${event.isError ? ' 执行失败' : ' 已完成'}`);
     } else if (event.type === 'auto_retry_start') {
-      addEvent(task, 'retry', `连接异常，Pi 正在重试（${event.attempt}/${event.maxAttempts}）`);
+      addEvent(task, 'retry', `连接暂时不稳定，Agent 正在重试（${event.attempt}/${event.maxAttempts}）`);
     }
   }
   async function prepare({ profileId, roomId, tabId }) {
@@ -90,7 +90,7 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);
     if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
-    if (!task.piSessionFile) throw new Error('当前任务没有可继续的 Pi transcript，请发起新任务');
+    if (!task.piSessionFile) throw new Error('当前对话没有可恢复记录，请重新开始');
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
     const context = await readContext({ dataDir, profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
@@ -109,12 +109,12 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
     try {
       const modelInfo = task.selectedModel ? await resolveModel(task.selectedModel) : null;
       const created = await createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(modelInfo ? { selectedModel: task.selectedModel, model: modelInfo.model, modelRuntime: modelInfo.runtime, requiresAuth: modelInfo.requiresAuth } : {}), ...(sessionFile ? { sessionFile } : {}) });
-      task.runtime = created.fixture ? '本地确定性 fixture（无真实模型）' : 'Pi SDK';
+      task.runtime = created.fixture ? '本地确定性 fixture（无真实模型）' : 'Corvid Agent';
       task.piSessionFile = created.sessionFile || sessionFile || null;
       changed();
       sessions.set(task.id, created.session);
       if (typeof created.session.subscribe === 'function') created.session.subscribe(event => handlePiEvent(task, event));
-      task.status = 'running'; addEvent(task, initial ? 'started' : 'continued', initial ? 'Pi Agent 已开始处理任务' : 'Pi Agent 已从保存的对话继续');
+      task.status = 'running'; addEvent(task, initial ? 'started' : 'continued', initial ? 'Agent 已开始处理' : 'Agent 已从保存的对话继续');
       const pageContext = JSON.stringify({ url: context.url, title: context.title, snapshot: consentedSnapshot });
       const payload = initial ? `用户任务：\n${message}\n\n用户明确确认共享的当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}` : `用户继续指令：\n${message}\n\n用户已重新确认当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}`;
       void Promise.resolve(created.session.prompt(payload)).then(() => {
@@ -122,18 +122,18 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
         task.piSessionFile = created.session.sessionFile || task.piSessionFile;
         const assistantTurn = task.conversation?.at(-1);
         if (assistantTurn?.role === 'assistant') assistantTurn.status = 'completed';
-        task.status = 'completed'; addEvent(task, 'completed', 'Pi Agent 已结束本轮任务'); sessions.delete(task.id); created.session.dispose?.();
+        task.status = 'completed'; addEvent(task, 'completed', 'Agent 已完成本轮回复'); sessions.delete(task.id); created.session.dispose?.();
       }, error => {
         if (task.status !== 'running') return;
         task.piSessionFile = created.session.sessionFile || task.piSessionFile;
         const assistantTurn = task.conversation?.at(-1);
         if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
-        task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Pi Agent 未完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
+        task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Agent 未能完成：${task.error}`); sessions.delete(task.id); created.session.dispose?.();
       });
     } catch (error) {
       const assistantTurn = task.conversation?.at(-1);
       if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
-      task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Pi Agent：${task.error}`); throw new Error(task.error);
+      task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`); throw new Error(task.error);
     }
   }
   function stop(taskId) {
@@ -152,21 +152,21 @@ function createPiWorkbench({ dataDir, onChange = () => {}, createSession = creat
       const session = sessions.get(task.id);
       if (!session) {
         task.status = 'interrupted';
-        addEvent(task, 'interrupted', 'Room 已交给用户，但 Pi session 不可用；结果未知。');
+        addEvent(task, 'interrupted', 'Room 已交给用户，但 Agent 会话不可用；结果未知。');
         continue;
       }
       task.status = 'waiting_for_user';
       task.piSessionFile = session.sessionFile || task.piSessionFile;
       const assistantTurn = task.conversation?.at(-1);
       if (assistantTurn?.role === 'assistant') assistantTurn.status = 'waiting_for_user';
-      addEvent(task, 'waiting_for_user', '用户已接管 Room；Pi 已暂停，等待用户交还并确认后继续。');
+      addEvent(task, 'waiting_for_user', '你已接管此 Room；Agent 已暂停，交还后可检查页面并继续。');
       sessions.delete(task.id);
       try {
         await session.abort?.();
         task.piSessionFile = session.sessionFile || task.piSessionFile;
       } catch (error) {
         task.status = 'interrupted';
-        task.error = `无法确认 Pi 已暂停：${String(error?.message || error).slice(0, 500)}`;
+        task.error = `无法确认 Agent 已暂停：${String(error?.message || error).slice(0, 500)}`;
         addEvent(task, 'error', task.error);
       } finally {
         session.dispose?.();

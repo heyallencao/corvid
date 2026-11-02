@@ -21,7 +21,7 @@ const selected = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
   try {
     app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_TEST_PI_REAL_MODEL: '1', CORVID_PORT: '0' } });
     const shell = await app.firstWindow();
-    await shell.getByRole('button', { name: 'Pi Agent 工作台' }).click();
+    await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     const modelSelect = shell.getByLabel('内置 Agent 模型', { exact: true });
     await modelSelect.waitFor();
     const lunaValue = await modelSelect.locator('option').evaluateAll(options => options.find(option => option.value.includes('"providerId":"openai-codex"') && option.value.includes('"modelId":"gpt-6-luna"'))?.value);
