@@ -39,9 +39,10 @@ function profiles(root) {
     const directory = profilePath(base, relative);
     const hasBookmarks = fs.existsSync(sourceFile(directory, 'Bookmarks'));
     const hasHistory = fs.existsSync(sourceFile(directory, 'History'));
-    if (!hasBookmarks && !hasHistory) return null;
+    const hasExtensions = fs.existsSync(sourceFile(directory, 'Extensions'));
+    if (!hasBookmarks && !hasHistory && !hasExtensions) return null;
     const metadata = info[relative] || {};
-    return {id:relative,name:typeof metadata.name==='string' && metadata.name.trim()?metadata.name.trim():(relative==='Default'?'默认资料':relative),hasBookmarks,hasHistory};
+    return {id:relative,name:typeof metadata.name==='string' && metadata.name.trim()?metadata.name.trim():(relative==='Default'?'默认资料':relative),hasBookmarks,hasHistory,hasExtensions};
   }).filter(Boolean);
   return found.sort((a,b)=>a.id==='Default'?-1:b.id==='Default'?1:a.name.localeCompare(b.name));
 }

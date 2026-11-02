@@ -2,7 +2,7 @@
 
 Corvid 是一个本地优先的桌面浏览器，也是用户与 Agent 协作的主产品：用户照常使用完整浏览器，Agent 在各自独立的 **Room** 里执行任务；用户能看到状态、接管控制并在需要时交还 Agent。内置 Agent 工作台与外部 Agent SDK/CLI 将共用 Room、Profile、页面上下文和控制权模型。
 
-项目仍在开发中。当前已有桌面浏览器和外部 Agent SDK/CLI；内置 Agent 工作台尚未实现。功能覆盖、验收状态和待办事项见 [执行任务板](docs/execution/feature-board.md)；架构与边界见 [系统设计](docs/architecture/overview.md)。
+项目仍在开发中。当前提供桌面浏览器、Pi 内置 Agent 工作台和外部 Agent SDK/CLI。用户浏览与 Agent Room 共用 Profile、页面和控制权模型；Agent 操作前需要明确页面上下文。功能覆盖、验收状态和待办事项见 [执行任务板](docs/execution/feature-board.md)；架构与边界见 [系统设计](docs/architecture/overview.md)。
 
 ## 核心概念
 
@@ -30,6 +30,7 @@ npm start
 - `Cmd/Ctrl + T/W/L/R`、`Cmd/Ctrl + 数字`、`Control + Tab` 等常用快捷键可用。
 - 历史、书签、下载面板支持搜索；下载完成后可以打开文件或在文件夹中显示。
 - 窗口位置、尺寸与最大化状态保存在数据目录的 `window-state.json`，重启后恢复。
+- 首次启动可选择从 Google Chrome 导入书签、历史、macOS Cookie 和逐项选择的扩展；设置中可以继续迁移。扩展按 Corvid Profile 隔离，权限与 Electron API 兼容边界会显示在界面中；扩展工具栏弹窗、更新、已保存密码及 Chrome Web Store 全面兼容尚未支持。Cookie 导入会调用 macOS 钥匙串读取 Chrome 加密密钥。
 
 ## Agent 接入
 

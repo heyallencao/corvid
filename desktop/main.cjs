@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 fs.mkdirSync(dataDir,{recursive:true});
 app.setPath('userData', dataDir);
-const hadExistingCorvidData=[path.join(dataDir,'rooms.json'),path.join(dataDir,'spaces.json'),path.join(dataDir,'profiles.json'),path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json')].some(file=>fs.existsSync(file));
+const hadExistingCorvidData=[path.join(dataDir,'rooms.json'),path.join(dataDir,'spaces.json'),path.join(dataDir,'profiles.json'),path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json'),path.join(dataDir,'managed-extensions.json')].some(file=>fs.existsSync(file));
 const token = crypto.randomBytes(32).toString('hex');
 const tabs = new Map();
 const queues = new Map();
@@ -122,6 +122,9 @@ function saveWindowState() {
 function scheduleWindowStateSave() { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(saveWindowState, 300); }
 const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
+const chromeExtensions = require('./chrome-extensions.cjs');
+const managedExtensions = chromeExtensions.createStore(dataDir);
+const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
@@ -131,6 +134,20 @@ catch(error) { if(error.code!=='ENOENT') throw error; profiles=[{id:'default',na
 if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Error('Invalid profile data');
 const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
+async function loadProfileExtensions(profileId){
+  const browserSession=session.fromPartition(partitionFor(profileId));
+  for(const extension of managedExtensions.list(profileId).filter(item=>item.enabled)){
+    if(browserSession.extensions.getExtension(extension.id))continue;
+    try{
+      const loaded=await browserSession.extensions.loadExtension(chromeExtensions.managedPath(dataDir,profileId,extension.id,extension.version));
+      if(loaded.id!==extension.id){browserSession.extensions.removeExtension(loaded.id);throw new Error(`Electron 返回了不同的扩展 ID：${loaded.id}`);}
+      extensionLoadErrors.delete(`${profileId}:${extension.id}`);
+    }catch(error){
+      extensionLoadErrors.set(`${profileId}:${extension.id}`,String(error?.message||error).slice(0,500));
+    }
+  }
+  return browserSession;
+}
 const defaultSearch='https://www.google.com/search?q={query}';
 function profileSettings(profileId) { const profile=findProfile(profileId);return {zoom:profile.zoom ?? 1,searchTemplate:profile.searchTemplate ?? defaultSearch}; }
 function saveSettings(profileId,settings) {
@@ -350,7 +367,7 @@ function windowStateSnapshot(record) {
 }
 async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {}) {
   const s = findRoom(roomId);
-  const partition=partitionFor(findProfile(s.profileId).id); installDownloads(partition,s.profileId);
+  const partition=partitionFor(findProfile(s.profileId).id); await loadProfileExtensions(s.profileId); installDownloads(partition,s.profileId);
   const view = new WebContentsView({webPreferences:{partition,sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(__dirname,'page-preload.cjs')}});
   const openedBy=metadata.openedBy ?? 'unknown';
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
@@ -536,18 +553,25 @@ async function dispatch(method, args = {}, fromApi = false) {
       const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
       if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
-      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,canImportCookies:process.platform==='darwin',extensions:null};
+      const extensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId)).map(({sourcePath,...extension})=>extension);
+      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,canImportCookies:process.platform==='darwin',extensions};
     }
     case 'importChromeData': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
       const selectedRoot=selectedChromeSources.get(args.sourceToken);
       if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
       const profileId=findProfile(args.profileId ?? activeProfileId).id;
-      if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history','cookies'].includes(category)))throw new Error('请选择可导入的资料类别');
+      if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history','cookies','extensions'].includes(category)))throw new Error('请选择可导入的资料类别');
       if(args.categories.includes('cookies') && process.platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
       const sources=chromeImport.profiles(selectedRoot);
       if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const sourceExtensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId));
+      const chosenExtensionIds=args.extensionIds;
+      if(args.categories.includes('extensions')){
+        if(!Array.isArray(chosenExtensionIds)||!chosenExtensionIds.length||chosenExtensionIds.length>50||chosenExtensionIds.some(extensionId=>typeof extensionId!=='string'))throw new Error('请选择要迁移的 Chrome 扩展');
+        if(chosenExtensionIds.some(extensionId=>!sourceExtensions.some(extension=>extension.id===extensionId)))throw new Error('Chrome 扩展清单已变化，请重新预览');
+      }else if(chosenExtensionIds!==undefined&&(!Array.isArray(chosenExtensionIds)||chosenExtensionIds.length))throw new Error('扩展 ID 只能与扩展导入类别一起提交');
       const destinationSession=session.fromPartition(partitionFor(profileId));
       const cookieResult={imported:0,skipped:0,unsupported:0},addedCookies=[];
       const rollbackCookies=async()=>{
@@ -577,10 +601,62 @@ async function dispatch(method, args = {}, fromApi = false) {
           }
           await destinationSession.cookies.flushStore();
         }
-        const result=library.importChromeData(content,profileId,args.categories);
+        const libraryCategories=args.categories.filter(category=>category!=='extensions');
+        const result=libraryCategories.length?library.importChromeData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
+        const extensions={imported:[],skipped:[],failed:[]};
+        for(const extensionId of chosenExtensionIds||[]){
+          const extension=sourceExtensions.find(item=>item.id===extensionId);
+          if(managedExtensions.find(profileId,extensionId)){extensions.skipped.push(extension.name);continue;}
+          let copied;
+          try{
+            copied=chromeExtensions.copyToCorvid(extension,dataDir,profileId);
+            managedExtensions.add({profileId,id:extension.id,name:extension.name,version:extension.version,manifestVersion:extension.manifestVersion,permissions:extension.permissions,enabled:true,importedAt:new Date().toISOString()});
+            await loadProfileExtensions(profileId);
+            const loadError=extensionLoadErrors.get(`${profileId}:${extension.id}`);
+            if(loadError)throw new Error(loadError);
+            extensions.imported.push({id:extension.id,name:extension.name,version:extension.version});
+          }catch(error){
+            if(managedExtensions.find(profileId,extension.id))managedExtensions.remove(profileId,extension.id);
+            if(copied?.created)fs.rmSync(copied.path,{recursive:true,force:true});
+            extensions.failed.push({id:extension.id,name:extension.name,error:String(error?.message||error).slice(0,300)});
+          }
+        }
         selectedChromeSources.delete(args.sourceToken);
-        return {...result,cookies:cookieResult,profileId};
+        return {...result,cookies:cookieResult,extensions,profileId};
       }catch(error){await rollbackCookies();throw error;}
+    }
+    case 'listProfileExtensions': {
+      if(fromApi)throw new Error('扩展清单必须由用户在桌面查看');
+      const profileId=findProfile(args.profileId??activeProfileId).id;
+      return {extensions:managedExtensions.list(profileId).map(item=>({...item,loadError:extensionLoadErrors.get(`${profileId}:${item.id}`)||null}))};
+    }
+    case 'setProfileExtensionEnabled': {
+      if(fromApi)throw new Error('扩展管理必须由用户在桌面操作');
+      const profileId=findProfile(args.profileId??activeProfileId).id,extension=managedExtensions.find(profileId,args.extensionId);
+      if(!extension)throw new Error('Corvid 扩展不存在');
+      const browserSession=session.fromPartition(partitionFor(profileId));
+      if(args.enabled===true){
+        managedExtensions.setEnabled(profileId,extension.id,true);
+        await loadProfileExtensions(profileId);
+        const loadError=extensionLoadErrors.get(`${profileId}:${extension.id}`);
+        if(loadError){managedExtensions.setEnabled(profileId,extension.id,false);throw new Error(`扩展无法加载：${loadError}`);}
+      }else if(args.enabled===false){
+        if(browserSession.extensions.getExtension(extension.id))browserSession.extensions.removeExtension(extension.id);
+        managedExtensions.setEnabled(profileId,extension.id,false);
+        extensionLoadErrors.delete(`${profileId}:${extension.id}`);
+      }else throw new Error('扩展启用状态无效');
+      update();return {id:extension.id,enabled:args.enabled};
+    }
+    case 'removeProfileExtension': {
+      if(fromApi)throw new Error('扩展管理必须由用户在桌面操作');
+      const profileId=findProfile(args.profileId??activeProfileId).id,extension=managedExtensions.find(profileId,args.extensionId);
+      if(!extension)throw new Error('Corvid 扩展不存在');
+      const browserSession=session.fromPartition(partitionFor(profileId));
+      if(browserSession.extensions.getExtension(extension.id))browserSession.extensions.removeExtension(extension.id);
+      managedExtensions.remove(profileId,extension.id);
+      fs.rmSync(chromeExtensions.managedPath(dataDir,profileId,extension.id,extension.version),{recursive:true,force:true});
+      extensionLoadErrors.delete(`${profileId}:${extension.id}`);
+      update();return {removed:true,id:extension.id};
     }
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
     case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('Profile name required');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
