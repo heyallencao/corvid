@@ -274,6 +274,8 @@ async function openChromeImportDialog(){
   document.querySelector('#chrome-source-profile').replaceChildren(new Option('先选择资料目录',''));
   document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
   document.querySelector('#chrome-extension-choices').replaceChildren();
+  document.querySelector('#chrome-cookie-consent-check').checked=false;
+  document.querySelector('#chrome-cookie-consent').hidden=true;
   for(const input of document.querySelectorAll('input[name="chrome-category"]'))input.checked=input.value==='bookmarks'||input.value==='history';
   document.querySelector('#chrome-import-preview').textContent='选择目录后会显示可导入项目数量。';
   await openShellDialog('#chrome-import');
@@ -307,7 +309,11 @@ function showChromePreview(preview){
 function updateChromeImportButton(){
   const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);
   const selectedExtensions=[...document.querySelectorAll('#chrome-extension-choices input:checked')];
-  document.querySelector('#confirm-chrome-import').disabled=!chromeSourceId||!categories.length||(categories.includes('extensions')&&!selectedExtensions.length);
+  const importingCookies=categories.includes('cookies');
+  const cookieConsent=document.querySelector('#chrome-cookie-consent-check');
+  document.querySelector('#chrome-cookie-consent').hidden=!importingCookies;
+  if(!importingCookies)cookieConsent.checked=false;
+  document.querySelector('#confirm-chrome-import').disabled=!chromeSourceId||!categories.length||(importingCookies&&!cookieConsent.checked)||(categories.includes('extensions')&&!selectedExtensions.length);
 }
 document.querySelector('#start-chrome-import').onclick=async()=>{
   document.querySelector('#settings').close();
@@ -326,7 +332,7 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
   event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
   const extensionIds=[...document.querySelectorAll('#chrome-extension-choices input:checked')].map(input=>input.value);
   try{
-    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,...(categories.includes('extensions')?{extensionIds}:{})});
+    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:settingsProfileId,categories,cookieConsent:categories.includes('cookies')&&document.querySelector('#chrome-cookie-consent-check').checked,...(categories.includes('extensions')?{extensionIds}:{})});
     error.dataset.success='true';
     const failed=result.extensions.failed.map(item=>`${item.name}：${item.error}`).join('；');
     const cookieNotes=[];
@@ -342,6 +348,7 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
   catch(reason){error.textContent=reason.message;}
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
+document.querySelector('#chrome-cookie-consent-check').onchange=updateChromeImportButton;
 document.querySelector('#chrome-extension-choices').onchange=updateChromeImportButton;
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
 chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};

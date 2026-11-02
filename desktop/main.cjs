@@ -569,7 +569,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
       const profileId=findProfile(args.profileId ?? activeProfileId).id;
       if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history','cookies','extensions'].includes(category)))throw new Error('请选择可导入的资料类别');
-      if(args.categories.includes('cookies') && process.platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
+      chromeImport.assertCookieConsent(args.categories,args.cookieConsent);
       const sources=chromeImport.profiles(selectedRoot);
       if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
