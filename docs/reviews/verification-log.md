@@ -30,11 +30,11 @@
 - 仅通过 renderer 事件 fixture 打开并取消弹窗；未登录 Provider、未触发 OAuth、未调用模型、未消耗模型额度。
 - 边界：这证明 Corvid UI 的错误归一化与取消呈现，不证明真实 Provider 登录流程、系统浏览器回调或屏幕阅读器体验。
 
-## 2026-11-03 Chrome Cookie 部分回滚的可执行重试说明（Issue #77）
+## 2026-11-03 Chrome Cookie 部分回滚的重启恢复路径（Issue #77）
 
-- 当 Electron 的 URL/name 删除无法按 Cookie path 安全执行时，维持保守行为：保留目标 Profile 旧 Cookie 与本次已写 Cookie，并将部分回滚状态明确呈现。
-- 错误说明现在指出同一 Chrome 来源和目标 Profile 下再次点击“导入”会重试并保存结果；E2E 断言旧路径值未变、新路径值可见、目标不可切换且同源重试成功。
-- `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs`：真实 Electron + 临时数据目录通过；未访问真实 Chrome Profile、系统钥匙串或真实磁盘故障。
+- 保持按 URL/name 无法限制 path 时不删除同名旧 Cookie 的保护逻辑；告警现在说明当前窗口可直接重试，关闭窗口或重启后需重新选择同一 Chrome 来源和目标 Profile 再导入。
+- 扩展隔离真实 Electron E2E：在首次 `flushStore()` 和回滚 `flushStore()` 调用前分别注入一次失败，断言旧路径值保留、新路径导入值状态明确，然后对 Electron 主进程执行 `SIGKILL`；重启后重新选择来源并重试，断言旧值不变且目标 Cookie 可用。
+- `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs`：通过。该注入发生在 `flushStore()` 调用前，不模拟文件系统 I/O 错误或断电；未访问真实 Chrome Profile/钥匙串，真实磁盘 flush 失败边界仍未解决，Issue 保持开放。
 
 ## 2026-11-03 Corvid Agent 运行时错误变体隔离（Issue #89）
 
