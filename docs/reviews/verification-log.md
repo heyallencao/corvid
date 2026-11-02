@@ -1,3 +1,13 @@
+# 验证记录
+
+## 2026-11-02 Corvid Agent 主动停止与迟到事件隔离（Issue #68）
+
+- 基线复现：新增隔离真实 Electron E2E 后，先在未修复实现上运行并观察到停止后的 `assistant_delta` 把 task.output 改写为“迟到的停止后输出”；测试以非空 output 断言失败，确认 bug 可重复。
+- 修复：runtime 事件处理同时检查 task 仍处于 running、事件来源仍是当前 session；主动停止立即落盘为 interrupted 并从活动 session 映射移除，等待 abort 完成后再 dispose。abort 失败或 dispose 失败会以 Corvid 错误提示结果无法确认，任务与 transcript 保留。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/agent-stop-e2e.cjs` 通过，覆盖停止状态、迟到 assistant delta/tool event 拒收及 abort 失败提示；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 通过，原有多轮对话、重启恢复、用户接管/交还合同保持。
+- 全量验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；43 条独立脚本命令与 3 项 `node:test`，共 46 项检查通过。未调用真实模型/OAuth，未消耗模型额度。
+- 边界：fixture abort 不能证明真实 provider 的远端执行或页面副作用已终止；停止后的结果仍要求用户检查。
+
 # 2026-11-02 Corvid-owned Pi runtime 与自定义模型端点
 
 ## 执行与结果

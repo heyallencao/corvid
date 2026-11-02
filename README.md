@@ -27,7 +27,7 @@ npm start
 - 标签栏显示页面 favicon，支持拖拽排序、中键关闭与**固定标签**（固定标签置顶、关闭前确认）；右键标签可固定/取消固定、重新加载、复制链接、关闭标签或关闭其他标签。
 - 标签和 Room 的状态会跨重启恢复；通过工具栏“新建窗口”或 Cmd/Ctrl+N 可创建独立浏览窗口，每窗维护自己的 Room 列表。关闭窗口时其 Room 会转移到仍打开的窗口；Agent 接口仍可查看和操作所有窗口中的 Room。
 - `Cmd/Ctrl + F` 打开页内查找：输入即显示 `当前/总数`，Enter / Shift+Enter 前后跳转，Esc 关闭。
-- `Cmd/Ctrl + T/W/L/R`、`Cmd/Ctrl + 数字`、`Control + Tab` 等常用快捷键可用。
+- `Cmd/Ctrl + T/W/L/R`、`Cmd/Ctrl + 数字`、`Control + Tab` 等常用快捷键可用；`Cmd/Ctrl + P` 打印当前网页。
 - 历史、书签、下载面板支持搜索；下载完成后可以打开文件或在文件夹中显示。
 - 窗口位置、尺寸与最大化状态保存在数据目录的 `window-state.json`，重启后恢复。
 - 首次启动可选择从 Google Chrome 导入书签、历史、macOS Cookie 和逐项选择的扩展；设置中可以继续迁移。扩展按 Corvid Profile 隔离，权限与 Electron API 兼容边界会显示在界面中；扩展工具栏弹窗、更新、已保存密码及 Chrome Web Store 全面兼容尚未支持。Cookie 导入会调用 macOS 钥匙串读取 Chrome 加密密钥。会话 Cookie 按原语义在 Corvid 退出时失效，带有效期的 Cookie 可跨重启保留。

@@ -46,6 +46,7 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
     changed();
   }
   function handleRuntimeEvent(task, event) {
+    if (task.status !== 'running') return;
     if (event.type === 'assistant_delta') {
       if (event.text) {
         task.output = `${task.output || ''}${event.text}`.slice(-MAX_OUTPUT);
@@ -104,7 +105,10 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
       task.sessionRef = session.checkpoint() || task.sessionRef || null;
       changed();
       sessions.set(task.id, session);
-      if (typeof session.subscribe === 'function') session.subscribe(event => handleRuntimeEvent(task, event));
+      if (typeof session.subscribe === 'function') session.subscribe(event => {
+        if (sessions.get(task.id) !== session || task.status !== 'running') return;
+        handleRuntimeEvent(task, event);
+      });
       task.status = 'running'; addEvent(task, initial ? 'started' : 'continued', initial ? 'Agent 已开始处理' : 'Agent 已从保存的对话继续');
       const pageContext = JSON.stringify({ url: context.url, title: context.title, snapshot: consentedSnapshot });
       const payload = initial ? `用户任务：\n${message}\n\n用户明确确认共享的当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}` : `用户继续指令：\n${message}\n\n用户已重新确认当前页面上下文（仅限此 Room 的 ${context.label}）：\n${pageContext}`;
@@ -127,7 +131,7 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
       task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`); throw new Error(task.error);
     }
   }
-  function stop(taskId) {
+  async function stop(taskId) {
     const task = taskById(taskId), session = sessions.get(taskId);
     if (!session || task.status !== 'running') return copy(present(task));
     task.sessionRef = session.checkpoint() || task.sessionRef || null;
@@ -135,7 +139,17 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
     const assistantTurn = task.conversation?.at(-1);
     if (assistantTurn?.role === 'assistant') assistantTurn.status = 'interrupted';
     addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
-    sessions.delete(taskId); session.abort?.(); session.dispose?.();
+    sessions.delete(taskId);
+    try { await session.abort?.(); }
+    catch (error) {
+      task.error = `无法确认 Agent 已停止：${safeError(error)}`;
+      addEvent(task, 'error', task.error);
+    }
+    try { session.dispose?.(); }
+    catch (error) {
+      task.error = `Agent 会话清理失败：${safeError(error)}`;
+      addEvent(task, 'error', task.error);
+    }
     return copy(present(task));
   }
   async function pauseRoom(roomId) {
