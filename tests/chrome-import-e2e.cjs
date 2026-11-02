@@ -145,6 +145,19 @@ async function selectAllExtensions(shell){
   for(const checkbox of await shell.locator('#chrome-extension-choices input').all())await checkbox.check();
 }
 
+async function allowCookieImport(shell){
+  await shell.locator('#chrome-cookie-consent').getByText(/会请求访问“Chrome Safe Storage”/).waitFor();
+  assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'Cookie import must require a separate explicit consent');
+  await shell.locator('#chrome-cookie-consent-check').check();
+  assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'Cookie consent should enable import when all other choices are valid');
+  await shell.locator('input[name="chrome-category"][value="cookies"]').uncheck();
+  assert.equal(await shell.locator('#chrome-cookie-consent').isHidden(),true,'Cookie consent must disappear when Cookie import is deselected');
+  await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+  assert.equal(await shell.locator('#chrome-cookie-consent-check').isChecked(),false,'Cookie consent must reset when Cookie import is selected again');
+  assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'reselecting Cookies must require renewed consent');
+  await shell.locator('#chrome-cookie-consent-check').check();
+}
+
 (async()=>{
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
@@ -159,6 +172,10 @@ async function selectAllExtensions(shell){
   verifyCookieDecryption(tempRoot);
   try{
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
+    assert.throws(()=>chromeImport.assertCookieConsent(['cookies'],false,'darwin'),/请先确认 Cookie 导入说明/,'Cookie import must reject missing explicit consent before reading source secrets');
+    assert.doesNotThrow(()=>chromeImport.assertCookieConsent(['cookies'],true,'darwin'),'explicit Cookie consent should be accepted on macOS');
+    assert.throws(()=>chromeImport.assertCookieConsent(['cookies'],true,'win32'),/只支持 macOS/,'Cookie consent must not bypass the platform support boundary');
+    assert.doesNotThrow(()=>chromeImport.assertCookieConsent(['bookmarks'],false,'win32'),'non-sensitive import categories must not require Cookie consent');
     const sourceBefore={bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Bookmarks'))).digest('hex'),history:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','History'))).digest('hex'),extensionManifest:crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Extensions',chromeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),cookies:supportsCookieImport?crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex'):null};
     const preview=chromeImport.readProfile(chromeRoot,'Default');
     assert.equal(preview.bookmarks[0].title,'书签 0');
@@ -188,6 +205,7 @@ async function selectAllExtensions(shell){
       await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
       await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
       await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+      await allowCookieImport(shell);
       await shell.locator('#confirm-chrome-import').click();
       await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*可能仍留有部分 Cookie/).waitFor();
       const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
@@ -209,8 +227,8 @@ async function selectAllExtensions(shell){
     await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved','title':'已有书签'});
     const libraryBeforeFailedImport=fs.readFileSync(path.join(appData,'library.json'));
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
-    if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
+    if(supportsCookieImport){await shell.locator('input[name="chrome-category"][value="cookies"]').check();await allowCookieImport(shell);}
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText('测试注入：Chrome 导入浏览资料库替换失败').waitFor();
     assert.deepEqual(fs.readFileSync(path.join(appData,'library.json')),libraryBeforeFailedImport,'failed Chrome library replacement must preserve the existing library bytes');
@@ -244,8 +262,8 @@ async function selectAllExtensions(shell){
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
-    if(supportsCookieImport)await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await selectAllExtensions(shell);
+    if(supportsCookieImport){await shell.locator('input[name="chrome-category"][value="cookies"]').check();await allowCookieImport(shell);}
     await shell.locator('#confirm-chrome-import').click();
     await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 3 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2,'repeat import must be idempotent');

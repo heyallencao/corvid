@@ -147,9 +147,15 @@ async function readCookies(directory){
   return decodeCookieRows(rows,key);
 }
 
+function assertCookieConsent(categories,consent,platform=process.platform){
+  if(!categories.includes('cookies'))return;
+  if(platform!=='darwin')throw new Error('Cookie 导入目前只支持 macOS。');
+  if(consent!==true)throw new Error('请先确认 Cookie 导入说明，再读取 macOS 钥匙串中的 Chrome Safe Storage。');
+}
+
 function readProfile(root, relative) {
   const directory=profilePath(root,relative);
   return {bookmarks:readBookmarks(directory),history:readHistory(directory),cookieCount:process.platform==='darwin'?cookieCount(directory):null};
 }
 
-module.exports={profiles,readProfile,readCookies,readCookiesWithKey};
+module.exports={profiles,readProfile,readCookies,readCookiesWithKey,assertCookieConsent};
