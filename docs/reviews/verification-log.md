@@ -16,6 +16,14 @@
 - 定向回归：`agent-runtime-contract-e2e.cjs`、`pi-runtime-e2e.cjs`、`pi-models-e2e.cjs`、`pi-workbench-e2e.cjs`、`agent-stop-e2e.cjs` 与 `pi-custom-endpoint-e2e.cjs` 均通过；相关 JS `node --check` 和 `git diff --check` 通过。未运行全量 `npm test`。
 - 边界：事件来自确定性本地 fixture，不连接真实模型或 Provider；证明的是事件适配到 Corvid 任务卡的本地 UI 路径及用户可见名称映射，不证明真实 Provider 网络延迟、所有工具种类或真实服务的流式稳定性。
 
+## 2026-11-03 Agent 上下文预览键盘焦点与活动文案本地化（Issue #5）
+
+- 缺口：检查页面上下文后工作台重绘会丢失焦点；旧分支的浏览器工具活动文案仅有中文，且把内部工具名称写进任务事件记录。
+- 调整：预览成功后将焦点移动到必须确认的页面同意复选框；活动事件改为 Corvid 中英双语资源键，任务记录不存储内部工具名，界面按当前语言翻译活动状态。
+- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `node tests/localization-e2e.cjs` 均通过；运行时临时链接主工作区既有 `node_modules`，测试后已移除链接。前者以真实 Electron 与确定性本地 fixture 覆盖 Tab/Enter 预览、焦点落在同意复选框、Space 同意、Tab/Enter 发送、流式文本及工具事件；并切换为英文验证活动文案，再切回中文。后者验证 zh-CN/en 资源键和值一致、窄窗文案及本地化格式。`node --check` 涉及的 JS/CJS 文件与 `git diff --check` 通过。
+- REA 参考：复用 Kobra `/components/dropdown-menu` 历史受控 Chromium Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`，记录时间 2026-11-03 11:37（Asia/Shanghai）。直接观察限于该路由可访问；未操作菜单，焦点/关闭/键盘行为未知。静态证据只显示菜单示例页面入口，不证明目标交互。本次焦点落点由 Corvid 的显式页面同意流程和真实 Electron 键盘回归决定，不把参考页当验收标准；未复制代码或素材。
+- 边界：本地 Electron 与确定性 fixture，不连接真实模型或 Provider；未覆盖 VoiceOver 与其他平台。
+
 ## 2026-11-03 主题色对比度修复（Issue #16）
 
 - 范围：浅/深主题的次要文本、warning/success 状态文字与焦点指示 token。浅色 `--text-muted` 从 `#858c98` 调整为 `#5f6878`，warning 从 `#a56a13` 调整为 `#8f5e16`，success 从 `#268461` 调整为 `#1d7352`，`--focus-ring` 改为复用 `--accent`；深色 `--text-muted` 调整为 `#a4afbf`。

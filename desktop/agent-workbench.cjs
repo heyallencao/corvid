@@ -3,8 +3,8 @@ const { createAgentTaskStore } = require('./agent-task-store.cjs');
 const MAX_OUTPUT = 24_000;
 const MAX_IMPORTED_CONVERSATION = 24_000;
 const TOOL_ACTIVITY_LABELS = Object.freeze({
-  corvid_page_snapshot: { starting: '正在读取当前页面', completed: '当前页面读取完成', failed: '读取当前页面失败' },
-  corvid_navigate: { starting: '正在打开目标网页', completed: '目标网页已打开', failed: '目标网页打开失败' },
+  corvid_page_snapshot: { starting: 'agentPageReadStarting', completed: 'agentPageReadCompleted', failed: 'agentPageReadFailed' },
+  corvid_navigate: { starting: 'agentPageOpenStarting', completed: 'agentPageOpenCompleted', failed: 'agentPageOpenFailed' },
 });
 const copy = value => JSON.parse(JSON.stringify(value));
 function savedConversationContext(conversation = []) {
@@ -63,9 +63,9 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   }
   function list(profileId) { return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(present)); }
   function taskById(taskId) { const task = tasks.find(item => item.id === taskId); if (!task) throw new Error('Agent task not found'); return task; }
-  function addEvent(task, type, text) {
-    if (typeof text !== 'string' || !text) return;
-    task.events = [...(task.events || []), { type, text: text.slice(0, 4_000), at: new Date().toISOString() }].slice(-100);
+  function addEvent(task, type, text, messageKey, params) {
+    if (!messageKey && (typeof text !== 'string' || !text)) return;
+    task.events = [...(task.events || []), { type, text: text.slice(0, 4_000), ...(messageKey ? { messageKey, params } : {}), at: new Date().toISOString() }].slice(-100);
     task.updatedAt = new Date().toISOString();
     changed();
   }
@@ -79,12 +79,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         task.updatedAt = new Date().toISOString(); scheduleChanged();
       }
     } else if (event.type === 'tool_start') {
-      addEvent(task, 'tool', (TOOL_ACTIVITY_LABELS[event.name] || { starting: '正在执行浏览器操作' }).starting);
+      addEvent(task, 'tool', '', TOOL_ACTIVITY_LABELS[event.name]?.starting || 'agentBrowserActionStarting');
     } else if (event.type === 'tool_end') {
-      const activity=TOOL_ACTIVITY_LABELS[event.name] || { completed: '浏览器操作已完成', failed: '浏览器操作失败' };
-      addEvent(task, event.failed ? 'error' : 'tool', event.failed ? activity.failed : activity.completed);
+      const activity=TOOL_ACTIVITY_LABELS[event.name];
+      addEvent(task, event.failed ? 'error' : 'tool', '', activity ? (event.failed ? activity.failed : activity.completed) : (event.failed ? 'agentBrowserActionFailed' : 'agentBrowserActionCompleted'));
     } else if (event.type === 'retry') {
-      addEvent(task, 'retry', `连接暂时不稳定，Agent 正在重试（${event.attempt}/${event.maxAttempts}）`);
+      addEvent(task, 'retry', '', 'agentRetrying', { attempt: event.attempt, maxAttempts: event.maxAttempts });
     }
   }
   async function prepare({ profileId, roomId, tabId }) {
