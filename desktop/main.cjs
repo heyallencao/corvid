@@ -533,15 +533,29 @@ async function dispatch(method, args = {}, fromApi = false) {
       const content=chromeImport.readProfile(selectedRoot,args.sourceId);
       const destinationSession=session.fromPartition(partitionFor(profileId));
       const cookieResult={imported:0,skipped:0,unsupported:0},addedCookies=[];
-      const rollbackCookies=async()=>{for(const cookie of addedCookies)await destinationSession.cookies.remove(cookie.url,cookie.name).catch(()=>{});if(addedCookies.length)await destinationSession.cookies.flushStore().catch(()=>{});};
+      const rollbackCookies=async()=>{
+        for(const {cookie,previous} of [...addedCookies].reverse()){
+          await destinationSession.cookies.remove(cookie.url,cookie.name).catch(()=>{});
+          for(const old of previous){
+            const restored={url:cookie.url,name:old.name,value:old.value,path:old.path,secure:old.secure,httpOnly:old.httpOnly,sameSite:old.sameSite};
+            if(!old.hostOnly)restored.domain=old.domain;
+            if(Number.isFinite(old.expirationDate))restored.expirationDate=old.expirationDate;
+            await destinationSession.cookies.set(restored).catch(()=>{});
+          }
+        }
+        if(addedCookies.length)await destinationSession.cookies.flushStore().catch(()=>{});
+      };
       try{
         if(args.categories.includes('cookies')){
           const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId));
           cookieResult.unsupported=sourceCookies.unsupported;
           for(const cookie of sourceCookies.cookies){
             const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
-            if(existing.some(item=>item.domain===cookie.domain && item.path===cookie.path)){cookieResult.skipped++;continue;}
-            try{await destinationSession.cookies.set(cookie);addedCookies.push(cookie);cookieResult.imported++;}
+            const targetDomain=cookie.sourceDomain;
+            if(existing.some(item=>item.domain===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
+            const {sourceDomain,hostOnly,...cookieDetails}=cookie;
+            if(!hostOnly)cookieDetails.domain=sourceDomain;
+            try{await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;}
             catch{cookieResult.unsupported++;}
           }
           await destinationSession.cookies.flushStore();

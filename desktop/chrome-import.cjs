@@ -122,7 +122,7 @@ async function readCookies(directory){
     let url;
     const cookiePath=typeof row.path==='string'&&row.path?row.path:'/';
     try{const parsed=new URL(`${row.is_secure?'https':'http'}://${domain}/`);parsed.pathname=cookiePath;url=parsed.href;}catch{unsupported++;continue;}
-    const cookie={url,name,value,domain:host,path:cookiePath,secure:Boolean(row.is_secure),httpOnly:Boolean(row.is_httponly)};
+    const cookie={url,name,value,sourceDomain:host,hostOnly:!host.startsWith('.'),path:cookiePath,secure:Boolean(row.is_secure),httpOnly:Boolean(row.is_httponly)};
     if(row.has_expires){
       try{const expiresUtc=BigInt(row.expires_utc),seconds=Number(expiresUtc-11644473600000000n)/1000000;if(Number.isFinite(seconds)&&seconds>0)cookie.expirationDate=seconds;else{unsupported++;continue;}}
       catch{unsupported++;continue;}
