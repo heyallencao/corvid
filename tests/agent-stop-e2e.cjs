@@ -78,6 +78,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const abortFailureTask = (await tasks()).find(task => task.prompt === abortFailurePrompt);
     assert.equal(abortFailureTask.status, 'interrupted');
     assert.match(abortFailureTask.error, /无法确认停止/);
+    assert.equal(abortFailureTask.stopUnconfirmed, true);
+    await abortFailureCard.getByRole('status').getByText(/无法确认上一轮是否已停止/).waitFor();
+    assert.equal(await abortFailureCard.getByRole('button', { name: '继续对话' }).count(), 0, 'an unconfirmed stop cannot resume into the same transcript');
 
     console.log('PASS Corvid Agent stop state, late event isolation, and abort failure feedback');
   } finally {

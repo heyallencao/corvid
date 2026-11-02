@@ -35,7 +35,7 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
   }
   function present(task) {
     const { sessionRef, ...visible } = task;
-    return { ...visible, hasSession: Boolean(sessionRef), canContinue: Boolean(sessionRef && runtime.canResume(sessionRef)) };
+    return { ...visible, hasSession: Boolean(sessionRef), canContinue: Boolean(!task.stopUnconfirmed && sessionRef && runtime.canResume(sessionRef)) };
   }
   function list(profileId) { return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(present)); }
   function taskById(taskId) { const task = tasks.find(item => item.id === taskId); if (!task) throw new Error('Agent task not found'); return task; }
@@ -83,6 +83,7 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);
     if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
+    if (task.stopUnconfirmed) throw new Error('上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
     if (!task.sessionRef || !runtime.canResume(task.sessionRef)) throw new Error('当前对话记录无法由此运行环境继续；记录已保留，请重新开始或切回兼容的运行环境');
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
@@ -142,11 +143,13 @@ function createAgentWorkbench({ dataDir, runtime, onChange = () => {} }) {
     sessions.delete(taskId);
     try { await session.abort?.(); }
     catch (error) {
+      task.stopUnconfirmed = true;
       task.error = `无法确认 Agent 已停止：${safeError(error)}`;
       addEvent(task, 'error', task.error);
     }
     try { session.dispose?.(); }
     catch (error) {
+      task.stopUnconfirmed = true;
       task.error = `Agent 会话清理失败：${safeError(error)}`;
       addEvent(task, 'error', task.error);
     }
