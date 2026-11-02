@@ -48,9 +48,12 @@ function draw(value) {
   const room = state.rooms.find(s => s.id === state.activeRoomId);
   if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
-  const active = activeTab(); document.querySelector('#address').value = active?.url === 'about:blank' ? '' : active?.url || '';
+  const active = activeTab(),address=document.querySelector('#address');
+  if(document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
   const status=document.querySelector('#status'); status.replaceChildren();
+  if(active?.isLoading){const loading=document.createElement('span');loading.className='navigation-loading';loading.textContent='正在加载';status.append(loading);}
+  if(active?.navigationError){const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=`页面加载失败：${active.navigationError.message}`;status.append(error);if(room.ownership!=='agent'&&!room.userResumePending)status.append(button('重试',()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));}
   if(room.executionRisk) status.append(button('页面执行状态未知 · 查看',()=>api.invoke('reviewExecutionRisk',{id:room.id})));
   if(active?.dialog) status.append(button('网页对话框 · 查看',()=>showPageDialog(active)));
   if(room.ownership==='agent') {

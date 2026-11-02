@@ -116,6 +116,10 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #status:empty { display: none; }
 #status:not(:empty) { min-height: 30px; border-bottom: 1px solid #efe6d3; background: #fbf8f0; }
 #status button { padding: 4px 7px; color: var(--accent-ink); font-size: 12px; }
+.navigation-loading { display: inline-flex; align-items: center; gap: 7px; }
+.navigation-loading::before { width: 11px; height: 11px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; content: ''; animation: navigation-spin .8s linear infinite; }
+.navigation-error { color: var(--danger); }
+@keyframes navigation-spin { to { transform: rotate(360deg); } }
 
 /* Pi workspace and browser library panels. */
 #library { position: fixed; z-index: 20; top: 126px; right: 12px; bottom: 12px; width: var(--workspace-width); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 12px 36px #17203318; }
