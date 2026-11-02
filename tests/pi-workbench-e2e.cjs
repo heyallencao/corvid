@@ -55,6 +55,19 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.locator('#pi-model-settings[open]').waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
     await shell.getByRole('button', { name: '关闭模型设置' }).click();
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getFocusedWindow().webContents.send('pi-auth-prompt', {
+        id: 'corvid-auth-ui-brand-fixture',
+        providerId: 'openai-codex',
+        prompt: { type: 'text', message: 'Pi SDK requires an account sign in' },
+      });
+    });
+    await shell.locator('#pi-auth-dialog[open]').waitFor();
+    await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model authorization dialog');
+    assert.equal(await shell.locator('#pi-auth-message').innerText(), '请按步骤完成模型账号授权。', 'runtime-specific authorization instructions use Corvid guidance');
+    await shell.locator('#pi-auth-cancel').click();
+    await shell.locator('#pi-auth-dialog').waitFor({ state: 'hidden' });
+    await assertNoRuntimeBrandInVisibleAgentUi(shell, 'cancelled model authorization flow');
     assert.ok(await modelSelect.locator('option').filter({hasText:'GPT-6 Luna'}).count());
     const codexModelValue=await modelSelect.locator('option').evaluateAll(options=>options.find(option=>option.textContent==='GPT-6 Luna'&&option.value.includes('openai-codex'))?.value);
     await modelSelect.selectOption(codexModelValue);
