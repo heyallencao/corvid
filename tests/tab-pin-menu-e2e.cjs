@@ -113,7 +113,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>(await tabs()).length===1,'other tabs closed');
     assert.equal((await tabs())[0].pinned,true);
 
-    // Closing a pinned tab asks first: cancel keeps it, confirm removes it.
+    // Closing a pinned tab asks first: cancel keeps it, confirm returns to a new start tab.
     await app.evaluate(()=>{globalThis.__pinPromptAnswer=0;});
     await shell.locator('.tab.pinned').click({button:'right'});
     await shell.getByRole('menuitem',{name:'关闭标签'}).click();
@@ -123,10 +123,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await app.evaluate(()=>{globalThis.__pinPromptAnswer=1;});
     await shell.locator('.tab.pinned').click({button:'right'});
     await shell.getByRole('menuitem',{name:'关闭标签'}).click();
-    await until(async()=>(await tabs()).length===0,'confirmed close removes the tab');
+    await until(async()=>(await tabs()).length===1&&(await tabs())[0].url==='about:blank','confirmed close returns to the start tab');
+    assert.equal((await tabs())[0].openedBy,'user');
 
     // Pin again and verify it survives a restart with its pinned flag.
-    await shell.locator('#new-tab').click();
     await until(async()=>(await shell.locator('.tab').count())===1,'new tab rendered');
     await until(async()=>await shell.locator('#address').inputValue()==='','address bar follows the new tab');
     await navigate(base+'/one',1);

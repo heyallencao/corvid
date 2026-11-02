@@ -17,12 +17,13 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     res.writeHead(200,{'content-type':'text/html'});
     const url=new URL(req.url,'http://fixture');
     if(url.pathname==='/search'){res.end(page('Search Fixture',`<p>${url.searchParams.get('q')||''}</p>`));return;}
+    if(url.pathname==='/edit'){res.end(page('Unsaved Fixture','<button id="arm" onclick="window.onbeforeunload=e=>{e.preventDefault();e.returnValue=\'\';}">Arm unsaved-change guard</button><input id="draft" value="keep me">'));return;}
     if(url.pathname==='/saved'){res.end(page('Saved Fixture','<p>saved shortcut target</p>'));return;}
     res.end(url.pathname==='/two'?page('Two','<p>second tab</p>'):page('Find Fixture','<p>needle one</p><p>needle two</p><p>needle three</p>'));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
-  let app,call;
+  let app,call,agentClient;
   const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   const sendShortcut=async(key,modifier)=>{const mods=modifier?[modifier==='Meta'?'meta':'control']:[];await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>{const contents=BrowserWindow.getAllWindows()[0].webContents;contents.sendInputEvent({type:'keyDown',keyCode,modifiers});contents.sendInputEvent({type:'keyUp',keyCode,modifiers});},{keyCode:key,modifiers:mods});};
   const activeHomeTabId=async()=>{const snapshot=await call('/rooms');return snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs.find(tab=>tab.active)?.id;};
@@ -145,8 +146,48 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await tabs.nth(0).click({button:'middle'});
     await until(async()=>(await tabs.count())===1,'middle-click close');
     assert.ok((await tabs.first().textContent()).includes('Find Fixture'));
-    console.log('PASS tab favicon, find in page, drag reorder and middle-click close');
+    const beforeLastClose=await call('/rooms'),userRoom=beforeLastClose.rooms.find(room=>room.id===beforeLastClose.activeRoomId),oldTab=userRoom.tabs[0];
+    await tabs.first().locator('.tab-close').click();
+    await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==oldTab.id;},'close button replaces the last user tab with a blank start page');
+    let currentRoom=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);
+    assert.equal(currentRoom.profileId,userRoom.profileId);
+    assert.equal(currentRoom.windowId,userRoom.windowId);
+    assert.equal(currentRoom.ownership,'user');
+    assert.equal(currentRoom.name,userRoom.name);
+    assert.equal(currentRoom.tabs[0].openedBy,'user');
+    await until(()=>homeEval("document.visibilityState==='visible'"),'replacement user tab shows Corvid start page');
+    if(process.env.CORVID_LAST_TAB_SCREENSHOT_PATH)await captureHome(process.env.CORVID_LAST_TAB_SCREENSHOT_PATH);
+    let replacementId=currentRoom.tabs[0].id;
+    await tabs.first().click({button:'middle'});
+    await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==replacementId;},'middle-click replaces the last user tab');
+    currentRoom=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);replacementId=currentRoom.tabs[0].id;
+    await sendShortcut('W',primary);
+    await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==replacementId;},'Cmd/Ctrl+W replaces the last user tab');
+    await until(()=>homeEval("document.visibilityState==='visible'"),'keyboard-created user start page is ready');
+    await homeEval(`window.browserHome.action('navigate',${JSON.stringify(base+'/edit')})`);
+    await until(async()=>(await call('/rooms')).rooms.find(room=>room.id===userRoom.id)?.tabs[0]?.url===base+'/edit','guarded final tab navigation');
+    const guardedTabId=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id).tabs[0].id;
+    await app.evaluate(({webContents},url)=>webContents.getAllWebContents().find(contents=>contents.getURL()===url).executeJavaScript("document.querySelector('#arm').click()"),base+'/edit');
+    await app.evaluate(({dialog})=>{dialog.showMessageBoxSync=()=>0;});
+    await tabs.first().locator('.tab-close').click();
+    await shell.getByRole('alert').getByText(/页面取消关闭/).waitFor();
+    currentRoom=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);
+    assert.equal(currentRoom.tabs.length,1,'cancelling beforeunload must not create a replacement tab');
+    assert.equal(currentRoom.tabs[0].id,guardedTabId);
+    assert.equal(currentRoom.tabs[0].url,base+'/edit');
+    await app.evaluate(({dialog})=>{dialog.showMessageBoxSync=()=>1;});
+    await tabs.first().locator('.tab-close').click();
+    await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==guardedTabId;},'confirmed close replaces guarded final tab');
+    const {connect}=await import('../sdk/index.js');agentClient=await connect({dataDir});
+    const agentRoom=await agentClient.openRoom('Agent close lifecycle'),agentPage=agentRoom.page('p1');
+    await agentPage.close();
+    const agentAfterClose=await agentClient.room(agentRoom.id);
+    assert.equal(agentAfterClose.info.ownership,'agent');
+    assert.equal(agentAfterClose.info.tabs.length,0,'Agent API close must not create a user start tab');
+    await agentClient.disconnect();agentClient=undefined;
+    console.log('PASS tab favicon, find, drag, last-tab recovery and middle-click close');
   }finally{
+    if(agentClient)await agentClient.disconnect().catch(()=>{});
     if(app)await app.close().catch(()=>{});
     await new Promise(resolve=>server.close(resolve));
     fs.rmSync(dataDir,{recursive:true,force:true});

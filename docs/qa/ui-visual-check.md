@@ -31,6 +31,13 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 均通过；全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（43 条独立脚本与 3 项串行 `node:test`，共 46 项）。起始页截图 SHA-256 `2747572393f3750117f6d03e3e2c8d85e827ecd130a962e5807da060beaba588`，保存在本机临时目录，不作为仓库二进制文件。
 - 限制：未验证暗色、窄窗、辅助技术、Windows/Linux、打包分发和真实网站。起始页快捷入口仍需键盘与屏幕阅读器人工复核。
 
+## 2026-11-03 关闭最后一个用户标签后返回起始页（Issue #108）
+
+- 环境：本机 macOS、真实 Electron、隔离测试数据与本地 HTTP fixture；关闭前最后页面为合成夹具，没有真实网页或用户数据。
+- 观察：关闭最后一个用户标签后，空间栏、浏览身份和浏览器壳保持不变；新的空白标签显示 Corvid 起始页，仍可从搜索栏继续浏览。关闭按钮、中键及 Cmd/Ctrl+W 呈现相同结果。
+- 验证：`tests/tab-ux-e2e.cjs` 覆盖三种关闭方式、同空间/Profile/窗口归属、起始页可见、`beforeunload` 取消时保留原页面，以及 Agent SDK 关闭不创建用户起始页。截图 SHA-256 `3c0de8a57cfb62c015af8a7251062e559d80ebcb55f96640fcb9c9d90d6d0a97`，2096×1412，仅留在本机 `/tmp/corvid-last-tab.png`。
+- 限制：未验证 Windows/Linux、打包版、多个窗口同时关闭、VoiceOver 或系统原生 beforeunload 弹窗；对话框由测试替身控制。
+
 ## 2026-11-03 新标签起始页深色主题（Issue #16）
 
 - 环境：本机 macOS、真实 Electron、隔离测试数据与本地 HTTP fixture；通过目标 `WebContentsView` CDP 媒体偏好模拟深色，再恢复浅色。没有使用真实 Profile、Cookie、网页数据、OAuth 或模型。
