@@ -520,7 +520,7 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
     if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();
     if(document.querySelector('#settings').open)void renderProfileExtensions();
   }
-  catch(reason){error.textContent=reason.message;}
+  catch(reason){error.textContent=reason.message;if(reason.message.includes('回滚未完整完成'))error.dataset.partial='true';}
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
 document.querySelector('#chrome-import-target-profile').onchange=event=>{if(!chromeImportProfileLocked)chromeImportProfileId=event.target.value;};

@@ -106,6 +106,8 @@ const selectedChromeSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieSetNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'';
+let failChromeCookieRemoveNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_REMOVE_FAIL_NAME:'';
+let failChromeCookieRestoreNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_RESTORE_FAIL_NAME:'';
 async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
@@ -678,12 +680,18 @@ async function dispatch(method, args = {}, fromApi = false) {
       const rollbackCookies=async()=>{
         const failures=[];
         for(const {cookie,previous} of [...addedCookies].reverse()){
-          try{await destinationSession.cookies.remove(cookie.url,cookie.name);}catch{failures.push('删除本次新增 Cookie');}
+          try{
+            if(failChromeCookieRemoveNameForTest===cookie.name){failChromeCookieRemoveNameForTest='';throw new Error('测试注入：Chrome Cookie 回滚删除失败');}
+            await destinationSession.cookies.remove(cookie.url,cookie.name);
+          }catch{failures.push('删除本次新增 Cookie');}
           for(const old of previous){
             const restored={url:cookie.url,name:old.name,value:old.value,path:old.path,secure:old.secure,httpOnly:old.httpOnly,sameSite:old.sameSite};
             if(!old.hostOnly)restored.domain=old.domain;
             if(Number.isFinite(old.expirationDate))restored.expirationDate=old.expirationDate;
-            try{await destinationSession.cookies.set(restored);}catch{failures.push('恢复目标 Profile 原有 Cookie');}
+            try{
+              if(failChromeCookieRestoreNameForTest===old.name){failChromeCookieRestoreNameForTest='';throw new Error('测试注入：Chrome Cookie 回滚恢复失败');}
+              await destinationSession.cookies.set(restored);
+            }catch{failures.push('恢复目标 Profile 原有 Cookie');}
           }
         }
         if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}

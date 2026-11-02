@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-02 Chrome Cookie 回滚 delete/restore 故障复核（Issue #18）
+
+- 红测先在旧代码上失败：注入目标 Cookie store flush 失败后，界面只显示首发 flush 错误，没有说明 rollback delete/restore 失败。
+- 新增仅限 `CORVID_TEST_MODE=1` 的按 Cookie 名单次 remove/restore 故障注入；renderer 将“回滚未完整完成”标记为黄色部分状态，保持原目标 Profile、来源与重试动作。
+- 真实 Electron E2E 分别注入 remove 和 restore 失败，读取目标 Cookie store 验证各自残留；同来源重试通过，并断言不会把已丢失的旧 Cookie 说成已恢复。
+- 发现产品恢复缺口：restore 失败场景中，Electron `cookies.remove(url,name)` 会移除同名且匹配 URL 的多个路径 Cookie；如果之后 `cookies.set` 恢复旧值失败，旧目标 Cookie 会消失。当前告警诚实提示回滚不完整，但不能自动恢复丢失旧值。已创建 [Issue #77](https://github.com/heyallencao/corvid/issues/77) 设计受保护的补救/恢复路径。
+- `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与全量 `env -u ELECTRON_RUN_AS_NODE npm test` 通过；全量 43 条独立脚本与 3 项 `node:test` 共 46 项（EXIT 0）。不读取真实 Chrome Profile 或系统钥匙串；本次无真实模型请求。
+
 ## 2026-11-02 浏览器与 Agent 面板宽度边界复查（Issue #16）
 
 - 真实 Electron 基线证伪了布局合同：760px 内容宽度与 861–972px 区间的网页 `WebContentsView` 只有 308px；973–983px 为 309–319px。失败由新增 E2E 首次在 760px 断言中稳定复现。
