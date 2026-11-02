@@ -16,6 +16,15 @@
 
 # 验证记录
 
+## 2026-11-02 SIGKILL 后浏览会话与 Agent 任务恢复（Issue #54）
+
+- 环境：macOS、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；确定性 Agent fixture，不调用真实模型/provider，不读写真实浏览器资料。
+- 真实进程恢复：用户 Room 中两个已导航标签、Room/tab ID、各自 URL、活动 Room 与活动标签完成持久化后，对 Electron 主进程直接发送 `SIGKILL`，并用相同数据目录重新启动。重启后的运行时状态与预期 ID/URL/活动上下文一致。
+- 控制凭据：重启生成新 control server 和 Bearer；向新 server 使用旧 token 请求 `/rooms` 返回 401。
+- Agent 状态：在 `[fixture:hold]` 任务运行期间强制终止；重启后 task 与最后一条 assistant turn 均为 `interrupted`，Agent 面板显示“等待检查”，没有误报完成。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/sigkill-recovery-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE npm test` 均 EXIT 0。全量回归含 39 条独立脚本命令与 3 项 `node:test`，共 42 项检查通过；`git diff --check` 通过。
+- 限制：证明的是原子保存完成后的主进程强制终止恢复；不证明断电、原子 rename 中途杀进程、renderer 崩溃、OS 重启、真实网站、跨平台或硬件故障恢复。
+
 ## 2026-11-02 Corvid Agent 对话体验与 GPT-6 Luna 定向验收（Issue #56）
 
 - 产品界面改为 Corvid 自有语义：Corvid Agent、对话、模型和页面来源；Pi 仅作为内部可替换运行时，不出现在用户入口与运行状态文案中。对话工作区以当前单线程消息流为主，历史可展开选择，输入区固定在底部，模型和页面来源就近可见，页面内容发送前仍需预览与明确同意。
