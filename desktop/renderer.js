@@ -165,7 +165,7 @@ async function renderPiTasks(){
   if(piHistoryOpen){
     const history=document.createElement('div');history.id='pi-chat-history';history.className='pi-chat-history';
     for(const task of [...piTasks].reverse()){
-      const item=button('',()=>{piSelectedTaskId=task.id;piContinueTaskId=task.piSessionFile&&!['running','preparing'].includes(task.status)?task.id:null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piHistoryOpen=false;renderPiTasks();});item.className='pi-history-item';item.setAttribute('aria-current',String(task.id===piSelectedTaskId));
+      const item=button('',()=>{piSelectedTaskId=task.id;piContinueTaskId=task.canContinue&&!['running','preparing'].includes(task.status)?task.id:null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piHistoryOpen=false;renderPiTasks();});item.className='pi-history-item';item.setAttribute('aria-current',String(task.id===piSelectedTaskId));
       const title=document.createElement('span');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||'浏览任务';
       const subtitle=document.createElement('small');subtitle.textContent=`${labels[task.status]||task.status} · ${task.page?.title||task.page?.url||'页面'}`;item.append(title,subtitle);history.append(item);
     }
@@ -182,7 +182,7 @@ async function renderPiTasks(){
     meta.append(button('打开 Room',async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button('停止任务',async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
-      if(task.piSessionFile&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
+      if(task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)){const actionLabel=task.status==='failed'?'检查上下文并恢复':'继续对话';const resume=button(piContinueTaskId===task.id?'收起继续对话':actionLabel,()=>{piContinueTaskId=piContinueTaskId===task.id?null:task.id;piContinuationPreview=null;piContinuationConsent=false;renderPiTasks();});resume.disabled=Boolean(roomState&&(roomState.ownership!=='agent'||roomState.userResumePending||roomState.executionRisk));resume.title=resume.disabled?'先交还 Room 控制权并处理执行风险，再继续该任务':'';meta.append(resume);}
       meta.append(button('移除记录',async()=>{await api.invoke('clearPiTask',{taskId:task.id});if(piContinueTaskId===task.id)piContinueTaskId=null;if(piSelectedTaskId===task.id)piSelectedTaskId=null;await renderPiTasks();}));
     }
     row.append(meta);
@@ -192,8 +192,9 @@ async function renderPiTasks(){
       const failure=document.createElement('div');failure.className='pi-task-error';failure.setAttribute('role','alert');
       const heading=document.createElement('strong');heading.textContent='任务未完成';failure.append(heading);
       const reason=document.createElement('span');reason.textContent=userFacingAgentError(task.error,'Agent 未能完成此轮对话，请检查模型连接后重试。');failure.append(reason);row.append(failure);
-      if(!task.piSessionFile){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开 Room 检查页面后，再重新开始。';row.append(guidance);}
+      if(!task.hasSession){const guidance=document.createElement('div');guidance.className='pi-task-recovery-note';guidance.setAttribute('role','status');guidance.textContent='这段对话尚无可恢复记录。打开 Room 检查页面后，再重新开始。';row.append(guidance);}
     } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=userFacingAgentError(task.error);row.append(error);}
+    if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent='这段对话记录已保留，但当前运行环境暂不支持继续。可以切回兼容环境后再试，或从 Room 重新开始。';row.append(recovery);}
     list.append(row);
   }
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';empty.innerHTML='<span class="pi-welcome-mark">✳</span><h3>让 Corvid Agent 帮你读懂网页</h3><p>提问、总结或开始一项浏览任务。先检查页面内容，再决定是否分享给 Agent。</p>';list.append(empty);}

@@ -39,7 +39,8 @@ const roomResolutions = new Map();
 const runAction = require('./actions.cjs');
 const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
-const { createPiWorkbench } = require('./pi-workbench.cjs');
+const { createAgentWorkbench } = require('./agent-workbench.cjs');
+const { createPiAgentRuntime } = require('./agent-runtime.cjs');
 const { createPiModelManager } = require('./pi-models.cjs');
 const usePiFixture=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PI_REAL_MODEL!=='1';
 const pendingPiAuthPrompts = new Map();
@@ -72,7 +73,8 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
-const piWorkbench = createPiWorkbench({ dataDir, resolveModel: selection => usePiFixture ? null : piModelManager.getModel(selection), getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession:usePiFixture?fixtureSession:undefined, onChange: tasks => {
+const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
+const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime, onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
 } });
 let panelOpen = false;
@@ -570,7 +572,7 @@ async function dispatch(method, args = {}, fromApi = false) {
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','resumeControl','adoptTab','releasePage','finishRoom'].includes(method)) { const s = ['createTab','closeRoom','resumeControl','adoptTab','releasePage','finishRoom'].includes(method) ? findRoom(target) : findRoom(findTab(target).roomId); if (s.executionRisk) throw new Error('Room has an unresolved timed-out execution; user review is required'); }
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
-    case 'piTasks': return { tasks: piWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
     case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
     case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
     case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }
@@ -581,11 +583,11 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'loginPiProvider': { if(fromApi) throw new Error('Model login must be started by the user in Corvid UI'); return piModelManager.login(args.providerId); }
     case 'logoutPiProvider': { if(fromApi) throw new Error('Model logout must be started by the user in Corvid UI'); return piModelManager.logout(args.providerId); }
     case 'loginPiProviderApiKey': { if(fromApi) throw new Error('API Keys can only be managed from Corvid UI'); return piModelManager.loginApiKey(args.providerId, args.apiKey); }
-    case 'preparePiTask': return piWorkbench.prepare(args);
-    case 'startPiTask': return piWorkbench.start(args);
-    case 'continuePiTask': return piWorkbench.continueTask(args);
-    case 'stopPiTask': return piWorkbench.stop(args.taskId);
-    case 'clearPiTask': return piWorkbench.clear(args.taskId);
+    case 'preparePiTask': return agentWorkbench.prepare(args);
+    case 'startPiTask': return agentWorkbench.start(args);
+    case 'continuePiTask': return agentWorkbench.continueTask(args);
+    case 'stopPiTask': return agentWorkbench.stop(args.taskId);
+    case 'clearPiTask': return agentWorkbench.clear(args.taskId);
     case 'createPiRoom': {
       if(fromApi) throw new Error('User action required');
       const current=findTab(args.sourceTabId), sourceRoom=findRoom(current.roomId);
@@ -864,7 +866,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'claimRoom': return claimRoom(findRoom(target));
     case 'activateRoom': {const s=findRoom(target);const record=requireFocusedRecord();if(s.windowId!==record.id) moveRoomToWindow(s,record);record.activeProfileId=s.profileId;record.activeRoomId=target;update(record);return describe(record);}
     case 'activateTab': {const t=findTab(target), s=findRoom(t.roomId); const record=requireFocusedRecord(); if(s.windowId!==record.id) moveRoomToWindow(s,record); record.activeProfileId=s.profileId;record.activeRoomId=s.id; s.activeTabId=target; update(record); return describe(record);}
-    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await piWorkbench.pauseRoom(s.id);return describe();}
+    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await agentWorkbench.pauseRoom(s.id);return describe();}
     case 'resumeControl': {const s=findRoom(target);if(!s.yielded) throw new Error('Room was not handed off by an agent');if(fromApi && s.manualControl)throw new Error('The user has not returned control');if(s.executionRisk)throw new Error('Room has an unresolved timed-out execution; user review is required');s.ownership='agent';s.yielded=false;s.manualControl=false;update();return describe();}
     case 'requestUserControl': return requestUserControl(target);
     case 'returnUserControl': {if(fromApi)throw new Error('User action required');return dispatch('resumeControl',{id:target},false);}

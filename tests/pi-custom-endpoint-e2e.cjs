@@ -77,7 +77,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button', { name: '发送' }).click();
     await shell.waitForFunction(() => [...document.querySelectorAll('.pi-task-state')].some(node => ['completed', 'failed'].includes(node.dataset.status)), { timeout: 15_000 });
-    const tasksAfterRequest = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
+    const tasksAfterRequest = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8')).tasks;
     assert.equal(tasksAfterRequest[0].status, 'completed', JSON.stringify({ task: tasksAfterRequest[0], modelId, modelPath }));
     assert.match(tasksAfterRequest[0].output, /CUSTOM_ENDPOINT_OK/);
     assert.equal(modelId, 'fixture-model', 'Pi sends the selected configured model ID');

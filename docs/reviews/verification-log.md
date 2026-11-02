@@ -16,6 +16,13 @@
 
 # 验证记录
 
+## 2026-11-02 Corvid Agent runtime adapter 与任务记录迁移（Issue #64）
+
+- 将工作台改为只依赖 Corvid 定义的 runtime 合同；当前 Pi 实现封装在 adapter 中，事件转为 Corvid Agent 事件。任务文件升级为 `schemaVersion=2`，旧任务数组与 v1 envelope 自动迁移，原 session 路径封装成不透明 `sessionRef`；无法识别的 schema 不改写，迁移写入失败保留原文件。
+- runtime 恢复能力按 runtime ID/version 校验；只有 adapter 明确列出的兼容版本才允许续聊。未知 checkpoint 保留供后续迁移，但 UI/renderer 只收到 `hasSession` 与 `canContinue`，不接触 checkpoint 内容。独立 fake runtime 通过同一任务/对话合同。
+- `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：41 条独立脚本命令与 3 项 `node:test`，共 44 项自动化检查通过；定向 runtime 合同、Pi 模型/工作台、自定义端点与 SIGKILL 恢复均包含在全量套件中。`node --check` 与 `git diff --check` 通过。
+- 本轮使用隔离临时数据与确定性 fixture，没有触发 OAuth 或真实模型请求，未消耗模型额度。限制：另一个 runtime 仅以合同 fake 验证；真实 runtime 替换、跨版本迁移、provider 断连时的 transcript 行为与 Windows 均未验证。
+
 ## 2026-11-02 Corvid Agent 产品语义与运行时隔离（Issue #62）
 
 - 产品入口、对话来源和模型设置统一使用 Corvid Agent 语义；任务卡不再呈现运行时名称，原始错误/授权提示若泄露运行时标识则显示 Corvid 自有提示。README 与系统设计明确 Corvid 拥有模型设置、任务/对话合同和迁移责任，运行时可替换或升级。
