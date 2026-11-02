@@ -53,16 +53,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       await shell.waitForFunction(expected=>document.querySelector('#address')?.value===expected,url);
       if(await shell.locator('#library[data-kind="pi-workbench"]').count()===0)await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
       else await shell.getByRole('button',{name:/新建对话/}).click();
+      await shell.waitForFunction(name=>document.querySelector('.pi-page-binding')?.textContent.includes(name),room.name);
       if(await shell.getByRole('button',{name:'连接当前页面'}).count())await shell.getByRole('button',{name:'连接当前页面'}).click();
       await shell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill(prompt);
       await shell.getByRole('button',{name:'检查并预览页面上下文'}).click();
       await shell.getByLabel(/我已检查/).check();
       await shell.getByRole('button',{name:'发送'}).click();
-      await shell.locator(`.pi-task-state[data-status="${expectedStatus}"]`).waitFor();
-      const taskId=await shell.locator('.pi-task-entry').getAttribute('data-task-id');
+      const taskEntry=shell.locator('.pi-task-entry').filter({hasText:prompt});
+      await taskEntry.waitFor();
+      await taskEntry.locator(`.pi-task-state[data-status="${expectedStatus}"]`).waitFor();
+      const taskId=await taskEntry.getAttribute('data-task-id');
       const saved=JSON.parse(fs.readFileSync(path.join(dataDir,'agent-tasks.json'),'utf8'));
       const task=(Array.isArray(saved)?saved:saved.tasks).find(item=>item.id===taskId);
-      return {taskId,roomId:task?.roomId};
+      return {taskId,roomId:task?.roomId,pageBinding:await shell.locator('.pi-page-binding').textContent()};
     };
 
     const bookmarksTrigger=shell.locator('#show-bookmarks');
@@ -125,9 +128,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const firstTaskRoom=await startTask(defaultRoom,'[fixture:hold] first parallel room task');
     assert.ok(firstTaskRoom?.roomId&&firstTaskRoom.taskId,'first deterministic task is bound to its own Agent Room');
+    assert.equal(firstTaskRoom.roomId,defaultRoom.id,`first task Room mismatch: ${JSON.stringify({expected:defaultRoom.id,actual:firstTaskRoom.roomId})}`);
     const parallelRoom=(await call('/rooms')).rooms.find(room=>room.name==='Parallel agent room');
     const secondTaskRoom=await startTask(parallelRoom,'[fixture:hold] second parallel room task');
-    assert.ok(secondTaskRoom?.roomId&&secondTaskRoom.roomId!==firstTaskRoom.roomId,'parallel deterministic tasks belong to distinct Agent Rooms');
+    assert.equal(secondTaskRoom.roomId,parallelRoom.id,`second task Room mismatch: ${JSON.stringify({expected:parallelRoom.id,actual:secondTaskRoom.roomId,first:firstTaskRoom.roomId,pageBinding:secondTaskRoom.pageBinding,activeRoom:(await call('/rooms')).activeRoomId})}`);
     await agentRoomsTrigger.click();
     await shell.getByRole('button',{name:/查看 Corvid Agent 对话：.*· 正在回复/}).first().waitFor();
     const visibleRoomSurface=await shell.locator('#library').evaluate(panel=>({text:panel.innerText,labels:[...panel.querySelectorAll('[aria-label],[title]')].flatMap(node=>[node.getAttribute('aria-label'),node.getAttribute('title')]).filter(Boolean)}));
@@ -157,6 +161,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await agentRoomsTrigger.click();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await shell.locator('.agent-room-task-state[data-status="failed"]').waitFor();
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getFocusedWindow().setSize(640,600));
+    await shell.waitForFunction(()=>window.innerWidth<=700);
+    const taskViewport=await shell.evaluate(()=>({width:window.innerWidth,height:window.innerHeight,deviceScaleFactor:window.devicePixelRatio}));
+    const taskRowLayouts=await shell.locator('.agent-room-entry').evaluateAll(rows=>rows.map(row=>{const tasks=row.querySelector('.agent-room-tasks');return{width:row.clientWidth,scrollWidth:row.scrollWidth,taskWidth:tasks?.clientWidth,taskScrollWidth:tasks?.scrollWidth,taskActions:[...(tasks?.querySelectorAll('button')||[])].map(action=>({left:action.getBoundingClientRect().left,right:action.getBoundingClientRect().right}))};}));
+    assert.equal(taskViewport.width<=700,true,`narrow viewport applies: ${JSON.stringify(taskViewport)}`);
+    assert.equal(await shell.locator('.agent-room-task-state').count(),4,'all parallel and terminal task states remain present in the narrow Agent Room list');
+    assert.ok(taskRowLayouts.every(row=>row.scrollWidth<=row.width&&(!row.taskWidth||row.taskScrollWidth<=row.taskWidth)&&row.taskActions.every(action=>action.left>=0&&action.right<=taskViewport.width)),JSON.stringify({taskViewport,taskRowLayouts}));
 
     const otherProfile = await call('/profiles', 'POST', { name: 'Work profile' });
     const otherRoom = await call('/rooms', 'POST', { name: 'Work agent room', profileId: otherProfile.id });
@@ -207,7 +218,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(active.activeRoomId, otherRoom.id);
     assert.equal(await shell.getByRole('button', { name: 'Work agent room' }).getAttribute('class').then(value => value.includes('selected')), true);
 
-    console.log('PASS Agent Room panel empty state, parallel task status, exact conversation return, Profile filtering, narrow layout, keyboard handoff and Room activation');
+    console.log(`PASS Agent Room panel empty state, parallel task status, exact conversation return, Profile filtering, narrow layout ${taskViewport.width}×${taskViewport.height} @${taskViewport.deviceScaleFactor}x, keyboard handoff and Room activation`);
   } finally {
     if (app) await app.close().catch(() => {});
     await new Promise(resolve=>site.close(resolve));

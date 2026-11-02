@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-02 Agent Room 多任务状态最小窗口复核（Issue #16）
+
+- 确定性 Electron fixture 在请求 640×600 窗口时受 Electron 最小尺寸约束，实际 renderer viewport 为 694×568 CSS px（2×）。两个并行 Room、四个运行/接管/停止/终态 task 状态与操作按钮均留在卡片内，无水平溢出。
+- REA 隔离页面发现 Evidence `ev_fa3c888244c221819660a2594fb5273ec56d8710f643cfc5927003ca35352719`；只读页面观察 Evidence `ev_e1fec2d4cb90a5398c864d87c284644508e78201d872ab3c31782bf3b452e6ee`。REA 仅证明运行目标与 DOM/资源结构，不证明像素布局；视觉结论来自 Playwright shell 截图（SHA-256 `ee378bf42192236cebab759a859078ca428143777519a8b2b627dfae5e5e4c13`）。
+- `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` 通过；测试断言四个状态仍存在、Room 与任务卡片无横向溢出、任务按钮位于视口内。确定性 task 查找按 prompt 定位，不会将上一条仍运行的任务误认作新任务。
+- 全量 `env -u ELECTRON_RUN_AS_NODE npm test` 最终 EXIT 0，43 条独立脚本与 3 项 `node:test` 全部通过。`restore-loading-e2e` 在串行套件中无输出停留约 5 分钟后返回 PASS，随后全部后续用例通过；间歇性长停顿仍由 OPEN [Issue #34](https://github.com/heyallencao/corvid/issues/34) 跟踪，本次结果不等于该问题已修复。
+- 限制：只覆盖 macOS、浅色主题、单窗口和本地 fixture；暗色、辅助技术与其他平台未验证。详见[视觉检查](../qa/ui-visual-check.md#2026-11-02-agent-room-多任务状态最小窗口)。
+
 ## 2026-11-02 Agent Room 任务状态与原对话回跳（Issue #73）
 
 - Agent 工作区现在按 Room 展示其 Corvid Agent 任务状态及“查看对话”入口。状态取自任务存储，任务更新时刷新；Profile/面板发生变化后，过期异步结果会被丢弃。Room 控制权与任务运行状态分开呈现，不展示任务 prompt 或页面内容。
