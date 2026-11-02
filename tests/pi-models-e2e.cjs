@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { createPiModelManager } = require('../desktop/pi-models.cjs');
-const { createPiWorkbench } = require('../desktop/pi-workbench.cjs');
+const { createAgentWorkbench } = require('../desktop/agent-workbench.cjs');
 
 (async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
@@ -35,14 +35,20 @@ const { createPiWorkbench } = require('../desktop/pi-workbench.cjs');
   let selection = { providerId: 'provider-a', modelId: 'model-a' };
   const selectedModels = [];
   const page = { label: 'p1', url: 'https://example.test/', title: 'Fixture', snapshot: { title: 'Fixture' } };
-  const workbench = createPiWorkbench({
+  const workbench = createAgentWorkbench({
     dataDir,
-    getModelSelection: () => selection,
-    resolveModel: async value => ({ model: { name: value.modelId }, runtime: {} }),
-    readContext: async () => page,
-    createSession: async options => {
+    runtime: {
+      id: 'fixture-runtime', version: '1.0.0',
+      canResume: ref => ref?.runtimeId === 'fixture-runtime' && ref.runtimeVersion === '1.0.0',
+      getModelSelection: () => selection,
+      resolveModel: async value => ({ name: value.modelId }),
+      readPageContext: async () => page,
+      removeTaskData: () => {},
+      async createSession(options) {
       selectedModels.push({ ...options.selectedModel });
-      return { sessionFile: path.join(dataDir, 'agent-sessions', options.taskId, 'test.jsonl'), session: { async prompt() {}, dispose() {} } };
+        const sessionFile = path.join(dataDir, 'agent-sessions', options.taskId, 'test.jsonl');
+        return { async prompt() {}, dispose() {}, checkpoint: () => ({ runtimeId: 'fixture-runtime', runtimeVersion: '1.0.0', data: { sessionFile } }) };
+      },
     },
   });
   const preview = await workbench.prepare({ profileId: 'profile-a', roomId: 'room-a', tabId: 'tab-a' });

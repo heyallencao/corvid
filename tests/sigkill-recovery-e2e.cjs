@@ -128,7 +128,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const oldControl = control;
     const liveTask = await waitFor(() => {
       try {
-        const tasks = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
+        const tasks = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8')).tasks;
         return tasks.find(task => task.status === 'running') || false;
       } catch { return false; }
     }, 'persisted running Agent task');
@@ -150,7 +150,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(restoredRoom.tabs.find(tab => tab.id === expected.secondTabId).active, true);
     assert.equal(state.activeRoomId, expected.roomId);
 
-    const recoveredTasks = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
+    const recoveredTasks = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8')).tasks;
     const recoveredTask = recoveredTasks.find(task => task.id === liveTask.id);
     assert.equal(recoveredTask.status, 'interrupted', 'a task in flight at SIGKILL is reported as interrupted/unknown');
     assert.equal(recoveredTask.conversation.at(-1).status, 'interrupted');
