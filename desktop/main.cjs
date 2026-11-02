@@ -38,8 +38,10 @@ const piWorkbench = createPiWorkbench({ dataDir, createSession:process.env.CORVI
 let panelOpen = false;
 const selectedChromeSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
-async function flushChromeCookies(destinationSession){
+let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
+async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
+  if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
   await destinationSession.cookies.flushStore();
 }
 function activeRecord() {
@@ -580,16 +582,18 @@ async function dispatch(method, args = {}, fromApi = false) {
       const destinationSession=session.fromPartition(partitionFor(profileId));
       const cookieResult={imported:0,skipped:0,unsupported:0},addedCookies=[];
       const rollbackCookies=async()=>{
+        const failures=[];
         for(const {cookie,previous} of [...addedCookies].reverse()){
-          await destinationSession.cookies.remove(cookie.url,cookie.name).catch(()=>{});
+          try{await destinationSession.cookies.remove(cookie.url,cookie.name);}catch{failures.push('删除本次新增 Cookie');}
           for(const old of previous){
             const restored={url:cookie.url,name:old.name,value:old.value,path:old.path,secure:old.secure,httpOnly:old.httpOnly,sameSite:old.sameSite};
             if(!old.hostOnly)restored.domain=old.domain;
             if(Number.isFinite(old.expirationDate))restored.expirationDate=old.expirationDate;
-            await destinationSession.cookies.set(restored).catch(()=>{});
+            try{await destinationSession.cookies.set(restored);}catch{failures.push('恢复目标 Profile 原有 Cookie');}
           }
         }
-        if(addedCookies.length)await flushChromeCookies(destinationSession).catch(()=>{});
+        if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}
+        if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。目标 Profile 中可能仍留有部分 Cookie，请检查后再重试。`);
       };
       try{
         if(args.categories.includes('cookies')){
@@ -628,7 +632,10 @@ async function dispatch(method, args = {}, fromApi = false) {
         }
         selectedChromeSources.delete(args.sourceToken);
         return {...result,cookies:cookieResult,extensions,profileId};
-      }catch(error){await rollbackCookies();throw error;}
+      }catch(error){
+        try{await rollbackCookies();}catch(rollbackError){throw new Error(`${error.message}；${rollbackError.message}`);}
+        throw error;
+      }
     }
     case 'listProfileExtensions': {
       if(fromApi)throw new Error('扩展清单必须由用户在桌面查看');

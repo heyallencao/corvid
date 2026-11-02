@@ -168,7 +168,7 @@ async function selectAllExtensions(shell){
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
-    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1'}:{ }));
+    ({app,shell,call}=await boot(appData,supportsCookieImport?{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'}:{ }));
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     assert.equal(await app.evaluate(()=>globalThis.chromeImportDialogCalls||0),0,'first launch must not scan or open Chrome');
     await installDialogFixture(app,chromeRoot);
@@ -181,11 +181,12 @@ async function selectAllExtensions(shell){
       await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
       await shell.locator('input[name="chrome-category"][value="cookies"]').check();
       await shell.locator('#confirm-chrome-import').click();
-      await shell.locator('#chrome-import-error').getByText('测试注入：Chrome Cookie 持久化失败').waitFor();
+      await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*可能仍留有部分 Cookie/).waitFor();
       const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
       assert.equal(rolledBackCookies.length,0,'failed Cookie flush must remove every imported Cookie');
       assert.equal((await call('/bookmarks')).bookmarks.length,0,'failed Cookie import must not start importing unselected library categories');
       assert.equal((await call('/history')).history.length,0,'failed Cookie import must leave history unchanged');
+      await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.flushStore(),{});
       await shell.locator('#confirm-chrome-import').click();
       await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项（不支持 2 项）/).waitFor();
       const retriedCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
