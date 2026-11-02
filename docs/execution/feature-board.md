@@ -1,8 +1,8 @@
 # Corvid 执行任务板
 
-本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品主线以 EGO 的人用日常浏览器和隔离共享 Spaces 为主产品模式，并集成 Kaze 的内置 Pi Agent、任务状态/接管体验与 BrowserMCP 外部浏览器操作。内置 Agent 与外部 SDK/CLI/MCP 共用 **Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）及同一授权合同。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。参照来源、REA Evidence 与未覆盖边界见[双浏览器参照分析](../research/browser-reference-analysis.md)。
+本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品主线以 EGO 的人用日常浏览器和隔离共享 Spaces 为主产品模式，并集成 Kaze 的内置 Agent、任务状态/接管体验与 BrowserMCP 外部浏览器操作；Corvid Agent 的底层运行时为可替换实现，不定义用户产品语义。内置 Agent 与外部 SDK/CLI/MCP 共用 **Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）及同一授权合同。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。参照来源、REA Evidence 与未覆盖边界见[双浏览器参照分析](../research/browser-reference-analysis.md)。
 
-规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，41 项测试入口（含显式真实模型 smoke）的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
+规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，43 项测试入口（含显式真实模型 smoke）的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
 ## 当前事实与证据边界
 
@@ -38,13 +38,13 @@
 4. `evaluate` 超时表示"结果未知"，不是"已终止"；不得声称已撤销页面副作用。
 5. 所有测试必须使用隔离数据目录和本地夹具，不得使用真实用户 Profile 或真实浏览数据。
 
-截至 2026-11-02，没有条目达到"已验证"：本轮 41 项自动化检查通过，仍只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
+截至 2026-11-02，没有条目达到"已验证"：本轮 42 项自动化检查通过，仍只覆盖本地夹具与 macOS，P0/P1 仍存在上表逐行列出的未覆盖边界。
 
 ## P0：可安全使用且控制权可靠
 
 | ID | 状态 | 工作块与当前差距 | 可执行验收合同 |
 | --- | --- | --- | --- |
-| D01 | 部分 | **启动、恢复与会话文件**。已实现：启动读取 `rooms.json` 恢复 Room/标签；坏 JSON、结构无效、重复 Room/标签 ID 拒绝启动并保留原文件；慢页面异步恢复不阻塞其他 Room 与控制接口；`control.json` 0600 且关闭时删除；旧 `spaces.json` 一次性迁移并保留原文件。差距：强制杀进程/异常退出后的恢复、数据目录不可写、v1 到 v2 迁移缺少独立迁移测试与回滚策略、超大标签量资源消耗、旧数据目录搬迁。 | ① `node tests/recovery-e2e.cjs`：三类坏输入均退出码 1、stderr 含"原文件未修改"、原文件字节不变、不产生 `control.json`。② `node tests/restore-loading-e2e.cjs`：慢标签未 ready 时其他 Room 与 `/rooms` 可用，保存 URL 不被空白页覆盖，用户/Agent 可改导航，历史不重复，重启保持。③ 补测并写清阈值：未知 `schemaVersion` 拒绝且保留原文件；补测 v1→v2 会话迁移的字段保留与重启稳定性；只读数据目录给出可诊断错误；`SIGKILL` 后重启恢复；数千标签的启动时间与内存预算。④ 补测旧 `spaces.json` 迁移只发生一次、迁移后 ID 稳定；升级/回滚合同另行设计。 |
+| D01 | 部分 | **启动、恢复与会话文件**。已实现：启动读取 `rooms.json` 恢复 Room/标签；坏 JSON、结构无效、重复 Room/标签 ID 拒绝启动并保留原文件；慢页面异步恢复不阻塞其他 Room 与控制接口；`control.json` 0600 且正常关闭时删除；旧 `spaces.json` 一次性迁移并保留原文件；真实 Electron 主进程 `SIGKILL` 后，已原子写入的 Room、标签 ID/URL 和活动上下文可恢复，旧控制凭据失效，运行中的 Agent task 显示结果待检查。差距：数据目录不可写、v1 到 v2 迁移独立字段/回滚验收、超大标签量资源预算、旧数据目录搬迁、写入中途断电/强杀语义。 | ① `node tests/recovery-e2e.cjs`：三类坏输入退出码 1、stderr 含“原文件未修改”、原文件字节不变、不产生 `control.json`。② `node tests/restore-loading-e2e.cjs`：慢标签未 ready 时其他 Room 与 `/rooms` 可用，保存 URL 不被空白页覆盖，用户/Agent 可改导航，历史不重复，正常重启保持。③ `node tests/sigkill-recovery-e2e.cjs`：真实主进程 SIGKILL 后验证 Room/tab ID、URL、活动 Room/标签恢复；旧 token 在新 server 返回 401；运行中 Agent task/assistant turn 标记 `interrupted` 并在 UI 显示“等待检查”。④ 补测未知 `schemaVersion` 拒绝且保留原文件、v1→v2 字段迁移与重启稳定、只读目录诊断、数千标签启动时间/内存预算。⑤ 补测旧 `spaces.json` 迁移只发生一次与 ID 稳定；升级/回滚合同另行设计。 |
 | D02 | 部分 | **Room 控制权**。已实现：桌面"接管"/"交还 Agent"；`yieldControl` 等正在进行动作完成后再返回；接管请求挂起期间新 Agent 动作被拒；其他 Room 不受影响；用户手动接管跨重启保持，Agent 不能自行 `resumeControl`；`waitForControl` 在用户交还后返回，在风险未清或 Room 删除时明确失败；接管未完成时退出会保留用户控制并标记结果未知。差距：强制退出、renderer 卡死、清理失败（下载/调试器/文件选择器）、设备提示、Windows 焦点与快捷键差异。 | ① `node tests/user-control-e2e.cjs`：接管中请求、动作完成、其他 Room、重启、`manualControl`、等待超时/成功、Room 删除报错。② `node --test tests/browser.e2e.mjs`：`yieldControl` 等待进行中动作，返回后新动作被拒，`resumeControl` 恢复。③ `node tests/load-state-e2e.cjs` 与 `node tests/sdk-e2e.cjs` 中等待类操作在交还时立即以 user control 失败。④ 补测：强制 kill、同步 renderer 卡死、清理失败、设备选择提示、Windows 平台。⑤ 合同：用户未"交还 Agent"前，任何 Agent 客户端不得取回控制权；`waitForControl` 只观察，不主动改变控制权。 |
 | D03 | 部分 | **权限与浏览器提示**。已实现：主文档通知权限请求先转交用户再弹窗；允许/拒绝、状态查询、同 Profile 同来源共享、跨 Profile 与权限类型隔离、桌面 UI 撤销、导航竞态不授予原来源、重启不保留；页面 alert/confirm/prompt 可在触发动作仍挂起时经 SDK 应答，prompt 还支持经桌面 UI 应答，支持连续弹窗和连接中断后重连应答。差距：系统确认框为测试替身；摄像头/麦克风与真实地理位置服务、设备选择器、跨 frame 对话框、应用重启期间打开的对话框未验证。 | ① `node tests/permissions-e2e.cjs`：拒绝/允许/查询/撤销/隔离/导航竞态/重启。② `node --test tests/dialogs.e2e.mjs`、`node tests/dialogs-ui-e2e.cjs`：对话框等待、连续弹窗、prompt 默认值、UI 应答、触发动作保持挂起。③ 补测：摄像头/麦克风、真实地理位置、跨源 frame 对话框、设备选择器、原生对话框人工记录。④ 合同：无已存授权时查询当前显示 `denied`，这是已知限制，不得宣称已区分"未决定"与"拒绝"。 |
 | D04 | 部分 | **长任务、执行风险与清理**。已实现：`evaluate` 的 `timeoutMs` 支持 100–60000；超时返回 `timed_out`、`executionStopped: false`、`mayHaveLateEffects: true`；Room 进入风险态并阻止新 Agent 动作与 `resumeControl`，`yieldControl` 仍可用；晚到结果更新为 `late_completed`/`late_failed`；重启后为 `unknown_after_restart`；桌面"页面执行状态未知"可保留或确认清除；`waitForFunction` 谓词超时同样进入风险态。差距：同步死循环、超时后的关闭/退出/清理、其他长时间操作（fetch/下载/上传）、风险确认后的页面副作用。 | ① `node --test tests/browser.e2e.mjs`、`node tests/sdk-e2e.cjs`：超时字段、风险阻止、晚到结果、跨重启。② `node tests/evaluation-risk-e2e.cjs`：UI 复核保留/清除并恢复动作。③ 补测：同步 renderer 卡死；超时后关闭页面/退出应用；清理失败；`fetch` 超时与下载取消后的风险语义。④ 合同：任何"超时"都不得报告为"执行已停止"，也不得撤销已发送请求、定时器或页面副作用。 |
@@ -89,7 +89,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（39 条串行命令，包含 3 项 `node:test` 与 38 个独立脚本，共 41 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
+1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（40 条串行命令，包含 3 项 `node:test` 与 39 个独立脚本，共 42 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 
