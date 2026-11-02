@@ -8,7 +8,14 @@ import { CODES, CorvidError, errorFromResponse } from './errors.js';
 /** Connect to the desktop control service without exposing a browser debugging endpoint. */
 export async function connect({ dataDir = process.env.CORVID_DATA_DIR || join(homedir(), '.corvid'), baseUrl, token } = {}) {
   let config;
-  if (baseUrl !== undefined || token !== undefined) {
+  if (token !== undefined && baseUrl === undefined) {
+    if (typeof token !== 'string' || !token) throw new TypeError('A non-empty scoped token is required');
+    const endpoint = JSON.parse(await readFile(join(dataDir, 'control.json'), 'utf8'));
+    let localEndpoint;
+    try { localEndpoint = new URL(endpoint.baseUrl); } catch { throw new TypeError('control.json must contain a valid local Corvid control URL'); }
+    if (localEndpoint.protocol !== 'http:' || localEndpoint.hostname !== '127.0.0.1' || localEndpoint.username || localEndpoint.password || localEndpoint.search || localEndpoint.hash) throw new TypeError('control.json must contain a local Corvid control URL on 127.0.0.1');
+    config = { baseUrl: localEndpoint.origin, token };
+  } else if (baseUrl !== undefined || token !== undefined) {
     if (typeof baseUrl !== 'string' || typeof token !== 'string' || !token) throw new TypeError('baseUrl and token must be provided together');
     let endpoint;
     try { endpoint = new URL(baseUrl); } catch { throw new TypeError('baseUrl must be a valid local Corvid control URL'); }

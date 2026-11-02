@@ -190,6 +190,13 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
+function createAgentClientGrant(args = {}) {
+  const name=typeof args.name==='string'?args.name.trim():'';
+  const roomIds=args.roomIds;
+  if(!name||name.length>80||!Array.isArray(roomIds)||!roomIds.length||roomIds.some(roomId=>typeof roomId!=='string'||!rooms.some(room=>room.id===roomId)))throw Object.assign(new Error('请填写有效的客户端名称，并至少选择一个现有空间'),{code:'CORVID_INVALID_ARGUMENT'});
+  const created=agentClients.create({name,roomIds});
+  return {...created.client,token:created.token};
+}
 function normalizeBounds(saved) {
   if (!saved || typeof saved !== 'object') return null;
   const { x, y, width, height, maximized } = saved;
@@ -627,6 +634,10 @@ async function dispatch(method, args = {}, fromApi = false) {
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','resumeControl','adoptTab','releasePage','finishRoom'].includes(method)) { const s = ['createTab','closeRoom','resumeControl','adoptTab','releasePage','finishRoom'].includes(method) ? findRoom(target) : findRoom(findTab(target).roomId); if (s.executionRisk) throw new Error('Room has an unresolved timed-out execution; user review is required'); }
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
+    case 'listAgentClients': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return {clients:agentClients.list()}; }
+    case 'createAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return createAgentClientGrant(args); }
+    case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
+    case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
     case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
     case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
     case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
@@ -1114,8 +1125,8 @@ async function startServer() {
         const pieces=url.pathname.split('/').filter(Boolean);
         if(pieces[0]==='rooms'&&pieces[1]) roomId=pieces[1];
         else if(pieces[0]==='tabs'&&pieces[1]) {try{roomId=findTab(pieces[1]).roomId;}catch{}}
-        const permittedMethods=new Set(['state','roomDetails','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
-        if(!permittedMethods.has(method)||!roomId&&method!=='state'||roomId&&!principal.client.roomIds.includes(roomId)){
+        const permittedMethods=new Set(['state','profiles','roomDetails','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
+        if(!permittedMethods.has(method)||!roomId&&!['state','profiles'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
           res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
         }
       }
@@ -1124,14 +1135,11 @@ async function startServer() {
       let result;
       if(method==='health') result={ok:true};
       else if(method==='listAgentClients') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});result={clients:agentClients.list()};}
-      else if(method==='createAgentClient') {
-        if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});
-        if(typeof body.name!=='string'||!body.name.trim()||body.name.trim().length>80||!Array.isArray(body.roomIds)||!body.roomIds.length||body.roomIds.some(id=>typeof id!=='string'||!rooms.some(room=>room.id===id)))throw Object.assign(new Error('Agent 名称和有效的空间授权列表为必填项'),{status:400,code:'CORVID_INVALID_ARGUMENT'});
-        const created=agentClients.create({name:body.name.trim(),roomIds:body.roomIds});result={...created.client,token:created.token};
-      }
+      else if(method==='createAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});result=createAgentClientGrant(body);}
       else if(method==='revokeAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});const client=agentClients.revoke(routeArgs.clientId);if(!client)throw Object.assign(new Error('Agent 授权不存在'),{status:404,code:'CORVID_NOT_FOUND'});result={revoked:true,client};}
       else if(method==='roomDetails') result=describeRoom(findRoom(routeArgs.id));
       else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
+      else if(method==='profiles'&&principal.kind==='agent') {const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));result={profiles:profiles.filter(profile=>allowedProfileIds.has(profile.id))};}
       else if(method==='shutdown') result={ok:true};
       else result=await dispatchQueued(method,{...body,...routeArgs},true);
       res.end(JSON.stringify(result));

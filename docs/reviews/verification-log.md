@@ -1,11 +1,18 @@
 # 验证记录
 
+## 2026-11-03 Agent 访问管理界面与 Browser MCP scoped 身份（Issue #96、#98）
+
+- 实现：设置内新增 Agent 客户端签发、一次性显示/复制、已授权 Room 范围列表及即时撤销；只在本机保存 token 的 SHA-256 摘要，文件权限为 0600。Browser MCP 只接受 `CORVID_AGENT_TOKEN`，缺失时拒绝请求且不回退管理员凭据；Profile 列表只返回已授权 Room 所属浏览身份。SDK 可显式传入 scoped token，并从本机控制配置读取 endpoint，不读取其中管理员 token。
+- 验证：本机 macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs` 均 EXIT 0；覆盖 Room/Profile 授权过滤、设置内创建/复制/关闭后清空/撤销、撤销即时失效、无 token 不降级、拒绝向非本机配置端点发送 scoped token、MCP 页面操作与越权拒绝。相关桌面/SDK/MCP/测试文件 `node --check` 及 `git diff --check` 通过。`node --test --test-concurrency=1 tests/browser.e2e.mjs` EXIT 0。全量 `npm test` 未运行。
+- 界面检查：隔离真实 Electron、704×568 CSS px。目视检查截图显示授权标题、信任边界提示、客户端表单和创建操作均可见；已授权客户端列表位于可滚动内容下方。剪贴板由 E2E 替身接管，没有修改用户剪贴板。
+- 限制：MCP 的页面动作测试在执行前显式激活获准 Room。用户留在新标签起始页时后台 Room 的 WebContentsView 仍可能隐藏，页面操作边界由 [Issue #98](https://github.com/heyallencao/corvid/issues/98) 跟踪；内置 Agent 身份统一、同一 OS 用户进程隔离和真实 MCP host 尚未验证。没有进行真实模型调用。
+
 ## 2026-11-03 Agent 客户端 Room 授权基础切片（Issue #96）
 
 - 实现范围：管理员可创建、列出与撤销外部 Agent 客户端凭据；每个客户端绑定明确 Room ID。原始 scoped token 仅创建响应返回，磁盘只保存 SHA-256 摘要，`agent-clients.json` 权限为 0600。服务端按身份与 Room scope 限制 `/rooms`、Room 与 Tab 路由；scoped client 无法读取全局 Profile、历史、书签、下载和窗口路由。SDK 支持 `connect({baseUrl, token})`、签发/列出/撤销授权，并新增 `CORVID_FORBIDDEN`。
 - 验证通过：Node 24.14.1/macOS、本机 Electron 45.2.1、临时 `CORVID_DATA_DIR`；`node tests/agent-access-e2e.cjs` EXIT 0，覆盖两个客户端各自只列出授权 Room、Room 内创建标签、猜测另一 Room 的 Tab ID 返回 403、全局数据接口拒绝、SDK 授权管理、显式凭据必须成对并拒绝非本机 endpoint、仅存哈希与 0600 权限、撤销即时生效、未撤销授权重启后仍有效和已撤销授权重启后继续失效。`node --test --test-concurrency=1 tests/browser.e2e.mjs` EXIT 0，既有主控制服务 401/Bearer 与浏览器操作合同通过。`node --check` 覆盖桌面模块、授权存储模块、SDK 与新 E2E；`git diff --check` 通过。
 - 回归限制：`4396441` 父提交基线与本分支均复现三项既有回归：`tests/rpc-e2e.cjs` 的功能断言通过后，临时目录清理报 `ENOTEMPTY`；`tests/sdk-e2e.cjs` 在截图 PNG 签名断言失败；`tests/mcp-e2e.cjs` 的 `page_fill` 断言收到错误。三项在本地 `main` worktree 均通过。该本地分支含有尚未进入 `origin/main` 的 Chrome Cookie 回滚与新标签 WebContentsView 变更；证据表明失败早于本 PR，但本轮不宣称这些回归已修复或全量回归通过。全量 `npm test` 未运行。
-- 安全/产品边界：此切片未提供桌面授权管理 UI，内置 Corvid Agent 与 MCP 还未统一接入 scoped identity；管理员 `control.json` 仍对能读取同一用户 Corvid 数据目录的进程可见，不构成 OS 级恶意同用户进程隔离。后续完成范围见 D22 和 Issue #96。
+- 安全/产品边界：此切片未提供桌面授权管理 UI，内置 Corvid Agent 与 MCP 还未统一接入 scoped identity；管理员 `control.json` 仍对能读取同一用户 Corvid 数据目录的进程可见，不构成 OS 级恶意同用户进程隔离。后续完成范围见 D23 和 Issue #96。
 
 ## 2026-11-03 Corvid 新标签起始页（Issue #93）
 

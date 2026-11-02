@@ -39,6 +39,12 @@ function registerActionTool(server, name, description, inputSchema, handler) {
   });
 }
 
+async function connectAgent() {
+  const token=process.env.CORVID_AGENT_TOKEN;
+  if(!token)throw Object.assign(new Error('请先在 Corvid 设置中创建授权客户端，并在 MCP 主机配置 CORVID_AGENT_TOKEN'),{code:'CORVID_UNAUTHORIZED'});
+  return connect({token});
+}
+
 const pageScopeSchema = z.object({ roomId: z.string().min(1), tabId: z.string().min(1) });
 const locatorSchema = z.discriminatedUnion('by', [
   z.object({ by: z.literal('ref'), value: z.string().regex(/^@\d+$/) }),
@@ -47,7 +53,7 @@ const locatorSchema = z.discriminatedUnion('by', [
 ]);
 
 async function withManagedPage(roomId, tabId, operation) {
-  const client = await connect();
+  const client = await connectAgent();
   try {
     const room = await client.room(roomId);
     assertAgentReadable(room);
@@ -64,13 +70,13 @@ function createServer() {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   registerReadTool(server, 'list_profiles', 'List Corvid Profiles. Choose a profile explicitly before listing its Rooms.', z.object({}), async () => {
-    const client = await connect();
+    const client = await connectAgent();
     try { return (await client.profiles()).slice(0, MAX_ITEMS).map(({ id, name }) => ({ id, name })); }
     finally { await client.disconnect(); }
   });
 
   registerReadTool(server, 'list_rooms', 'List Rooms in one explicitly selected Profile.', z.object({ profileId: z.string().min(1) }), async ({ profileId }) => {
-    const client = await connect();
+    const client = await connectAgent();
     try {
       const profile = (await client.profiles()).find(item => item.id === profileId);
       if (!profile) throw Object.assign(new Error(`Profile not found: ${profileId}`), { code: 'CORVID_NOT_FOUND' });
@@ -86,7 +92,7 @@ function createServer() {
   });
 
   registerReadTool(server, 'list_tabs', 'List tabs in one explicitly selected Room. Page contents are not returned.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => {
-    const client = await connect();
+    const client = await connectAgent();
     try {
       const room = await client.room(roomId);
       const tabs = await room.tabs();
@@ -98,7 +104,7 @@ function createServer() {
   });
 
   registerReadTool(server, 'page_info', 'Read metadata for a tab in an explicitly selected, Agent-owned Room. User-controlled or risky Rooms are not readable through page tools.', z.object({ roomId: z.string().min(1), tabId: z.string().min(1) }), async ({ roomId, tabId }) => {
-    const client = await connect();
+    const client = await connectAgent();
     try {
       const room = await client.room(roomId);
       assertAgentReadable(room);
@@ -113,7 +119,7 @@ function createServer() {
     roomId: z.string().min(1), tabId: z.string().min(1),
     scope: z.enum(['page', 'viewport']).default('page'),
   }), async ({ roomId, tabId, scope }) => {
-    const client = await connect();
+    const client = await connectAgent();
     try {
       const room = await client.room(roomId);
       assertAgentReadable(room);
