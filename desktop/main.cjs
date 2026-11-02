@@ -17,7 +17,17 @@ const pageDebugger = require('./page-debugger.cjs');
 const agentDownloads = require('./agent-downloads.cjs')(app.getPath('temp'));
 const { createPiWorkbench } = require('./pi-workbench.cjs');
 const { createPiModelManager } = require('./pi-models.cjs');
-const piModelManager = createPiModelManager({ dataDir, openExternal: url => shell.openExternal(url), onAuthEvent: event => {
+const usePiFixture=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PI_REAL_MODEL!=='1';
+const pendingPiAuthPrompts = new Map();
+let nextPiAuthPromptId = 0;
+const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDir,'pi-agent'), openExternal: url => shell.openExternal(url), promptAuth: (providerId, prompt) => new Promise((resolve, reject) => {
+  const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.isFocused()) || [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed());
+  if (!record) { reject(new Error('找不到可完成账号授权的 Corvid 窗口')); return; }
+  const id = `pi-auth-${++nextPiAuthPromptId}`;
+  const timer = setTimeout(() => { pendingPiAuthPrompts.delete(id); reject(new Error('账号授权交互已超时')); }, 180_000);
+  pendingPiAuthPrompts.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } });
+  record.browserWindow.webContents.send('pi-auth-prompt', { id, providerId, prompt });
+}), onAuthEvent: event => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-auth-event', event);
 } });
 let failNextPiFixtureInitialization = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_INIT_FAILURE_ONCE === '1';
@@ -38,7 +48,7 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
-const piWorkbench = createPiWorkbench({ dataDir, resolveModel: selection => process.env.CORVID_TEST_MODE==='1' ? null : piModelManager.getModel(selection), getModelSelection: () => process.env.CORVID_TEST_MODE==='1' ? null : piModelManager.getSelection(), createSession:process.env.CORVID_TEST_MODE==='1'?fixtureSession:undefined, onChange: tasks => {
+const piWorkbench = createPiWorkbench({ dataDir, resolveModel: selection => usePiFixture ? null : piModelManager.getModel(selection), getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession:usePiFixture?fixtureSession:undefined, onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
 } });
 let panelOpen = false;
@@ -537,8 +547,13 @@ async function dispatch(method, args = {}, fromApi = false) {
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
     case 'piTasks': return { tasks: piWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
+    case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
     case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }
     case 'selectPiModel': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.select(args); }
+    case 'discoverPiEndpointModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.discoverEndpointModels(args); }
+    case 'savePiEndpoint': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.saveEndpoint(args); }
+    case 'removePiEndpoint': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.removeEndpoint(args.id); }
     case 'loginPiProvider': { if(fromApi) throw new Error('Model login must be started by the user in Corvid UI'); return piModelManager.login(args.providerId); }
     case 'logoutPiProvider': { if(fromApi) throw new Error('Model logout must be started by the user in Corvid UI'); return piModelManager.logout(args.providerId); }
     case 'loginPiProviderApiKey': { if(fromApi) throw new Error('API Keys can only be managed from Corvid UI'); return piModelManager.loginApiKey(args.providerId, args.apiKey); }

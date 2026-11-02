@@ -12,9 +12,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-runtime-'));
-  const piAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-config-'));
-  const previousPiAgentDir = process.env.PI_CODING_AGENT_DIR;
-  process.env.PI_CODING_AGENT_DIR = piAgentDir;
   let app, createdSession, reopenedSession;
   try {
     app = await _electron.launch({
@@ -89,10 +86,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     createdSession?.session.dispose();
     reopenedSession?.session.dispose();
     if (app) await app.close().catch(() => {});
-    if (previousPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousPiAgentDir;
     fs.rmSync(dataDir, { recursive: true, force: true });
-    fs.rmSync(piAgentDir, { recursive: true, force: true });
   }
 })().catch(error => {
   console.error(error);

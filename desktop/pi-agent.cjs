@@ -31,7 +31,7 @@ function assertReadableRoom(room, profileId) {
   if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
@@ -45,8 +45,10 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
 
   const pi = await import('@earendil-works/pi-coding-agent');
   const { Type } = await import('typebox');
-  const { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager, defineTool } = pi;
-  const piAgentDir = getAgentDir();
+  const { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, defineTool } = pi;
+  const piAgentDir = path.join(dataDir, 'pi-agent');
+  await fs.mkdir(piAgentDir, { recursive: true, mode: 0o700 });
+  await fs.chmod(piAgentDir, 0o700);
   const sessionDirectory = path.join(dataDir, 'agent-sessions', taskId);
   let sessionManager;
   if (sessionFile) {
@@ -116,8 +118,8 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
 
   const modelRuntime = selectedModel ? (suppliedModelRuntime || await ModelRuntime.create({ authPath: path.join(piAgentDir, 'auth.json'), modelsPath: path.join(piAgentDir, 'models.json'), refreshOnCreate: false })) : undefined;
   const model = selectedModel ? (selectedPiModel || modelRuntime.getModel(selectedModel.providerId, selectedModel.modelId)) : undefined;
-  if (selectedModel && (!model || model.type !== 'chat')) throw new Error(`Pi 模型不存在：${selectedModel.providerId}/${selectedModel.modelId}`);
-  if (selectedModel && !await modelRuntime.checkAuth(selectedModel.providerId).catch(() => undefined)) throw new Error(`请先连接 ${selectedModel.providerId} 账号`);
+  if (selectedModel && (!model || (model.type && model.type !== 'chat'))) throw new Error(`Pi 模型不存在：${selectedModel.providerId}/${selectedModel.modelId}`);
+  if (selectedModel && requiresAuth && !await modelRuntime.checkAuth(selectedModel.providerId).catch(() => undefined) && !modelRuntime.hasConfiguredAuth(selectedModel.providerId)) throw new Error(`请先连接 ${selectedModel.providerId} 账号`);
 
   const { session, modelFallbackMessage } = await createAgentSession({
     cwd: dataDir,

@@ -1,3 +1,19 @@
+# 2026-11-02 Corvid-owned Pi runtime 与自定义模型端点
+
+## 执行与结果
+
+- Pi runtime、模型配置、OAuth 凭据及 transcript 路径统一落在 `CORVID_DATA_DIR` 内；主程序将 Pi agent 数据目录固定为 `CORVID_DATA_DIR/pi-agent`。工作台 Electron E2E 设置旧 `PI_CODING_AGENT_DIR` 诱饵路径，确认该路径不会被创建，Corvid 自有目录权限为 0700。
+- Pi OAuth 需要在登录过程中由用户选择登录方式，并可能输入授权码。Corvid 新增应用内授权对话框承接 Pi `select` / `manual_code` 等交互，不提示用户转去 Pi CLI/设置；授权链接也可从 Corvid 授权框打开。
+- 自定义 OpenAI Chat Completions 端点由 Corvid 的模型管理器读取与写入；设置及密钥留在 Corvid 数据目录。无密钥模式使用无敏感占位 Bearer，端点需忽略认证头。
+- 验证：`node --check` 覆盖修改的主进程、Pi 管理器、预加载、renderer 与手动 smoke 脚本；`git diff --check` 通过。`pi-models-e2e`、`pi-runtime-e2e`、`pi-workbench-e2e`、`pi-custom-endpoint-e2e` 均通过；后者以真实 Pi session 请求本地兼容服务并检查配置目录权限。更新测试后 `env -u ELECTRON_RUN_AS_NODE npm test` 以 EXIT 0 完成：38 个独立脚本命令 + 3 项 `node:test`，共 41 项检查。
+- `env -u ELECTRON_RUN_AS_NODE node tests/pi-real-model-smoke.cjs` 通过（EXIT 0）：测试在隔离 Corvid 数据目录创建 OAuth，Corvid 登录框与浏览器授权流程完成后确认凭据落在 `CORVID_DATA_DIR/pi-agent/auth.json`；session 实际模型为 `openai-codex/gpt-6-luna`，向本地 HTTP 页面 fixture 发送真实请求并收到 `CORVID_LUNA_OK`。测试结束清理隔离目录，不读取本机 Pi CLI 认证；真实请求会使用账户额度。此前使用本机 Pi OAuth 的历史请求不作为本次验收证据。
+
+## 覆盖与限制
+
+- 本地端点通过 loopback HTTP fixture；没有使用真实自定义 provider 或 API Key。
+- 本地 Electron 回归覆盖 Corvid 自有目录，不读取 Pi CLI 的本机配置/凭据。Corvid OAuth 与真实 GPT-6 Luna 请求本次通过；未量化用量/费用，API Key 登录退出 UI、其他模型/provider 与跨平台仍未验收。
+- Kaze 参考只证明 REA 截图中 Agent 面板、模型选择器与输入提示的相对位置；聊天行为/授权流程仍以 Issue #56 定义为 Corvid 待实现与验收目标。
+
 # 验证记录
 
 ## 2026-11-02 工作区面板关闭后的键盘焦点恢复（Issue #52）

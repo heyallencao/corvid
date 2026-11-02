@@ -33,13 +33,13 @@ Corvid 是可作为日常浏览器使用的完整桌面产品。产品主线按�
 - **左侧导航：** Corvid 品牌；Profile 切换；Spaces/Rooms 列表与新建；Agent 区（Pi 工作台入口与 Agent Room 列表）；底部书签、历史、下载、设置。
 - **浏览器 chrome：** 标签行和新建标签；后退、前进、刷新；地址/搜索输入；收藏与当前站点工具。
 - **主画布：** 当前 Browser Page，由 Chromium `WebContentsView` 呈现。
-- **Pi 工作区：** 右侧并行面板，含任务列表/对话、明确的页面预览和同意、暂停/继续/停止状态；保持当前 task transcript 绑定。
+- **Pi 对话工作区：** 右侧并行面板采用持续聊天布局，空态引导、消息流、流式回复与工具活动位于上方，固定输入框和模型选择位于底部。围绕当前页面或选定标签发问时显示来源；发送页面内容前提供可检查的预览和明确同意。运行、失败、停止、接管和继续状态就近显示在对话中，conversation 与 Agent Room/task/transcript 保持清晰对应。交互密度参考 REA 可见的 Kaze Agent 面板和模型/输入相对位置，Corvid 保留自己的视觉语言、EGO 式日常浏览主线及授权合同。完整工作由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 跟踪。
 - **通用列表与设置：** 复用统一的标题、搜索、空态、条目、错误和确认组件。
 
 ## 交付顺序与当前进度
 
 1. **首轮已实现**：统一 CSS token、结构化样式文件、持久左侧 Profile/Space/常用入口、收敛浏览器顶部工具层级，并将 Pi Agent 工作区放到右侧；保持现有浏览和 Room 合同。隔离 Electron 下已人工检查书签/历史/下载/设置和约 770px 窄窗；修复 HTML modal 被网页 view 覆盖的问题。证据见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-02-corvid-浏览器壳与-pi-工作区人工检查)。
-2. **继续打磨**：Pi 任务卡现在分开呈现任务目标、runtime/page 来源、执行状态与用户控制状态；Pi 任务 E2E 和全量回归已通过，隔离 fixture 截图完成首轮目视检查。继续打磨空态、运行中、失败、恢复与上下文同意状态，并补窄窗、键盘和辅助技术验收。
+2. **继续打磨**：Pi 任务卡现在分开呈现任务目标、runtime/page 来源、执行状态与用户控制状态；聊天式常驻输入、任务消息流、模型配置贴近输入、流式工具活动和清晰的失败恢复按 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 分段交付，并补窄窗、键盘和辅助技术验收。
 3. **后续统一**：History/Bookmarks/Downloads、设置、站点权限/站点数据对话框、菜单、错误/空态与动态状态。
 4. **完整视觉验收**：宽/窄最小窗口、多 Room/标签、多 Profile、长内容、键盘、屏幕阅读器、对比度、减少动态效果，并按 macOS/Windows 分别留存复验结论。
 
