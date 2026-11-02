@@ -47,12 +47,37 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       clipboard.writeText=text=>{globalThis.__copiedUrl=text;};
     });
 
-    // Pin the third tab through its context menu; it must lead the tab bar.
+    // The tab context menu supports pointer and keyboard invocation with a
+    // complete focus loop before any menu action mutates the tab list.
     const third=shell.locator('.tab').nth(2);
+    const thirdMain=shell.locator(`.tab[data-tab-id="${await third.getAttribute('data-tab-id')}"] .tab-main`),tabMenu=shell.locator('#tab-menu');
+    assert.equal(await thirdMain.getAttribute('aria-haspopup'),'menu');
+    assert.equal(await thirdMain.getAttribute('aria-controls'),'tab-menu');
+    assert.equal(await thirdMain.getAttribute('aria-expanded'),'false');
     await third.click({button:'right'});
-    await shell.locator('#tab-menu').waitFor({state:'visible'});
+    await tabMenu.waitFor({state:'visible'});
+    assert.equal(await thirdMain.getAttribute('aria-expanded'),'true');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'固定标签','opening the context menu moves focus to the first item');
+    await shell.keyboard.press('ArrowDown');assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'重新加载');
+    await shell.keyboard.press('ArrowUp');assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'固定标签');
+    await shell.keyboard.press('End');assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'关闭其他标签');
+    await shell.keyboard.press('Home');assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'固定标签');
+    await shell.keyboard.press('Escape');await tabMenu.waitFor({state:'hidden'});
+    assert.equal(await thirdMain.getAttribute('aria-expanded'),'false');
+    assert.equal(await thirdMain.evaluate(element=>element===document.activeElement),true,'Escape restores focus to the tab that opened the menu');
+    await thirdMain.focus();await shell.keyboard.press('Shift+F10');await tabMenu.waitFor({state:'visible'});
+    await shell.screenshot({path:path.join(os.tmpdir(),'corvid-tab-menu-keyboard.png')});
+    await shell.keyboard.press('Tab');await tabMenu.waitFor({state:'hidden'});
+    assert.equal(await shell.evaluate(()=>document.activeElement.classList.contains('tab-close')),true,'Tab leaves the menu for the next shell control');
+    await thirdMain.focus();await shell.keyboard.press('Shift+F10');await tabMenu.waitFor({state:'visible'});
+    await shell.keyboard.press('Shift+Tab');await tabMenu.waitFor({state:'hidden'});
+    assert.equal(await shell.evaluate(()=>document.activeElement.classList.contains('tab-close')),true,'Shift+Tab leaves the menu for the previous shell control');
+    await thirdMain.press('ContextMenu');await tabMenu.waitFor({state:'visible'});
+    await shell.keyboard.press('Escape');await tabMenu.waitFor({state:'hidden'});
+    await third.click({button:'right'});await tabMenu.waitFor({state:'visible'});
     await shell.getByRole('menuitem',{name:'固定标签'}).click();
-    await shell.locator('#tab-menu').waitFor({state:'hidden'});
+    await tabMenu.waitFor({state:'hidden'});
+    assert.equal(await thirdMain.getAttribute('aria-expanded'),'false');
     let list=await tabs();
     assert.equal(list[0].pinned,true,'pinned tab moves to the front');
     assert.equal(list.filter(tab=>tab.pinned).length,1);

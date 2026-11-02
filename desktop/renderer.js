@@ -406,23 +406,24 @@ document.querySelector('#show-pi-workbench').onclick=async()=>{if(libraryKind===
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
 const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
 const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z" fill="#4a5568"/></svg>');
-let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null;
+let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
 function tabElement(tab, room){
   const el=document.createElement('div');
   el.className=tab.pinned?'tab pinned':'tab'; el.setAttribute('role','tab'); el.setAttribute('aria-selected',tab.active?'true':'false'); el.dataset.tabId=tab.id;
   if(tab.pinned) el.dataset.pinned='true';
-  const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;
+  const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');
   if(tab.pinned){ const pin=document.createElement('img'); pin.className='pin-icon'; pin.alt='已固定'; pin.title='已固定'; pin.draggable=false; pin.src=PIN_ICON; main.append(pin); }
   const icon=document.createElement('img'); icon.className='favicon'; icon.alt=''; icon.draggable=false; icon.src=tab.faviconUrl || FALLBACK_FAVICON;
   icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};
   const title=document.createElement('span'); title.className='tab-title'; title.textContent=tab.title || tab.url || '新标签页';
   main.append(icon,title);
+  main.onkeydown=event=>{if(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey)){event.preventDefault();openTabMenu(null,tab,main);}};
   const close=document.createElement('button'); close.type='button'; close.className='tab-close'; close.textContent='×'; close.setAttribute('aria-label','关闭标签页'); close.title=`关闭 ${tab.title || tab.url || '标签页'}`;
   close.onclick=event=>{event.stopPropagation();void closeTabFromUi(tab.id);};
   el.append(main,close);
+  el.oncontextmenu=event=>{event.preventDefault();openTabMenu(event,tab,main);};
   main.onclick=()=>{closeTabMenu();void api.invoke('activateTab',{id:tab.id}).catch(error=>{controlError=error.message;draw(state);});};
   el.onauxclick=event=>{if(event.button===1){event.preventDefault();void closeTabFromUi(tab.id);}};
-  el.oncontextmenu=event=>{event.preventDefault();openTabMenu(event,tab,room);};
   el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;closeTabMenu();startTabDrag(event,el,room);};
   return el;
 }
@@ -442,8 +443,21 @@ function renderTabs(room){
 }
 async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTabFromUser',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
 function tabMenuElement(){return document.querySelector('#tab-menu');}
-function closeTabMenu(){const menu=tabMenuElement();if(menu && !menu.hidden){menu.hidden=true;menu.replaceChildren();}tabMenu=null;tabMenuTabId=null;}
-function openTabMenu(event,tab,room){
+function tabMenuItems(){return [...tabMenuElement().querySelectorAll('.menu-item')];}
+function closeTabMenu({restoreFocus=false}={}){
+  const menu=tabMenuElement();if(menu && !menu.hidden){menu.hidden=true;menu.replaceChildren();}
+  if(tabMenuTrigger)tabMenuTrigger.setAttribute('aria-expanded','false');
+  const trigger=tabMenuTrigger;tabMenu=null;tabMenuTabId=null;tabMenuTrigger=null;
+  if(restoreFocus&&trigger?.isConnected&&!trigger.disabled)trigger.focus();
+}
+function focusOutsideTabMenu(backward){
+  const menu=tabMenuElement(),trigger=tabMenuTrigger;
+  const controls=[...document.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])')]
+    .filter(element=>!element.closest('[hidden]')&&element.getClientRects().length>0&&getComputedStyle(element).visibility!=='hidden'&&!menu.contains(element));
+  const index=controls.indexOf(trigger),target=controls[index+(backward?-1:1)]||(backward?controls.at(-1):controls[0]);
+  closeTabMenu();(target||trigger)?.focus();
+}
+function openTabMenu(event,tab,trigger){
   const menu=tabMenuElement();
   const items=[
     {label:tab.pinned?'取消固定':'固定标签',action:()=>api.invoke('setTabPinned',{id:tab.id,pinned:!tab.pinned})},
@@ -457,14 +471,23 @@ function openTabMenu(event,tab,room){
   for(const item of items){
     if(item.separator){const rule=document.createElement('div');rule.className='menu-separator';menu.append(rule);continue;}
     const entry=document.createElement('button');entry.type='button';entry.className='menu-item';entry.textContent=item.label;entry.setAttribute('role','menuitem');
-    entry.onclick=async()=>{closeTabMenu();controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}};
+    entry.onclick=async()=>{closeTabMenu({restoreFocus:true});controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}finally{const focusTarget=document.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"] .tab-main`)||document.querySelector('.tab[aria-selected="true"] .tab-main')||document.querySelector('#new-tab');focusTarget?.focus();}};
     menu.append(entry);
   }
   menu.hidden=false;
-  const menuWidth=180, menuHeight=items.length*30+8;
-  menu.style.left=`${Math.max(4,Math.min(event.clientX,window.innerWidth-menuWidth-4))}px`;
-  menu.style.top=`${Math.max(4,Math.min(event.clientY,window.innerHeight-menuHeight-4))}px`;
-  tabMenuTabId=tab.id; tabMenu=menu;
+  const menuWidth=190, menuHeight=items.length*34+14,rect=trigger.getBoundingClientRect();
+  const left=event?event.clientX:rect.left,top=event?event.clientY:rect.bottom;
+  menu.style.left=`${Math.max(4,Math.min(left,window.innerWidth-menuWidth-4))}px`;
+  menu.style.top=`${Math.max(4,Math.min(top,window.innerHeight-menuHeight-4))}px`;
+  tabMenuTabId=tab.id; tabMenu=menu;tabMenuTrigger=trigger;trigger.setAttribute('aria-expanded','true');
+  menu.onkeydown=event=>{
+    const menuItems=tabMenuItems(),index=menuItems.indexOf(document.activeElement);
+    if(event.key==='Escape'){event.preventDefault();closeTabMenu({restoreFocus:true});return;}
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'||event.key==='Home'||event.key==='End'){
+      event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?menuItems.length-1:(index+(event.key==='ArrowDown'?1:-1)+menuItems.length)%menuItems.length;menuItems[next]?.focus();return;
+    }
+    if(event.key==='Tab'){event.preventDefault();focusOutsideTabMenu(event.shiftKey);}
+  };
   menu.querySelector('.menu-item')?.focus();
 }
 function pinnedFirst(order,rooms){const pinned=new Set(order.filter(id=>rooms.some(tab=>tab.id===id && tab.pinned)));return [...order.filter(id=>pinned.has(id)),...order.filter(id=>!pinned.has(id))];}
@@ -533,4 +556,3 @@ api.onFindNext(options=>{const bar=findbarEl();if(bar.hidden){openFindBar();retu
 api.onFindResult(result=>{if(!findOpen || result.tabId!==findTabId) return;const count=document.querySelector('#find-count');if(!result.matches){count.textContent='无结果';return;}count.textContent=`${result.activeMatchOrdinal}/${result.matches}`;});
 api.onFindReset(result=>{if(findTabId===result.tabId) closeFindBar();});
 document.addEventListener('pointerdown',event=>{if(tabMenu && !tabMenu.contains(event.target)) closeTabMenu();},true);
-document.addEventListener('keydown',event=>{if(event.key==='Escape' && tabMenu && !tabMenu.hidden){event.preventDefault();closeTabMenu();}});
