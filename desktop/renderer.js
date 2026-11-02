@@ -8,6 +8,8 @@ let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDat
 let chromeImportOnboardingPrompted=false;
 const piModelControlVersions=new WeakMap();
 let agentRoomRenderVersion=0;
+let lastAgentRoomAnnouncementStates=new Map();
+let hasAgentRoomAnnouncementSnapshot=false;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
@@ -134,9 +136,28 @@ async function renderAgentRooms(){
   panel.dataset.kind='agent-rooms';
   document.querySelector('#library-title').textContent='Agent 工作区';
   document.querySelector('#library-search').hidden=true;
+  let announcement=panel.querySelector('#agent-room-announcer');
+  if(!announcement){announcement=document.createElement('div');announcement.id='agent-room-announcer';announcement.className='visually-hidden';announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');announcement.setAttribute('aria-atomic','true');panel.insertBefore(announcement,items);}
+  announcement.hidden=false;
   const rooms=state.rooms.filter(room=>room.profileId===state.activeProfileId&&(room.ownership==='agent'||room.yielded||room.finished));
   const tasksByRoom=new Map();
   for(const task of result.tasks){const tasks=tasksByRoom.get(task.roomId)||[];tasks.push(task);tasksByRoom.set(task.roomId,tasks);}
+  const taskLabels={preparing:'准备中',running:'正在回复',waiting_for_user:'等待你接管',completed:'已完成',failed:'需要处理',interrupted:'等待检查'},nextAnnouncementStates=new Map(),changedStates=[];
+  for(const room of rooms){
+    const ownershipLabel=room.executionRisk?'页面执行状态未知':room.userResumePending?'正在接管':room.finished?'已结束':room.ownership==='agent'?'Agent 控制中':room.yielded?'用户控制中':'空闲';
+    for(const task of tasksByRoom.get(room.id)||[]){
+      const key=`${profileId}:${task.id}`,signature=`${task.status}:${ownershipLabel}`,previous=lastAgentRoomAnnouncementStates.get(key);
+      nextAnnouncementStates.set(key,signature);
+      if(previous!==undefined?previous!==signature:hasAgentRoomAnnouncementSnapshot)changedStates.push({room,task,ownershipLabel});
+    }
+  }
+  if(changedStates.length){
+    const messages=changedStates.slice(0,3).map(({room,task,ownershipLabel})=>`${room.name}：Corvid Agent ${taskLabels[task.status]||'状态未知'}${ownershipLabel?`；${ownershipLabel}`:''}`);
+    const remainder=changedStates.length>messages.length?`；还有 ${changedStates.length-messages.length} 项状态更新`:'';
+    announcement.textContent=messages.join('；')+remainder;
+  }
+  lastAgentRoomAnnouncementStates=nextAnnouncementStates;
+  hasAgentRoomAnnouncementSnapshot=true;
   items.replaceChildren();
   for(const room of rooms){
     const row=document.createElement('div');row.className='agent-room-entry';
@@ -146,9 +167,8 @@ async function renderAgentRooms(){
     status.textContent=`${ownershipLabel} · ${room.tabs.length} 个标签`;
     const roomTasks=tasksByRoom.get(room.id)||[];
     const taskStates=document.createElement('div');taskStates.className='agent-room-tasks';
-    const taskLabels={preparing:'准备中',running:'正在回复',waiting_for_user:'等待你接管',completed:'已完成',failed:'需要处理',interrupted:'等待检查'};
     for(const task of roomTasks){
-      const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||'状态未知'}`;taskStatus.setAttribute('role','status');taskStates.append(taskStatus);
+      const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||'状态未知'}`;taskStates.append(taskStatus);
       const openTask=button('查看对话',async()=>{
         piSelectedTaskId=task.id;piHistoryOpen=false;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding={profileId:task.profileId,roomId:task.roomId,tabId:task.tabId};piContextPreview=null;
         setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
@@ -343,6 +363,7 @@ function renderPiWorkbench(){
 function setLibraryPanel(kind,trigger=null){
   libraryKind=kind;libraryTrigger=kind?trigger:null;
   const panel=document.querySelector('#library');
+  const agentRoomAnnouncement=document.querySelector('#agent-room-announcer');if(agentRoomAnnouncement){agentRoomAnnouncement.hidden=kind!=='agent-rooms';if(agentRoomAnnouncement.hidden)agentRoomAnnouncement.textContent='';}
   if(kind){panel.hidden=false;panel.setAttribute('aria-label',kind==='pi-workbench'?'Corvid Agent':kind==='agent-rooms'?'Agent 工作区':kind==='bookmarks'?'书签':kind==='history'?'浏览历史':'下载');}
   else{panel.hidden=true;delete panel.dataset.kind;panel.setAttribute('aria-label','工作区面板');}
   for(const name of ['bookmarks','history','downloads','agent-rooms','pi-workbench'])document.querySelector(`#show-${name}`).setAttribute('aria-expanded',String(kind===name));
