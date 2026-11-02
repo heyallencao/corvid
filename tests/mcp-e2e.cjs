@@ -2,6 +2,7 @@ const { _electron } = require('playwright-core');
 const electronPath = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -71,8 +72,14 @@ class McpProcess {
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-'));
-  let app, mcp;
+  let app, mcp, fixture;
   try {
+    fixture = http.createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end('<!doctype html><title>MCP fixture</title><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>');
+    });
+    await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+    const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
     app = await _electron.launch({
       executablePath: electronPath,
       args: [project],
@@ -103,8 +110,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_info', 'page_snapshot']);
-    assert.ok(listed.tools.every(tool => tool.annotations?.readOnlyHint === true));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_click', 'page_fill', 'page_info', 'page_navigate', 'page_press', 'page_snapshot']);
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
+    assert.ok(listed.tools.filter(tool => ['page_click', 'page_fill', 'page_navigate', 'page_press'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -119,6 +127,30 @@ class McpProcess {
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
 
+    const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
+    assert.equal(navigated.result.isError, undefined);
+    assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
+    const filled = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'textbox', name: 'Query' }, value: 'corvid mcp' });
+    assert.equal(filled.result.isError, undefined);
+    const searched = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
+    assert.equal(searched.result.isError, undefined);
+    const afterSubmit = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(afterSubmit.value), /Searched: corvid mcp/);
+    const pressed = await mcp.callTool('page_press', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'textbox', name: 'Query' }, key: 'x' });
+    assert.equal(pressed.result.isError, undefined);
+    await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
+    const afterClick = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(afterClick.value), /Searched: corvid mcpx/);
+    await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
+    const afterToggle = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(afterToggle.value), /Clicked/);
+    const unsafeUrl = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: 'javascript:alert(1)' });
+    assert.equal(unsafeUrl.result.isError, true);
+    assert.equal(unsafeUrl.value.code, 'CORVID_INVALID_INPUT');
+    const credentialUrl = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: 'https://user:secret@example.test/' });
+    assert.equal(credentialUrl.result.isError, true);
+    assert.equal(credentialUrl.value.code, 'CORVID_INVALID_INPUT');
+
     const invalid = await mcp.callTool('page_info', { roomId: room.id, tabId: 'missing-tab-id' });
     assert.equal(invalid.result.isError, true);
     assert.equal(invalid.value.code, 'CORVID_NOT_FOUND');
@@ -130,12 +162,16 @@ class McpProcess {
     const denied = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(denied.result.isError, true);
     assert.equal(denied.value.code, 'CORVID_CONTROL_LOST');
+    const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
+    assert.equal(deniedAction.result.isError, true);
+    assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
     await call(`/rooms/${room.id}/resumeControl`, 'POST', {});
     assert.equal((await call('/rooms')).rooms.length, roomCountBefore);
-    console.log('PASS stdio MCP initialize/list/read tools, explicit Profile and Room scope, stable errors, user-control denial, bounded read-only contract');
+    console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, post-action verification, user-control denial, bounded responses');
   } finally {
     if (mcp) await mcp.close();
     if (app) await app.close().catch(() => {});
+    if (fixture) await new Promise(resolve => fixture.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 
