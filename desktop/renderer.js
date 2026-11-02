@@ -60,7 +60,7 @@ function draw(value) {
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
   updateNewTabSurface(active);
-  // Dialog-close state events may arrive after the user has entered and blurred an address draft.
+  // 对话框关闭后的状态事件可能晚于输入和失焦到达；同标签草稿应保留到提交。
   if(addressDraftDirty && (addressDraftTabId!==active?.id || addressDraftBaseUrl!==active?.url)){addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;}
   if(!addressDraftDirty && document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
