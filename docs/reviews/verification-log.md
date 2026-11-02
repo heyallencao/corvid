@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-02 Corvid Agent 产品语义独立于运行时（Issue #70）
+
+- 约束：用户只接触 Corvid Agent、模型、对话、授权与恢复语义；具体执行引擎只作为可替换的内部实现。源码文件、依赖与隔离测试可保留实现名，便于诊断。
+- 修复：模型不存在、Provider 不支持 OAuth/API Key 登录及授权步骤错误均改为 Corvid/Provider 语义。模型合同测试新增错误文本断言，确保这些路径不暴露运行时名称；桌面工作台的运行时错误隐藏合同仍由 `pi-workbench-e2e.cjs` 覆盖。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` 通过（EXIT 0）；`env -u ELECTRON_RUN_AS_NODE npm test` 通过（EXIT 0，43 条独立脚本命令与 3 项 `node:test`，共 46 项自动化检查）。本地数据目录及 fixture，不访问真实 Provider/OAuth，不调用模型。
+- 限制：本轮没有重命名内部实现标识；尚未实际替换第二个运行时，也未验证跨运行时真实凭据/会话迁移。
+
 ## 2026-11-02 Corvid Agent 主动停止与迟到事件隔离（Issue #68）
 
 - 基线复现：新增隔离真实 Electron E2E 后，先在未修复实现上运行并观察到停止后的 `assistant_delta` 把 task.output 改写为“迟到的停止后输出”；测试以非空 output 断言失败，确认 bug 可重复。
