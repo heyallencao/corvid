@@ -5,6 +5,7 @@
 ## 共同前提与限制
 
 - 环境：本机 macOS、Electron 45.2.1、Node.js v24.22.1；最近一次全量回归为 2026-11-02，37 条命令 / 39 项通过。
+- 全量回归限制：最近一次重跑在 `restore-loading-e2e` 已打印 PASS 后，Electron/Node 进程未退出，6 分钟后人工终止；因此不能证明该次 `npm test` 最终退出码或后续用例状态。跟踪见 [Issue #34](https://github.com/heyallencao/corvid/issues/34)。此前完成的全量通过记录见 [验证记录](../reviews/verification-log.md)。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。
 - 未覆盖：真实网站、真实用户数据、Windows、打包与分发、跨源 iframe 内容、closed Shadow DOM、`networkidle`、同步 renderer 卡死、强制 kill 与崩溃恢复、按 Agent 身份隔离。

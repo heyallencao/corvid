@@ -15,6 +15,7 @@
 - 2026-11-02 Pi runtime 基础 E2E：`node tests/pi-runtime-e2e.cjs` 通过；Pi `1.4.0` 会话无 API 调用启动，工具清单仅含 `corvid_page_snapshot` / `corvid_navigate`，测试隔离 Pi 配置和 Corvid 数据目录；`npm audit --audit-level=high` 为 0 vulnerabilities。还未验证真实模型、桌面任务 UI、Pi transcript 首条消息写入或恢复。
 - 2026-11-02 全量回归：本机 macOS、Node.js v24.22.1、Electron 45.2.1、隔离临时数据目录；`env -u ELECTRON_RUN_AS_NODE npm test` 35 条命令 / 37 项真实 Electron 用例全部通过，新增 `tests/pi-workbench-e2e.cjs`，Pi runtime 合同回归继续通过。`npm audit --audit-level=high` 为 0 vulnerabilities。Pi 无模型调用；未验证真实 MCP Host、真实网站、打包、Windows 或真实模型。
 - 2026-11-02 导航错误与新标签创建竞态回归：本机 macOS、Node.js v24.22.1、Electron 45.2.1、隔离临时数据目录；`env -u ELECTRON_RUN_AS_NODE npm test` 37 条命令 / 39 项真实 Electron 用例全部通过。新增主框架失败提示/重试与导航状态 E2E，并修复新建空白标签尚未完成初始化时地址栏仍指向旧标签的状态广播竞态。未验证真实网站、原生证书页面、打包与 Windows。
+- 2026-11-02 最近一次 `npm test` 重跑：`restore-loading-e2e` 输出 PASS 后，测试进程与其 Electron 子进程仍挂起超过 6 分钟，终止该次全量运行；该运行未到达剩余用例或返回退出码。跟踪见 [Issue #34](https://github.com/heyallencao/corvid/issues/34)。单独 Chrome 导入 E2E（包括本轮单项 Cookie 写入失败/同源重试）通过；此前完整套件的通过结果仍如上记录。
 - 2026-11-02 Pi takeover 回归：在上述 35 条命令 / 37 项全量套件上，新增用户接管期间 abort Pi、持久化 `waiting_for_user`、用户导航、交还后显式确认并在同一 transcript 继续；定向 E2E 与全量 `npm test` 均通过。无真实模型/provider 调用。
 - 自动化中的系统对话框是测试替身（`dialog.showMessageBox` / `showMessageBoxSync` / `showSaveDialogSync` 被替换）；下载测试用测试模式与临时下载目录绕开保存对话框。相关条目只能证明应用状态流转，不能证明原生对话框交互。
 
