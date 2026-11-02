@@ -51,7 +51,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await (async () => { for (let i = 0; i < 200; i++) { const result = await call('/rooms'); if (result.rooms.flatMap(room => room.tabs).some(tab => tab.url === pageUrl && tab.title === 'Custom endpoint fixture page')) return; await delay(25); } throw new Error('Local page did not finish loading'); })();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
-    await shell.getByRole('button', { name: '管理内置 Agent 模型' }).click();
+    await shell.getByRole('button', { name: '管理 Corvid Agent 模型' }).click();
     await shell.locator('#pi-endpoint-name').fill('Fixture Endpoint');
     await shell.locator('#pi-endpoint-url').fill(`http://127.0.0.1:${models.address().port}/v1`);
     await shell.getByRole('button', { name: '从端点读取模型列表' }).click();
@@ -59,7 +59,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.waitForFunction(() => document.querySelector('#pi-endpoint-model-ids').value === 'fixture-model');
     await shell.getByRole('button', { name: '保存端点' }).click();
     await shell.getByText(/端点已保存/).waitFor();
-    const selection = shell.getByLabel('内置 Agent 模型', { exact: true });
+    const selection = shell.getByLabel('Corvid Agent 模型', { exact: true });
     await shell.waitForTimeout(500);
     const latestCatalog = await shell.evaluate(() => window.browserShell.invoke('piModels'));
     const customOption = await selection.locator('option').evaluateAll(options => options.filter(option => option.value.includes('corvid-fixture-endpoint')).map(option => ({ value: option.value, text: option.textContent })));

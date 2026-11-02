@@ -16,6 +16,13 @@
 
 # 验证记录
 
+## 2026-11-02 Corvid Agent 产品语义与运行时隔离（Issue #62）
+
+- 产品入口、对话来源和模型设置统一使用 Corvid Agent 语义；任务卡不再呈现运行时名称，原始错误/授权提示若泄露运行时标识则显示 Corvid 自有提示。README 与系统设计明确 Corvid 拥有模型设置、任务/对话合同和迁移责任，运行时可替换或升级。
+- 定向真实 Electron 回归在隔离数据目录和本地 HTTP/确定性 Agent fixture 下通过：断言无运行时品牌的可见文案/辅助名称、Corvid Agent 任务来源，以及故意注入 `Pi session could not be resumed` 后 UI 只显示 Corvid Agent 错误提示。`pi-workbench-e2e`、`pi-custom-endpoint-e2e`、`node --check` 与 `git diff --check` 通过。
+- `env -u ELECTRON_RUN_AS_NODE npm test` 完整回归通过：40 个独立脚本命令与 3 项 `node:test`，共 43 项检查。未调用真实模型、未触发 OAuth，也未消耗模型额度；GPT-6 Luna smoke 仅同步了新的界面选择器，没有执行。
+- 限制：内部实现文件、依赖、测试名称与历史验证记录仍保留具体 runtime 术语用于维护和审计；此项只保证 Corvid 用户界面、错误呈现与当前产品文档不把它描述成用户产品概念。运行时替换后的配置/会话迁移仍需未来实现并验证。
+
 ## 2026-11-02 只读数据目录的启动诊断（Issue #60）
 
 - 复现：macOS 真实 Electron + 隔离目录 `chmod 0500`。修复前，模块加载阶段写入 `agent-tasks.json.tmp` 触发 `EACCES`，Electron 没有正常退出；测试在 10 秒后只能强制终止。
