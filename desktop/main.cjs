@@ -690,7 +690,7 @@ async function dispatch(method, args = {}, fromApi = false) {
           }catch{failures.push('删除本次新增 Cookie');}
         }
         if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}
-        if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。目标 Profile 中可能仍留有部分 Cookie，请检查后再重试。`);
+        if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。为保护目标 Profile 原有 Cookie，本次跳过无法按路径安全执行的删除回滚；本次导入的 Cookie 可能仍保留在目标 Profile。请在同一来源和目标 Profile 下再次点击“导入”，以重试并保存结果。`);
       };
       try{
         if(args.categories.includes('cookies')){

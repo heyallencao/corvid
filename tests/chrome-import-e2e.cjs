@@ -214,7 +214,7 @@ async function allowCookieImport(shell){
       await shell.locator('input[name="chrome-category"][value="cookies"]').check();
       await allowCookieImport(shell);
       await shell.locator('#confirm-chrome-import').click();
-      await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*可能仍留有部分 Cookie/).waitFor();
+      await shell.locator('#chrome-import-error').getByText(/测试注入：Chrome Cookie 持久化失败；Chrome Cookie 导入失败后回滚未完整完成.*持久化 Cookie 回滚结果.*本次导入的 Cookie 可能仍保留.*同一来源和目标 Profile 下再次点击“导入”/).waitFor();
       assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,'a failed write must keep the target fixed for a same-target retry');
       const rolledBackCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
       assert.equal(rolledBackCookies.length,1,'failed Cookie flush must remove newly imported Cookies and preserve the preexisting conflict');
@@ -426,6 +426,7 @@ async function allowCookieImport(shell){
         assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,`${scenario.name} failure must leave retry available`);
         assert.equal(await shell.locator('#chrome-import-target-profile').isDisabled(),true,`${scenario.name} retry must keep the destination Profile fixed`);
         assert.match(await rollbackStatus.textContent(),new RegExp(scenario.preserveExisting?'为保护目标 Profile 原有 Cookie':'删除本次新增 Cookie'));
+        assert.match(await rollbackStatus.textContent(),/同一来源和目标 Profile 下再次点击“导入”，以重试并保存结果/,'rollback guidance must name the exact retry path and keep the target fixed');
         if(scenario.injectRollbackFlushFailure)assert.match(await rollbackStatus.textContent(),/持久化 Cookie 回滚结果/,'a failed rollback flush must be reported alongside the preserved Cookie warning');
         const afterRollback=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'rollback_subject'}));
         assert.equal(afterRollback.find(cookie=>cookie.path==='/')?.value,scenario.preserveExisting?'preserve-original-value':undefined,`${scenario.name} failure must retain the target Cookie state`);
