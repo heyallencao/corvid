@@ -189,6 +189,20 @@ const SCHEMA_VERSION = 2;
 const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
+const uiPreferencesPath = path.join(dataDir, 'ui-preferences.json');
+let uiLocale = process.env.CORVID_TEST_MODE === '1' ? 'zh-CN' : (/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
+try {
+  const savedPreferences = JSON.parse(fs.readFileSync(uiPreferencesPath, 'utf8'));
+  if (savedPreferences && savedPreferences.schemaVersion === 1 && ['zh-CN', 'en'].includes(savedPreferences.uiLocale)) uiLocale = savedPreferences.uiLocale;
+} catch (error) {
+  if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+}
+function saveUiLocale(locale) {
+  const temporaryPath = `${uiPreferencesPath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify({schemaVersion:1,uiLocale:locale}), {mode:0o600});
+  fs.renameSync(temporaryPath, uiPreferencesPath);
+  uiLocale = locale;
+}
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
 try{chromeImportOnboardingState=JSON.parse(fs.readFileSync(chromeImportOnboardingPath,'utf8')).status;}catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
@@ -414,6 +428,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
+    ...(includeExtensionToolbar ? {uiLocale} : {}),
     profiles,
     extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
     rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
@@ -939,6 +954,13 @@ async function dispatch(method, args = {}, fromApi = false) {
       update();return {removed:true,id:extension.id};
     }
     case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
+    case 'setUiLocale': {
+      if(fromApi) throw new Error('User action required');
+      if(!['zh-CN','en'].includes(args.locale)) throw Object.assign(new Error('Unsupported application language'),{code:'CORVID_INVALID_ARGUMENT'});
+      saveUiLocale(args.locale);
+      for(const record of windowRecords.values()) update(record);
+      return {uiLocale};
+    }
     case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
     case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {

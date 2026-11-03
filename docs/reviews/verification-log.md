@@ -11,6 +11,13 @@
 - 复核：主线实现于用户在 runtime session 初始化期间接管时会取消准备中的任务；迟到 session 创建后应释放并且不得向模型发出 prompt。启动 Promise 会以“空间已交给用户；Agent 会话尚未就绪”拒绝。
 - 修正：`tests/agent-runtime-contract-e2e.cjs` 原先无条件等待启动 Promise 成功，与上述既有行为冲突；改为断言该 Promise 拒绝，并继续检查零 prompt 与迟到 session 已 dispose。
 - 验证：`node tests/agent-runtime-contract-e2e.cjs` EXIT 0；`git diff --check` 通过。全量 `npm test` 在该旧断言上失败后停止，本记录不宣称全量回归通过。
+## 2026-11-03 Corvid 界面语言偏好与浏览器壳层首批双语（Issue #130）
+
+- 基线与环境：`origin/main` `29f59a2` 的独立 worktree；macOS、Node.js v24.14.1、Electron 45.2.1。真实 Electron 使用临时 `CORVID_DATA_DIR`，预置合成的 `zh-CN` 偏好；未访问真实网页、未使用 OAuth 或模型。
+- 实现：应用语言从系统 locale 初始化（英文系统选 `en`，其他选 `zh-CN`），用户可在设置中切换并持久化到独立 `ui-preferences.json`（schema v1、0600）；不绑定 Profile，控制 API 不开放 locale 修改。`desktop/locales.js` 现含 332 个中英文匹配资源键、插值、复数与 `Intl` 日期/数字/列表格式化。静态 DOM 和 renderer 动态文案扩展至浏览器 chrome、标签/菜单、设置、Chrome 导入、Agent 访问管理、扩展空态、内置 Agent 对话与模型管理、Agent 工作区代表性状态；默认 Profile/空间名只在界面显示层翻译。架构见[本地化设计](../architecture/localization.md)。
+- UI 参照：REA 受控 Chromium 156.0.8078.79 在 Kobra `/components/dropdown-menu` 观察到页面标题、菜单说明和 `Menu size` combobox。Evidence `ev_a9d28bb5e29c9f2ff9465f0f0d3ee1933ba08d6941cc0f38fc7a32ac27a8c48d`，2026-11-03 11:57（Asia/Shanghai），1280×720。**直接观察：**路由可达且 AX 树包含上述标题/说明/combobox。**静态证据：**同次 DOM 标题与 AX 描述标明这是菜单组件示例。**推断：**参考帮助辨别菜单与选择器语义，不构成 Corvid 的语言选择需求。**未知：**场景只等待页面加载，未操作菜单或选择器；焦点、关闭、键盘与窄窗行为未知。Corvid 使用原生 `<select>`，未复制代码或素材。
+- 验证：本轮最后一次 `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/localization-e2e.cjs` 通过，覆盖源码重复键拒绝、语言即时切换和不支持 locale 拒绝、332 个资源键/复数键/占位符一致、DOM 资源键有效、浏览器菜单与控件、设置内 Chrome 导入/外部 Agent 授权、Profile 扩展空态、Agent 提示/模型设置、Agent 工作区空态、用户数据名称不变、`Intl` 格式、0600 偏好文件、重启恢复及 700×420 窄窗导航。六张隔离空白数据截图已生成：`corvid-localization-en-1024x700.png`、`corvid-localization-zh-CN-1024x700.png`、`corvid-localization-en-700x420.png`、`corvid-localization-zh-CN-700x420.png`、`corvid-localization-en-settings-1024x700.png`、`corvid-localization-zh-CN-settings-1024x700.png`；宽窗与窄窗基础浏览器截图、两种语言设置截图均已目视检查。还通过 `node --check desktop/locales.js`、`desktop/renderer.js`、`desktop/main.cjs`、`tests/localization-e2e.cjs` 和 `git diff --check`。只运行定向真实 Electron 用例，没有运行完整 `npm test`，没有访问外网、OAuth 或模型。
+- 限制与状态：截图展示的是明确夹具状态，不能证明所有译文/视图都无溢出；700×420 断言聚焦浏览器导航可达，不是完整窄屏验收。主进程/依赖生成错误、帮助与罕见状态、全部菜单和键盘焦点流程、VoiceOver 仍需审计。Issue #130 继续开放，D24 保持“部分”，不得宣传全产品已完成双语验收。
 ## 2026-11-03 下载失败与中断后的安全重试（Issue #126）
 
 - 基线与环境：基于 `ff9d046` 的隔离 worktree；macOS、Node.js v24.14.1、Electron 45.2.1。E2E 使用临时 `CORVID_DATA_DIR`、临时下载目录及本地 HTTP fixture。

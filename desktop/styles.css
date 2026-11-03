@@ -392,6 +392,7 @@ body.tab-dragging { cursor: grabbing; }
 #find-count { min-width: 42px; color: var(--text-muted); font-size: 11px; text-align: right; }
 #findbar button { width: 28px; height: 28px; padding: 0; color: var(--text-secondary); }
 dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 24px 80px var(--shadow-dialog); }
+#settings { width: min(640px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 #pi-model-settings { width: min(620px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow: auto; }
 #agent-access-dialog { width: min(620px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow: auto; }
 .agent-access-dialog { display: grid; gap: 13px; }
