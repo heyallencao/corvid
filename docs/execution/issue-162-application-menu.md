@@ -6,7 +6,7 @@ GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单]
 
 ## 基线证据
 
-- 主线 `56adc9c` 的 `desktop/main.cjs` 未调用 `Menu.setApplicationMenu()`，也没有 Corvid 菜单模块；Electron [`Menu`](https://www.electronjs.org/docs/latest/api/menu) 文档说明未设置应用菜单时会自动提供默认菜单。由此确认当前不是“没有任何菜单”，而是没有 Corvid 自有菜单合同。Electron [`BrowserWindow`](https://www.electronjs.org/docs/latest/api/browser-window) 文档说明 Windows/Linux 的自动隐藏菜单栏可由单按 Alt 显示。不同平台菜单实际像素、可访问性树与键盘行为尚需本地 Electron 观察。资料复核：2026-11-03。
+- 主线 `56adc9c` 的 `desktop/main.cjs` 未调用 `Menu.setApplicationMenu()`，也没有 Corvid 菜单模块；Electron [`Menu`](https://www.electronjs.org/docs/latest/api/menu) 与[应用菜单指南](https://www.electronjs.org/docs/latest/tutorial/application-menu)说明未设置应用菜单时会自动提供默认菜单。由此确认当前不是“没有任何菜单”，而是没有 Corvid 自有菜单合同。Electron [`BrowserWindow`](https://www.electronjs.org/docs/latest/api/browser-window) 文档说明 Windows/Linux 的自动隐藏菜单栏可由单按 Alt 显示。不同平台菜单实际像素、可访问性树与键盘行为尚需本地 Electron 观察。资料复核：2026-11-03。
 - Corvid 已有页面级查找、打印、全屏、缩放、后退/前进、标签/窗口创建和关闭动作，以及 Cmd/Ctrl 快捷键；菜单必须委托现有行为，不能另造绕过控制权的路径。
 - 界面语言保存在 `ui-preferences.json`，`setUiLocale` 可运行时变更并跨重启保持；主进程菜单也需跟随该 locale。
 
