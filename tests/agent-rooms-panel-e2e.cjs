@@ -269,7 +269,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), '接管 Work agent room');
     await shell.keyboard.press('Enter');
     await until(async () => (await call('/rooms')).rooms.find(room => room.id === otherRoom.id)?.ownership === 'user');
-    await shell.getByRole('button', { name: '交还 Agent：Work agent room' }).focus();
+    await shell.getByRole('button', { name: '交还 Agent: Work agent room' }).focus();
     await shell.keyboard.press('Enter');
     await until(async () => (await call('/rooms')).rooms.find(room => room.id === otherRoom.id)?.ownership === 'agent');
 
