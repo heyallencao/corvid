@@ -7,6 +7,13 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，8 项 `node:test` 与 46 个独立脚本共 54 项自动化检查通过；其中重试主流程、边界、Profile 与 Agent 下载测试均单独 EXIT 0。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check tests/download-e2e.cjs`、`node --check tests/download-retry-boundaries-e2e.cjs` 与 `git diff --check` 均通过。用例覆盖同名文件失败且原文件不变、手动重试成功、原记录保留、进行中禁用重复重试、取消子尝试、错误文案呈现、跨 Profile 来源拒绝、并发 IPC 只启动一个尝试、使用来源 Profile Session、危险协议拒绝、外部 API 不暴露重试入口、Agent 下载原有行为，以及模拟重启时把持久的 `progressing` 记录恢复为 `interrupted` 后重试成功。
 - UI/UE 参考：复用本日 REA 直接观察的 Kobra Alert `/components/alert`，Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（09:20 Asia/Shanghai）；仅参考命名状态区与错误状态表达的清晰度，未移植实现。Rare UI 在此前检查中仅显示 Vercel Security Checkpoint，Evidence `ev_f2ea0fa5cdeca7d8b14710c80abd66a5e367a3cabc0eff9faa49a22dc8df806e`，不提供可用切面。交互和覆盖限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-下载失败记录的手动重试-issue-126)。
 - 限制：下载目录和原生保存对话框由测试模式替换；重启测试以持久化 `progressing` 记录模拟启动恢复，没有强杀正在下载的 Electron 进程；未验证真实断网恢复、Windows/Linux、真实 Agent/MCP 客户端或打包版。已从来源 Profile 发起隔离重试；未在真实桌面保存对话框中切换 Profile。中文 PR [#127](https://github.com/heyallencao/corvid/pull/127) 已于 2026-11-03 合并，合并提交 `17f9f160cec32126473bd6c8ba12bdb2967ff235`；关联 Issue #126 已关闭。
+## 2026-11-03 Agent 续聊并发与 Room 交接竞态（Issue #96）
+
+- 复现：使用确定性 runtime 和临时数据目录直接调用真实 Agent Workbench 模块。旧实现中，首个续聊停在页面上下文读取时，第二个续聊也能通过原状态检查并等待同一读取；此前模块合同用例按预期失败。
+- 修复：同一任务开始读取页面上下文前即取得续聊占用并进入 `preparing`；并发续聊立即拒绝。页面上下文返回后重新检查任务状态；若 Room 已交还用户，拒绝启动迟到会话。预览校验失败时恢复原任务状态，`finally` 释放占用。
+- 验证：基于最新主线 `7a863a1` 的续聊修复通过 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-task-continuation-contract.cjs`、新增模块合同、`pi-workbench-e2e`、`agent-runtime-contract-e2e`、`agent-stop-e2e` 与完整 `npm test`。完整套件 8 项串行 `node:test` 和 47 个独立脚本全部通过，共 55 项自动化检查。合同用例验证重复提交不进行第二次页面上下文读取、不会重复写入 transcript/session/credential；过期预览失败后恢复原状态且可再次续聊；Room 在上下文读取期间交还用户后不启动迟到续聊或签发 credential。测试依赖通过临时 `node_modules` 符号链接复用本机安装；测试数据均隔离。
+- 限制：新增用例直接调用模块并使用 runtime 替身，不覆盖真实 Provider、真实 Electron renderer 双击时序或 UI 状态刷新；此前跨 Room 并行客户端的 Electron 验证是另一条证据。续聊冲突和交接路径复用现有状态提示，本切片未新增用户可见文案；Corvid 全产品 zh-CN/en 资源迁移仍未完成，需另行覆盖。Issue #96 仍开放，未更改 GitHub Issue 或 PR。
+
 ## 2026-11-03 Agent 跨 Room 慢操作不互相阻塞（Issue #96）
 
 - 缺口：两个 scoped Agent 客户端的并发 HTTP 请求和跨 Room 拒绝已有 E2E，但此前没有证明一个获准 Room 的长时间页面操作不会阻塞另一个 Room 的操作。

@@ -29,6 +29,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   let tasks = [];
   const sessions = new Map();
   const sessionCredentialIds = new Map();
+  const continuationClaims = new Set();
   let persistTimer;
   tasks = taskStore.load();
   for (const task of tasks) if (['preparing', 'running'].includes(task.status)) {
@@ -107,6 +108,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   }
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);
+    if (continuationClaims.has(taskId)) throw new Error('当前任务仍在运行或不能继续');
     if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
     if (task.stopUnconfirmed) throw new Error('上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
     const resumeCheckpoint = Boolean(task.sessionRef && runtime.canResume(task.sessionRef));
@@ -114,17 +116,28 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     if (!resumeCheckpoint && !priorConversation.length) throw new Error('已保存的对话内容不足以继续；原记录已保留，请从新对话开始');
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
-    const context = await runtime.readPageContext({ dataDir, profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
-    const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
-    if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
-    task.conversation ||= [];
-    task.conversation.push({ role: 'user', text: message.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() });
-    task.error = null;
-    task.page = { label: context.label, url: context.url, title: context.title };
-    task.output = '';
+    const previousStatus = task.status;
+    continuationClaims.add(taskId);
     task.status = 'preparing'; changed();
-    await run(task, { message: message.trim(), context, consentedSnapshot, initial: false, checkpoint: resumeCheckpoint ? task.sessionRef : null, priorConversation });
-    return copy(present(task));
+    try {
+      const context = await runtime.readPageContext({ dataDir, profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
+      if (task.status !== 'preparing') throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
+      const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
+      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
+      task.conversation ||= [];
+      task.conversation.push({ role: 'user', text: message.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() });
+      task.error = null;
+      task.page = { label: context.label, url: context.url, title: context.title };
+      task.output = '';
+      changed();
+      await run(task, { message: message.trim(), context, consentedSnapshot, initial: false, checkpoint: resumeCheckpoint ? task.sessionRef : null, priorConversation });
+      return copy(present(task));
+    } catch (error) {
+      if (task.status === 'preparing') { task.status = previousStatus; changed(); }
+      throw error;
+    } finally {
+      continuationClaims.delete(taskId);
+    }
   }
   async function run(task, { message, context, consentedSnapshot, initial, checkpoint = initial ? null : task.sessionRef, priorConversation = null }) {
     try {

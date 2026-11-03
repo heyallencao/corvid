@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 51 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test tests/*.e2e.mjs`（4 个文件、8 个 `node:test` 用例）和 46 条独立脚本命令，共 54 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 52 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test tests/*.e2e.mjs`（4 个文件、8 个 `node:test` 用例）和 47 条独立脚本命令，共 55 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -17,8 +17,8 @@
 | --- | --- | --- | --- |
 | 1 | `tests/browser.e2e.mjs` | 真实 Electron + 本地夹具：未认证请求返回 401、`control.json` 权限 0600、创建两个 Room、同 Profile 跨 Room Cookie 共享、Snapshot/fill/click、后台 Room 不影响前台、`yieldControl` 等待进行中动作、接管后拒绝新动作、`resumeControl`、`evaluate` 超时字段、风险态阻止动作、晚到结果、已交还 Room 不被 Agent 删除、`/shutdown` 清理。 | 只用本地夹具；单进程；无崩溃/强杀；不涉及系统对话框；macOS。 |
 | 2 | `tests/dialogs.e2e.mjs` | 页面 alert/confirm/prompt 与触发动作同时挂起时的观察与应答；prompt 默认值与取消返回 `null`；连续两个对话框；HTTP 请求中断后新连接可继续应答。 | 仅顶层文档；Electron 的 `prompt` 由 preload 同步桥提供；跨 frame、应用重启、调试器被外部工具分离未验证。 |
-| 3 | `tests/uploads.e2e.mjs` | `setInputFiles` 多文件/单文件/空数组清空、相对路径/缺失路径/`multiple` 约束；同源 iframe 与开放 Shadow DOM；frame 文档替换后引用失效；`waitForFileChooser` 的 arm/click/setFiles/cancel、动态 input、节点移除、交还与超时。 | 无目录上传、跨源 frame、原生选择器 UI；清空文件输入使用非 `isTrusted` 合成事件；本地夹具。 |
-| 4 | `tests/electron-startup.e2e.mjs` | 启动与清理诊断：Playwright launch/首个窗口失败分阶段、control.json 新凭据超时、旧 token 不被误认、主进程提前退出、清理超时后结束挂起子进程；错误不得暴露 token。 | 使用合成 launcher 和 Node 子进程 fixture；不声称复现真实 Electron 启动挂起，真实启动阶段由相关 E2E 实际覆盖。 |
+| 3 | `tests/electron-startup.e2e.mjs` | 启动与清理诊断：Playwright launch/首个窗口失败分阶段、control.json 新凭据超时、旧 token 不被误认、主进程提前退出、清理超时后结束挂起子进程；错误不得暴露 token。 | 使用合成 launcher 和 Node 子进程 fixture；不声称复现真实 Electron 启动挂起，真实启动阶段由相关 E2E 实际覆盖。 |
+| 4 | `tests/uploads.e2e.mjs` | `setInputFiles` 多文件/单文件/空数组清空、相对路径/缺失路径/`multiple` 约束；同源 iframe 与开放 Shadow DOM；frame 文档替换后引用失效；`waitForFileChooser` 的 arm/click/setFiles/cancel、动态 input、节点移除、交还与超时。 | 无目录上传、跨源 frame、原生选择器 UI；清空文件输入使用非 `isTrusted` 合成事件；本地夹具。 |
 | 5 | `tests/rpc-e2e.cjs` | 直接 HTTP 控制接口：不暴露 CDP 地址、Bearer 认证、Snapshot 引用与 fill/click/text/evaluate、截图 base64、等待动作与 `yieldControl` 的队列顺序、导航后旧引用失效、`/shutdown` 清除 `control.json`。 | API 级验证，不经过桌面 UI；本地夹具。 |
 | 6 | `tests/library-e2e.cjs` | Playwright 驱动桌面 UI：创建 Room；等待空间创建模态框关闭后执行地址栏导航，检查标题与历史记录；添加/删除书签、重启持久化、删除后重启为空。 | 本地夹具；不覆盖搜索、系统对话框、真实站点。空间按钮可能先于创建对话框关闭出现，测试须等对话框隐藏后再操作地址栏，避免向被模态框遮挡的输入框提交假操作。 |
 | 7 | `tests/sdk-e2e.cjs` | 包装脚本：启动隔离桌面并运行 `sdk/e2e.js`。SDK 覆盖截图（视口/整页/裁剪/路径与尺寸校验）、`waitForURL` 多种匹配、`waitForSelector` 四态、`waitForFunction`、定位符（css/xpath/text/role/href/frame）、Snapshot 引用与失效、`isTrusted: true` 的点击/输入/按键、`selectOption`、拖放/滚轮/鼠标、交还后动作被拒、popup 等待、`evaluate` 超时。 | 夹具仅单层同源 iframe 与开放 Shadow DOM；select 与清空为非 `isTrusted`；截图未逐像素校验；整体 30 秒超时。 |
@@ -65,6 +65,7 @@
 | 48 | `tests/agent-access-ui-e2e.cjs` | 真实 Electron UI：从设置进入 Agent 访问管理；选择空间、创建一次性密钥、复制后在列表查看名称/范围；断言密钥只在创建时显示、关闭弹窗后清空、磁盘只保存摘要且权限为 0600；撤销后凭据立即失效。 | 测试使用临时数据目录与本地 Electron；系统剪贴板以替身验证，不改写用户剪贴板；不连接真实 MCP host；同用户进程隔离不在范围内。 |
 | 47 | `tests/agent-access-e2e.cjs` | 真实 Electron：两个 Agent 客户端并发列出/读取并在各自获准 Room 创建标签；同时发起跨 Room 读取、Tab 操作和写入，均返回 `CORVID_FORBIDDEN`；并发操作后双方仍只枚举获准 Room；Agent A 的本地慢响应导航保持挂起时，Agent B 的获准 Room 导航先完成，释放响应后 A 再完成；跨 Room 与全局 Profile、历史、下载、窗口访问被拒；SDK 签发、列出、撤销授权并直接使用 scoped credential；凭据仅保存摘要且权限为 0600；撤销即时生效，未撤销授权跨重启有效、已撤销授权跨重启仍失效。 | 使用临时数据目录与本机真实 Electron；只验证控制接口和确定性 Room，不调用真实模型/OAuth；本地 HTTP gate 验证不同 Room 的慢/快导航互不阻塞，同一 Room 内仍由队列串行执行；不代表真实模型调用并发或多进程并行调度；不验证 UI/真实 MCP host 或同一 OS 用户恶意进程隔离。内置 Agent 生命周期由 39、40、42 覆盖。 |
 | 49 | `tests/navigation-error-e2e.cjs` | 真实 Electron 主框架导航失败时显示用户可读错误、保留失败 URL 并提供重试；恢复本地服务后重试成功且清除错误；加载状态可见；新建空白标签立即选中并接收地址栏导航；新导航替代挂起请求后不遗留旧失败状态。 | 临时 Corvid 数据目录与本地 HTTP fixture；只映射少数网络错误到中文说明，证书失败显示通用安全连接提示；不覆盖所有 Chromium 错误码、代理/DNS 环境及原生证书详情页面。 |
+| 52 | `tests/agent-task-continuation-contract.cjs` | 不启动 Electron 的真实 Agent Workbench 模块合同：同一已完成任务并发提交续聊时只接受一个请求，不重复写入 transcript、不重复创建 session 或 scoped credential；Room 在页面上下文读取期间交还用户后，迟到的续聊不启动 session 或签发 credential，任务进入 interrupted。 | 使用确定性 runtime 与临时数据目录，不调用真实 Provider，也不覆盖实际 Electron renderer 双击时序；UI 状态和双客户端 Room 授权由其他用例覆盖。 |
 | 50 | `tests/pi-real-model-smoke.cjs`（手动运行） | 在隔离 `CORVID_DATA_DIR` 中经 Corvid 发起 ChatGPT OAuth，断言 Corvid 加密凭据文件存在、Agent 任务固定使用 `openai-codex/gpt-6-luna`，并通过 Corvid UI 向本地 HTTP 页面上下文发起真实请求、收到标记响应。 | 会访问真实 OpenAI/Codex 服务并消耗账户用量；不得读取外部 CLI 凭据，不纳入 `npm test`；需在 Corvid OAuth 对话框及浏览器中完成账号授权；当前执行证据限本机 macOS。 |
 
 ## 工作块与测试的映射
@@ -82,7 +83,7 @@
 | D09 Profile 管理 | `profiles-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
-| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-models-e2e`（模型目录、选择持久化、无凭据拒绝、临时 API Key 持久化、任务创建与续聊模型保持；无真实请求）、`pi-workbench-e2e`（Corvid Agent 对话/历史/模型 UI、700×420 页面来源/模型/输入及页面同意、多轮续聊、重启恢复、用户接管与交还；本地 fixture）、`agent-stop-e2e`（主动停止、迟到 runtime 事件隔离、abort 失败提示）、`pi-custom-endpoint-e2e`（Corvid 端点配置、发现与本地兼容 fixture 请求）、`pi-real-model-smoke`（Corvid ChatGPT OAuth + GPT-6 Luna 单次真实请求） |
+| D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-models-e2e`（模型目录、选择持久化、无凭据拒绝、临时 API Key 持久化、任务创建与续聊模型保持；无真实请求）、`pi-workbench-e2e`（Corvid Agent 对话/历史/模型 UI、700×420 页面来源/模型/输入及页面同意、多轮续聊、重启恢复、用户接管与交还；本地 fixture）、`agent-task-continuation-contract`（同任务重复续聊互斥与 Room 交接期间拒绝迟到续聊；runtime 替身）、`agent-stop-e2e`（主动停止、迟到 runtime 事件隔离、abort 失败提示）、`pi-custom-endpoint-e2e`（Corvid 端点配置、发现与本地兼容 fixture 请求）、`pi-real-model-smoke`（Corvid ChatGPT OAuth + GPT-6 Luna 单次真实请求） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e`、`agent-access-e2e`、`agent-access-ui-e2e` |
 | D21 桌面界面与键盘可达性 | `agent-rooms-panel-e2e`（Agent 空态、工作台和面板关闭的 Enter 键盘路径及焦点恢复）、`permissions-e2e`、`tab-pin-menu-e2e` |
 | D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航） |
