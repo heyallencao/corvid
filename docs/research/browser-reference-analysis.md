@@ -57,3 +57,11 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 ## 本轮取舍
 
 本轮已将 D20 从只读 MCP 扩展到四个显式 Room/Tab 绑定的常用动作：HTTP(S) 导航、单一定位器点击、文本输入与按键；统一检查 Agent 控制、无待接管、无执行风险和 managed tab，并由主进程再次校验。REA 比较用于界定 EGO 日常浏览、Kaze 导航与任务入口及 BrowserMCP 工具形状；Corvid 行为以本地 Electron E2E 为准。仍不暴露任意 `evaluate`/CDP、tab 创建/关闭、文件上传或控制权转移。详见[执行任务板](../execution/feature-board.md#d20-部分)和[验证记录](../reviews/verification-log.md)。
+
+## 2026-11-03 11:37 扩展弹窗执行状态与首发双语合同同步
+
+本次仅同步两个已有切面，不重新扫描竞品包。**Corvid 静态证据：** 当前主分支 `docs/execution/feature-board.md` 的 D14 原记录仍称扩展工具栏弹窗未集成；应用语言硬编码与本地化缺失则由 `desktop/index.html` 等源码检索记录。D14 已按中文 PR [#131](https://github.com/heyallencao/corvid/pull/131) 更新为“部分”：PR 记录了真实 Electron 与隔离合成 Chrome Profile/扩展 E2E，覆盖 MV3 弹窗内容、尺寸、所属 Session、sandbox/Node 边界、Escape/外点关闭与焦点恢复；MV2、弹窗导航失败、屏幕阅读器、暗色/窄窗及 Windows/Linux 仍未验收。截图现位于 main 的 QA 目录，由合成 fixture 生成、不含用户页面数据；截图是辅助布局证据，不证明未覆盖的平台或扩展兼容性。
+
+**REA 参考与限制：** PR #131 复用 Kobra 下拉菜单页面 `https://kobra.systems/components/dropdown-menu` 的 REA Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`。直接记录仅证明该路由可访问；没有完成菜单交互，焦点、关闭与状态行为未知，因此只作为细节灵感来源，不作为扩展弹窗行为证据或验收标准。未复制代码、图标或素材。Rare UI、EasyUI、Pin UI、Aceternity 本次未观察；EGO/Kaze 当前窗口 UI 也未重新采集，不能据此推断其当前扩展行为。
+
+**双语合同与取舍：** 已有开放中文 Issue [#130](https://github.com/heyallencao/corvid/issues/130) 覆盖首发 `zh-CN`/`en`、locale 资源、语言选择、日期/数字格式化、窄窗与无障碍验收，本轮只将该范围同步到架构文档及执行板 D24，不重复开单。UI 灵感站点不决定 Corvid 功能需求；仅在能安全核实且与切面相关时参考细节。未运行测试；本次文档检查不声称验证代码行为。
