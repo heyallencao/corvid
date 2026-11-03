@@ -19,15 +19,22 @@ async function until(predicate, label) {
   const sessions = [];
   const issued = [], revoked = [];
   let gate = null, gateRelease = null, contextReads = 0;
+  let credentialGate = null, credentialStarted = null;
+  let sessionGate = null, sessionStarted = null;
+  let promptCount = 0, disposeCount = 0;
   const runtime = {
     id: 'test-runtime', version: '1.0.0',
     createSession: async () => {
+      if (sessionGate) {
+        sessionStarted?.();
+        await sessionGate;
+      }
       let resolvePrompt;
       const session = {
         checkpoint: () => ({ sessionId: `session-${sessions.length}` }),
-        prompt: () => new Promise(resolve => { resolvePrompt = resolve; }),
+        prompt: () => { promptCount++; return new Promise(resolve => { resolvePrompt = resolve; }); },
         subscribe: () => {},
-        dispose: () => {},
+        dispose: () => { disposeCount++; },
         resolvePrompt: () => resolvePrompt?.()
       };
       sessions.push(session);
@@ -48,7 +55,15 @@ async function until(predicate, label) {
   const workbench = createAgentWorkbench({
     dataDir,
     runtime,
-    issueAgentCredential: async () => { const credential = { id: `credential-${issued.length + 1}`, token: `token-${issued.length + 1}` }; issued.push(credential.id); return credential; },
+    issueAgentCredential: async () => {
+      if (credentialGate) {
+        credentialStarted?.();
+        await credentialGate;
+      }
+      const credential = { id: `credential-${issued.length + 1}`, token: `token-${issued.length + 1}` };
+      issued.push(credential.id);
+      return credential;
+    },
     revokeAgentCredential: async id => { revoked.push(id); }
   });
   try {
@@ -105,6 +120,45 @@ async function until(predicate, label) {
     assert.equal(workbench.list().find(item => item.id === handedOffTask.id)?.status, 'interrupted');
     assert.equal(sessions.length, sessionCountBeforeHandoff, 'handoff must prevent creation of a late runtime session');
     assert.equal(issued.length, credentialCountBeforeHandoff, 'handoff must prevent issuing a late scoped credential');
+
+    gate = null; contextReads = 0;
+    const beforeCredentialHandoff = workbench.list().find(item => item.id === handedOffTask.id);
+    assert.equal(beforeCredentialHandoff.status, 'interrupted');
+    const contextPreviewAfterHandoff = await workbench.prepare({ profileId: 'default', roomId: 'room-one', tabId: 'tab-one' });
+    const resumedForCredentialRace = workbench.continueTask({ taskId: handedOffTask.id, message: '测试凭据签发期间交接', includePageContext: true, contextPreview: contextPreviewAfterHandoff });
+    let releaseCredential;
+    credentialGate = new Promise(resolve => { releaseCredential = resolve; });
+    let signalCredentialStarted;
+    const credentialStartedSignal = new Promise(resolve => { signalCredentialStarted = resolve; });
+    credentialStarted = signalCredentialStarted;
+    await until(() => workbench.list().find(item => item.id === handedOffTask.id)?.status === 'preparing', 'credential issuance preparation');
+    await credentialStartedSignal;
+    await workbench.pauseRoom('room-one');
+    const revokedBeforeCredentialRelease = revoked.length;
+    releaseCredential();
+    await assert.rejects(resumedForCredentialRace, /空间已交给用户/);
+    credentialGate = null; credentialStarted = null;
+    assert.equal(workbench.list().find(item => item.id === handedOffTask.id)?.status, 'interrupted', 'handoff during credential issuance keeps the task interrupted');
+    assert.equal(sessions.length, sessionCountBeforeHandoff, 'credential completion after handoff must not create a runtime session');
+    assert.equal(revoked.length, revokedBeforeCredentialRelease + 1, 'a credential returned after handoff is revoked immediately');
+
+    const resumedForSessionRace = workbench.continueTask({ taskId: handedOffTask.id, message: '测试会话初始化期间交接', includePageContext: true, contextPreview: contextPreviewAfterHandoff });
+    let releaseSession;
+    sessionGate = new Promise(resolve => { releaseSession = resolve; });
+    let signalSessionStarted;
+    const sessionStartedSignal = new Promise(resolve => { signalSessionStarted = resolve; });
+    sessionStarted = signalSessionStarted;
+    const promptsBeforeSessionHandoff = promptCount;
+    const disposedBeforeSessionHandoff = disposeCount;
+    await sessionStartedSignal;
+    await workbench.pauseRoom('room-one');
+    releaseSession();
+    await assert.rejects(resumedForSessionRace, /空间已交给用户/);
+    sessionGate = null; sessionStarted = null;
+    assert.equal(workbench.list().find(item => item.id === handedOffTask.id)?.status, 'interrupted', 'handoff during runtime initialization keeps the task interrupted');
+    assert.equal(promptCount, promptsBeforeSessionHandoff, 'a runtime initialized after handoff must never receive a prompt');
+    assert.equal(disposeCount, disposedBeforeSessionHandoff + 1, 'a runtime initialized after handoff is disposed');
+    assert.deepEqual(revoked.sort(), issued.sort(), 'credentials are revoked after context, credential, and runtime handoff races');
     console.log('PASS Agent task continuation lock: duplicate submit rejected; Room handoff prevents a late continuation and credential');
   } finally {
     gateRelease?.release?.();

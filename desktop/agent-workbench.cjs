@@ -144,11 +144,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const credential = await issueAgentCredential({ taskId: task.id, roomId: task.roomId });
       if (!credential || typeof credential.id !== 'string' || !credential.id || typeof credential.token !== 'string' || !credential.token) throw new TypeError('Corvid Agent identity provider returned an invalid scoped credential');
       sessionCredentialIds.set(task.id, credential.id);
+      if (task.status !== 'preparing') throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       const session = await runtime.createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, agentCredential: { id: credential.id, token: credential.token }, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(task.selectedModel ? { selectedModel: task.selectedModel } : {}), checkpoint, ...(priorConversation ? { priorConversation } : {}) });
       if (!session || typeof session.checkpoint !== 'function' || typeof session.prompt !== 'function') throw new TypeError('Agent runtime returned an invalid session');
       if (task.status !== 'preparing') {
-        try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
-        return;
+        session.dispose?.();
+        throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
       task.sessionRef = session.checkpoint() || (priorConversation ? null : task.sessionRef || null);
       changed();
@@ -178,9 +179,13 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       });
     } catch (error) {
       await revokeSessionCredential(task.id);
-      const assistantTurn = task.conversation?.at(-1);
-      if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
-      task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`); throw new Error(task.error);
+      if (task.status === 'preparing') {
+        const assistantTurn = task.conversation?.at(-1);
+        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
+        task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`);
+        throw new Error(task.error);
+      }
+      throw new Error(safeError(error));
     }
   }
   async function stop(taskId) {

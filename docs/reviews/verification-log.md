@@ -10,9 +10,10 @@
 ## 2026-11-03 Agent 续聊并发与 Room 交接竞态（Issue #96）
 
 - 复现：使用确定性 runtime 和临时数据目录直接调用真实 Agent Workbench 模块。旧实现中，首个续聊停在页面上下文读取时，第二个续聊也能通过原状态检查并等待同一读取；此前模块合同用例按预期失败。
-- 修复：同一任务开始读取页面上下文前即取得续聊占用并进入 `preparing`；并发续聊立即拒绝。页面上下文返回后重新检查任务状态；若 Room 已交还用户，拒绝启动迟到会话。预览校验失败时恢复原任务状态，`finally` 释放占用。
+- 修复：同一任务开始读取页面上下文前即取得续聊占用并进入 `preparing`；并发续聊立即拒绝。页面读取后、凭据签发后及运行时会话初始化后均检查任务状态；若 Room 已交还用户，拒绝迟到续聊、撤销 scoped credential、销毁迟到会话并保留 `interrupted` 状态。预览校验失败时恢复原任务状态，`finally` 释放占用。
 - 验证：基于最新主线 `7a863a1` 的续聊修复通过 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-task-continuation-contract.cjs`、新增模块合同、`pi-workbench-e2e`、`agent-runtime-contract-e2e`、`agent-stop-e2e` 与完整 `npm test`。完整套件 8 项串行 `node:test` 和 47 个独立脚本全部通过，共 55 项自动化检查。合同用例验证重复提交不进行第二次页面上下文读取、不会重复写入 transcript/session/credential；过期预览失败后恢复原状态且可再次续聊；Room 在上下文读取期间交还用户后不启动迟到续聊或签发 credential。测试依赖通过临时 `node_modules` 符号链接复用本机安装；测试数据均隔离。
 - 最新主线复验：将此切片重放到 `origin/main` `29f59a2` 后，`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-task-continuation-contract.cjs`、`node --check tests/agent-access-e2e.cjs`、`git diff origin/main...HEAD --check`、`node tests/agent-task-continuation-contract.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 均通过。真实 Electron 用例使用临时 `CORVID_DATA_DIR` 和本地 HTTP fixture；未连接真实模型或 OAuth。隔离 worktree 借用本机依赖的临时 `node_modules` 链接已清理；本次未重跑全量 `npm test`。
+- 本轮追加验证（2026-11-03）：`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-task-continuation-contract.cjs`、`node --check tests/agent-access-e2e.cjs`、`git diff --check`、`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 均通过。模块合同新增凭据签发和 runtime 初始化期间的 Room 交接门控，断言不调用 prompt、及时撤销凭据、销毁迟到会话并保留 `interrupted`；真实 Electron 用例再次证明 Room A 慢导航不阻塞 Room B，工作台续聊/接管回归通过。测试数据隔离、未连接真实模型或 OAuth；未重跑全量 `npm test`。
 - 限制：新增用例直接调用模块并使用 runtime 替身，不覆盖真实 Provider、真实 Electron renderer 双击时序或 UI 状态刷新；此前跨 Room 并行客户端的 Electron 验证是另一条证据。续聊冲突和交接路径复用现有状态提示，本切片未新增用户可见文案；Corvid 全产品 zh-CN/en 资源迁移仍未完成，需另行覆盖。Issue #96 仍开放，未更改 GitHub Issue 或 PR。
 
 ## 2026-11-03 Agent 跨 Room 慢操作不互相阻塞（Issue #96）
