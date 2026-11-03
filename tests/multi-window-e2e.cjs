@@ -54,10 +54,11 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const shells=[];
     for (const page of app.windows()) { if (await page.locator('#rooms').count()) shells.push(page); }
     assert.equal(shells.length,2,'two shell windows are open');
+    await until(async()=>{for(const page of shells)if(await page.locator('#room-strip button').count()<1)return false;return true;},'each window renders its Room list');
     const roomTitlesPerWindow=[];
     for (const page of shells) {
       await page.locator('#rooms').waitFor();
-      const labels=await page.locator('#rooms button').allTextContents();
+      const labels=await page.locator('#room-strip button').allTextContents();
       roomTitlesPerWindow.push(labels.filter(label=>label.startsWith('我的空间')||label.startsWith('新窗口的空间')));
     }
     assert.deepEqual(roomTitlesPerWindow.map(labels=>labels.length),[1,1],JSON.stringify(roomTitlesPerWindow));
@@ -89,12 +90,31 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       return false;
     },'a live shell window');
     const beforeSecondCreate=afterClose.rooms.length;
-    await until(async()=>{const state=await api('/rooms');return state.windows.length===2 && state.rooms.length===beforeSecondCreate+1 ? state : false;},'second window and its new room');
+    await until(async()=>{
+      const state=await api('/rooms');
+      if(state.windows.length!==2 || state.rooms.length!==beforeSecondCreate+1 || state.rooms.some(room=>room.tabs.some(tab=>!tab.ready)))return false;
+      const saved=JSON.parse(fs.readFileSync(path.join(dataDir,'rooms.json'),'utf8'));
+      if(saved.windows.length!==2 || saved.rooms.length!==state.rooms.length)return false;
+      const savedAssignments=new Map(saved.rooms.map(room=>[room.id,room.windowId]));
+      if(state.rooms.some(room=>savedAssignments.get(room.id)!==room.windowId))return false;
+      return state;
+    },'second window, initialized room and durable window assignment');
     const preRestart=await api('/rooms');
     const assignment=Object.fromEntries(preRestart.rooms.map(room=>[room.id,room.windowId]));
     await stop();
+    const persistedBeforeRestart=JSON.parse(fs.readFileSync(path.join(dataDir,'rooms.json'),'utf8'));
+    assert.equal(persistedBeforeRestart.windows.length,2,'shutdown must retain both persisted windows');
+    assert.deepEqual(Object.fromEntries(persistedBeforeRestart.rooms.map(room=>[room.id,room.windowId])),assignment,'shutdown must retain each Room assignment');
     await start();
-    const restored=await until(async()=>{const state=await api('/rooms');return state.windows.length===2?state:false;},'two windows restored');
+    let latestRestoreState;
+    let restored;
+    try {
+      restored=await until(async()=>{latestRestoreState=await api('/rooms');return latestRestoreState.windows.length===2?latestRestoreState:false;},'two windows restored');
+    } catch(error) {
+      const shellWindows=await Promise.all(app.windows().map(async page=>({url:page.url(),roomStripButtons:await page.locator('#room-strip button').count().catch(()=>-1)})));
+      console.error('MULTI-WINDOW RESTORE DIAGNOSTICS',JSON.stringify({savedWindows:persistedBeforeRestart.windows,savedRooms:persistedBeforeRestart.rooms.map(room=>({id:room.id,name:room.name,windowId:room.windowId})),apiWindows:latestRestoreState?.windows,apiRooms:latestRestoreState?.rooms?.map(room=>({id:room.id,name:room.name,windowId:room.windowId})),windowCount:latestRestoreState?.windowCount,shellWindows}));
+      throw error;
+    }
     assert.equal(restored.windows.length,2);
     for (const room of restored.rooms) assert.equal(room.windowId,assignment[room.id],`room ${room.name} kept its window`);
     const saved=JSON.parse(fs.readFileSync(path.join(dataDir,'rooms.json'),'utf8'));

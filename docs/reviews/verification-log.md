@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 修正多窗口 E2E 的渲染与持久化等待（Issue #113）
+
+- 初始现象：独立与全量真实 Electron 回归曾报告重启后窗口数不足；在失败诊断中发现 `#rooms button` 会匹配静态侧栏按钮，不能证明 Room 列表已绘制。重启前 `/rooms` 已显示第二窗口和 Room，但 `rooms.json` 仍可能只有一窗记录。
+- 根因：测试等待条件只读内存态并错误选择静态按钮，可能在 Room/Tab 初始化或窗口归属持久化之前退出应用；失败并未证明已持久化窗口会丢失。
+- 修正：每个窗口等待 `#room-strip button`；重启前等待相关 Tab `ready`，并比较 `rooms.json` 与控制 API 的窗口数、Room 数和所有权归属；关闭后复核持久化文件，恢复超时时输出磁盘/API/shell 快照。
+- 验证：macOS、Node.js 24.14.1、Electron 45.2.1、隔离数据目录和本地 HTTP fixture；修正后 `env -u ELECTRON_RUN_AS_NODE node tests/multi-window-e2e.cjs` 连续 10 次通过；`env -u ELECTRON_RUN_AS_NODE npm test` 连续两轮 EXIT 0，每轮 45 条独立脚本 + 3 项 `node:test`，共 48 项。
+- 限制：此测试合同只覆盖已就绪并写入 `rooms.json` 的窗口；未覆盖退出恰逢窗口/Room 尚在创建中的强杀语义、多显示器、打包版和 Windows/Linux。
+
 ## 2026-11-03 修正书签 E2E 的空间对话框时序（Issue #111）
 
 - 现象：在最新 `origin/main` 上，独立运行 `tests/library-e2e.cjs` 时，地址栏草稿断言失败，表面上与已修复的 Issue #101 相同。
