@@ -9,7 +9,7 @@
 
 ## Electron Fuses 安全配置
 
-electron-builder 产物显式设置 Fuse V1：关闭 `RunAsNode`、`NODE_OPTIONS` 和 Node CLI Inspector 参数；开启 `EnableEmbeddedAsarIntegrityValidation` 与 `OnlyLoadAppFromAsar`，要求应用代码从 `app.asar` 加载并校验归档。Apple Silicon 未签名开发包设置 `resetAdHocDarwinSignature`，避免翻转 Fuse 后沿用失效的 Electron 临时签名；Developer ID 模式由 electron-builder 在翻转 Fuse 后重新签名。
+electron-builder 产物显式设置 Fuse V1：关闭 `RunAsNode`、`NODE_OPTIONS` 和 Node CLI Inspector 参数；开启嵌入式 ASAR 完整性验证、`OnlyLoadAppFromAsar` 与 `GrantFileProtocolExtraPrivileges`，要求应用代码从 `app.asar` 加载并校验归档。当前 shell 使用 `file://` 加载 `app.asar/desktop/index.html`；尝试关闭文件协议额外权限后，打包 Electron 启动但载入该 URL 失败并以 `ERR_FILE_NOT_FOUND` 退出，因此保留该 Fuse。跨文件 fetch、Service Worker 和 file 子框架能力没有单独使用证据；未来迁移到受限自定义协议后应重新测试能否关闭它。Electron 对该 Fuse 的说明见[官方 Fuses 文档](https://www.electronjs.org/docs/latest/tutorial/fuses#grantfileprotocolextraprivileges)。Apple Silicon 未签名开发包设置 `resetAdHocDarwinSignature`，避免翻转 Fuse 后沿用失效的 Electron 临时签名；Developer ID 模式由 electron-builder 在翻转 Fuse 后重新签名。
 
 保留明确的兼容边界：`EnableCookieEncryption` 暂时关闭，避免未设计 Cookie 数据迁移时引入不可逆存储转换；`LoadBrowserProcessSpecificV8Snapshot` 关闭，因为当前没有独立 Browser V8 snapshot；`GrantFileProtocolExtraPrivileges` 与 `WasmTrapHandlers` 保留 Electron 原始启用状态。`tests/packaged-fuses-e2e.cjs` 检查完整 Fuse 字节集合，新增或未知 Fuse 会让验收失败，要求升级 Electron 时先逐项决策。
 

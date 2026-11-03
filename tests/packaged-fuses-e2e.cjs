@@ -11,7 +11,7 @@ const expected = {
   '4': 49, // EnableEmbeddedAsarIntegrityValidation: enabled
   '5': 49, // OnlyLoadAppFromAsar: enabled
   '6': 48, // LoadBrowserProcessSpecificV8Snapshot: disabled; Corvid ships no browser snapshot
-  '7': 49, // GrantFileProtocolExtraPrivileges: enabled for the packaged file:// shell
+  '7': 49, // GrantFileProtocolExtraPrivileges: enabled; the packaged file:// app.asar shell fails to load when disabled
   '8': 49, // WasmTrapHandlers: retained from the Electron binary
 };
 
