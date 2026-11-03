@@ -18,7 +18,7 @@
 - 窗口状态、异步原生事件和持久化：`desktop/main.cjs`。网页全屏状态使用 `WebContents` 级 enter/leave 事件绑定到具体标签；实现依据 Electron 45.2.1 本地类型定义、[Electron BrowserWindow API](https://www.electronjs.org/docs/latest/api/browser-window) 与 [Electron WebContents API](https://www.electronjs.org/docs/latest/api/web-contents)。官方 API 将普通窗口全屏与 HTML API 触发的网页全屏分别发出事件，并说明 macOS 全屏转换异步；这是状态分离和通过事件同步状态的依据。文档于 2026-11-03 16:45（Asia/Shanghai）复核。
 - 菜单、本地化与状态呈现：`desktop/index.html`、`desktop/renderer.js`、`desktop/locales.js`、`desktop/styles.css`。
 - 隔离 Electron 验收：`tests/fullscreen-e2e.cjs`；中英文回归：`tests/localization-e2e.cjs`。快捷键通过 Electron `WebContents.sendInputEvent` 触发，以覆盖 `before-input-event`；Playwright CDP 键盘输入不经过该处理器。
-- 必须在可交互桌面上通过菜单和快捷键进入/退出；验证两窗口状态隔离、网页 HTML Fullscreen 边界、原尺寸与最大化状态恢复、关闭/退出期间不反复进入全屏；全屏 E2E 同时断言浏览器导航与 Corvid Agent 工作区仍然可见。随后更新 D06、测试索引、验证日志并保存脱敏截图。
+- macOS 可交互桌面验收已通过：真实 Electron 中覆盖菜单和快捷键进入/退出、两窗口状态隔离、网页 HTML Fullscreen 边界、原尺寸与最大化状态恢复、应用重启不恢复临时全屏、关闭全屏标签时状态清理；同时断言浏览器导航与 Corvid Agent 工作区仍然可见。测试索引、验证日志与脱敏菜单截图均已登记。Windows/Linux、打包版本和屏幕阅读器仍待验证。
 
 ## 当前证据与限制
 
@@ -26,8 +26,8 @@
 - 2026-11-03 16:47（Asia/Shanghai）静态 review 发现窗口级 HTML Fullscreen 退出事件没有标签身份，可能在迟到时清除另一个标签当前的全屏归属；现改由每个 `WebContents` 的进入/退出事件维护精确标签状态，并清除失效的最大化快照。纯逻辑测试覆盖了这类事件顺序，但尚未通过真实 Electron 复现或验收。
 - 2026-11-03 16:51（Asia/Shanghai）静态 review 发现导航、标签关闭、`WebContents` 销毁三个清理调用点原先未传入状态序列化函数，窗口存活时可能在清理路径抛错；所有调用点现已传入该函数，清理模块也对无序列化函数的 teardown 做防御处理，并由纯逻辑回归覆盖。该异常此前未在真实 Electron 中复现。
 - 2026-11-03 16:57（Asia/Shanghai）全屏 E2E 新增两项产品边界：全屏时 Corvid Agent 工作区保持可见，外部控制 API 不暴露窗口全屏路由；`node --check tests/fullscreen-e2e.cjs` 通过，13 项纯逻辑测试复跑通过。E2E 本身未启动，故两项断言仍未实测。
-- 真实 Electron 定向运行已覆盖菜单切换、最大化还原、macOS 快捷键和两个窗口的独立状态；后续运行进入网页 HTML Fullscreen，并观察到 Corvid 将窗口级切换禁用且不会覆盖页面状态。运行也暴露了关闭全屏标签后窗口状态可能残留的问题，当前代码已加入按标签清理逻辑，尚待复验。
-- **未完成：**最新版 `tests/fullscreen-e2e.cjs` 与 `tests/localization-e2e.cjs` 尚未完整通过；窗口尺寸/状态重启恢复、中英文实时切换、UI 截图和平台人工检查仍未验收。Agent 工作区全屏可见性已有 E2E 断言但尚未运行。当前 CUA 观察到 macOS 锁屏，锁屏期间的全屏失败不作为产品通过或失败证据；待用户解锁后重跑定向 E2E 和全量回归。
+- 真实 Electron E2E 已覆盖菜单切换、最大化还原、macOS 快捷键、两个窗口的独立状态、网页 HTML Fullscreen、全屏标签关闭后的清理，以及应用重启后的窗口状态恢复；全屏时浏览器与 Agent 工作区保持可见。首次运行暴露的标签销毁竞态已修复，并由后续定向及全量回归通过。
+- **未完成：**本轮通过 macOS 主路径的真实 Electron E2E 与全量回归；此前锁屏阻止验收的记录已由解锁后的成功运行取代。仍未完成人工屏幕阅读、Windows/Linux、打包版本及真实网站检查；这些边界不由当前自动化结果推定。
 - 2026-11-03 16:43（Asia/Shanghai）通过 CUA `getState()` 复核：`apps` 为空，原生应用枚举返回“Mac is locked and automatic unlock could not unlock it”。本轮没有启动 Corvid/Electron；该结果证明当前无法进行桌面验收，不证明功能通过或失败。
 - 2026-11-03 17:00（Asia/Shanghai）全屏 E2E 增加关闭并重启应用后的窗口恢复检查：校验退出时持久化的正常尺寸/最大化状态与重启恢复结果一致，且不恢复临时全屏；另等待网页全屏关闭触发的原生窗口退出完成。`node --check tests/fullscreen-e2e.cjs`、13 项纯逻辑测试与 `git diff --check` 通过；真实 E2E 尚未运行。
 - 2026-11-03 17:02（Asia/Shanghai）复核全部 `tests/*.test.mjs`：13 项通过；`node --check` 覆盖全屏相关实现与脚本，`git diff --check` 通过。仓库目前只有两个纯 Node 测试文件，这不替代 Electron 运行态验收。
