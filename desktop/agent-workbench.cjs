@@ -228,7 +228,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         session.dispose?.();
         throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
-      task.sessionRef = session.checkpoint() || (priorConversation ? null : task.sessionRef || null);
+      task.sessionRef = session.checkpoint() || task.sessionRef || null;
       changed();
       sessions.set(task.id, session);
       if (typeof session.subscribe === 'function') session.subscribe(event => {
@@ -241,7 +241,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const payload = initial ? `用户任务：\n${message}\n\n用户明确确认共享的当前页面上下文（仅限此空间的 ${context.label}）：\n${pageContext}` : `${transcript}用户继续指令：\n${message}\n\n用户已重新确认当前页面上下文（仅限此空间的 ${context.label}）：\n${pageContext}`;
       void Promise.resolve(session.prompt(payload)).then(async () => {
         if (task.status !== 'running') return;
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
+        const checkpoint = session.checkpoint();
+        task.sessionRef = checkpoint || (priorConversation ? null : task.sessionRef || null);
         finishAssistantTurn(task, 'completed');
         task.status = 'completed'; addEvent(task, 'completed', 'Agent 已完成本轮回复'); sessions.delete(task.id);
         try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }

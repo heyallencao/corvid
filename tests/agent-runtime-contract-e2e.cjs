@@ -211,6 +211,32 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(preparingPromptCount,0,'a late-created runtime session never sends the task to a model after user takeover');
     assert.equal(preparingDisposeCount,1,'a late-created runtime session is disposed after user takeover');
 
+    const delayedCheckpointDir=path.join(root,'delayed-checkpoint-transition');
+    fs.mkdirSync(delayedCheckpointDir);
+    const delayedCheckpointTask={...futureTask,id:'delayed-checkpoint-task'};
+    fs.writeFileSync(taskFile(delayedCheckpointDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[delayedCheckpointTask]}),{mode:0o600});
+    const delayedCheckpointRuntime=makeRuntime('delayed-checkpoint-runtime');
+    let delayedCheckpointPromptAttempts=0;
+    delayedCheckpointRuntime.createSession=async()=>({
+      checkpoint:()=>null,
+      async prompt(){if(++delayedCheckpointPromptAttempts===1)throw new Error('first message failed before a new checkpoint was saved');},
+      async abort(){},dispose(){},
+    });
+    const delayedCheckpointIdentity=testAgentIdentity();
+    const delayedCheckpointWorkbench=createAgentWorkbench({dataDir:delayedCheckpointDir,runtime:delayedCheckpointRuntime,...delayedCheckpointIdentity});
+    await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry with a new runtime',includePageContext:true,contextPreview});
+    for(let attempt=0;attempt<20&&delayedCheckpointWorkbench.list()[0].status!=='failed';attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+    const delayedCheckpoint=JSON.parse(fs.readFileSync(taskFile(delayedCheckpointDir),'utf8')).tasks[0];
+    assert.deepEqual(delayedCheckpoint.sessionRef,delayedCheckpointTask.sessionRef,'a null checkpoint from the new runtime must not erase the old opaque checkpoint before its first successful save');
+    assert.equal(delayedCheckpoint.conversation[0].text,delayedCheckpointTask.conversation[0].text,'a first-message failure preserves prior Corvid messages');
+    assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','the failed replacement remains continuable from the saved transcript');
+    await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry after transient failure',includePageContext:true,contextPreview});
+    for(let attempt=0;attempt<20&&delayedCheckpointWorkbench.list()[0].status!=='completed';attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+    const completedCheckpoint=JSON.parse(fs.readFileSync(taskFile(delayedCheckpointDir),'utf8')).tasks[0];
+    assert.equal(completedCheckpoint.status,'completed','the transcript retry must complete');
+    assert.equal(completedCheckpoint.sessionRef,null,'after a successful transcript turn without a new checkpoint, the obsolete runtime checkpoint must be cleared');
+    assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','clearing the old reference leaves transcript continuation available');
+
     const unknownDir = path.join(root, 'unknown-schema');
     fs.mkdirSync(unknownDir);
     const unknownBytes = Buffer.from('{"schemaVersion":88,"tasks":[]}');
