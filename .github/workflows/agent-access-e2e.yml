@@ -1,0 +1,65 @@
+name: Agent 授权隔离跨平台集成
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'sdk/**'
+      - 'tests/agent-access-e2e.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/agent-access-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-access:
+    name: ${{ matrix.os }} Agent 授权隔离
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2022
+          - macos-14
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+
+      - name: 安装项目依赖
+        run: npm ci
+
+      - name: 配置 Linux Secret Service 与虚拟显示器
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y dbus-x11 gnome-keyring libsecret-1-0 xvfb
+
+      - name: 验证 Linux Agent 授权隔离
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          dbus-run-session -- xvfb-run -a bash -euo pipefail -c '
+            eval "$(printf "%s" "corvid-ci-keyring" | gnome-keyring-daemon --unlock --components=secrets --daemonize)"
+            export XDG_CURRENT_DESKTOP=GNOME
+            export CORVID_ELECTRON_EXTRA_ARGS=--password-store=gnome-libsecret
+            node tests/agent-access-e2e.cjs
+          '
+
+      - name: 验证 Windows Agent 授权隔离
+        if: runner.os == 'Windows'
+        shell: bash
+        run: node tests/agent-access-e2e.cjs
+
+      - name: 验证 macOS Agent 授权隔离
+        if: runner.os == 'macOS'
+        shell: bash
+        run: node tests/agent-access-e2e.cjs
