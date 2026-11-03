@@ -64,7 +64,12 @@ function createProfileDeletion({
       saveProfiles(remaining);
       agentWorkbench.finishProfileDeletion?.(profileId);
       return {deleted:true,profileId};
-    }catch(error){if(!pendingWritten)agentWorkbench.cancelProfileDeletion?.(profileId);throw error;}
+    }catch(error){
+      if(!pendingWritten)agentWorkbench.cancelProfileDeletion?.(profileId);
+      if(error.code&&['CORVID_PROFILE_IN_USE','CORVID_PROFILE_DELETING','CORVID_PROFILE_NOT_FOUND','CORVID_DEFAULT_PROFILE'].includes(error.code))throw error;
+      const failure=Object.assign(new Error('浏览身份清理未完成，请重试'),{code:'CORVID_PROFILE_DELETE_FAILED',cause:error});
+      throw failure;
+    }
     finally{inFlight.delete(profileId);}
   }
   return Object.freeze({preview,remove});

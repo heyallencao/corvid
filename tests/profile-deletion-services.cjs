@@ -5,7 +5,7 @@ const path=require('node:path');
 const createLibrary=require('../desktop/library.cjs');
 const {createStore}=require('../desktop/chrome-extensions.cjs');
 const {createAgentWorkbench}=require('../desktop/agent-workbench.cjs');
-const {createProfileDeletion,extensionProfileRoot}=require('../desktop/profile-deletion.cjs');
+const {inspectProfileDeletion,createProfileDeletion,extensionProfileRoot}=require('../desktop/profile-deletion.cjs');
 
 function tempDir(){return fs.mkdtempSync(path.join(os.tmpdir(),'corvid-profile-delete-'));}
 function fakeRuntime({resume=false,removeTaskData=()=>{}}={}){
@@ -17,6 +17,10 @@ function savedTask(id,{status='completed',conversation=[],profileId='work'}={}){
 function identity(){return {issueAgentCredential:async()=>({id:'credential',token:'token'}),revokeAgentCredential:async()=>{}};}
 
 (async()=>{
+  const referenceCheck=inspectProfileDeletion('work',{profiles:[{id:'default',isDefault:true},{id:'work'}],windows:[{id:'window',activeProfileId:'work'}],rooms:[{id:'room',profileId:'work',name:'Work space'}],downloads:[{id:'download',profileId:'work'}],agentTasks:[{id:'task'}]});
+  assert.deepEqual(referenceCheck.blockers.map(item=>item.kind),['window','room','download','agent-task'],'every reference class blocks profile deletion');
+  assert.equal(referenceCheck.canDelete,false);
+  assert.equal(inspectProfileDeletion('default',{profiles:[{id:'default',isDefault:true}]}).blockers[0].kind,'default','the default profile is always blocked');
   const libraryDir=tempDir();
   fs.writeFileSync(path.join(libraryDir,'library.json'),JSON.stringify({schemaVersion:1,
     history:[{id:'default-history',profileId:'default'},{id:'work-history',profileId:'work'}],
@@ -93,7 +97,7 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
   await assert.rejects(coordinator.remove('work'),error=>error.code==='CORVID_PROFILE_IN_USE');
   assert.equal(profiles.some(item=>item.deletionPending),false,'blocked deletion does not persist a pending marker');
   blockers=[];
-  await assert.rejects(coordinator.remove('work'),/injected session clear failure/);
+  await assert.rejects(coordinator.remove('work'),error=>error.code==='CORVID_PROFILE_DELETE_FAILED'&&/injected session clear failure/.test(error.cause?.message||''));
   assert.equal(profiles.find(item=>item.id==='work').deletionPending,true,'failed cleanup retains a durable retry marker');
   assert.equal(agentLocked,true,'failed cleanup keeps Agent work from restarting');
   assert.equal(fs.existsSync(path.join(workExtensionDir,'manifest.json')),true,'later cleanup stages have not run when Session clearing fails');
@@ -115,7 +119,7 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
     getSession:()=>browserSession,partitionFor:id=>`persist:corvid-profile-${id}`,library:{removeProfile(){}},managedExtensions:{list:()=>[],removeProfile(){}},
     extensionRoot:()=>path.join(outsideDir,'malicious-target'),dataDir:boundaryDir,
   });
-  await assert.rejects(boundaryCoordinator.remove('work'),/越过浏览器资料目录/);
+  await assert.rejects(boundaryCoordinator.remove('work'),error=>error.code==='CORVID_PROFILE_DELETE_FAILED'&&/越过浏览器资料目录/.test(error.cause?.message||''));
   assert.equal(fs.readFileSync(outsideMarker,'utf8'),'outside','an injected extension path cannot delete outside the data directory');
 
   for(const directory of [libraryDir,extensionDir,taskDir,retryDir,coordinatorDir,boundaryDir,outsideDir])fs.rmSync(directory,{recursive:true,force:true});
