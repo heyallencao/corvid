@@ -19,8 +19,8 @@
 ## 2026-11-03 Agent 上下文预览键盘焦点与活动文案本地化（Issue #5）
 
 - 缺口：检查页面上下文后工作台重绘会丢失焦点；旧分支的浏览器工具活动文案仅有中文，且把内部工具名称写进任务事件记录。
-- 调整：预览成功后将焦点移动到必须确认的页面同意复选框；活动事件改为 Corvid 中英双语资源键，任务记录不存储内部工具名，界面按当前语言翻译活动状态。
-- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `node tests/localization-e2e.cjs` 均通过；运行时临时链接主工作区既有 `node_modules`，测试后已移除链接。前者以真实 Electron 与确定性本地 fixture 覆盖 Tab/Enter 预览、焦点落在同意复选框、Space 同意、Tab/Enter 发送、流式文本及工具事件；并切换为英文验证活动文案，再切回中文。后者验证 zh-CN/en 资源键和值一致、窄窗文案及本地化格式。`node --check` 涉及的 JS/CJS 文件与 `git diff --check` 通过。
+- 调整：预览成功后将焦点移动到必须确认的页面同意复选框；活动事件改为 Corvid 中英双语资源键，任务记录不存储内部工具名，界面按当前语言翻译活动状态；旧任务中的历史工具事件也在显示时映射为通用活动状态，以兼容升级前已保存的记录。
+- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `node tests/localization-e2e.cjs` 均通过；运行时临时链接主工作区既有 `node_modules`，测试后已移除链接。前者以真实 Electron 与确定性本地 fixture 覆盖 Tab/Enter 预览、焦点落在同意复选框、Space 同意、Tab/Enter 发送、流式文本及工具事件；升级前保存的中文事件在重启后分别以中英文通用文案显示，且不暴露旧工具名；另切换语言验证新事件文案，再切回中文。后者验证 zh-CN/en 资源键和值一致、窄窗文案及本地化格式。`node --check` 涉及的 JS/CJS 文件与 `git diff --check` 通过。
 - REA 参考：复用 Kobra `/components/dropdown-menu` 历史受控 Chromium Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`，记录时间 2026-11-03 11:37（Asia/Shanghai）。直接观察限于该路由可访问；未操作菜单，焦点/关闭/键盘行为未知。静态证据只显示菜单示例页面入口，不证明目标交互。本次焦点落点由 Corvid 的显式页面同意流程和真实 Electron 键盘回归决定，不把参考页当验收标准；未复制代码或素材。
 - 边界：本地 Electron 与确定性 fixture，不连接真实模型或 Provider；未覆盖 VoiceOver 与其他平台。
 

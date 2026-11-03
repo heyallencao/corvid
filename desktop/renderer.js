@@ -5,6 +5,16 @@ function userFacingAgentError(error, fallback=null) {
   const safeFallback=fallback||extensionMessages.t('agentErrorFallback');
   return implementationName.test(message) ? safeFallback : (message||safeFallback);
 }
+function agentEventText(event) {
+  if(event.messageKey)return extensionMessages.t(event.messageKey,event.params);
+  const value=String(event.text||'');
+  if(event.type==='tool'&&value.startsWith('正在使用浏览器工具：'))return extensionMessages.t('agentBrowserActionStarting');
+  if((event.type==='tool'||event.type==='error')&&/^corvid_[\w-]+ 已完成$/.test(value))return extensionMessages.t('agentBrowserActionCompleted');
+  if(event.type==='error'&&/^corvid_[\w-]+ 执行失败$/.test(value))return extensionMessages.t('agentBrowserActionFailed');
+  const retry=value.match(/^连接暂时不稳定，Agent 正在重试（(\d+)\/(\d+)）$/);
+  if(event.type==='retry'&&retry)return extensionMessages.t('agentRetrying',{attempt:retry[1],maxAttempts:retry[2]});
+  return event.type==='error'?userFacingAgentError(value):value;
+}
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
 const extensionPopupOpenIds=new Set();
 let extensionToolbarSignature='';
@@ -304,7 +314,7 @@ async function renderPiTasks(){
     }
     row.append(meta);
     for(const turn of task.conversation||[]){const message=document.createElement('div');message.className=`pi-task-output ${turn.role==='user'?'from-user':'from-pi'}`;message.dataset.role=turn.role;message.setAttribute('aria-label',turn.role==='user'?extensionMessages.t('you'):'Corvid Agent');message.textContent=turn.text|| (turn.status==='running'?`${extensionMessages.t('taskRunning')}…`:'');row.append(message);}
-    for(const event of task.events||[]){if(task.error&&event.type==='error'&&String(event.text||'').includes(task.error))continue;const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=event.messageKey?extensionMessages.t(event.messageKey,event.params):event.type==='error'?userFacingAgentError(event.text):event.text;line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
+    for(const event of task.events||[]){if(task.error&&event.type==='error'&&String(event.text||'').includes(task.error))continue;const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=agentEventText(event);line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
     if(task.status==='failed'){
       const failure=document.createElement('div');failure.className='pi-task-error';failure.setAttribute('role','alert');
       const heading=document.createElement('strong');heading.textContent=extensionMessages.t('taskIncomplete');failure.append(heading);
