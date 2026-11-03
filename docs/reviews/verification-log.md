@@ -1,5 +1,15 @@
 # 验证记录
 
+## 2026-11-03 Chrome 扩展弹窗原生外点验证（Issue #129）
+
+- 缺口：既有 Playwright CDP 点击未命中原生窗口外点合同；BrowserWindow.focus() 只证明 blur 关闭，不证明物理鼠标输入。
+- 验证：macOS、Electron 45.2.1、Chromium 156、临时 CORVID_DATA_DIR 与合成 MV3 扩展。命令：env -u ELECTRON_RUN_AS_NODE CORVID_NATIVE_POINTER_CHECK=1 node tests/chrome-import-e2e.cjs，EXIT 0。先显式聚焦 Corvid 父窗口，按地址栏 bounding box 中心计算屏幕全局坐标 (768, 130)；该坐标位于父窗口内、扩展弹窗 (911, 150, 320×220) 外。通过 CoreGraphics 发布 mouseMoved/down/up 后，弹窗关闭。
+- 代码范围：仅增加 macOS opt-in 测试路径；默认完整套件仍使用父窗口激活路径。页面产品实现未改变。测试自动更新的两张已有截图已还原，没有产生新的视觉差异证据。
+- 事件传递边界：严格 DOM 诊断未在父页面收到 mousemove/mousedown/mouseup/click，因此只证明原生指针输入导致扩展弹窗因 blur 关闭，不证明点击继续传递到 Corvid 地址栏或网页。
+- REA：尝试对测试 Electron PID/窗口调用 observe_native_ui，REA 返回 pid-not-application（LaunchServices 未暴露 Electron helper 为可观察应用），未产生 Evidence ID、截图或 AX 树。此处明确记为未完成 REA 原生观察，不以 CoreGraphics 窗口枚举代替。已有 Kobra dropdown-menu controlled replay 只作此前设计参考，不证明本次运行行为。
+- 限制：只验证当前 macOS 开发机（使用 Swift toolchain）和 Electron 45.2.1；未验证 Windows/Linux、打包应用、其他显示器/缩放配置、连续高频点击或屏幕阅读器。未访问真实浏览器 Profile、账号或模型。
+
+
 ## 2026-11-03 扩展弹窗失焦关闭的 Electron 验证边界（Issue #129）
 
 - 复核：现有测试在扩展子窗口打开时使用 Playwright CDP 点击 Corvid 页面。CDP 点击没有切换原生窗口焦点，因此超时并不能证明产品关闭逻辑失效；此前记录将其写成“点击弹窗外关闭”证据过强。
