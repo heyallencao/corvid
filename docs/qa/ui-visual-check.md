@@ -110,6 +110,26 @@
 - 修复后直接复核（2026-11-03 21:51 Asia/Shanghai）：隔离 Electron 45.2.1、临时 `CORVID_DATA_DIR`，macOS `System Events` 分别选择“窗口 1”和“窗口 2”；读取到窗口 1 时 `AXMenuItemMarkChar=✓` 且窗口 2 无勾选，反向切换后窗口 2 为 `✓` 且窗口 1 无勾选。Corvid `/windows` 焦点 ID 相应从 `legacy-window` 切到第二窗口 UUID，再切回 `legacy-window`。这是原生 AX 菜单状态与控制 API 的直接观察，不是 REA Evidence，也不验证像素/VoiceOver。人工诊断脚本结束时测试 helper 超时并终止了本轮自启 Electron；状态读取已在退出前完成，退出后确认无残留 Electron 进程。
 - 自动化复核：`node tests/application-menu.test.mjs` 3/3；`env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs` 通过（隔离真实 Electron）；`env -u ELECTRON_RUN_AS_NODE node tests/browser-shortcuts-e2e.cjs` 通过。菜单 E2E 的系统菜单动作以 Electron callback 驱动，不将其作为物理鼠标输入证据。全套 `npm test`、VoiceOver、Windows/Linux、打包版与原生像素对照尚未覆盖。
 - 参考关系：网页菜单参考 EasyUI OriginDropdown 的可读层级与状态语义，具体页面、Evidence ID 与移植边界见[Issue #162 执行记录](../execution/issue-162-application-menu.md)。原生菜单依平台行为实现，不复制网页皮肤。
+## 2026-11-03 设置中心首个切片（Issue #165）
+
+- 环境与状态：macOS 本机真实 Electron，窗口分别为 1024×700 与 700×420 CSS 像素，使用隔离 `CORVID_DATA_DIR` 和 `about:blank`，没有个人网页、账号或凭据。前后截图：旧长表单[中文 1024×700](screenshots/corvid-localization-zh-CN-settings-1024x700.png)，新设置中心[中文 1024×700](screenshots/issue-165-settings-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-en-700x420.png)。新图由本轮隔离 E2E 生成，供 PR 审阅。
+- 视觉判断：常规窗口采用窄分类导航加单一内容区，标题、作用范围标签与说明形成层级，底部操作固定；主题沿用 Corvid 既有表面与文字 token，未增加装饰动画。窄窗将分类导航移到内容上方，并仅滚动设置内容，保留保存/取消操作可见。验收重点为 700×420 下导航不挤压表单、较长的 Profile/站点内容可滚动且操作区不被遮挡；英文长文案与当前网站无可用来源状态也需检查。
+- UI/UE 参考与 REA 证据：EasyUI `https://easyui.site/` 首页，Chromium 156.0.8078.79，1280×900，`en-US`、浅色、减少动态效果；REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`，观察日期 2026-11-03（采集时刻未保留）。**直接观察**：AX 树显示独立命名的主导航、Home/Components/Sponsors 导航项、独立组件搜索与主题切换按钮，以及组件预览加载中的 `status`。**静态证据**：本轮未检查其站点源码或脚本。**推断**：将导航、搜索和内容状态明确命名有助于设置页定位；这不证明该页面具备设置交互，也不构成三栏布局要求。**未知与限制**：没有操作控件，未检查键盘路径、窄窗、焦点、错误/空态或过渡行为；页面预览状态为加载中，不能据此评价完整组件行为。Corvid 保持自己的双栏结构、状态文案和视觉 token，未复制组件、样式或素材。
+- 范围与限制：本切片只重组已经存在的语言、搜索、Profile 导入/扩展、Agent 连接及站点权限/数据入口，并新增应用级主题选择；启动/新标签和下载偏好仍未实现。截图只证明上述隔离数据与两个窗口尺寸下的视觉状态，不证明站点操作完整往返、全产品键盘流程、屏幕阅读器或 Windows/Linux/打包版表现。
+
+### Issue #165 启动与下载偏好增量
+
+- 直接观察：macOS 本机 Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture；截图在 2026-11-03 由 `tests/settings-preferences-e2e.cjs` 生成，窗口为 1024×700 与 700×420 CSS px，界面分别为 zh-CN/en，无个人网页、账号或凭据。常规窗截图展示常规设置；窄窗截图展示下载分类。[中文 1024×700](screenshots/issue-165-settings-preferences-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-preferences-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-preferences-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-preferences-en-700x420.png)。截图采集时刻未留存。
+- 视觉调整：窄窗分类从横向滚动改为三列两行网格，让“Agent 与连接 / Agent and connections”等六个入口完整可见；E2E 直接检查 700px 窄窗下无横向溢出、所有按钮边界均在导航区域内。类别选择只显示当前设置分区，滚动回到该分区顶部，避免其他类别末尾内容混入当前视图。主题色、圆角、表面与固定保存操作沿用 Corvid 现有样式，不增加装饰动画。
+- UI/UE 参考与 REA：仍使用 EasyUI 首页信息分区参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`；站点、直接观察、静态证据、推断与未知边界已详述在本节上方“设置中心首个切片”。新增窄窗导航判断来自 Corvid 自身双语截图与 DOM 几何断言，不把 EasyUI 首页推断为设置页或三列导航设计规范；没有复制代码、样式或素材。
+- 未知与限制：局部 Electron fixture 证明设置分类和表单当前截图状态，不代表屏幕阅读器播报、完整键盘操作、真实系统文件夹/保存对话框或 Windows/Linux/打包版表现。700×420 下载面板内容较长，仍需滚动；这由独立内容区承载且不遮挡保存/取消操作。
+
+### Issue #165 当前网站分类入口增量
+
+- 直接观察：2026-11-04（Asia/Shanghai，本轮 Electron E2E 生成截图，脚本未保留精确采集时刻），Corvid macOS Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 `127.0.0.1` fixture；当前网站设置分类显示合成来源及“管理站点权限 / 清理此站点数据”按钮。常规窗 1024×700 可同时显示来源和操作；700×420 下需滚动设置内容区，截图刻意滚到来源与操作可见的位置。中文[1024×700](screenshots/issue-165-settings-site-zh-CN-1024x700.png)、[700×420](screenshots/issue-165-settings-site-zh-CN-700x420.png)，英文[1024×700](screenshots/issue-165-settings-site-en-1024x700.png)、[700×420](screenshots/issue-165-settings-site-en-700x420.png)。页面仅显示本地合成内容，没有个人浏览数据。
+- 视觉判断：当前网站级标签与明确来源行让清理范围可辨；两个站点操作平级放置，取消和保存仍固定在对话框底部。700×420 需要滚动才能读到来源并操作；当前内容区保留独立滚动，自动化验证并截图确认范围说明、当前来源和两个操作按钮可同时完整显示，保存/取消仍固定可见。
+- UI/UE 参考与 REA：延用 EasyUI 首页有限的分区/命名状态参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`（站点 `https://easyui.site/`、首页；2026-11-03；具体观察限制见本节上方“设置中心首个切片”）。本轮没有重新访问参考页或创建新 REA Evidence；站点分类、焦点、滚动与状态只依据 Corvid 隔离运行态直接观察。EasyUI 没有被当作浏览器权限或清理流程证据，也未复制其代码/素材。
+- 未知与限制：通知权限请求与站点清理确认由 Electron `dialog.showMessageBox` 替身驱动；本地 fixture 已通过设置分类完成授权后保留/撤销检查，不证明原生系统权限/确认对话框的焦点与像素表现，也未覆盖屏幕阅读器、真实鼠标、Windows/Linux、打包版或全产品键盘顺序。
 
 ## 2026-11-03 全屏菜单桌面状态（Issue #141）
 

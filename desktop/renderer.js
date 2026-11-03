@@ -863,8 +863,41 @@ async function renderAgentAccess(){
     }
   }catch(error){document.querySelector('#agent-access-error').textContent=extensionMessages.t('cannotReadAuthorizedClients',{message:userFacingAgentError(error)});}
 }
-document.querySelector('#show-settings').onclick=async()=>{settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===settings.searchTemplate);preset.value=known?settings.searchTemplate:'custom';document.querySelector('#search-template').value=settings.searchTemplate;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();await openShellDialog('#settings');};
-document.querySelector('#ui-locale').onchange=async event=>{const locale=event.currentTarget.value,previous=state.uiLocale;extensionMessages.setLocale(locale);try{await renderProfileExtensions();await api.invoke('setUiLocale',{locale});}catch{extensionMessages.setLocale(previous);await renderProfileExtensions();event.currentTarget.value=state.uiLocale;document.querySelector('#settings-error').textContent=extensionMessages.t('localeSaveFailed');}};
+document.querySelector('#show-settings').onclick=async()=>{settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===settings.searchTemplate);preset.value=known?settings.searchTemplate:'custom';document.querySelector('#search-template').value=settings.searchTemplate;document.querySelector('#theme-preference').value=settings.themePreference||'system';const preferences=settings.browserPreferences||{};document.querySelector('#startup-behavior').value=preferences.startupBehavior||'restore';document.querySelector('#new-tab-behavior').value=preferences.newTabBehavior||'home';document.querySelector('#download-directory').value=preferences.downloadDirectory||'';document.querySelector('#ask-where-to-save').checked=preferences.askWhereToSave!==false;for(const button of document.querySelectorAll('[data-settings-target]'))button.removeAttribute('aria-current');document.querySelector('#settings-nav-general').setAttribute('aria-current','location');for(const section of document.querySelectorAll('.settings-section'))section.hidden=section.id!=='settings-general';document.querySelector('#settings-content').scrollTop=0;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();renderSettingsCurrentSite();await openShellDialog('#settings');};
+function renderSettingsCurrentSite(){
+  const tab=activeTab();let origin='';
+  try{const url=new URL(tab?.url||'');if(['http:','https:'].includes(url.protocol))origin=url.origin;}catch{}
+  document.querySelector('#settings-current-site').textContent=origin?extensionMessages.t('settingsCurrentSite',{origin}):extensionMessages.t('settingsNoCurrentSite');
+  document.querySelector('#settings-site-permissions').disabled=!origin;
+  document.querySelector('#settings-clear-site').disabled=!origin;
+}
+for(const item of document.querySelectorAll('[data-settings-target]'))item.onclick=()=>{
+  for(const button of document.querySelectorAll('[data-settings-target]'))button.removeAttribute('aria-current');
+  item.setAttribute('aria-current','location');
+  const section=document.getElementById(item.dataset.settingsTarget);
+  for(const panel of document.querySelectorAll('.settings-section'))panel.hidden=panel!==section;
+  document.querySelector('#settings-content').scrollTop=0;
+  section.focus();
+};
+document.querySelector('#theme-preference').onchange=async event=>{
+  const select=event.currentTarget,previous=state.themePreference||'system';select.disabled=true;
+  try{const result=await api.invoke('setThemePreference',{theme:select.value});state.themePreference=result.themePreference;document.querySelector('#settings-error').textContent='';}
+  catch{select.value=previous;document.querySelector('#settings-error').textContent=extensionMessages.t('themeSaveFailed');}
+  finally{select.disabled=false;}
+};
+async function runSettingsSiteAction(action){
+  const tab=activeTab();if(!tab)return;const status=document.querySelector('#settings-current-site');
+  try{
+    const result=await api.invoke(action,{id:tab.id});
+    if(action==='reviewSitePermissions')status.textContent=result.revoked?extensionMessages.t('permissionsRevoked',{origin:result.origin}):extensionMessages.t('settingsPermissionsUnchanged',{origin:result.origin});
+    else status.textContent=result.cleared?extensionMessages.t('siteDataCleared',{origin:result.origin}):extensionMessages.t('settingsSiteClearCancelled',{origin:result.origin});
+  }catch(error){status.textContent=action==='reviewSitePermissions'?extensionMessages.t('cannotManagePermissions',{message:userFacingAgentError(error)}):extensionMessages.t('cannotClearSiteData',{message:userFacingAgentError(error)});}
+}
+document.querySelector('#settings-site-permissions').onclick=()=>runSettingsSiteAction('reviewSitePermissions');
+document.querySelector('#settings-clear-site').onclick=()=>runSettingsSiteAction('clearSiteData');
+document.querySelector('#choose-download-directory').onclick=async()=>{const button=document.querySelector('#choose-download-directory');button.disabled=true;try{const result=await api.invoke('chooseDownloadDirectory');if(!result.canceled)document.querySelector('#download-directory').value=result.path;}catch(error){document.querySelector('#settings-error').textContent=userFacingAgentError(error);}finally{button.disabled=false;}};
+document.querySelector('#reset-download-directory').onclick=()=>{document.querySelector('#download-directory').value='';document.querySelector('#settings-error').textContent='';};
+document.querySelector('#ui-locale').onchange=async event=>{const locale=event.currentTarget.value,previous=state.uiLocale;extensionMessages.setLocale(locale);try{await renderProfileExtensions();await api.invoke('setUiLocale',{locale});renderSettingsCurrentSite();}catch{extensionMessages.setLocale(previous);await renderProfileExtensions();renderSettingsCurrentSite();event.currentTarget.value=state.uiLocale;document.querySelector('#settings-error').textContent=extensionMessages.t('localeSaveFailed');}};
 document.querySelector('#open-agent-access').onclick=async()=>{document.querySelector('#settings').close();document.querySelector('#agent-access-error').textContent='';document.querySelector('#agent-client-token-panel').hidden=true;document.querySelector('#agent-client-token').value='';document.querySelector('#agent-client-form').reset();await renderAgentAccess();await openShellDialog('#agent-access-dialog','#agent-client-name');};
 document.querySelector('#close-agent-access').onclick=()=>document.querySelector('#agent-access-dialog').close();
 document.querySelector('#agent-access-dialog').addEventListener('close',()=>{document.querySelector('#agent-client-token').value='';document.querySelector('#agent-client-token-panel').hidden=true;document.querySelector('#agent-client-copy-status').textContent='';});
@@ -872,7 +905,8 @@ document.querySelector('#agent-client-form').onsubmit=async event=>{event.preven
 document.querySelector('#copy-agent-client-token').onclick=async()=>{const status=document.querySelector('#agent-client-copy-status');try{await api.invoke('copyTextToClipboard',{text:document.querySelector('#agent-client-token').value});status.textContent=extensionMessages.t('copiedToClipboard');}catch(error){status.textContent=extensionMessages.t('copyFailed',{message:userFacingAgentError(error)});}};
 document.querySelector('#search-preset').onchange=event=>{if(event.target.value!=='custom')document.querySelector('#search-template').value=event.target.value;};
 document.querySelector('#search-template').oninput=()=>{document.querySelector('#search-preset').value='custom';};
-document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=error.message;}};
+document.querySelector('#settings-form').onsubmit=async event=>{event.preventDefault();const submit=event.submitter;submit.disabled=true;try {await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:document.querySelector('#search-template').value});await api.invoke('setBrowserPreferences',{startupBehavior:document.querySelector('#startup-behavior').value,newTabBehavior:document.querySelector('#new-tab-behavior').value,downloadDirectory:document.querySelector('#download-directory').value,askWhereToSave:document.querySelector('#ask-where-to-save').checked});document.querySelector('#settings').close();}catch(error){document.querySelector('#settings-error').textContent=userFacingAgentError(error);}finally{submit.disabled=false;}};
+document.querySelector('#open-agent-models-from-settings').onclick=async()=>{document.querySelector('#settings').close();await openPiModelSettings();};
 document.querySelector('#cancel-settings').onclick=()=>document.querySelector('#settings').close();
 document.querySelector('#settings').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 document.querySelector('#close-pi-model-settings').onclick=()=>document.querySelector('#pi-model-settings').close();

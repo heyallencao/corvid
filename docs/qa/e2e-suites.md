@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 70 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 61 条独立脚本命令，共 92 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 72 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 63 条独立脚本命令，共 94 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -83,6 +83,8 @@
 | 66 | `tests/browser-layout-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：断言每窗 `WebContentsView` 顶边等于 DOM 测得的浏览器 chrome 高度；无书签/状态、书签栏、瞬时状态栏、书签面板、站点工具菜单、704×420 窄窗及新标签时动态核验视图和浮层边界。 | 使用隔离临时 `CORVID_DATA_DIR` 与合成蓝色页面，不访问真实网站/浏览数据，不调用模型/OAuth；以 DOM 高度、原生 view bounds 和浮层 bounds 为主要证据，不单独凭 renderer 截图推断 WebContentsView 的合成结果。
 | 67 | `tests/typography-e2e.cjs` | 真实 Electron 覆盖 zh-CN/en 系统字体族和 CJK fallback、中文可见文本最小 12px、英文紧凑字号保留、书签面板不再显示无关 Corvid Workspace 眉题，以及 Agent 工作台在 704×420 下无水平溢出。 | 使用隔离 `CORVID_DATA_DIR` 与应用内 about:blank 页面；不访问真实网页，不登录 OAuth，不调用模型。可用 `CORVID_TYPOGRAPHY_QA_DIR` 输出四张 zh-CN/en 宽/窄窗口的合成状态截图；不验证 Windows/Linux 实际字体回退。
 | 68 | `tests/interaction-states-e2e.cjs` | 隔离真实 Electron 检查浅/深主题下的侧栏选中项在 hover 时保持文本/底色和强调指示线；按钮按下时具有位移与色调反馈；主界面细滚动条与选区跟随主题，tab strip 保持隐藏滚动条；减少动态效果下过渡接近即时且平滑滚动关闭。 | 使用临时 `CORVID_DATA_DIR` 与 `about:blank`，shell viewport 固定 1024×700 CSS px；输出浅/深主题合成截图；不访问网页、用户浏览数据、模型或 OAuth；不覆盖 Windows/Linux、打包版、屏幕阅读器或系统原生滚动条呈现。
+| 69 | `tests/settings-preferences-e2e.cjs` | 真实 Electron 设置中心：schemaVersion 1 主题迁移到 schemaVersion 2 并保持 0600；中英文启动/新标签/下载选项读取与保存；启动新标签在恢复普通网页期间仍能创建，连续重启复用已有空白标签；新标签起始页/空白页开关；下载询问取消、自动保存到选择目录、目录失效的中英文错误；1024×700 与 700×420 中英文设置截图。 | 临时 `CORVID_DATA_DIR`、本地 HTTP 下载/网页 fixture、测试目录选择器和保存对话框结果；不验证真实系统文件夹/保存对话框、Windows/Linux、打包版、屏幕阅读器；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
+| 70 | `tests/settings-site-e2e.cjs` | 真实 Electron 设置中心“当前网站”分类：空白页禁用站点操作；本地 HTTP 来源与权限/数据按钮状态；权限查看取消；站点数据取消保持 localStorage，确认后清理活动来源；默认按钮为非破坏选项；切换英语后动态来源与状态仍正确；1024×700 与 700×420 中英文截图，窄窗滚动可达操作按钮。 | 临时 `CORVID_DATA_DIR` 与本地合成网页；原生确认框由替身返回取消/确认，不验证原生对话框像素/辅助技术/跨平台；权限实际授予/撤销的服务合同由 `permissions-e2e` 覆盖，浏览数据作用范围由 `site-data-e2e` 覆盖；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
