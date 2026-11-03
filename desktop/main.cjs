@@ -1560,7 +1560,10 @@ async function startServer() {
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
-  const minimumWidth=Math.min(MIN_WINDOW_WIDTH,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
+  // The Agent panel's scrollable list may reserve a 15px scrollbar. Keep the
+  // minimum window wide enough for 320px of web content plus 280px of panel
+  // content after that platform-dependent gutter is accounted for.
+  const minimumWidth=Math.min(719,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
