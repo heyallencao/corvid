@@ -24,6 +24,8 @@ const safeStorage=createFakeSafeStorage();
     {language:'en-US',marker:'secure-storage-response-invalid',expected:'System secure storage returned an invalid response'},
     {language:'zh-CN',marker:'credential-migration-backup-cleanup-failed',expected:'已验证新凭据，但无法删除旧迁移备份'},
     {language:'en-US',marker:'credential-migration-backup-cleanup-failed',expected:'The new credential was verified, but the old migration backup could not be removed'},
+    {language:'zh-CN',marker:'credential-format-unsupported',expected:'当前凭据文件使用 Corvid 尚不支持的数据版本'},
+    {language:'en-US',marker:'credential-format-unsupported',expected:'The current credential file uses a Corvid data version this build does not support'},
   ]){
     const context={navigator:{language},window:{},document:{documentElement:{lang:''},querySelectorAll(){return[];}}};
     vm.runInNewContext(localeSource,context);
@@ -245,6 +247,22 @@ const safeStorage=createFakeSafeStorage();
   assert.deepEqual(fs.readFileSync(cleanupFailurePath),cleanupFailureCurrentBytes,'backup cleanup failure preserves the already verified current credential bytes');
   assert.deepEqual(fs.readFileSync(cleanupFailureBackupPath),cleanupFailureBackupBytes,'backup cleanup failure leaves the legacy backup for a later retry');
   assert.equal(JSON.parse(fs.readFileSync(cleanupFailurePath,'utf8')).schemaVersion,2,'backup cleanup failure never downgrades verified credentials');
+
+  const unsupportedVersionDir=path.join(root,'unsupported-credential-version');fs.mkdirSync(unsupportedVersionDir,{recursive:true});
+  const unsupportedVersionPath=path.join(unsupportedVersionDir,'agent-credentials.json');
+  const unsupportedVersionBackupPath=`${unsupportedVersionPath}.migration-backup`;
+  const unsupportedVersionCurrentBytes=Buffer.from(JSON.stringify({schemaVersion:3,providers:{anthropic:{kind:'api_key',encryptedCredential:'future-format-ciphertext'}}}));
+  const unsupportedVersionBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-unsupported-version-backup'}}}));
+  fs.writeFileSync(unsupportedVersionPath,unsupportedVersionCurrentBytes,{mode:0o600});
+  fs.writeFileSync(unsupportedVersionBackupPath,unsupportedVersionBackupBytes,{mode:0o600});
+  const unsupportedVersionStore=createAgentCredentialStore({dataDir:unsupportedVersionDir,safeStorage});
+  await assert.rejects(unsupportedVersionStore.list(),error=>{
+    assert.equal(error.code,'credential-format-unsupported');
+    assert.match(error.message,/\[\[corvid-error:credential-format-unsupported\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(unsupportedVersionPath),unsupportedVersionCurrentBytes,'unsupported current credential schema is preserved byte-for-byte');
+  assert.deepEqual(fs.readFileSync(unsupportedVersionBackupPath),unsupportedVersionBackupBytes,'unsupported schema preserves its migration backup byte-for-byte');
 
   const rotatedDir=path.join(root,'rotated-data');
   const rotatingStore=createAgentCredentialStore({dataDir:rotatedDir,safeStorage});

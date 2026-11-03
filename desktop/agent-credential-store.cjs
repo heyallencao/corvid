@@ -113,6 +113,14 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     return error;
   }
 
+  function unsupportedCredentialFormatError() {
+    const code = 'credential-format-unsupported';
+    const marker = `[[corvid-error:${code}]] `;
+    const error = new Error(`${marker}当前凭据文件使用 Corvid 尚不支持的数据版本；现有文件与迁移备份均已保留。请升级到兼容版本后重试。`);
+    error.code = code;
+    return error;
+  }
+
   async function ensureSecureStorage() {
     let available;
     try { available = await safeStorage.isAsyncEncryptionAvailable(); }
@@ -221,6 +229,8 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     } else if (current?.schemaVersion === LEGACY_SCHEMA_VERSION) {
       fs.unlinkSync(migrationBackup);
       return;
+    } else if (current !== null) {
+      throw unsupportedCredentialFormatError();
     }
     fs.renameSync(migrationBackup, file);
     try { fs.chmodSync(file, 0o600); } catch {}
