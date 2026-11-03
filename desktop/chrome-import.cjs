@@ -75,7 +75,7 @@ function readHistory(directory) {
       const visitedAt=new Date(millis).toISOString();
       return {url,title:typeof row.title==='string'&&row.title?row.title:url,visitedAt};
     }).filter(Boolean).sort((a,b)=>a.visitedAt.localeCompare(b.visitedAt));
-  } catch(error) { throw sqliteReadError('Chrome 历史',error); }
+  } catch(error) { throw sqliteReadError(error); }
   finally { database?.close(); }
 }
 
@@ -87,14 +87,14 @@ function assertDatabaseIntegrity(database){
   throw error;
 }
 
-function sqliteReadError(label,error){
+function sqliteReadError(error){
   if(error.corvidSQLiteCorruption || error.errcode===11 || error.errcode===26){
-    return new Error(`${label}数据库可能已损坏或格式不受支持。Corvid 未修改 Chrome 源文件，也未导入所选类别。请先备份 Chrome 资料，再从健康的 Profile 副本重试。${error.message?`（${error.message}）`:''}`);
+    return new Error('[[corvid-error:chrome-sqlite-corrupt]]');
   }
   if(error.errcode===5 || error.errcode===6 || /database is (?:locked|busy)/i.test(error.message||'')){
-    return new Error(`无法读取${label}数据库（可能仍被 Chrome 占用）。请完全退出 Chrome 后重试。${error.message?`（${error.message}）`:''}`);
+    return new Error('[[corvid-error:chrome-sqlite-busy]]');
   }
-  return new Error(`无法读取${label}数据库；Corvid 未修改 Chrome 源文件或写入所选类别。${error.message?`（${error.message}）`:''}`);
+  return new Error('[[corvid-error:chrome-sqlite-read-failed]]');
 }
 
 function readCookieRows(directory,{checkIntegrity=false}={}) {
@@ -107,7 +107,7 @@ function readCookieRows(directory,{checkIntegrity=false}={}) {
     if(checkIntegrity)assertDatabaseIntegrity(database);
     const statement=database.prepare('SELECT * FROM cookies');statement.setReadBigInts(true);
     return statement.all();
-  }catch(error){throw sqliteReadError('Chrome Cookie',error);}
+  }catch(error){throw sqliteReadError(error);}
   finally{database?.close();}
 }
 

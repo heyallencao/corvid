@@ -753,11 +753,13 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
         await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
         await shell.locator('input[name="chrome-category"][value="cookies"]').check();
         await allowCookieImport(shell);
+        await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
         lockedDatabase.exec('BEGIN EXCLUSIVE');
         await shell.locator('#confirm-chrome-import').click();
         const lockedImportStatus=shell.locator('#chrome-import-error');
         await lockedImportStatus.waitFor({state:'visible'});
-        assert.match(await lockedImportStatus.textContent(),/可能仍被 Chrome 占用/,'a busy Cookie database must direct the user to close Chrome rather than report corruption');
+        assert.match(await lockedImportStatus.textContent(),/may still be in use by Chrome/,'an English UI must show localized recovery guidance for a busy database');
+        assert.doesNotMatch(await lockedImportStatus.textContent(),/无法读取|退出 Chrome 后重试/,'an English UI must not show hard-coded Chinese SQLite guidance');
         assert.equal(await lockedImportStatus.getAttribute('data-success'),null,'a locked Cookie database must not be reported as a successful import');
         assert.deepEqual(fs.readFileSync(path.join(lockedData,'library.json')),libraryBeforeLockedImport,'a locked Chrome Cookie database must leave the target library byte-for-byte unchanged');
         assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved-locked-source'],'a locked Chrome Cookie database must not partially import Chrome bookmarks');

@@ -71,6 +71,7 @@
 | 54 | `tests/pi-credential-os-store-e2e.cjs` | macOS、Windows、Linux 真实 Electron：检查异步 `safeStorage` 可用；通过 Corvid UI 保存合成 API Key，断言 schemaVersion 2 文件只含密文；POSIX 平台检查权限为 0600，Linux 另校验密文实际以 `v11`/`v12` 开头；重启 Electron 后确认 Provider 仍连接；登出后断言凭据记录删除。由 `.github/workflows/credential-os-store.yml` 在三个原生 runner 执行。 | 使用临时 `CORVID_DATA_DIR` 与合成 Key，不调用真实模型/OAuth；Linux runner 安装并解锁 GNOME Keyring，测试开发版 Electron，不验证签名包、真实 Linux 桌面差异或同用户进程隔离；Windows runner 不检查文件 ACL。每个平台的实际结果以验证记录中的 Actions 运行链接为准。 |
 | 55 | `tests/pi-real-model-smoke.cjs`（手动运行） | 在隔离 `CORVID_DATA_DIR` 中经 Corvid 发起 ChatGPT OAuth，断言 Corvid 加密凭据文件存在、Agent 任务固定使用 `openai-codex/gpt-6-luna`，并通过 Corvid UI 向本地 HTTP 页面上下文发起真实请求、收到标记响应。 | 会访问真实 OpenAI/Codex 服务并消耗账户用量；不得读取外部 CLI 凭据，不纳入 `npm test`；需在 Corvid OAuth 对话框及浏览器中完成账号授权；当前执行证据限本机 macOS。 |
 | 56 | `tests/packaged-app-e2e.cjs` | 从 `dist/mac-arm64/Corvid.app` 内的可执行文件启动真实 Electron，验证 `app.isPackaged`、macOS arm64/Electron 版本、`app.asar` 资源、BrowserWindow、首个 Room、隔离 `CORVID_DATA_DIR`、Room 控制接口，以及 `/shutdown` 后进程退出和 `control.json` 清理。 | 必须先在 Apple Silicon 上运行 `npm run package:mac:dir`；只覆盖未签名开发包和本机 arm64。无真实网站、Profile、OAuth、模型、安装器、签名/公证、macOS x64、Windows 或 Linux。 |
+| 57 | `tests/chrome-import-sqlite.test.mjs` | 不启动 Electron，使用临时合成 Chrome Profile 验证 History SQLite 损坏、独占锁与普通查询失败分别返回稳定错误码；确认拒绝读取时源文件字节不变；通过实际 `desktop/locales.js` 检查三类错误在 `zh-CN` 与 `en` 下解析到对应资源。 | 使用当前 Node 内置 `node:sqlite`，会显示 ExperimentalWarning；不访问真实 Chrome Profile、系统钥匙串或用户数据，也不证明 Electron renderer 实际显示；UI 英文状态另由 `chrome-import-e2e.cjs` 覆盖。 |
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
@@ -91,11 +92,11 @@
 | D21 桌面界面与键盘可达性 | `agent-rooms-panel-e2e`（Agent 空态、工作台和面板关闭的 Enter 键盘路径及焦点恢复）、`permissions-e2e`、`tab-pin-menu-e2e` |
 | D24 本地化 | `localization-e2e`（应用语言选择/拒绝无效 locale、资源键对齐、浏览器壳层与站点工具菜单名称/提示、Intl 格式、窄窗导航与中英文设置对话框滚动/保存动作可达、偏好权限与重启恢复；仅首批静态覆盖） |
 | D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航） |
-| D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、可选择非活动 Profile 作为目标并在失败重试时锁定目标、合成 v10 Cookie 解密、Cookie 预览仅 `COUNT(*) ... NOT INDEXED` 且不物化行字段；未同意或合成密钥读取失败时不查询 Cookie 行；Cookie 类别单独确认、Profile 隔离、扩展执行与重启恢复、重复导入、Cookie flushStore 故障回滚/重试、只读 Profile 目录下持久 Cookie 落盘核验及重启重试、损坏 Cookie 索引完整性拒绝、预览后 SQLite 占用错误分类与源/目标不变、删除失败告警与同名旧路径 Cookie 保留、不同值 Cookie 冲突保留、library.json 替换失败回滚/重试、引导状态；真实系统钥匙串授权未覆盖） |
+| D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、可选择非活动 Profile 作为目标并在失败重试时锁定目标、合成 v10 Cookie 解密、Cookie 预览仅 `COUNT(*) ... NOT INDEXED` 且不物化行字段；未同意或合成密钥读取失败时不查询 Cookie 行；Cookie 类别单独确认、Profile 隔离、扩展执行与重启恢复、重复导入、Cookie flushStore 故障回滚/重试、只读 Profile 目录下持久 Cookie 落盘核验及重启重试、损坏 Cookie 索引完整性拒绝、预览后 SQLite 占用错误分类与中英文错误提示、源/目标不变、删除失败告警与同名旧路径 Cookie 保留、不同值 Cookie 冲突保留、library.json 替换失败回滚/重试、引导状态；`chrome-import-sqlite.test.mjs` 覆盖 History SQLite 损坏/占用/普通读取失败分类与三类错误的双语资源；真实系统钥匙串授权未覆盖） |
 
 ## 单独运行
 
-- 6 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，共 22 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件使用纯 Node 合同测试。
+- 7 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/chrome-import-sqlite.test.mjs`，共 26 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断、SQLite 错误分类和窗口状态合同测试仅使用合成 fixture/纯 Node。
 - 50 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
