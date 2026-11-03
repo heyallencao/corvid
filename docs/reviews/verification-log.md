@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-03 09:48 外部 Agent Room 授权并发回归（Issue #96）
+
+- 缺口：此前 `agent-access-e2e.cjs` 依次验证两个 scoped credential；Issue #96 的验收要求两个客户端并行操作不同获准 Room，但测试没有覆盖并发到达时的读写隔离。
+- 补充：真实 Electron E2E 现在用 `Promise.all` 并发列出各自 Room、读取 Room 详情，并在各自授权空间创建标签；随后并发发起跨 Room 详情读取、猜测对方 Tab 激活和跨 Room 创建标签。所有越权请求均返回 `403/CORVID_FORBIDDEN`；并发完成后两方列表仍只包含各自 Room。未修改产品路由。
+- 验证：macOS、Node.js v24.14.1、Electron 45.2.1、临时 `CORVID_DATA_DIR`；`node --check tests/agent-access-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 与 `git diff --check` 通过。追加后 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（45 条独立脚本 + 8 个 `node:test`，共 53 项）。请求并发验证的是共享本地控制服务内两个独立 scoped 身份的授权边界；主进程 dispatch queue 仍串行执行写入，不代表多进程并行调度或同 OS 用户进程隔离。
+
 ## 2026-11-03 浏览器标签与空间控件辅助技术语义（Issue #16）
 
 - 基线：隔离 Electron Accessibility 树显示 `#tabs` 将普通“新建标签”按钮放在 `tablist` 中，空间按钮直接位于 `list`；两类组件都没有相应的箭头键/列表项交互合同。REA 被动观察 Corvid shell DOM Evidence `ev_8c9f4ce02b8bd6f50d425c60b49e3ce5a68d873048ae156cee4b4db2236b4893`；动态角色与名称以本地 Playwright CDP Accessibility 树为准。

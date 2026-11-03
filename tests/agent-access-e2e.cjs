@@ -39,17 +39,51 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.ok(grantA.id && grantA.token, 'new scoped client receives an opaque credential once');
     assert.ok(grantB.id && grantB.token, 'second scoped client receives an independent credential');
 
-    const listA = await request(grantA.token, '/rooms');
+    const [listA, listB] = await Promise.all([
+      request(grantA.token, '/rooms'),
+      request(grantB.token, '/rooms')
+    ]);
     assert.equal(listA.status, 200);
+    assert.equal(listB.status, 200);
     assert.deepEqual(listA.payload.rooms.map(room => room.id), [roomA.id]);
+    assert.deepEqual(listB.payload.rooms.map(room => room.id), [roomB.id]);
     assert.equal(Object.hasOwn(listA.payload, 'activeProfileId'), false, 'scoped room listing does not expose global Profile state');
-    assert.equal((await request(grantB.token, '/rooms')).payload.rooms[0].id, roomB.id);
-    const roomBDetails = await request(grantB.token, `/rooms/${roomB.id}`);
+
+    const [roomADetails, roomBDetails] = await Promise.all([
+      request(grantA.token, `/rooms/${roomA.id}`),
+      request(grantB.token, `/rooms/${roomB.id}`)
+    ]);
+    assert.equal(roomADetails.status, 200);
     assert.equal(roomBDetails.status, 200);
+    const tabAId = roomADetails.payload.tabs[0].id;
     const tabBId = roomBDetails.payload.tabs[0].id;
-    const createTabA = await request(grantA.token, `/rooms/${roomA.id}/tabs`, 'POST', { url: 'about:blank' });
-    assert.equal(createTabA.status, 200, 'a scoped client can operate inside its granted Room');
-    assert.equal((await request(grantA.token, `/tabs/${tabBId}/activate`, 'POST', {})).status, 403, 'a guessed tab ID from another Room remains forbidden');
+
+    const [createTabA, createTabB] = await Promise.all([
+      request(grantA.token, `/rooms/${roomA.id}/tabs`, 'POST', { url: 'about:blank' }),
+      request(grantB.token, `/rooms/${roomB.id}/tabs`, 'POST', { url: 'about:blank' })
+    ]);
+    assert.equal(createTabA.status, 200, 'Agent A can operate in its granted Room while Agent B acts in another Room');
+    assert.equal(createTabB.status, 200, 'Agent B can operate in its granted Room while Agent A acts in another Room');
+
+    const [crossRoomA, crossRoomB, crossTabA, crossTabB, crossWriteA, crossWriteB] = await Promise.all([
+      request(grantA.token, `/rooms/${roomB.id}`),
+      request(grantB.token, `/rooms/${roomA.id}`),
+      request(grantA.token, `/tabs/${tabBId}/activate`, 'POST', {}),
+      request(grantB.token, `/tabs/${tabAId}/activate`, 'POST', {}),
+      request(grantA.token, `/rooms/${roomB.id}/tabs`, 'POST', { url: 'about:blank' }),
+      request(grantB.token, `/rooms/${roomA.id}/tabs`, 'POST', { url: 'about:blank' })
+    ]);
+    for (const result of [crossRoomA, crossRoomB, crossTabA, crossTabB, crossWriteA, crossWriteB]) {
+      assert.equal(result.status, 403, 'concurrent cross-Room reads and mutations remain forbidden');
+      assert.equal(result.payload.code, 'CORVID_FORBIDDEN');
+    }
+
+    const [stateA, stateB] = await Promise.all([
+      request(grantA.token, '/rooms'),
+      request(grantB.token, '/rooms')
+    ]);
+    assert.deepEqual(stateA.payload.rooms.map(room => room.id), [roomA.id], 'Agent A never discovers Agent B Room after concurrent operations');
+    assert.deepEqual(stateB.payload.rooms.map(room => room.id), [roomB.id], 'Agent B never discovers Agent A Room after concurrent operations');
     const { connect } = await import('../sdk/index.js');
     await assert.rejects(() => connect({ dataDir, baseUrl: control.baseUrl }), /provided together/, 'a base URL without an explicit token must not fall back to the administrator control file');
     await assert.rejects(() => connect({ baseUrl: 'https://example.com', token: grantB.token }), /127\.0\.0\.1/, 'explicit credentials cannot be sent to a nonlocal host');
