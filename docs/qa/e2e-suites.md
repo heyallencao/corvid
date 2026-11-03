@@ -1,7 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 53 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test tests/*.e2e.mjs`（4 个文件、8 个 `node:test` 用例）和 48 条独立脚本命令，共 56 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
-
+本索引覆盖 `tests/` 下 54 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test tests/*.e2e.mjs`（4 个文件、8 个 `node:test` 用例）和 49 条独立脚本命令，共 57 项自动化检查。索引编号保持稳定；实际运行顺序以 `package.json` 的 test 脚本为准。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）、`tests/electron-startup.e2e.mjs`（启动/清理诊断替身）和 `tests/pi-credential-os-store-e2e.cjs`（仅 macOS 运行、其他平台跳过）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 ## 共同前提与限制
 
 - 环境：本机 macOS、Electron 45.2.1、Node.js v24.14.1；Issue #113 多窗口同步修正后，2026-11-03 连续两轮全量串行回归均退出码 0，每轮 45 条独立脚本命令 + 3 个 `node:test` 用例，共 48 项。
@@ -24,7 +23,6 @@
 | 7 | `tests/sdk-e2e.cjs` | 包装脚本：启动隔离桌面并运行 `sdk/e2e.js`。SDK 覆盖截图（视口/整页/裁剪/路径与尺寸校验）、`waitForURL` 多种匹配、`waitForSelector` 四态、`waitForFunction`、定位符（css/xpath/text/role/href/frame）、Snapshot 引用与失效、`isTrusted: true` 的点击/输入/按键、`selectOption`、拖放/滚轮/鼠标、交还后动作被拒、popup 等待、`evaluate` 超时。 | 夹具仅单层同源 iframe 与开放 Shadow DOM；select 与清空为非 `isTrusted`；截图未逐像素校验；整体 30 秒超时。 |
 | 8 | `tests/download-e2e.cjs` | 下载完成内容、同名文件不覆盖并标记失败、手动重试后成功且原记录保留、重试进行中重复操作禁用、取消重试、重启时恢复为中断并重试、慢下载取消、状态文案、重启历史、文件名/URL 搜索；使用临时下载目录。 | 保存对话框被测试模式绕开，非原生交互；本地夹具；真实网络瞬断的恢复策略、断点续传及其他下载协议未验证。 |
 | 51 | `tests/download-retry-boundaries-e2e.cjs` | 真实 Electron：当前浏览身份不能重试其他身份的记录；Profile 列表隔离；拒绝 `file:` 地址；外部控制 API 没有重试路由；可见错误文案；并发 IPC 重试仅一项启动；切换到所属 Profile 后，通过该身份的 Session 完成重试，原记录保持失败。 | 使用隔离临时数据目录、合成资料库和本地 HTTP fixture；未验证真实保存对话框、真实 Agent/MCP host、Windows/Linux。 |
-| 52 | `tests/pi-credential-os-store-e2e.cjs` | macOS 真实 Electron：检查异步 `safeStorage` 可用；通过 Corvid UI 保存合成 API Key，断言 schemaVersion 2 文件只含密文且权限为 0600；重启 Electron 后确认 Provider 仍连接；登出后断言凭据记录删除。 | 使用临时 `CORVID_DATA_DIR` 与合成 Key，不调用真实模型/OAuth；其他平台明确跳过，不能替代 Windows/Linux 原生凭据存储验证。 |
 | 9 | `tests/profiles-e2e.cjs` | 旧 schema（无 `profileId`）迁移到 default Profile；同 Profile Cookie 共享、跨 Profile Cookie/书签/历史/下载隔离；UI 创建与重命名 Profile（取消/空白/裁剪）；重启保持 ID、名称与隔离；未知 `profileId` 报错。 | 未覆盖删除 Profile、默认 Profile 选择；不使用真实 Chromium Profile；本地夹具。 |
 | 10 | `tests/browser-shortcuts-e2e.cjs` | 通过 Electron `sendInputEvent` 验证 Cmd/Ctrl+T/L/W/R/`[`/`]`、Control+Tab、数字切标签、缩放 `+`/`-`/`0`；地址栏导航；搜索模板校验/保存与 `{query}` 搜索；设置按 Profile 隔离并跨重启保持。 | 只覆盖清单内快捷键；以 macOS 键位为主；未验证 Windows 键位；本地夹具。 |
 | 11 | `tests/browser-print-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：更多浏览工具菜单与 Cmd/Ctrl+P 发起当前活动用户页面打印；断言调用当前选中 WebContents、`silent:false` 与背景打印；失败显示可访问状态提示；取消打印对话框显示取消状态而非失败。 | 用 WebContents.print 测试替身，不打开真实打印机/系统对话框；只验证当前 macOS 键位与本地页面；Agent/MCP 无打印入口。原生 macOS 对话框仍需人工复核。 |
@@ -67,9 +65,8 @@
 | 47 | `tests/agent-access-e2e.cjs` | 真实 Electron：两个 Agent 客户端并发列出/读取并在各自获准 Room 创建标签；同时发起跨 Room 读取、Tab 操作和写入，均返回 `CORVID_FORBIDDEN`；并发操作后双方仍只枚举获准 Room；Agent A 的本地慢响应导航保持挂起时，Agent B 的获准 Room 导航先完成，释放响应后 A 再完成；跨 Room 与全局 Profile、历史、下载、窗口访问被拒；SDK 签发、列出、撤销授权并直接使用 scoped credential；凭据仅保存摘要且权限为 0600；撤销即时生效，未撤销授权跨重启有效、已撤销授权跨重启仍失效。 | 使用临时数据目录与本机真实 Electron；只验证控制接口和确定性 Room，不调用真实模型/OAuth；本地 HTTP gate 验证不同 Room 的慢/快导航互不阻塞，同一 Room 内仍由队列串行执行；不代表真实模型调用并发或多进程并行调度；不验证 UI/真实 MCP host 或同一 OS 用户恶意进程隔离。内置 Agent 生命周期由 39、40、42 覆盖。 |
 | 49 | `tests/navigation-error-e2e.cjs` | 真实 Electron 主框架导航失败时显示用户可读错误、保留失败 URL 并提供重试；恢复本地服务后重试成功且清除错误；加载状态可见；新建空白标签立即选中并接收地址栏导航；新导航替代挂起请求后不遗留旧失败状态。 | 临时 Corvid 数据目录与本地 HTTP fixture；只映射少数网络错误到中文说明，证书失败显示通用安全连接提示；不覆盖所有 Chromium 错误码、代理/DNS 环境及原生证书详情页面。 |
 | 52 | `tests/agent-task-continuation-contract.cjs` | 不启动 Electron 的真实 Agent Workbench 模块合同：同一已完成任务并发提交续聊时只接受一个请求，不重复写入 transcript/session/credential；过期页面预览失败后恢复原状态；Room 在页面读取、scoped credential 签发及运行时会话初始化三个等待窗口交还用户时，迟到续聊均被拒绝、任务保持 interrupted、凭据被撤销且未调用模型 prompt。 | 使用确定性 runtime 与临时数据目录，不调用真实 Provider；不覆盖实际 Electron renderer 双击时序，UI 状态和双客户端 Room 授权由其他用例覆盖。 |
-| 50 | `tests/localization-e2e.cjs` | 真实 Electron 双语回归：应用语言切换/无效 locale 拒绝、源码 locale 重复键检查、两份资源键/复数键/插值占位符一致、DOM 资源键存在；检查侧栏/菜单、地址栏/查找、品牌眉题、Chrome Profile 名称、设置内 Chrome 导入与外部 Agent 授权、Profile 扩展空态、Agent 提示/模型管理（含端点地址字段）与 Agent 工作区空态的中英文文案和可访问名称。验证 locale 切换不改写 Room/Profile 名称、`Intl` 日期/数字/复数格式、0600 偏好文件和重启恢复，并在 700×420 窄窗检查导航控件，以及中英文设置对话框滚动后保存动作完整可达。`CORVID_CAPTURE_QA_SCREENSHOTS=1` 可生成八张隔离空白状态截图。 | 使用临时 `CORVID_DATA_DIR` 与本机真实 Electron，不访问外网、不使用 OAuth 或模型；检查的是明确覆盖的确定性路径，不等同全部文案盘点。主进程/依赖生成的错误、帮助与罕见状态、全菜单、完整键盘焦点路径和 VoiceOver 未完成审计；窄窗断言不代表完整界面可用性。 |
-| 53 | `tests/pi-real-model-smoke.cjs`（手动运行） | 在隔离 `CORVID_DATA_DIR` 中经 Corvid 发起 ChatGPT OAuth，断言 Corvid 加密凭据文件存在、Agent 任务固定使用 `openai-codex/gpt-6-luna`，并通过 Corvid UI 向本地 HTTP 页面上下文发起真实请求、收到标记响应。 | 会访问真实 OpenAI/Codex 服务并消耗账户用量；不得读取外部 CLI 凭据，不纳入 `npm test`；需在 Corvid OAuth 对话框及浏览器中完成账号授权；当前执行证据限本机 macOS。 |
-
+| 53 | `tests/pi-credential-os-store-e2e.cjs` | macOS 真实 Electron：检查异步 `safeStorage` 可用；通过 Corvid UI 保存合成 API Key，断言 schemaVersion 2 文件只含密文且权限为 0600；重启 Electron 后确认 Provider 仍连接；登出后断言凭据记录删除。 | 使用临时 `CORVID_DATA_DIR` 与合成 Key，不调用真实模型/OAuth；其他平台明确跳过，不能替代 Windows/Linux 原生凭据存储验证。 |
+| 54 | `tests/pi-real-model-smoke.cjs`（手动运行） | 在隔离 `CORVID_DATA_DIR` 中经 Corvid 发起 ChatGPT OAuth，断言 Corvid 加密凭据文件存在、Agent 任务固定使用 `openai-codex/gpt-6-luna`，并通过 Corvid UI 向本地 HTTP 页面上下文发起真实请求、收到标记响应。 | 会访问真实 OpenAI/Codex 服务并消耗账户用量；不得读取外部 CLI 凭据，不纳入 `npm test`；需在 Corvid OAuth 对话框及浏览器中完成账号授权；当前执行证据限本机 macOS。 |
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
@@ -95,7 +92,7 @@
 ## 单独运行
 
 - 4 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs`。其中 browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，避免窗口焦点竞争导致点击未派发；启动诊断用合成 launcher 和子进程 fixture，共 8 个用例。
-- 47 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 49 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/pi-credential-os-store-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 
