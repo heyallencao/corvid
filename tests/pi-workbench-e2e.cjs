@@ -54,7 +54,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
     await shell.locator('#pi-model-settings[open]').waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
-    await shell.getByRole('button', { name: '关闭模型设置' }).click();
+    await shell.getByRole('button', { name: '关闭' }).click();
     await app.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].webContents.send('pi-auth-prompt', {
         id: 'corvid-auth-ui-brand-fixture',
