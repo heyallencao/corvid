@@ -2,6 +2,7 @@ const catalogs = Object.freeze({
   'zh-CN': Object.freeze({
     appStartupFailedTitle: 'Corvid 启动失败',
     dataDirectoryFailure: 'Corvid 无法使用数据目录：{path}\n请检查当前用户是否有读取、写入和执行权限，然后重试。\n系统错误：{error}',
+    navigationServerNotFound: '找不到服务器', navigationNetworkDisconnected: '网络连接已断开', navigationServerRefused: '服务器拒绝连接', navigationTimedOut: '连接超时', navigationSecureConnectionFailed: '安全连接失败', navigationLoadFailed: '无法加载此页面',
     defaultProfileName: '默认', sitePermissionTitle: '网站权限请求', permissionRefuse: '拒绝', permissionAllow: '允许', permissionDisplayCaptureWithAudio: '共享屏幕或窗口及音频',
     permissionRequestMessage: '{origin} 请求以下权限：{permission}', permissionRequestDetail: '浏览身份：{profile}；空间：{room}。{scope}{deviceLimit}',
     permissionAllowedThisSession: '允许后，本次运行期间此浏览身份的同来源页面可使用该权限。', permissionCurrentRequestOnly: '此选择仅针对当前请求。', permissionDeviceLimit: '系统或设备限制仍可能阻止访问。',
@@ -20,6 +21,7 @@ const catalogs = Object.freeze({
   en: Object.freeze({
     appStartupFailedTitle: 'Corvid failed to start',
     dataDirectoryFailure: 'Corvid cannot use the data directory: {path}\nCheck that your user can read, write, and execute files there, then try again.\nSystem error: {error}',
+    navigationServerNotFound: 'Server not found', navigationNetworkDisconnected: 'Network connection lost', navigationServerRefused: 'Server refused the connection', navigationTimedOut: 'Connection timed out', navigationSecureConnectionFailed: 'Secure connection failed', navigationLoadFailed: 'Unable to load this page',
     defaultProfileName: 'Default', sitePermissionTitle: 'Website permission request', permissionRefuse: 'Deny', permissionAllow: 'Allow', permissionDisplayCaptureWithAudio: 'share a screen or window and audio',
     permissionRequestMessage: '{origin} is requesting permission to {permission}.', permissionRequestDetail: 'Browsing profile: {profile}; space: {room}. {scope}{deviceLimit}',
     permissionAllowedThisSession: 'If allowed, pages from this site in this profile can use this permission for this session.', permissionCurrentRequestOnly: 'This choice applies to this request only.', permissionDeviceLimit: 'System or device restrictions may still prevent access.',

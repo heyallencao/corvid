@@ -44,12 +44,13 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     const waitForTab=predicate=>until(async()=>{lastTabState=(await room.tabs())[0];return predicate(lastTabState)?lastTabState:false;},'browser tab state').catch(error=>{console.error('Last tab state:',lastTabState);throw error;});
     await shell.locator('#address').fill(`${base}/home`);await shell.locator('#address').press('Enter');
     await waitForTab(tab=>tab.url===`${base}/home`&&tab.loadComplete);
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
     await shell.locator('#address').fill(`${base}/fail`);await shell.locator('#address').press('Enter');
     await shell.locator('#status .navigation-error').waitFor();
     assert.ok(failedRequests>0,'fixture should receive the failed navigation request');
-    assert.match(await shell.locator('#status .navigation-error').textContent(),/页面加载失败：无法加载此页面/);
+    assert.match(await shell.locator('#status .navigation-error').textContent(),/Page failed to load: Unable to load this page/);
     assert.equal(await shell.locator('#address').inputValue(),`${base}/fail`,'failed URL must remain visible for editing');
-    assert.equal(await shell.locator('#status').getByRole('button',{name:'重试'}).count(),1,'user-owned tab should expose retry');
+    assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).count(),1,'user-owned tab should expose retry');
     const failedTabId=(await room.tabs())[0].id;
     await shell.locator('#new-tab').click();
     const newTab=await until(async()=>(await room.tabs()).find(tab=>tab.id!==failedTabId),'second tab');
@@ -65,7 +66,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(failedTab.navigationError.url,`${base}/fail`,'error must be bound to its owning tab and URL');
     assert.equal(failedTab.isLoading,false,'failed navigation must leave loading state');
     failUntilRecovery=false;
-    await shell.locator('#status').getByRole('button',{name:'重试'}).click();
+    await shell.locator('#status').getByRole('button',{name:'Retry'}).click();
     const recovered=await waitForTab(tab=>tab.url===`${base}/fail`&&tab.loadComplete&&tab.title==='Recovered navigation');
     await until(async()=>await shell.locator('#status .navigation-error').count()===0,'error cleared after retry');
     assert.equal(recovered.title,'Recovered navigation');

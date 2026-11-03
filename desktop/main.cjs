@@ -10,6 +10,7 @@ const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.c
 const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
+const { navigationFailureMessage } = require('./navigation-errors.cjs');
 let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
@@ -258,15 +259,6 @@ function requireFocusedRecord() {
   return record;
 }
 const id = () => crypto.randomUUID();
-function navigationFailureMessage(errorCode,detail=''){
-  const source=`${errorCode} ${detail}`.toUpperCase();
-  if(errorCode===-105||source.includes('ERR_NAME_NOT_RESOLVED'))return '找不到服务器';
-  if(errorCode===-106||source.includes('ERR_INTERNET_DISCONNECTED'))return '网络连接已断开';
-  if(errorCode===-102||source.includes('ERR_CONNECTION_REFUSED'))return '服务器拒绝连接';
-  if(errorCode===-118||source.includes('ERR_TIMED_OUT'))return '连接超时';
-  if(errorCode<=-200&&errorCode>=-299||source.includes('ERR_CERT_'))return '安全连接失败';
-  return '无法加载此页面';
-}
 function navigationWasCancelled(error){return /ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/i.test(String(error?.message||error||''));}
 const SCHEMA_VERSION = 2;
 const dbPath = path.join(dataDir, 'rooms.json');
@@ -796,7 +788,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('did-finish-load',()=>{if(view.webContents.getURL()==='about:blank'&&s.ownership==='user'&&openedBy==='user')void installHomeSurface().catch(error=>console.error('Corvid start page failed to load:',error.message));else{tab.homeSurfaceInstalled=false;changed();}});
   view.webContents.on('did-fail-load',(_event,errorCode,_errorDescription,validatedURL,isMainFrame)=>{
     if(!isMainFrame || errorCode===-3)return;
-    tab.isLoading=false;tab.navigationError={url:validatedURL || tab.pendingNavigationUrl || view.webContents.getURL(),message:navigationFailureMessage(errorCode,_errorDescription)};changed();
+    tab.isLoading=false;tab.navigationError={url:validatedURL || tab.pendingNavigationUrl || view.webContents.getURL(),message:navigationFailureMessage(errorCode,_errorDescription,mainMessages)};changed();
   });
   tab.bootstrap=(async()=>{
   // A newly created WebContents does not answer Page.enable until its first
@@ -1350,7 +1342,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(!fromApi) return closeTabFromBrowserUi(tab);
       await runAction.releasePointer(tab.view.webContents);await closeTab(target);return {ok:true};
     }
-    case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError)t.navigationError={url,message:navigationFailureMessage(error.errno,error.message)};update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
+    case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError)t.navigationError={url,message:navigationFailureMessage(error.errno,error.message,mainMessages)};update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
     case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);const beforePopup=t.popupSequence;const result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground}); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}
     case 'getPopupEvents': {const tab=findTab(target);if(args.after===undefined)return {cursor:tab.popupSequence,event:null};const after=Number(args.after);if(!Number.isSafeInteger(after) || after<0 || after>tab.popupSequence)throw new Error('Invalid popup cursor');if(tab.popupEvents.length && after<tab.popupEvents[0].sequence-1)throw new Error('Popup event history expired');const event=tab.popupEvents.find(item=>item.sequence>after);if(!event)return {cursor:tab.popupSequence,event:null};const popup=tabs.get(event.tabId);return {cursor:tab.popupSequence,event:{...event,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}: {})}};}
