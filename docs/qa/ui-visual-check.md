@@ -1,6 +1,6 @@
 # 桌面 UI 视觉检查记录
 
-## 2026-11-03 Corvid 原生窗口菜单焦点勾选（Issue #162）
+## 2026-11-03 Corvid 原生窗口菜单焦点勾选（Issue #167）
 
 - 环境与隔离：macOS、Electron 45.2.1、`CORVID_DATA_DIR=/tmp/corvid-menu-native-ui-20261103b`；仅有新建的默认窗口与空白起始页，没有导入浏览器资料或打开私人网页。系统菜单由 macOS `System Events` 操作，窗口菜单截图只采集菜单窗口。
 - 直接观察：通过原生“窗口”菜单选择“窗口 1”后，Corvid `/windows` 控制接口报告焦点窗口为 `legacy-window`；macOS 菜单的 `AXMenuItemMarkChar` 仍在“窗口 2”显示勾选。“窗口 1”未勾选。截图：[窗口菜单错误勾选（修复前）](screenshots/issue-162-window-menu-stale-check-before.png)，414×326，SHA-256 `f42a135f80c21fe3a32b08363f2cf7dcef9b02b76fd3804c665dfb90d2972dc2`。

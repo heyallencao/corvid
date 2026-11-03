@@ -48,7 +48,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 
     const firstWindow=(await api('/windows')).windows[0];
     await click('corvid-new-tab');
-    await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===2;},'new tab in the focused user window');
+    await until(async()=>{const state=await api('/rooms'),tabs=state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs;return tabs?.length===2&&tabs.every(tab=>tab.ready);},'new tab is ready in the focused user window');
     await click('corvid-new-window');
     await until(async()=>(await api('/windows')).windows.length===2,'second browser window');
     const windows=(await api('/windows')).windows;
