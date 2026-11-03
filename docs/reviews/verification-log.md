@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 增强 Electron E2E 启动诊断与清理（Issue #87）
+
+- 目标：启动失败要能区分 Playwright launch、首个桌面窗口与 `control.json` 新凭据等待阶段；报告隔离数据目录、进程状态、窗口与最近日志但不输出 token；清理必须有限时，并在挂起时结束测试子进程。
+- 实现：新增 `tests/electron-test-startup.cjs` 共享启动/清理 helper，Library 与慢恢复 E2E 改用它；新增 5 个合成启动/退出/脱敏/清理测试。
+- 验证：macOS、Node.js 24.14.1、Electron 45.2.1；重基至包含 PR #114 的最新主线后，`env -u ELECTRON_RUN_AS_NODE npm test` 连续两轮 EXIT 0，每轮 `node:test` 8 项 + 45 条独立脚本，共 53 项。两轮均经过多窗口重启、Library、慢恢复、MCP、Agent、Chrome 导入与导航用例。`node --check`（新增 helper 及两个改造脚本）、`git diff --check` 通过。
+- 限制：合成用例验证诊断和清理合同，不复现真实 Electron 间歇启动挂起，也不证明其根因已修复；根因仍由 Issue #87 跟踪。没有连接模型、OAuth、真实网站或真实用户 Profile；只在 macOS 开发环境验证。
+
 ## 2026-11-03 修正多窗口 E2E 的渲染与持久化等待（Issue #113）
 
 - 初始现象：独立与全量真实 Electron 回归曾报告重启后窗口数不足；在失败诊断中发现 `#rooms button` 会匹配静态侧栏按钮，不能证明 Room 列表已绘制。重启前 `/rooms` 已显示第二窗口和 Room，但 `rooms.json` 仍可能只有一窗记录。

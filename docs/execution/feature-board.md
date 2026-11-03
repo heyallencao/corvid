@@ -2,7 +2,7 @@
 
 本文件同时是 Corvid 的功能覆盖矩阵、交付顺序和端到端验收合同入口。产品主线以 EGO 的人用日常浏览器和隔离共享 Spaces 为主产品模式，并集成 Kaze 的内置 Agent、任务状态/接管体验与 BrowserMCP 外部浏览器操作；Corvid Agent 的底层运行时为可替换实现，不定义用户产品语义。内置 Agent 与外部 SDK/CLI/MCP 共用 **Room**（同一 Profile 下的工作区与控制权边界）、**Profile**（浏览身份与 Cookie 隔离边界）、**Page**（标签页的 Agent 句柄，标签为 `p1`、`p2`…）、**Snapshot**（页面语义快照）及同一授权合同。控制权接口为 `yieldControl`（Agent 交还用户）、`resumeControl`（用户控制后 Agent 取回）、`waitForControl`（等待）；Room 接口为 `openRoom`、`listRooms`、`claimRoom`、`resumeRoom`。参照来源、REA Evidence 与未覆盖边界见[双浏览器参照分析](../research/browser-reference-analysis.md)。
 
-规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，49 项测试入口（含显式真实模型 smoke）的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
+规划与证据分开记录：本板只维护工作块、当前差距和验收合同；执行结果写入 [验证记录](../reviews/verification-log.md)，50 项测试入口（含显式真实模型 smoke）的逐项说明见 [端到端测试索引](../qa/e2e-suites.md)，系统边界与关键决策见 [系统设计](../architecture/overview.md)。
 
 ## 当前事实与证据边界
 
@@ -30,6 +30,7 @@
 - 2026-11-03 Corvid Agent 授权提示运行时品牌隔离：定向真实 Electron 用例从 renderer 事件 fixture 注入带运行时名称的授权提示，检查弹窗文案与取消路径不泄漏；不触发真实 Provider/OAuth 或模型。工作台、模型管理和授权表面回归入口与边界见[端到端测试索引](../qa/e2e-suites.md)及[验证记录](../reviews/verification-log.md)。
 
 - 2026-11-03 Issue #113 多窗口 E2E 持久化门槛：诊断确认原失败由测试过早重启和静态侧栏选择器造成；修正后独立 `tests/multi-window-e2e.cjs` 连续 10 次通过，完整串行 `env -u ELECTRON_RUN_AS_NODE npm test` 连续两轮 EXIT 0（每轮 45 条独立脚本 + 3 项 `node:test`，共 48 项）。这是测试同步修正，不代表未持久化的创建中状态具有崩溃恢复保证。
+- 2026-11-03 Issue #87 Electron 启动诊断：加入分阶段 launch/首窗/control 凭据等待错误、脱敏状态与有限时清理；启动诊断替身测试 5 项，首窗失败和异常关闭会清理子进程。该改动改进失败证据和测试清理，不证明间歇启动挂起根因已解决。完整 `npm test` 在重基到 #114 后连续两轮 EXIT 0，每轮 45 条独立脚本 + 8 个 `node:test` 用例，共 53 项；Issue #87 继续开放以跟踪真实 Electron 启动挂起的复现与根因。
 
 ## 状态定义与证据要求
 
@@ -101,7 +102,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（46 条串行命令，包含 3 项 `node:test` 与 45 个独立脚本，共 48 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
+1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（46 条串行命令，包含 8 个 `node:test` 用例与 45 个独立脚本，共 53 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 
