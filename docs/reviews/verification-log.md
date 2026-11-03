@@ -6,7 +6,7 @@
 - 原生观察：对失败运行中的 Corvid 主进程执行 `sample`，主线程仍处于 AppKit 事件循环；一条原生工作线程停在 `Security.framework` 的 `SecItemCopyMatching`、Keychain 数据解密及 `SecurityServer` IPC 调用栈。随后 CUA 桌面状态报告 Mac 已锁定，但该状态采集晚于两次 E2E，不能据此断言签名包失败时的锁屏状态，也不能判定锁屏为根因。
 - REA 证据：`ev_e6a0a4c14ac4cde6f20d010212011910a21325bf7d9900ae7c28060253098ec6` 观察签名包 `Info.plist` 的 bundle id、app.asar SHA-256 声明与资源布局；`ev_957d3ee301cb75a346c9cd546ce85e8401814650f45173bc30ac23e7c1f14d3d` 直接读取该包 Electron Framework 的 fuse 字节，发现 `RunAsNode`、`EnableNodeOptionsEnvironmentVariable`、`EnableNodeCliInspectArguments`、`GrantFileProtocolExtraPrivileges`、`WasmTrapHandlers` 为 enabled，`EnableCookieEncryption`、`EnableEmbeddedAsarIntegrityValidation`、`OnlyLoadAppFromAsar`、`LoadBrowserProcessSpecificV8Snapshot` 为 disabled。静态 fuse 观察只描述这份本地产物，不证明可利用性或运行时行为；这些打包安全配置不属于本次凭据修复范围，应另行评估。
 - REA 运行态证据：`ev_cddbe599be279a4065a37ba10700cf678ecbbfafbe06f28890d03c57cc8456dd` 在打包进程存活期间只枚举到一个 Corvid `file://` 页面目标，附件状态未知；该被动页面枚举没有观察到 Node Inspector 主进程或 Keychain API，不能证明挂起调用的返回条件。对 `inspect_artifact` 的完整容器盘点因 REA 当前处于仅资源访问通道而不可用，故未声称取得完整 `.app` 内容图。观察时间：2026-11-04 01:53（Asia/Shanghai）。
-- 结论与边界：开发版路径已有通过证据；Developer ID 签名包的凭据往返仍未通过，原生等待点落在 Keychain，但具体触发条件未确定。不得把超时守卫、静态签名或开发版三平台 CI 描述成签名包凭据验收通过。PR #157 继续保留草稿状态，待在可复现且状态可观测的桌面环境完成签名包往返后再判断此验收项。
+- 结论与边界：开发版路径已有通过证据；Developer ID 签名包的凭据往返仍未通过，原生等待点落在 Keychain，但具体触发条件未确定。不得把超时守卫、静态签名或开发版三平台 CI 描述成签名包凭据验收通过。REA 静态观察发现的 Fuses 配置风险单独交由 [Issue #182](https://github.com/heyallencao/corvid/issues/182) 评估，不与 #110 的凭据验收结论混为一谈。PR #157 继续保留草稿状态，待在可复现且状态可观测的桌面环境完成签名包往返后再判断此验收项。
 
 ## 2026-11-03 Developer ID 签名包验收入口（Issue #110）
 
