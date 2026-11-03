@@ -313,8 +313,10 @@ async function allowCookieImport(shell){
     assert.equal(await shell.evaluate(()=>document.activeElement?.dataset.extensionId),chromeProfiles[0].extensionId,'Escape should return focus to the toolbar trigger');
     await popupTrigger.click();
     await until(async()=>extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup reopen');
-    await shell.bringToFront();await shell.locator('#more-tools').click();
-    await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup outside click close');
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'))?.focus());
+    await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes after native parent-window activation');
+    await shell.locator('#more-tools').click();
+    await shell.locator('#site-tools').waitFor();
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'failed extension copies must not remain in managed state');
     assert.equal(fs.existsSync(require('../desktop/chrome-extensions.cjs').managedPath(appData,'default',chromeProfiles[0].symlinkExtensionId,'1.0.0')),false,'failed extension copies must be cleaned up');
 
