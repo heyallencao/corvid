@@ -22,7 +22,7 @@
 
 ## 当前证据与限制
 
-- 本地纯逻辑验证：`node --test tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，共 9 项通过；全屏状态单测覆盖不匹配标签、匹配标签退出原生全屏、保留应用全屏、重复清理、窗口销毁和关闭中边界。2026-11-03 本轮 `node --check` 覆盖 `desktop/main.cjs`、`desktop/window-shortcuts.cjs`、`desktop/renderer.js`、`tests/fullscreen-e2e.cjs`、`tests/localization-e2e.cjs`；`package.json` 解析和 `git diff --check` 均通过。
+- 本地纯逻辑验证：2026-11-03 16:42（Asia/Shanghai）复跑 `node --test tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，9 项通过；状态单测覆盖不匹配标签、匹配标签退出原生全屏、保留应用全屏、重复清理、窗口销毁和关闭中边界。本轮 `node --check` 覆盖 `desktop/main.cjs`、`desktop/page-fullscreen.cjs`、`tests/fullscreen-e2e.cjs`、`tests/localization-e2e.cjs`，`git diff --check` 通过。此前已检查 `desktop/window-shortcuts.cjs`、`desktop/renderer.js`，并验证 `package.json` 可解析。
 - 真实 Electron 定向运行已覆盖菜单切换、最大化还原、macOS 快捷键和两个窗口的独立状态；后续运行进入网页 HTML Fullscreen，并观察到 Corvid 将窗口级切换禁用且不会覆盖页面状态。运行也暴露了关闭全屏标签后窗口状态可能残留的问题，当前代码已加入按标签清理逻辑，尚待复验。
 - **未完成：**最新版 `tests/fullscreen-e2e.cjs` 与 `tests/localization-e2e.cjs` 尚未完整通过；窗口尺寸/状态重启恢复、Agent 工作区全屏可见性、中英文实时切换、UI 截图和平台人工检查仍未验收。当前 CUA 观察到 macOS 锁屏，锁屏期间的全屏失败不作为产品通过或失败证据；待用户解锁后重跑定向 E2E 和全量回归。
 - `tests/fullscreen-e2e.cjs` 原有快捷键步骤使用 Playwright `keyboard.press`，该输入不会经过 Electron 的 `before-input-event`，已改为 Electron 原生输入事件。网页全屏夹具通过隔离 HTTP 页面、测试期明确自动同意权限请求来运行，不使用真实站点或账号。
