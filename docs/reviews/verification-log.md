@@ -4,7 +4,8 @@
 
 - 变更：新增 `.github/workflows/issue87-full-regression.yml`。macOS 14 runner 执行 `npm ci` 后，顺序运行两轮完整 `npm test`；即使第一轮失败也会收集退出状态并继续第二轮。每轮结束后最多等待 10 秒检查进程名中含 Electron/Corvid 的残留，仅记录 PID/父 PID/进程名，不采集命令行；两轮日志作为 Actions artifact 保存。
 - 本地合同：基于 `c111f35` 的 PR #164 worktree 执行 `node --test tests/electron-startup.e2e.mjs`，9/9 通过；`node --check tests/electron-test-startup.cjs`、workflow YAML 解析、抽取的 bash 脚本 `bash -n` 与 `git diff --check` 通过。合同测试只启动受控 Node 子进程，不启动 Electron。
-- 当前边界：本机 Mac 锁屏，尚未运行 Electron 或完整 `npm test`；新增两轮全量 workflow 尚未有 GitHub Actions 结果。历史启动挂起仍未复现、根因未知，因此 Issue #87 保持开放。
+- 完整回归：[GitHub Actions 41705755809](https://github.com/heyallencao/corvid/actions/runs/41705755809) 在 macOS 14 连续执行两轮。第一轮通过 `node:test`、RPC、library、SDK、下载、恢复、页面/窗口、全屏、多窗口等后，在 `tests/agent-rooms-panel-e2e.cjs:291` 失败：704px 窗口下 Agent 条目宽 265px，小于 280px 验收线。第二轮通过至 `tests/snapshot-e2e.cjs:108`，点击 fixture 未记录 `s1`。两轮各在第一个失败脚本后停止该轮的 `npm test`，但第二轮仍实际运行；每轮清理检查都报告无残留 Electron/Corvid 进程。三平台进程快照合同 [41705755710](https://github.com/heyallencao/corvid/actions/runs/41705755710) 均通过。
+- 边界：两轮全量回归均未完成，失败点与启动挂起历史不同；当前没有证据证明 #87 根因已定位或解决。Issue #87 保持开放，待先修复/稳定上述全量回归阻断后再复跑。
 
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
