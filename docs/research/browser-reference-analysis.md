@@ -80,3 +80,34 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 **静态证据：** Corvid 当前 Profile 由 `profiles.json` 和 `persist:corvid-profile-${profileId}` session partition 标识；History/Bookmarks/Downloads 与 managed extension records 由独立数据文件持有；Agent task/conversation 和 runtime checkpoint 还分布在 `agent-tasks.json` 与 `agent-sessions/`。这些事实来自 Corvid 当前源代码，不是竞品证据。
 
 **未观察/未知：** 本轮尝试启动独立 Chrome 临时 Profile 并从 REA 原生 UI 观察 Profile picker，但没有取得有效截图或 AX Evidence：Chrome 加载请求后显示为 New Tab；REA `observe_native_ui` 首次因当前 Mach-O target 不匹配拒绝，选中 Chrome 二进制后又因 provider 无法读取该进程 launch time 返回 `capability_unavailable`。临时 Chrome 进程已退出；这次失败没有具名 Evidence ID。未通过 REA 操作 Chrome/Safari 原生 Profile 管理界面；未检查 EGO/Kaze Profile 删除交互；也没有测量窄窗状态、确认对话框视觉层级、键盘操作或删除失败后的恢复行为。由此不对这些行为作竞品结论。视觉交互实现还需按 UI QA 流程在隔离 Corvid 数据目录及小/常规窗口检查。
+
+## 2026-11-04 01:03（Asia/Shanghai）AI 浏览器产品线与 Dia 更新页 REA 复核
+
+本轮目标是给“EGO 主产品形态 + Kaze Agent 协作”补充行业参照，不把组件站的视觉风格或竞品宣传直接变成 Corvid 需求。
+
+### REA 直接观察
+
+使用 REA `capture_browser_scenario` 在隔离临时 Chromium 中访问 Dia 官方更新页。浏览器版本 `156.0.8078.79`，视口 `1280×900`，英文、浅色、减弱动态效果；没有登录、提交表单或修改账号数据，场景结束后 REA 确认 `terminated-owned-process`。更新索引页截图 Evidence `ev_3838cdc5d33062488a87f2f8201b10c232f23f3f7352d62124a04ec250944675`，PNG SHA-256 `6d8e1672c3e1c6c9bb24d74adc42e03d00efcf046cf7e9314c26eeaa998b277f`，已保存到 [`docs/qa/screenshots/dia-changelog-2026-11-04-1280x900.png`](../qa/screenshots/dia-changelog-2026-11-04-1280x900.png)；同页 DOM/AX Evidence `ev_bb70c337b0588d8d754b1f7cda586b34cdc1dcb6c1575878c8bf067ac8fc050d`；1.55.0 更新页 DOM/AX Evidence `ev_110e0196776c21745a7ca862475f07a474c49ef3a834fc265a67f4431411f107`。本轮页面覆盖完整，截图是官方更新页，不是 Dia 浏览器运行窗口。
+
+**页面直接可见：** Dia 的更新索引以大幅品牌插画和衬线标题作为页首；下方把年份/月份导航放左侧，平台筛选与按日期排列的版本内容放主栏。可访问树把标题、月份、平台、日期、版本、更新标题和更新条目分别暴露为明确结构。此信息组织让用户能按“版本/时间/平台”定位，而不是读一条无序公告流。它是更新站点的信息架构，不能推出浏览器侧栏必须采用相同布局。
+
+### 产品功能的证据分层
+
+- **REA 观察到的事实：** 2026-10-29 的 Dia 1.55.0 页面以结构化条目记录可选的已登录应用连接、Google Chat 集成、Ashby/Dropbox Beta、固定标签组保留、侧栏拖动/双击最大化、悬停预览、滚动准备但不预加载站点内容，以及聊天消息排队、重排、编辑和引导后续回答等主题。页面可访问性树中这些项目按标题与描述成组。Evidence `ev_110e0196776c21745a7ca862475f07a474c49ef3a834fc265a67f4431411f107`；它只证明更新页当时展示了这些条目。
+- **厂商公开声明：** Dia 同一更新流还说明聊天加载提示会过渡到工具调用、生成内容可分享为图片/PDF，以及对快捷键、键盘、对比度和长文本对话框的持续修复；这些是 Dia 发布说明，不是本轮对这些功能的实际交互验证。来源：[Dia 官方更新记录](https://www.diabrowser.com/changelog)。
+- **厂商公开声明：** Chrome 把 Gemini 放在浏览器侧栏，可读取当前或最多 10 个用户选择的标签上下文；Auto Browse 可按用户要求点击、填表和导航。[Google 官方说明](https://support.google.com/gemini/answer/16283624?hl=en)。Edge 的 Copilot 侧栏提供当前网页/PDF/视频问答；其 Browse with Copilot 文档描述用户明确发起、多步浏览、可暂停/打断、敏感操作前确认及任务标签视觉标记。[Microsoft 官方说明](https://support.microsoft.com/en-us/edge/copilot/using-microsoft-copilot-in-edge-at-work)。
+- **厂商公开声明：** Comet 将多个后台 Agent 任务并行运行，并在单一页面处理确认与后续跟进。[Perplexity 官方更新](https://www.perplexity.ai/en-GB/changelog/what-we-shipped-october-3rd)。这能支持“并行任务需要统一的可见队列/确认入口”这一待评估方向，但不证明其任务隔离、安全、稳定性或具体 UI 已被本轮体验。
+- **较早的已安装产品 REA 运行态证据：** EGO 的常规标签、地址栏、书签与网页主画布是日常浏览基线；Kaze 的持久导航、Space/标签组织和可打开的 Agent 面板，是任务/Agent 入口参照。版本、窗口和证据范围见本文件 2026-11-02 的安装窗口记录；不把较早快照写成当前版本保证，也不读取用户网页主体来补齐未知流程。
+
+### 对 Corvid 的判断
+
+**产品方向维持不变：** EGO 式“先是一台完整浏览器”应支配默认窗口、标签/地址/书签与网页画布；Agent 是随时可开的协作面板，任务和并行工作按 Space/Room 归属，接入多个模型与 Browser MCP 后仍使用 Corvid 自有产品语义。不要让 Agent 导航、计划列表或促销式新标签页抢走网页主画布。
+
+**可具体迁移的交互原则：**
+
+1. 将聊天提交状态区分为“正在执行”“等待用户”“可继续/已完成”，并在运行中显示动作与阻塞原因；提供暂停/接管和明确的继续入口。Edge 的显式发起、运行标记、随时中断和敏感操作前确认支持这一方向；Corvid 应以自身权限合同与本地夹具验证。
+2. 为 Agent 消息建立轻量队列和 steering：任务运行时用户可追加、调整下一条或修改尚未执行的指令；每条待执行消息应能看出顺序和归属。Dia/Comet 的更新说明提示这是成熟 AI 浏览器正在打磨的连续性问题，但 Corvid 先做同 Room 的可恢复顺序队列，不先做一个独立的“后台 Agent 控制台”。
+3. 工具活动采用简洁、可展开的时间线：先显示一句正在处理的状态，再显露具体浏览动作/工具结果；长任务保留上下文和错误恢复入口。任务产物的导出与跨应用集成放到有明确目的的动作里，不扩大浏览主窗口的默认信息密度。
+4. 把侧栏显隐、窄窗、键盘快捷键、长双语文案、标签预览和标签组作为验收维度。Dia 更新页的可访问树和版本筛选是直接页面证据；竞品反复修复这些边角说明成熟度来自日常细节，不是更多渐变或动画。
+
+**静态项目状态与未知：** 复核最新任务板 D19 与开放 Issue #5 后，现有合同明确了流式进度、接管、恢复及完成后续聊，但没有定义运行中追加、重排或修改待执行消息；这是功能范围缺口候选，不是已证明的运行态故障。Issue #16 跟踪整体界面与可访问性打磨。本轮不新开 Issue：仍需用隔离真实 Electron 场景确认当前 Composer 行为、任务生命周期与并发边界，再决定要不要拆成独立切片。尚未直接操作 Dia、Chrome Gemini、Edge Copilot 或 Comet 的浏览器应用；本轮公开网页捕获和官方说明不证明其实际运行行为、账户限制、模型质量、权限效果或平台覆盖。
