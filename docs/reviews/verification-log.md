@@ -6,7 +6,8 @@
 - 基线：PR #135 分支合入主线 `e5d64b5` 后解决 `package.json`、端到端索引与执行板冲突，保留 #141 全屏工作及测试入口，并纳入凭据原生存储用例。
 - 验证：macOS、Node.js v24.14.1、Electron 45.2.1；`npm ci` 成功（133 packages，0 vulnerabilities）。`env -u ELECTRON_RUN_AS_NODE node tests/pi-credential-os-store-e2e.cjs` 通过，验证系统安全存储可用、合成 API Key 加密持久化、重启读取与登出删除。用例通过本地 HTTP fixture 先进入页面，再从 Corvid Agent 工作台执行凭据流程；地址栏定位同时兼容 zh-CN/en。
 - 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；6 个 `node:test` 文件 21 项，加 50 条独立脚本，共 71 项通过，包含全屏、模型凭据、工作台、Chrome 导入和双语回归。两张测试刷新过的 Issue #129 截图已从工作树恢复。
-- 边界：原生 `safeStorage` 本轮仅在当前 macOS 开发机实测；Windows/Linux 仍以本次推送后 GitHub 原生 runner 工作流为准。使用合成 Key 与本地页面，不访问 OAuth、真实账号或真实模型；未验证签名打包、Windows ACL、真实 Linux 桌面差异或同用户恶意进程隔离。
+- 跨平台 CI：本次推送的 [GitHub Actions #41617397773](https://github.com/heyallencao/corvid/actions/runs/41617397773) 中 macOS Keychain、Windows DPAPI 与 Ubuntu Secret Service 三个原生 runner 全部通过。
+- 边界：本机原生 `safeStorage` 本轮实测限 macOS 开发机；Windows/Linux 原生 runner 覆盖开发版 Electron 与合成 Key，不验证签名打包、Windows ACL、真实 Linux 桌面差异、OS 用户切换或同用户恶意进程隔离。未验证真实崩溃/断电时迁移的每条指令点恢复。
 
 ## 2026-11-03 浏览器窗口全屏 E2E 与标签销毁竞态（Issue #141）
 
