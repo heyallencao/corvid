@@ -203,7 +203,7 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(preparingWorkbench.list()[0].status,'interrupted','a handoff during preparation cancels the pending Agent turn');
     assert.ok(preparingIdentity.revoked.includes('builtin:'+preparingWorkbench.list()[0].id),'a handoff during preparation immediately revokes the issued identity');
     finishSessionCreation({checkpoint:()=>null,subscribe:()=>()=>{},prompt:()=>{preparingPromptCount++;return Promise.resolve();},dispose(){preparingDisposeCount++;}});
-    await preparingStart;
+    await assert.rejects(preparingStart,/空间已交给用户；Agent 会话尚未就绪/,'a takeover during session preparation rejects the cancelled start attempt');
     assert.equal(preparingPromptCount,0,'a late-created runtime session never sends the task to a model after user takeover');
     assert.equal(preparingDisposeCount,1,'a late-created runtime session is disposed after user takeover');
 
