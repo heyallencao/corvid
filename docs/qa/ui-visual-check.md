@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
+
+- 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture；窗口 704×420，实际 shell 视口 704×388 CSS px。截图[短高窗口欢迎态](screenshots/issue-16-agent-short-height-704x420.png)，SHA-256 `dfbd257e684cf76331e066e153aa4f7dc0c3365079d7ad93f0915cd8b5d50a4c`；页面主体是明确标注的 Corvid 本地 fixture，不含个人网页、账号或凭据。
+- 直接观察：修复前截图中欢迎标题和说明被输入卡片压住；修复后 zh-CN/en 标题和经精简的完整说明都落在消息区内，且与输入卡片没有几何重叠。短窗将装饰图标收起并让文案使用整行宽度；双语说明在保留“提问/总结/协助浏览、分享前检查页面”的意思下精简，正文字号设为 10px。输入卡片独立滚动，模型选择、提示词和页面复核按钮通过自动化逐项滚动至可视区。截图展示 zh-CN 初始状态；英文说明由同一 Electron 运行中的可见边界断言验证。
+- 视觉判断：在此尺寸下，欢迎文案优先于装饰，英文说明自然换行仍完整，连接当前页面等操作保留可达性。视口高度不超过 440px 时，输入卡片上限降至内容区 34%，其他不超过 480px 的短窗上限为 52%；因此 420px 高度下卡片仅露出页面来源和连接操作的一部分，模型/提示词/复核需在卡片内滚动，不能宣称所有控件同时首屏可见。没有继续缩小字号。
+- 自动化：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-short-height-e2e.cjs` 通过；检查 zh-CN/en 的标题、完整段落、消息区边界和与输入卡片不重叠；另逐项滚动验证模型、提示词和页面复核控件可见。无真实模型、Provider 或 OAuth。先前在本分支基线上运行既有 `pi-workbench-e2e.cjs` 曾于 `#pi-task-form .pi-primary-action` 等待超时；该用例尚未由本补丁重跑通过，不能把本次定向用例当作整套工作台回归。
+- REA 参考及证据边界（2026-11-03，REA 未返回精确采集时刻）：Kaze Agent 面板的模型选择器截图 Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`，直接观察仅限常规窗口下模型选择器位于输入区附近；未展开选择器、未测窄高窗口。Kobra Composer 页面 Evidence `ev_668bf2245d384ec9265daab73179d0986212ea9968e2b05000bd13234459f8f9`，直接可访问性树含有命名的 Subject/Message 输入框与操作按钮，加载后未操作表单。静态证据：本轮未检查两者源码或脚本。推断：短窗中紧邻输入的模型入口与明确命名控件值得参考；长说明需要更多空间是由本地双语实际渲染直接测得，并非竞品行为推断。未知：Kaze/Kobra 在短高窗口的响应式折叠、滚动、键盘顺序及读屏输出均未观察；不复制组件、样式或素材。EGO 本轮未重采集，Rare UI、EasyUI、Pin UI 与 Aceternity UI 也未扫描。
+
 ## 2026-11-03 Corvid 原生窗口菜单焦点勾选（Issue #167）
 
 - 环境与隔离：macOS、Electron 45.2.1、`CORVID_DATA_DIR=/tmp/corvid-menu-native-ui-20261103b`；仅有新建的默认窗口与空白起始页，没有导入浏览器资料或打开私人网页。系统菜单由 macOS `System Events` 操作，窗口菜单截图只采集菜单窗口。

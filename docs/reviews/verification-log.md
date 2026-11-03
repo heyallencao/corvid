@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
+
+- 问题：真实 Electron 在 704×420 窗口（shell 视口 704×388 CSS px）中，较长的欢迎说明被输入卡片遮挡；英文段落比中文占用更多行，单语截图不足以发现边界问题。
+- 修复：`max-height:480px` 时收起装饰图标，让欢迎标题和双语说明使用整行宽度，并把说明精简为保留原意的短句；正文字号为 10px。窗口高度不超过 440px 时输入卡片上限为内容区 34%，441–480px 时为 52%，均保留独立滚动。420px 窗口中输入卡片首屏只显示部分内容，模型选择、提示词、页面复核仍通过卡片滚动访问。
+- 验证：`CORVID_UI_EVIDENCE_PATH=docs/qa/screenshots/issue-16-agent-short-height-704x420.png env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-short-height-e2e.cjs` EXIT 0。断言 zh-CN/en 标题与完整的短版说明均位于消息区，和输入卡片无重叠；逐项滚动确认模型选择、提示词与页面复核按钮可见。`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过，确认双语资源、浏览器界面语言切换、窄窗可见性与重启持久化。隔离 `CORVID_DATA_DIR`、本地 HTTP fixture，未调用真实模型、Provider 或 OAuth。`pi-workbench-short-height-e2e.cjs` 已加入 `npm test`。
+- 视觉参考：REA Kaze Agent 模型选择器 Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 与 Kobra Composer Evidence `ev_668bf2245d384ec9265daab73179d0986212ea9968e2b05000bd13234459f8f9` 只支持常规窗口输入附近模型入口和有名称控件的有限观察；未观察两者短高窗口行为。细节、直接观察/推断/未知和覆盖限制见[UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-agent-欢迎态短高窗口可读性-issue-16)。
+- 失败基线与边界：本分支首次运行既有 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 时在 `#pi-task-form .pi-primary-action` 等待超时，未由本切片修复或重跑通过；全量 `npm test` 未运行。短高用例只覆盖 macOS 开发版 Electron、浅色主题、一个窗口尺寸和本地页面 fixture；截图未包含独立网页 WebContentsView。VoiceOver、打包版、暗色主题及 Windows/Linux 未验证。
+
 ## 2026-11-03 macOS 全屏 E2E 异步最大化恢复竞态（Issue #168）
 
 - 根因证据：隔离 Electron 45.2.1 中，关闭 HTML 全屏标签后原生 `BrowserWindow.isFullScreen()` 先变为 `false`，当时 `isMaximized()` 仍为 `false`，而 `window-state.json` 已保留原最大化状态；约 100ms 后原窗口恢复最大化，Corvid `/rooms` 全屏字段稍后才归零。产品状态最终恢复，失败源于测试仅等待原生全屏标志。
