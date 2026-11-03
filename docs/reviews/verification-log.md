@@ -1079,3 +1079,4 @@
 - 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，24 项串行 `node:test` 与 43 条独立脚本共 67 项通过；覆盖慢恢复、Library、Agent、MCP、Chrome 导入和本地模型 fixture 等路径。本轮没有触发模型 OAuth。
 - 真实启动证据：之后单独运行 `env -u ELECTRON_RUN_AS_NODE node --test tests/browser.e2e.mjs`，1/1 通过；该真实 Electron 用例现在等待并检查隔离目录中的 `startup-progress.json`，确认记录到 `startup-complete`，PID 与 Electron 主进程一致且记录不含凭据。`tests/electron-startup.e2e.mjs` 另有 8/8 合成诊断测试通过，覆盖原子写入、权限、旧 PID 与非法阶段处理。
 - 清理与限制：临时依赖链接已移除，工作区最初被 Chrome 导入 E2E 重生成的两张 Issue #129 截图已按已提交版本还原；本次测试进程退出。完整回归连续成功一次，但没有复现 Issue #87 历史启动挂起，也未证明根因；持续间歇挂起仍由该 Issue 跟踪。
+- 交付：PR #155《补充 Electron 启动阶段现场诊断》已于 2026-11-03 squash 合并，合并提交 `0bf18f8a34513f3db07d2e8189c7c6cb9fafb31f`；Issue #87 保持开放。
