@@ -390,6 +390,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .pi-task-meta button { padding: 5px 8px; color: var(--text-secondary); font-size: 11px; }
 .pi-task-state, .pi-task-control-state { width: fit-content; max-width: 100%; overflow-wrap: anywhere; padding: 4px 7px; border-radius: 7px; background: var(--surface-neutral); color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
+.pi-task-elapsed { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1.35; }
 .pi-task-control-state { background: var(--surface-warning); color: var(--warning); }
 .pi-task-state[data-status="running"] { background: var(--surface-running); color: var(--accent-ink); }
 .pi-task-state[data-status="waiting_for_user"] { background: var(--surface-warning); color: var(--warning); }

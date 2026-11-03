@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 Agent 当前轮运行时长（Issue #186）
+
+- 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。
+- 定向检查：`node --check desktop/agent-workbench.cjs`、`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/agent-message-queue-contract.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node --check tests/pi-workbench-e2e.cjs`；`node tests/agent-message-queue-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/localization-e2e.cjs`；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`；`git diff --check`。全部通过。合同用例还检查启动失败、停止和用户接管都保存终止时间。E2E 使用隔离数据目录、确定性本地 HTTP fixture 和真实 Electron；GPT-6 Luna 仅为 UI 选择器 fixture，没有 OAuth 或真实模型请求，不消耗模型额度。
+- 测试修正：首轮 E2E 的固定 1.1 秒等待在计时边界偶发读到 0 秒；改为最多 3 秒轮询可见计时变化后重跑通过。该修正只让断言等待可观测行为，不改变产品计时逻辑。
+- UI 与 REA 参考的直接观察、推断和未知项、截图尺寸/hash 与视觉边界见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-agent-当前轮运行时长-issue-186)。REA 竞品证据未显示运行时长，故仅用于浏览器画布、Agent 面板及输入层级参照。
+- 未覆盖：未运行完整 `npm test`、打包版、Windows/Linux、VoiceOver、真实 Provider 网络时序或真实网页。CUA 本轮报告 Mac 锁屏，未完成原生桌面/辅助技术验收；工作台 E2E 由本地 fixture 覆盖。截图为合成页面，不含个人浏览数据。
+
 ## 2026-11-04 Agent 运行中消息队列（Issue #180）
 
 - 环境：macOS；独立 worktree `/private/tmp/corvid-issue180-impl`；Node.js v24.14.1、Electron 45.2.1；真实 Electron E2E 使用隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。没有加载用户浏览器资料。

@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 Agent 当前轮运行时长（Issue #186）
+
+- 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture；窗口逻辑尺寸 1280×850，截图图像 2560×1636。截图：[Agent 运行中当前轮时长](screenshots/issue-186-agent-task-duration-1280x850.png)，SHA-256 `a2c99218111ee072ed752c93a2eb1d2955ed867ee05e684f18224632be08dc7f`。页面主体为本地合成 fixture；GPT-6 Luna 仅显示为选择器 fixture，没有登录或真实模型调用。
+- 直接观察：当前轮时长显示在 Agent 任务状态元信息中；运行期间更新，完成和停止后保持终值；模拟重启后缺少可信结束时间时显示“本轮用时未知”，不把离线时间计入。时长节点关闭 live announcement，避免逐秒读屏播报。视觉上采用低对比度次级文字与等宽数字，保留任务状态为主要层级，截图中该字段可辨且未覆盖输入区。
+- REA 参考与推断：EGO Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e` 直接显示浏览器标签、地址/搜索、书签、网页画布和 Space；Kaze Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067` 显示 Browser/Skills/Scheduled/Activity 导航、Space/标签与网页画布，`ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 显示右侧 Agent 面板及靠近输入区的模型选择器。Kobra Chat History 组件页 Evidence `ev_f0bdd424946decdaac56fa07cc3d4d8b4ac6c817e744a955fea8f6f08574e882`、`ev_e5e809415d68356fb436392675b4d3034c6860e68446a5c22e0df174c3d49a22` 提供聊天与 composer 的组件层级参考。**推断：**持续状态适合放在既有任务卡内并弱化为辅助元信息，保持浏览画布和对话为主；这是 Corvid 的产品判断。**未知：**这些 REA 证据均未观察任务耗时、计时策略、读屏播报或任务重启恢复；本切片不称其为竞品能力。未采集或移植 Rare UI、EasyUI、Pin UI、Aceternity UI 的组件/素材。
+- 验收与限制：隔离真实 Electron E2E 覆盖 zh-CN/en 标签、运行中更新、完成/停止冻结、重启后未知及无离线累计；工作台 E2E 通过。截图来自 Playwright shell 渲染器，不包含独立网页 `WebContentsView`。本轮原生桌面复核时 CUA 仍报告 macOS 锁屏，因此未验证 VoiceOver、原生窗口合成或真实辅助技术播报；未运行完整 `npm test`、打包版、Windows/Linux 或真实 Provider。
+
 ## 2026-11-04 Agent 运行中消息队列（Issue #180）
 
 - 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；窗口逻辑尺寸分别为 1280×850 与 704×420，截图图像分别为 2560×1636 与 1408×776。截图：[常规窗口队列](screenshots/issue-180-agent-message-queue-1280x850.png)，SHA-256 `9dd12ce539fc6f1954b1886ae37369df8d0495d6fc9c7ff3ffbbe18464f13d87`；[短高窗口队列](screenshots/issue-180-agent-message-queue-700x420.png)，SHA-256 `a20db46a4d13e419f8786f2f0adf9ee3fd401a9481620669307d5e43ba9e828e`。页面主体为合成的本地 fixture，没有用户浏览数据、账号或凭据。

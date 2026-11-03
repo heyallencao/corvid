@@ -19,6 +19,7 @@ function agentEventText(event) {
 }
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, piShowNewChat = false, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
 let piQueueEdit = null, piQueueDraft = '', piQueueDrafts = new Map(), piQueueSend = null;
+let piTaskDurationTimer = null;
 const extensionPopupOpenIds=new Set();
 let extensionToolbarSignature='';
 const extensionMessages=window.corvidI18n;
@@ -39,6 +40,33 @@ function activeTab() { const room = state?.rooms.find(s => s.id === state.active
 function profileDisplayName(profile) { return profile.isDefault && profile.name === '默认' ? extensionMessages.t('defaultProfile') : profile.name; }
 let profileDeletionPreviewVersion=0;
 document.addEventListener('corvid-locale-changed',()=>{if(libraryKind==='pi-workbench')renderPiWorkbench();});
+function formatTaskElapsed(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60), remainingSeconds = seconds % 60;
+  const hours = Math.floor(minutes / 60), remainingMinutes = minutes % 60;
+  if (hours) return extensionMessages.t('elapsedHoursMinutes', { hours: extensionMessages.formatNumber(hours), minutes: extensionMessages.formatNumber(remainingMinutes) });
+  if (minutes) return extensionMessages.t('elapsedMinutesSeconds', { minutes: extensionMessages.formatNumber(minutes), seconds: extensionMessages.formatNumber(remainingSeconds) });
+  return extensionMessages.t('elapsedSeconds', { count: extensionMessages.formatNumber(seconds) });
+}
+function updatePiTaskElapsedTimes() {
+  for (const element of document.querySelectorAll('.pi-task-elapsed')) {
+    const startedAt = Date.parse(element.dataset.startedAt || '');
+    const finishedAt = element.dataset.finishedAt ? Date.parse(element.dataset.finishedAt) : NaN;
+    const endedAt = Number.isFinite(finishedAt) ? finishedAt : element.dataset.live === 'true' ? Date.now() : NaN;
+    element.textContent = Number.isFinite(startedAt) && Number.isFinite(endedAt) && endedAt >= startedAt
+      ? extensionMessages.t('taskTurnElapsed', { duration: formatTaskElapsed(endedAt - startedAt) })
+      : extensionMessages.t('taskTurnDurationUnknown');
+  }
+}
+function syncPiTaskElapsedTimer() {
+  if (libraryKind === 'pi-workbench') {
+    updatePiTaskElapsedTimes();
+    if (!piTaskDurationTimer) piTaskDurationTimer = setInterval(updatePiTaskElapsedTimes, 1_000);
+  } else if (piTaskDurationTimer) {
+    clearInterval(piTaskDurationTimer);
+    piTaskDurationTimer = null;
+  }
+}
 function profileDeletionErrorText(error) {
   const message=String(error?.message||'');
   if(/CORVID_PROFILE_DELETE_FAILED|浏览身份清理未完成/.test(message))return extensionMessages.t('profileDeleteFailed');
@@ -353,6 +381,10 @@ async function renderPiTasks(){
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?extensionMessages.t('executionStatusUnknown'):roomState?.userResumePending?extensionMessages.t('takingOver'):roomState?.ownership==='user'?extensionMessages.t('userInControlShort'):'';
     const status=document.createElement('span');status.className='pi-task-state';status.dataset.status=task.status;status.textContent=labels[task.status]||task.status;status.setAttribute('role','status');meta.append(status);
     if(controlLabel){const control=document.createElement('span');control.className='pi-task-control-state';control.textContent=controlLabel;control.setAttribute('role','status');meta.append(control);}
+    const currentTurn=task.conversation?.at(-1);
+    if(currentTurn?.role==='assistant'){
+      const elapsed=document.createElement('span');elapsed.className='pi-task-elapsed';elapsed.dataset.startedAt=currentTurn.at||'';elapsed.dataset.finishedAt=currentTurn.finishedAt||'';elapsed.dataset.live=String(Boolean(currentTurn.status==='running'&&['preparing','running'].includes(task.status)));elapsed.setAttribute('aria-live','off');meta.append(elapsed);
+    }
     meta.append(button(extensionMessages.t('openSpace'),async()=>{await api.invoke('activateRoom',{id:task.roomId});}));
     if(task.status==='running')meta.append(button(extensionMessages.t('stopTask'),async()=>{await api.invoke('stopPiTask',{taskId:task.id});await renderPiTasks();}));
     else {
@@ -373,6 +405,7 @@ async function renderPiTasks(){
     if(task.canContinue||['preparing','running'].includes(task.status)||task.messageQueue?.length)row.append(buildMessageQueuePanel(task,roomState));
     list.append(row);
   }
+  updatePiTaskElapsedTimes();
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';const mark=document.createElement('span');mark.className='pi-welcome-mark';mark.textContent='✳';const heading=document.createElement('h3');heading.textContent=extensionMessages.t('welcomeAgentHeading');const description=document.createElement('p');description.textContent=extensionMessages.t('welcomeAgentDescription');empty.append(mark,heading,description);list.append(empty);}
   if(piHistoryOpen&&!piTasks.length){const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent=extensionMessages.t('noConversationHistory');list.append(empty);}
   list.scrollTop=historyAtEnd?list.scrollHeight:historyTop;
@@ -522,6 +555,7 @@ function renderPiWorkbench(){
 }
 function setLibraryPanel(kind,trigger=null){
   libraryKind=kind;libraryTrigger=kind?trigger:null;
+  syncPiTaskElapsedTimer();
   const panel=document.querySelector('#library');
   const agentRoomAnnouncement=document.querySelector('#agent-room-announcer');if(agentRoomAnnouncement){agentRoomAnnouncement.hidden=kind!=='agent-rooms';if(agentRoomAnnouncement.hidden)agentRoomAnnouncement.textContent='';}
   if(kind){panel.hidden=false;panel.setAttribute('aria-label',kind==='pi-workbench'?'Corvid Agent':kind==='agent-rooms'?extensionMessages.t('agentWorkspace'):kind==='bookmarks'?extensionMessages.t('bookmarksTitle'):kind==='history'?extensionMessages.t('historyTitle'):extensionMessages.t('downloadsTitle'));}
