@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 全屏菜单桌面状态（Issue #141）
+
+- 环境与状态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地合成权限 fixture；菜单打开，键盘焦点位于原有“清理此站点数据”首项。未访问真实网站或用户资料，没有 OAuth 或模型请求。
+- 截图与检查：[更多浏览工具菜单](screenshots/issue-141-site-tools-fullscreen.png)，2560×1636，SHA-256 `9c34e9e6b5e2fc7b09dd71faf47b414124a5858b2ea6ebb9571e07cada04ca7f`。人工目视确认菜单靠近触发按钮、边界与焦点状态清楚，新“全屏模式”及 `⌃⌘F` 快捷键可辨。
+- 结果与限制：全屏项排在原有首项之后，不改变打开菜单时的初始焦点；菜单截图来自 Playwright shell 渲染器，不含 macOS 原生标题栏、系统合成窗口边界或独立 `WebContentsView` 页面，因此不能证明原生窗口全屏的完整视觉效果。真实全屏状态、双窗口、网页全屏及重启行为由隔离 Electron E2E 验证；其他平台和打包版未覆盖。
+- UI 参照：本轮沿用 Corvid 自有“更多浏览工具”菜单与键盘焦点合同；未复制 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的组件、样式或素材。
+
 ## 2026-11-03 浅/深主题状态文字与焦点对比度（Issue #16）
 
 - 环境与状态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；Corvid 壳显示 `about:blank`，无网页主体、个人数据、账号信息或模型调用。截图对应浅色主题、2560×1636 像素。

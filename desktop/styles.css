@@ -383,6 +383,8 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #site-tools { top: 104px; right: 12px; }
 #site-tools[hidden], #tab-menu[hidden] { display: none; }
 #site-tools button, #tab-menu .menu-item { display: block; width: 100%; padding: 8px 10px; text-align: left; }
+#site-tools #toggle-fullscreen { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+#fullscreen-shortcut { color: var(--muted); font: inherit; font-size: .82em; }
 #tab-menu { display: flex; flex-direction: column; gap: 2px; }
 #tab-menu .menu-separator { height: 1px; margin: 3px 6px; background: var(--line); }
 body.tab-dragging { cursor: grabbing; }

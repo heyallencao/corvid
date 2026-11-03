@@ -32,6 +32,11 @@ function updateNewTabSurface(active) {
 function draw(value) {
   state = value;
   extensionMessages.setLocale(state.uiLocale);
+  const fullscreenToggle=document.querySelector('#toggle-fullscreen');
+  fullscreenToggle.setAttribute('aria-checked',String(Boolean(state.fullscreen)));
+  fullscreenToggle.disabled=Boolean(state.pageFullscreen);
+  fullscreenToggle.title=state.pageFullscreen?extensionMessages.t('fullscreenPageActive'):'';
+  document.querySelector('#fullscreen-shortcut').textContent=state.fullscreenShortcut||'F11';
   document.querySelector('#ui-locale').value = state.uiLocale;
   if(state.needsChromeImportOnboarding&&!chromeImportOnboardingPrompted){chromeImportOnboardingPrompted=true;void openShellDialog('#chrome-import-onboarding');}
   if(piBinding&&(piBinding.profileId!==state.activeProfileId||!state.rooms.some(room=>room.id===piBinding.roomId&&room.tabs.some(tab=>tab.id===piBinding.tabId)))){piBinding=null;piContextPreview=null;}
@@ -670,7 +675,7 @@ document.querySelector('#show-history').onclick = event => {if(libraryKind==='hi
 document.querySelector('#show-downloads').onclick = event => showLibrary('downloads',event.currentTarget);
 document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
 const siteToolsMenu=document.querySelector('#site-tools'),siteToolsTrigger=document.querySelector('#more-tools');
-function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
+function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')].filter(item=>!item.disabled);}
 function closeSiteTools(returnFocus=false){if(siteToolsMenu.hidden)return;siteToolsMenu.hidden=true;siteToolsTrigger.setAttribute('aria-expanded','false');if(returnFocus)siteToolsTrigger.focus();}
 function openSiteTools(last=false){siteToolsMenu.hidden=false;siteToolsTrigger.setAttribute('aria-expanded','true');(last?siteToolsItems().at(-1):siteToolsItems()[0])?.focus();}
 function focusOutsideSiteTools(backward){
@@ -692,6 +697,7 @@ async function requestPagePrint(tabId){
   if(state)draw(state);
 }
 document.querySelector('#print-page').onclick=()=>{closeSiteTools(true);const tab=activeTab();if(tab)void requestPagePrint(tab.id);};
+document.querySelector('#toggle-fullscreen').onclick=async()=>{closeSiteTools(true);try{await api.invoke('toggleFullscreen');}catch{controlError=extensionMessages.t('fullscreenFailed');if(state)draw(state);}};
 api.onPrintPage(({id})=>{if(typeof id==='string')void requestPagePrint(id);});
 siteToolsTrigger.onclick=()=>siteToolsMenu.hidden?openSiteTools():closeSiteTools(true);
 siteToolsTrigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openSiteTools(event.key==='ArrowUp');}};
