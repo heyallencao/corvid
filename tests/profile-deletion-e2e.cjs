@@ -70,6 +70,12 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
     await shell.getByRole('menuitem',{name:'删除浏览身份'}).click();
     await shell.locator('#profile-deletion-select').selectOption(profile.id);
     await shell.getByRole('button',{name:'删除浏览身份',exact:true}).click();
+    try{await shell.waitForFunction(()=>document.querySelector('#profile-deletion-form')?.getAttribute('aria-busy')==='true'&&document.querySelector('#confirm-profile-deletion')?.textContent==='正在清理…',null,{timeout:1500});}
+    catch{const state=await shell.evaluate(()=>({busy:document.querySelector('#profile-deletion-form')?.getAttribute('aria-busy'),button:document.querySelector('#confirm-profile-deletion')?.textContent,disabled:document.querySelector('#confirm-profile-deletion')?.disabled,cancelDisabled:document.querySelector('#cancel-profile-deletion')?.disabled,error:document.querySelector('#profile-deletion-error')?.textContent,impact:document.querySelector('#profile-deletion-impact')?.textContent}));throw new Error(`Cleanup did not expose its in-flight state: ${JSON.stringify(state)}`);}
+    assert.equal(await shell.locator('#confirm-profile-deletion').innerText(),'正在清理…','the destructive action communicates ongoing cleanup');
+    assert.equal(await shell.locator('#cancel-profile-deletion').isDisabled(),true,'cancellation is unavailable after destructive cleanup begins');
+    await shell.keyboard.press('Escape');
+    assert.equal(await shell.locator('#profile-deletion').evaluate(dialog=>dialog.open),true,'Escape cannot hide an in-flight cleanup');
     await shell.locator('#profile-deletion-error').getByText('清理未完成', {exact:false}).waitFor();
     assert.equal((await call('/profiles')).profiles.find(item=>item.id===profile.id).deletionPending,true,'failed cleanup retains a retryable profile record');
     assert.equal(await shell.locator('#confirm-profile-deletion').innerText(),'重试清理','the UI offers an explicit retry');

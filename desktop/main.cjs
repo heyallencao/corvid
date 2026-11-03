@@ -476,7 +476,7 @@ const profileDeletion = createProfileDeletion({
     const browserSession=session.fromPartition(partition);
     if(!failProfileDeleteStorageClearOnce)return browserSession;
     failProfileDeleteStorageClearOnce=false;
-    return new Proxy(browserSession,{get(target,key){if(key==='clearStorageData')return async()=>{throw new Error('测试注入：Session 存储清理首次失败');};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+    return new Proxy(browserSession,{get(target,key){if(key==='clearStorageData')return async()=>{await new Promise(resolve=>setTimeout(resolve,4000));throw new Error('测试注入：Session 存储清理首次失败');};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
   },
   partitionFor,
   library,

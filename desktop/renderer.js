@@ -71,6 +71,7 @@ async function refreshProfileDeletionPreview() {
 }
 async function openProfileDeletionDialog() {
   const select=document.querySelector('#profile-deletion-select');select.replaceChildren();
+  const submit=document.querySelector('#confirm-profile-deletion');submit.textContent=extensionMessages.t('profileDeleteConfirm');submit.disabled=true;
   const candidates=(state?.profiles||[]).filter(profile=>!profile.isDefault&&profile.id!=='default');
   for(const profile of candidates){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.deletionPending?extensionMessages.t('profileDeletePendingOption',{name:profileDisplayName(profile)}):profileDisplayName(profile);select.append(option);}
   document.querySelector('#profile-deletion-error').hidden=true;
@@ -544,11 +545,13 @@ document.querySelector('#rename-profile').onclose=()=>api.invoke('setPanel',{ope
 document.querySelector('#profile-deletion-select').onchange=()=>void refreshProfileDeletionPreview();
 document.querySelector('#profile-deletion-form').onsubmit=async event=>{
   event.preventDefault();const id=document.querySelector('#profile-deletion-select').value;if(!id)return;
-  const submit=document.querySelector('#confirm-profile-deletion'),select=document.querySelector('#profile-deletion-select'),errorNode=document.querySelector('#profile-deletion-error');submit.disabled=true;select.disabled=true;errorNode.hidden=true;
+  const form=event.currentTarget,submit=document.querySelector('#confirm-profile-deletion'),select=document.querySelector('#profile-deletion-select'),cancel=document.querySelector('#cancel-profile-deletion'),errorNode=document.querySelector('#profile-deletion-error');
+  submit.disabled=true;submit.textContent=extensionMessages.t('profileDeleteWorking');select.disabled=true;cancel.disabled=true;form.setAttribute('aria-busy','true');errorNode.hidden=true;
   try{await api.invoke('deleteProfile',{id});document.querySelector('#profile-deletion').close();}
-  catch(error){select.disabled=false;await refreshProfileDeletionPreview();errorNode.textContent=profileDeletionErrorText(error);errorNode.hidden=false;}
+  catch(error){select.disabled=false;cancel.disabled=false;form.removeAttribute('aria-busy');await refreshProfileDeletionPreview();errorNode.textContent=profileDeletionErrorText(error);errorNode.hidden=false;}
 };
 document.querySelector('#cancel-profile-deletion').onclick=()=>document.querySelector('#profile-deletion').close();
+document.querySelector('#profile-deletion').addEventListener('cancel',event=>{if(document.querySelector('#profile-deletion-form').getAttribute('aria-busy')==='true')event.preventDefault();});
 document.querySelector('#profile-deletion').onclose=()=>{profileDeletionPreviewVersion++;return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 let settingsProfileId;
 async function renderProfileExtensions(){
