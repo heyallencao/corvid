@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 标签页加载反馈（Issue #197）
+
+- 环境与截图：隔离真实 Electron、macOS arm64，2560×1636；页面由本地 900ms HTTP fixture 提供，无个人浏览内容。加载中：[截图](screenshots/issue-197-loading.png)（SHA-256 `b1841a3162bd0bed29627da6c960b9d495f44ae2c1fd66553a4017eb43b97317`）；加载完成：[截图](screenshots/issue-197-loaded.png)（SHA-256 `2dc6f06d071afa6a49647350975fb1060595926f2f88cf54118acbe98eb146a5`）。
+- 直接观察：加载时当前标签的 favicon 槽位显示蓝色描边 spinner，地址栏下既有状态区也显示“正在加载”；完成后标签恢复站点 favicon。测试还确认导航失败后 spinner 消失。
+- REA 参考：Kaze 浏览器标签/画布布局 Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02，1440×851）与 EGO 日常浏览 Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`。直接观察仅限标签、地址栏/搜索和网站画布层级；**未观察**这些参考在加载中是否显示 spinner，因此不把其行为列为需求。静态代码证据本轮未扫描；竞品状态未知。
+- 视觉判断：复用 favicon 的 15px 槽位，旋转强调色短弧，尺寸、位置与原 favicon 对齐；这样多标签下可快速定位加载页面，且不添加进度条或改变横向布局。加载名称提供 zh-CN/en，装饰 spinner 对辅助技术隐藏；尊重既有 `prefers-reduced-motion` 规则。没有复用外部素材。
+- 未覆盖：没有在本轮重新观察 Kaze/EGO 运行时状态；截图只代表本地合成页和当前主题窗口尺寸。未检查其他平台 reduced-motion、VoiceOver/Narrator/Orca 实播，未验证远程网页的 favicon 获取时序。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture；窗口逻辑尺寸 1280×850，截图图像 2560×1636。截图：[Agent 运行中当前轮时长](screenshots/issue-186-agent-task-duration-1280x850.png)，SHA-256 `a2c99218111ee072ed752c93a2eb1d2955ed867ee05e684f18224632be08dc7f`。页面主体为本地合成 fixture；GPT-6 Luna 仅显示为选择器 fixture，没有登录或真实模型调用。

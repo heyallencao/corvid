@@ -52,6 +52,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(await shell.locator('#address').inputValue(),`${base}/fail`,'failed URL must remain visible for editing');
     assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).count(),1,'user-owned tab should expose retry');
     const failedTabId=(await room.tabs())[0].id;
+    assert.equal(await shell.locator(`#tabs .tab[data-tab-id="${failedTabId}"] .tab-loading-indicator`).count(),0,'failed navigation must not leave a tab spinner');
     await shell.locator('#new-tab').click();
     const newTab=await until(async()=>(await room.tabs()).find(tab=>tab.id!==failedTabId),'second tab');
     await shell.locator(`#tabs .tab[data-tab-id="${newTab.id}"][data-active="true"]`).waitFor();

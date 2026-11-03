@@ -9,7 +9,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-tab-pin-'));
   const page=title=>`<!doctype html><meta charset="utf-8"><title>${title}</title><body><p>${title}</p></body>`;
-  const server=http.createServer((req,res)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(page(req.url==='/two'?'Two':req.url==='/three'?'Three':'One'));});
+  const server=http.createServer((req,res)=>{if(req.url==='/slow'){setTimeout(()=>{if(!res.destroyed){res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(page('Slow Pinned'));}},900);return;}res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(page(req.url==='/two'?'Two':req.url==='/three'?'Three':'One'));});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
   let app;
@@ -83,6 +83,15 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(list.filter(tab=>tab.pinned).length,1);
     assert.equal(await shell.locator('.tab.pinned').count(),1);
     assert.equal(await shell.locator('.tab.pinned .pin-icon').count(),1);
+    await shell.locator('.tab.pinned .tab-main').click();
+    await shell.locator('#address').fill(base+'/slow');await shell.locator('#address').press('Enter');
+    const pinnedLoading=shell.locator('.tab.pinned .tab-loading-indicator');await pinnedLoading.waitFor({state:'visible'});
+    assert.equal(await pinnedLoading.locator('.pin-icon').count(),1,'pinned tabs retain their pin glyph inside the loading ring');
+    assert.match(await shell.locator('.tab.pinned .tab-main').getAttribute('aria-label'),/已固定|Loading pinned tab/,'pinned loading status is available to assistive technology');
+    await pinnedLoading.waitFor({state:'detached'});
+    await shell.locator('.tab.pinned img.favicon').waitFor({state:'visible'});
+    await shell.locator('#address').fill(base+'/three');await shell.locator('#address').press('Enter');
+    await until(async()=>(await tabs()).find(tab=>tab.title==='Three')?.active,'restore pinned tab page after loading indicator check');
 
     // Dragging an unpinned tab into the pinned group must not reorder or pin it.
     const pinnedBox=await until(async()=>{const box=await shell.locator('.tab.pinned').boundingBox();return box&&box.width>0?box:false;},'pinned tab box');
