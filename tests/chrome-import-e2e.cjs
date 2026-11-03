@@ -87,6 +87,20 @@ function addChromeCookie(profileDir,name,value,{host='auth.example.test',cookieP
   database.close();
 }
 
+function writeCorruptCookieIndex(profileDir){
+  const file=path.join(profileDir,'Cookies');
+  const database=new DatabaseSync(file);
+  database.exec('DELETE FROM cookies');
+  const insert=database.prepare('INSERT INTO cookies VALUES(?,?,?,?,?,?,?,?,?,?,?)');
+  for(let index=0;index<100;index++)insert.run('auth.example.test',`fixture_cookie_${String(index).padStart(4,'0')}`,'fixture-value',Buffer.alloc(0),'/',0,0,0,0,2,'');
+  database.exec('CREATE INDEX cookies_name_idx ON cookies(name)');
+  const rootPage=database.prepare("SELECT rootpage FROM sqlite_schema WHERE name='cookies_name_idx'").get().rootpage;
+  const pageSize=database.prepare('PRAGMA page_size').get().page_size;
+  database.close();
+  const descriptor=fs.openSync(file,'r+');
+  try{fs.writeSync(descriptor,Buffer.from([0xff]),0,1,(rootPage-1)*pageSize);}finally{fs.closeSync(descriptor);}
+}
+
 function verifyCookieDecryption(tempRoot){
   const profileDir=path.join(tempRoot,'cookie-decrypt');fs.mkdirSync(profileDir,{recursive:true});
   const key=fixtureCookieKey();
@@ -508,6 +522,77 @@ async function allowCookieImport(shell){
       }finally{
         try{fs.chmodSync(cookieStorePath,0o700);}catch{}
         if(app)await app.close().catch(()=>{});app=undefined;
+      }
+    }
+
+    if(supportsCookieImport){
+      const corruptChromeRoot=path.join(tempRoot,'corrupt-chrome-user-data');
+      fs.cpSync(chromeRoot,corruptChromeRoot,{recursive:true});
+      const corruptCookieFile=path.join(corruptChromeRoot,'Default','Cookies');
+      writeCorruptCookieIndex(path.join(corruptChromeRoot,'Default'));
+      const corruptCookieBytes=fs.readFileSync(corruptCookieFile);
+      const corruptData=path.join(tempRoot,'corrupt-source-corvid-data');
+      ({app,shell,call}=await boot(corruptData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+      await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+      await shell.locator('#skip-chrome-import').click();
+      await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved-corrupt-source','title':'损坏来源前的既有书签'});
+      const libraryBeforeCorruptImport=fs.readFileSync(path.join(corruptData,'library.json'));
+      await installDialogFixture(app,corruptChromeRoot);
+      await shell.locator('#show-settings').click();
+      await shell.locator('#start-chrome-import').click();
+      await chooseSource(shell);
+      await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+      await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+      await allowCookieImport(shell);
+      await shell.locator('#confirm-chrome-import').click();
+      const corruptImportStatus=shell.locator('#chrome-import-error');
+      await corruptImportStatus.waitFor({state:'visible'});
+      assert.match(await corruptImportStatus.textContent(),/数据库可能已损坏或格式不受支持/,'a corrupt Cookie database must receive corruption guidance instead of a generic Chrome-in-use suggestion');
+      assert.equal(await corruptImportStatus.getAttribute('data-success'),null,'an unreadable Cookie database must not be reported as a successful import');
+      assert.deepEqual(fs.readFileSync(path.join(corruptData,'library.json')),libraryBeforeCorruptImport,'a corrupt Chrome Cookie database must leave the target library byte-for-byte unchanged');
+      assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved-corrupt-source'],'a corrupt Cookie database must not partially import Chrome bookmarks');
+      assert.deepEqual(await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({})),[],'a corrupt Cookie database must not modify the target Cookie store');
+      assert.deepEqual(fs.readFileSync(corruptCookieFile),corruptCookieBytes,'Corvid must leave the corrupt Chrome source untouched');
+      await shell.locator('#cancel-chrome-import').click();
+      await app.close();app=undefined;
+
+      const lockedChromeRoot=path.join(tempRoot,'locked-chrome-user-data');
+      fs.cpSync(chromeRoot,lockedChromeRoot,{recursive:true});
+      const lockedCookieFile=path.join(lockedChromeRoot,'Default','Cookies');
+      const lockedCookieBytes=fs.readFileSync(lockedCookieFile);
+      const lockedDatabase=new DatabaseSync(lockedCookieFile);
+      const lockedData=path.join(tempRoot,'locked-source-corvid-data');
+      try{
+        ({app,shell,call}=await boot(lockedData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.locator('#skip-chrome-import').click();
+        await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved-locked-source','title':'占用来源前的既有书签'});
+        const libraryBeforeLockedImport=fs.readFileSync(path.join(lockedData,'library.json'));
+        await installDialogFixture(app,lockedChromeRoot);
+        await shell.locator('#show-settings').click();
+        await shell.locator('#start-chrome-import').click();
+        await chooseSource(shell);
+        await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+        await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+        await allowCookieImport(shell);
+        lockedDatabase.exec('BEGIN EXCLUSIVE');
+        await shell.locator('#confirm-chrome-import').click();
+        const lockedImportStatus=shell.locator('#chrome-import-error');
+        await lockedImportStatus.waitFor({state:'visible'});
+        assert.match(await lockedImportStatus.textContent(),/可能仍被 Chrome 占用/,'a busy Cookie database must direct the user to close Chrome rather than report corruption');
+        assert.equal(await lockedImportStatus.getAttribute('data-success'),null,'a locked Cookie database must not be reported as a successful import');
+        assert.deepEqual(fs.readFileSync(path.join(lockedData,'library.json')),libraryBeforeLockedImport,'a locked Chrome Cookie database must leave the target library byte-for-byte unchanged');
+        assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved-locked-source'],'a locked Chrome Cookie database must not partially import Chrome bookmarks');
+        assert.deepEqual(await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({})),[],'a locked Chrome Cookie database must not modify the target Cookie store');
+        assert.deepEqual(fs.readFileSync(lockedCookieFile),lockedCookieBytes,'Corvid must leave the locked Chrome source untouched');
+        await shell.locator('#cancel-chrome-import').click();
+        await app.close();app=undefined;
+      }finally{
+        try{lockedDatabase.exec('ROLLBACK');}catch{}
+        lockedDatabase.close();
+        if(app){await app.close().catch(()=>{});app=undefined;}
       }
     }
 
