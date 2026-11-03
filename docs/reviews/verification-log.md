@@ -201,8 +201,8 @@
 - 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；新 session 在初始化时即可能返回空会话 checkpoint，当前流程会在首轮成功前覆盖旧引用。首轮失败、主动停止或 Room 接管都会使原 runtime 的恢复材料提前丢失。
 - 红测：将更新后的 `tests/agent-runtime-contract-e2e.cjs` 放入 `origin/main` `0dc6a38` 临时基线副本运行，断言失败：实际记录被替换为 runtime 的未提交空会话 checkpoint（`runtimeId=delayed-checkpoint-runtime`），预期仍为原 `future-runtime` opaque checkpoint。基线副本已移除；测试仅使用临时目录和确定性 runtime，不启动 Electron。
 - 修复：transcript 回退会话从初始化到首轮成功前保留旧引用；首轮失败、主动停止和 Room 接管不提交未完成的新 runtime checkpoint。首轮成功后再以新 checkpoint 替换旧值，若没有新 checkpoint 则清除过期引用；Corvid 保存的 transcript 仍允许继续。
-- 验证：修复后 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、相邻的 `node tests/agent-task-continuation-contract.cjs` 与 `git diff --check` 均通过。更新后的回归在 `origin/main` 基线失败、在修复分支通过。全量 `npm test` 尚未运行：Mac 当前锁屏，#141 会话持有下一次桌面验收优先权；本轮未启动 Electron。
-- 边界：只验证确定性替代 runtime 的 session/checkpoint/prompt 生命周期；未运行 Pi SDK、真实 Provider、模型或 OAuth；真实 Electron 工作台恢复提示由既有 `pi-workbench-e2e.cjs` 覆盖，本轮尚未复跑。
+- 验证：更新后的回归在 `origin/main` `0dc6a38` 基线失败、在修复分支通过。`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE npm test` 与 `git diff --check` 均通过；全量回归包括 8 项串行 `node:test` 和 48 条独立脚本，共 56 项。真实 Electron 使用临时数据目录和本地页面 fixture。为复用已安装依赖，测试期间临时链接 #141 worktree 的 `node_modules`；测试后已移除链接，未改依赖清单。全量套件中 Chrome 扩展截图测试改写的两张 Issue #129 截图已恢复。
+- 边界：确定性替代 runtime 合同与真实 Electron 工作台恢复提示均已覆盖；未运行真实 Provider、模型请求或 OAuth，也未验证签名打包、Windows/Linux 安全存储或跨版本 checkpoint 转换。
 
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
