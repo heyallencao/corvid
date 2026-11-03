@@ -27,14 +27,19 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   },id);
   const shortcut=async combination=>{
     const parts=combination.split('+'),keyCode=parts.pop(),modifiers=parts.map(part=>({Meta:'meta',Control:'control',Shift:'shift',Alt:'alt'})[part]);
-    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyDown',keyCode,modifiers}),{keyCode,modifiers});
-    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyUp',keyCode,modifiers}),{keyCode,modifiers});
+    for(const type of ['keyDown','keyUp'])await app.evaluate(({BrowserWindow},{type,keyCode,modifiers})=>{
+      const window=BrowserWindow.getAllWindows()[0];
+      if(!window)throw new Error('Missing shortcut target window');
+      window.webContents.sendInputEvent({type,keyCode,modifiers});
+    },{type,keyCode,modifiers});
   };
   const find=(items,id)=>{for(const item of items){if(item.id===id)return item;const nested=find(item.submenu||[],id);if(nested)return nested;}return null;};
   const labels=items=>items.flatMap(item=>[item.label,...labels(item.submenu||[])]).filter(Boolean);
   try{
     const launched=await launchElectron(_electron,{executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}},{label:'application-menu-e2e',dataDir});
     app=launched.app;shell=launched.shell;config=await waitForControl(app,dataDir,{label:'application-menu-e2e'});
+    await app.evaluate(({app:electronApp})=>electronApp.focus(process.platform==='darwin'?{steal:true}:undefined));
+    await until(async()=>app.evaluate(({BrowserWindow})=>Boolean(BrowserWindow.getFocusedWindow())),'Corvid application window focus');
     const first=await menu(),firstLabels=first.map(item=>item.label);
     if(process.platform==='darwin')assert.equal(first[0].id,'corvid-app-menu');
     assert.ok(firstLabels.includes('文件')&&firstLabels.includes('编辑')&&firstLabels.includes('视图'));

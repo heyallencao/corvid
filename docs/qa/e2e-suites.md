@@ -98,7 +98,7 @@
 | D24 本地化 | `localization-e2e`（应用语言选择/拒绝无效 locale、资源键对齐、浏览器壳层与站点工具菜单名称/提示、Intl 格式、窄窗导航与中英文设置对话框滚动/保存动作可达、偏好权限与重启恢复；仅首批静态覆盖） |
 | D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航） |
 | D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、可选择非活动 Profile 作为目标并在失败重试时锁定目标、合成 v10 Cookie 解密、Cookie 预览仅 `COUNT(*) ... NOT INDEXED` 且不物化行字段；未同意或合成密钥读取失败时不查询 Cookie 行；Cookie 类别单独确认、Profile 隔离、扩展执行与重启恢复、重复导入、Cookie flushStore 故障回滚/重试、只读 Profile 目录下持久 Cookie 落盘核验及重启重试、损坏 Cookie 索引完整性拒绝、预览后 SQLite 占用错误分类与源/目标不变、删除失败告警与同名旧路径 Cookie 保留、不同值 Cookie 冲突保留、library.json 替换失败回滚/重试、引导状态；真实系统钥匙串授权未覆盖） |
-| D16 日常浏览器功能 | `application-menu.test.mjs`（菜单结构、zh-CN/en 文案、快捷键、编辑角色与菜单状态合同；3/3 通过）、`application-menu-e2e.cjs`（隔离 Electron 菜单结构/动作、双窗口 callback 路由、Agent Room 单窗口权限门禁、语言切换与重启持久化；通过） |
+| D16 日常浏览器功能 | `application-menu.test.mjs`（菜单结构、zh-CN/en 文案、快捷键、编辑角色与菜单状态合同；3/3 通过，并断言 Window 菜单将选中窗口 ID 交给焦点处理器）、`application-menu-e2e.cjs`（隔离 Electron 菜单结构/动作与 Agent Room 快捷键权限门禁；双窗口原生前台切换、语言切换及重启持久化需在可取得 macOS 窗口焦点的已解锁桌面完成） |
 
 ## 单独运行
 

@@ -1181,3 +1181,9 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过。覆盖完整 Chrome 导入流程、Cookie 解密/写入/Profile 隔离与持久化、失败重试、回滚、强杀后重导、扩展导入/恢复等；`node --check tests/chrome-import-e2e.cjs` 和 `git diff --check` 通过。
 - 跳过范围：测试在扩展弹窗重开后通过 Playwright 直接关闭合成弹窗，绕过锁屏导致的原生父窗口激活/点外关闭步骤；除此之外脚本继续执行完整导入场景。该结果证明导入功能路径通过，不证明原生弹窗失焦行为。
 - 限制：默认无环境变量模式仍需在已解锁桌面验收原生扩展弹窗失焦关闭；未读取本机 Chrome、未使用系统钥匙串、OAuth 或真实模型。全量 `npm test` 未运行。
+
+## 2026-11-04 原生菜单焦点测试边界复核（Issue #130）
+
+- 变更：快捷键 E2E 改为向唯一隔离 Electron 窗口发送输入，不再依赖 `BrowserWindow.getFocusedWindow()`；纯 Node 菜单合同增加断言，确认 Window 菜单项回调将选中窗口 ID 交给焦点处理器。
+- 验证：`node --check tests/application-menu-e2e.cjs` 通过；`application-menu-e2e.cjs` 在改用明确窗口输入后通过 Agent Room 快捷键门禁，继续到双窗口原生前台切换处超时。随后尝试显式激活应用，仍未取得 `BrowserWindow.getFocusedWindow()`；CUA 状态查询报告 Mac 锁屏。此 E2E 未通过，也未到达本次菜单语言切换与重启持久化断言。真实桌面焦点行为仍待解锁状态下复验。
+- 单元合同：本轮 `node --test tests/application-menu.test.mjs` 3/3 通过，包含新增的 Window 菜单焦点回调断言；E2E 尚未到达语言切换及重启持久化断言。没有将锁屏/焦点受限下的超时记为产品缺陷或功能通过；相关 Electron 进程已退出。本轮未运行完整 `npm test`。
