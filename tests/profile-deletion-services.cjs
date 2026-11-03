@@ -5,6 +5,7 @@ const path=require('node:path');
 const createLibrary=require('../desktop/library.cjs');
 const {createStore}=require('../desktop/chrome-extensions.cjs');
 const {createAgentWorkbench}=require('../desktop/agent-workbench.cjs');
+const {createProfileDeletion,extensionProfileRoot}=require('../desktop/profile-deletion.cjs');
 
 function tempDir(){return fs.mkdtempSync(path.join(os.tmpdir(),'corvid-profile-delete-'));}
 function fakeRuntime({resume=false,removeTaskData=()=>{}}={}){
@@ -71,6 +72,42 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
   assert.deepEqual(retryRemoved,['retry_one','retry_two','retry_one','retry_two'],'retry safely repeats idempotent runtime cleanup');
   assert.equal(retryWorkbench.list('work').length,0);
 
-  for(const directory of [libraryDir,extensionDir,taskDir,retryDir])fs.rmSync(directory,{recursive:true,force:true});
-  console.log('PASS Profile library, extension metadata and Agent task cleanup contracts');
+  const coordinatorDir=tempDir();
+  let profiles=[{id:'default',name:'默认',isDefault:true},{id:'work',name:'Work'}];
+  const events=[];let failStorageClear=true;let downloadPath=path.join(coordinatorDir,'kept-download.zip');fs.writeFileSync(downloadPath,'user file');
+  const browserSession={closeAllConnections:async()=>events.push('close-connections'),clearStorageData:async()=>{events.push('clear-storage');if(failStorageClear)throw new Error('injected session clear failure');},clearCache:async()=>events.push('clear-cache'),clearAuthCache:async()=>events.push('clear-auth'),clearCodeCaches:async()=>events.push('clear-code'),clearHostResolverCache:async()=>events.push('clear-host-cache'),extensions:{getAllExtensions:()=>[{id:'loaded'}],removeExtension:id=>events.push(`unload:${id}`)}};
+  let blockers=[];let agentLocked=false;
+  const agentService={profileDeletionBlockers:()=>blockers,beginProfileDeletion:()=>{agentLocked=true;events.push('lock-agent');},removeProfileData:async()=>{events.push('clear-agent');},cancelProfileDeletion:()=>{agentLocked=false;},finishProfileDeletion:()=>{agentLocked=false;}};
+  const extensionRoot=(directory,profileId)=>extensionProfileRoot(directory,profileId);
+  const workExtensionDir=path.join(extensionRoot(coordinatorDir,'work'),'extension','1.0.0');fs.mkdirSync(workExtensionDir,{recursive:true});fs.writeFileSync(path.join(workExtensionDir,'manifest.json'),'{}');
+  const coordinator=createProfileDeletion({
+    getProfiles:()=>profiles,
+    saveProfiles:next=>{events.push(next.some(item=>item.id==='work'&&item.deletionPending)?'mark-pending':'save-profiles');profiles=next;},
+    getReferences:()=>({windows:[],rooms:[],downloads:[]}),
+    agentWorkbench:agentService,getSession:()=>browserSession,partitionFor:id=>`persist:corvid-profile-${id}`,
+    library:{removeProfile:id=>events.push(`clear-library:${id}`)},managedExtensions:{list:id=>[{id:'ext',version:'1.0.0',profileId:id}],removeProfile:id=>events.push(`clear-extension-records:${id}`)},
+    extensionRoot,dataDir:coordinatorDir,removeLoadedExtensions:()=>events.push('unload-profile'),onDeleted:id=>events.push(`deleted:${id}`),
+  });
+  blockers=[{kind:'window',id:'window-1'}];
+  assert.equal(coordinator.preview('work').canDelete,false);
+  await assert.rejects(coordinator.remove('work'),error=>error.code==='CORVID_PROFILE_IN_USE');
+  assert.equal(profiles.some(item=>item.deletionPending),false,'blocked deletion does not persist a pending marker');
+  blockers=[];
+  await assert.rejects(coordinator.remove('work'),/injected session clear failure/);
+  assert.equal(profiles.find(item=>item.id==='work').deletionPending,true,'failed cleanup retains a durable retry marker');
+  assert.equal(agentLocked,true,'failed cleanup keeps Agent work from restarting');
+  assert.equal(fs.existsSync(path.join(workExtensionDir,'manifest.json')),true,'later cleanup stages have not run when Session clearing fails');
+  failStorageClear=false;
+  assert.deepEqual(await coordinator.remove('work'),{deleted:true,profileId:'work'});
+  assert.deepEqual(profiles.map(item=>item.id),['default']);
+  assert.equal(agentLocked,false);
+  assert.equal(fs.existsSync(extensionRoot(coordinatorDir,'work')),false);
+  assert.equal(fs.readFileSync(downloadPath,'utf8'),'user file','downloaded files are outside Profile cleanup');
+  assert.ok(events.indexOf('clear-agent')<events.indexOf('clear-storage'));
+  assert.ok(events.indexOf('clear-library:work')<events.indexOf('save-profiles'));
+  assert.ok(events.includes('deleted:work'));
+  assert.throws(()=>coordinator.preview('work'),error=>error.code==='CORVID_PROFILE_NOT_FOUND');
+
+  for(const directory of [libraryDir,extensionDir,taskDir,retryDir,coordinatorDir])fs.rmSync(directory,{recursive:true,force:true});
+  console.log('PASS Profile reference guards and retryable data cleanup contracts');
 })().catch(error=>{console.error(error);process.exitCode=1;});

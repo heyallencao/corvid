@@ -265,6 +265,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   }
   function clear(taskId) {
     const task = taskById(taskId);
+    if(profileDeletionClaims.has(task.profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能清理 Agent 对话'),{code:'CORVID_PROFILE_DELETING'});
     if (['running', 'preparing'].includes(task.status)) throw new Error('请先停止运行中的任务');
     runtime.removeTaskData(task.id.replaceAll('-', '_'), task.sessionRef);
     tasks = tasks.filter(item => item.id !== taskId); changed(); return { ok: true };
@@ -282,6 +283,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     if(blockers.length){const error=new Error('该浏览身份仍有正在运行或可继续的 Agent 对话');error.code='CORVID_PROFILE_IN_USE';error.blockers=blockers;throw error;}
     profileDeletionClaims.add(profileId);
   }
+  function cancelProfileDeletion(profileId) { profileDeletionClaims.delete(profileId); }
   async function removeProfileData(profileId) {
     if(profileId==='default')throw new Error('Cannot remove Agent data from the default profile');
     if(!profileDeletionClaims.has(profileId))beginProfileDeletion(profileId);
@@ -294,10 +296,10 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     }
     tasks=tasks.filter(task=>task.profileId!==profileId);
     changed();
-    profileDeletionClaims.delete(profileId);
     return removed.length;
   }
-  return { list, prepare, start, continueTask, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, removeProfileData };
+  function finishProfileDeletion(profileId) { profileDeletionClaims.delete(profileId); }
+  return { list, prepare, start, continueTask, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, cancelProfileDeletion, removeProfileData, finishProfileDeletion };
 }
 
 module.exports = { createAgentWorkbench, savedConversationContext };
