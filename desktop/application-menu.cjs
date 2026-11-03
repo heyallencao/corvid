@@ -8,7 +8,7 @@ const COPY = Object.freeze({
     zoomIn:'放大',zoomOut:'缩小',resetZoom:'重置缩放',fullscreen:'全屏模式',
     minimize:'最小化',zoomWindow:'缩放窗口',windowNumber:'窗口 {number}',shortcuts:'键盘快捷键',
     actionUnavailable:'此浏览器操作当前不可用，请重试。',shortcutsTitle:'Corvid 键盘快捷键',
-    shortcutsDetail:'新建标签页：Cmd/Ctrl+T\n新建窗口：Cmd/Ctrl+N\n关闭标签页：Cmd/Ctrl+W\n查找网页：Cmd/Ctrl+F\n打印：Cmd/Ctrl+P\n全屏：macOS 使用 Control+Command+F，Windows/Linux 使用 F11',
+    shortcutsDetail:'新建标签页：Cmd/Ctrl+T\n新建窗口：Cmd/Ctrl+N\n关闭标签页：Cmd/Ctrl+W\n查找网页：Cmd/Ctrl+F\n打印：Cmd/Ctrl+P\n全屏：macOS 使用 Control+Command+F，Windows/Linux 使用 F11\n显示应用菜单：Windows/Linux 按 Alt',
   }),
   en: Object.freeze({
     file:'File',edit:'Edit',view:'View',window:'Window',help:'Help',about:'About Corvid',
@@ -19,7 +19,7 @@ const COPY = Object.freeze({
     zoomIn:'Zoom In',zoomOut:'Zoom Out',resetZoom:'Reset Zoom',fullscreen:'Full Screen',
     minimize:'Minimize',zoomWindow:'Zoom Window',windowNumber:'Window {number}',shortcuts:'Keyboard Shortcuts',
     actionUnavailable:'This browser action is no longer available. Try again.',shortcutsTitle:'Corvid Keyboard Shortcuts',
-    shortcutsDetail:'New tab: Cmd/Ctrl+T\nNew window: Cmd/Ctrl+N\nClose tab: Cmd/Ctrl+W\nFind on page: Cmd/Ctrl+F\nPrint: Cmd/Ctrl+P\nFull screen: Control+Command+F on macOS, F11 on Windows/Linux',
+    shortcutsDetail:'New tab: Cmd/Ctrl+T\nNew window: Cmd/Ctrl+N\nClose tab: Cmd/Ctrl+W\nFind on page: Cmd/Ctrl+F\nPrint: Cmd/Ctrl+P\nFull screen: Control+Command+F on macOS, F11 on Windows/Linux\nShow the application menu: Press Alt on Windows/Linux',
   }),
 });
 

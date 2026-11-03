@@ -42,6 +42,9 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(find(first,'corvid-edit-paste').role,'paste');
     assert.equal(find(first,'corvid-devtools'),null);
     assert.equal(labels(first).some(label=>/Electron|Pi|Developer Tools|开发者工具/i.test(label)),false);
+    await app.evaluate(({dialog})=>{dialog.showMessageBox=async(...args)=>{globalThis.applicationMenuHelp=args.at(-1);return {response:0};};});
+    await click('corvid-shortcuts');
+    assert.match(await app.evaluate(()=>globalThis.applicationMenuHelp.detail),/显示应用菜单：Windows\/Linux 按 Alt/);
 
     const firstWindow=(await api('/windows')).windows[0];
     await click('corvid-new-tab');
@@ -77,6 +80,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#ui-locale').selectOption('en');
     await until(async()=>{const value=await menu();return value.some(item=>item.label==='File')?value:false;},'menu labels switch to English');
     assert.ok((await menu()).some(item=>item.label==='Window'));
+    await click('corvid-shortcuts');
+    assert.match(await app.evaluate(()=>globalThis.applicationMenuHelp.detail),/Show the application menu: Press Alt/);
     await shell.locator('#cancel-settings').click();
     await closeElectron(app);app=undefined;
 

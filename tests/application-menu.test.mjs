@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createApplicationMenuTemplate, syncApplicationMenuState } from '../desktop/application-menu.cjs';
+import { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } from '../desktop/application-menu.cjs';
 
 function item(template, id) {
   for (const top of template) {
@@ -32,6 +32,8 @@ test('native browser menu labels follow Corvid locale and expose the same suppor
   assert.equal(item(zh,'corvid-toggle-fullscreen').type, 'checkbox');
   assert.equal(item(zh,'corvid-window-one').label, '窗口 1');
   assert.equal(item(en,'corvid-window-one').label, 'Window 1');
+  assert.match(applicationMenuText('zh-CN').shortcutsDetail,/应用菜单：Windows\/Linux 按 Alt/);
+  assert.match(applicationMenuText('en').shortcutsDetail,/Show the application menu: Press Alt/);
   assert.equal(item(zh,'corvid-devtools'), null);
   assert.equal(menuLabels(zh).some(label => /Electron|Pi|Developer Tools|开发者工具/i.test(label)), false);
 });
