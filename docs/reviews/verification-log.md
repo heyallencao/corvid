@@ -58,7 +58,7 @@
 ## 2026-11-04 Issue #87 进程快照合同跨平台 CI
 
 - 改动：新增 `.github/workflows/electron-startup-snapshot.yml`，在 macOS、Ubuntu 与 Windows 只运行 `tests/electron-startup.e2e.mjs` 中启动失败时记录 OS 进程快照且不记录命令行的合同用例；不启动真实 Electron，也不将该切片当作启动挂起根因验证。
-- 本地验证：`node --test --test-name-pattern="启动失败在清理前记录操作系统进程快照且不包含命令行" tests/electron-startup.e2e.mjs` 通过；跨平台 CI 结果待当前 PR 运行后补录。
+- 验证：本地 `node --test --test-name-pattern="启动失败在清理前记录操作系统进程快照且不包含命令行" tests/electron-startup.e2e.mjs` 通过；GitHub Actions [三平台进程快照合同](https://github.com/heyallencao/corvid/actions/runs/41697909000) 在 `macos-14`、`ubuntu-24.04`、`windows-2022` 全部通过。
 - 限制：其余启动诊断测试和 Electron 启动/首窗过程仍未在 Windows/Linux 运行，真实挂起仍未复现，Issue #87 保持开放。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
