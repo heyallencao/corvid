@@ -210,6 +210,13 @@
 - 验证：macOS、Node.js 24.14.1、Electron 45.2.1；重基至包含 PR #114 的最新主线后，`env -u ELECTRON_RUN_AS_NODE npm test` 连续两轮 EXIT 0，每轮 `node:test` 8 项 + 45 条独立脚本，共 53 项。两轮均经过多窗口重启、Library、慢恢复、MCP、Agent、Chrome 导入与导航用例。`node --check`（新增 helper 及两个改造脚本）、`git diff --check` 通过。
 - 限制：合成用例验证诊断和清理合同，不复现真实 Electron 间歇启动挂起，也不证明其根因已修复；根因仍由 Issue #87 跟踪。没有连接模型、OAuth、真实网站或真实用户 Profile；只在 macOS 开发环境验证。
 
+## 2026-11-03 取消 Electron E2E 正常关闭后的回退计时器（Issue #34）
+
+- 诊断：在隔离 worktree 对 `restore-loading-e2e` 的清理阶段临时记录时间、Electron 子进程、HTTP 连接和 Node 活动资源。修复前，PASS 后约 1.85 秒已完成 Electron/server/临时目录清理，但 Node 到约 4.80 秒才 `beforeExit`；活动资源显示 Promise.race 中未胜出的 3 秒 graceful-close timeout 仍被引用。独立红测拦截 `setTimeout`/`clearTimeout`，确认正常关闭返回后有 1 个未取消 timer（0 !== 1）。这解释约 3 秒额外等待，不解释 Issue 报告的 5 分钟停顿。
+- 修正：`closeElectron()` 的优雅关闭与超时竞速完成后立即清除回退 timer；合成合同检查确保快速成功退出也取消未使用的 timer。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node --test tests/electron-startup.e2e.mjs` 6/6 通过；`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` EXIT 0，临时诊断显示 Electron 子进程退出、fixture 连接清零、server 与目录清理完成后约 1.56 秒触发 `beforeExit`；移除临时诊断后，全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，22 项 `node:test` + 50 条独立脚本，共 72 项通过。环境为 macOS、Node.js v24.14.1、Electron 45.2.1；使用隔离数据目录和本地 fixture。
+- 限制：两轮当前全量回归与定向用例都未复现历史 5 分钟停顿；本修正确认并移除一个 3 秒尾部等待，不证明历史长停顿根因已解决。Issue #34 保持开放；再次出现时需在停顿现场采集 Node/Electron PID、PPID、进程状态与活动句柄。
+
 ## 2026-11-03 修正多窗口 E2E 的渲染与持久化等待（Issue #113）
 
 - 初始现象：独立与全量真实 Electron 回归曾报告重启后窗口数不足；在失败诊断中发现 `#rooms button` 会匹配静态侧栏按钮，不能证明 Room 列表已绘制。重启前 `/rooms` 已显示第二窗口和 Room，但 `rooms.json` 仍可能只有一窗记录。
