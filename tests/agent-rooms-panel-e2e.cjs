@@ -199,7 +199,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.match(await roomAnnouncement.textContent(),/Parallel agent room/);
     assert.match(await roomAnnouncement.textContent(),/等待你接管/);
     assert.match(await roomAnnouncement.textContent(),/用户控制中/);
-    await shell.getByRole('button',{name:'交还 Agent：Parallel agent room'}).click();
+    await shell.getByRole('button',{name:'交还 Agent: Parallel agent room'}).click();
     await until(async()=>(await call('/rooms')).rooms.find(room=>room.id===parallelRoom.id)?.ownership==='agent');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     const completedTask=await startTask(defaultRoom,'summarize fixture page','completed');
