@@ -1,5 +1,55 @@
 # 验证记录
 
+
+## 2026-11-03 凭据原生安全存储与最新主线合并回归（Issue #110）
+
+- 基线：PR #135 分支合入主线 `e5d64b5` 后解决 `package.json`、端到端索引与执行板冲突，保留 #141 全屏工作及测试入口，并纳入凭据原生存储用例。
+- 验证：macOS、Node.js v24.14.1、Electron 45.2.1；`npm ci` 成功（133 packages，0 vulnerabilities）。`env -u ELECTRON_RUN_AS_NODE node tests/pi-credential-os-store-e2e.cjs` 通过，验证系统安全存储可用、合成 API Key 加密持久化、重启读取与登出删除。用例通过本地 HTTP fixture 先进入页面，再从 Corvid Agent 工作台执行凭据流程；地址栏定位同时兼容 zh-CN/en。
+- 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；6 个 `node:test` 文件 21 项，加 50 条独立脚本，共 71 项通过，包含全屏、模型凭据、工作台、Chrome 导入和双语回归。两张测试刷新过的 Issue #129 截图已从工作树恢复。
+- 边界：原生 `safeStorage` 本轮仅在当前 macOS 开发机实测；Windows/Linux 仍以本次推送后 GitHub 原生 runner 工作流为准。使用合成 Key 与本地页面，不访问 OAuth、真实账号或真实模型；未验证签名打包、Windows ACL、真实 Linux 桌面差异或同用户恶意进程隔离。
+
+## 2026-11-03 浏览器窗口全屏 E2E 与标签销毁竞态（Issue #141）
+
+- 2026-11-03 17:32（Asia/Shanghai）用户解锁后再次独立复跑定向 `fullscreen-e2e.cjs`、`permissions-e2e.cjs` 与完整 `npm test`，三者均 EXIT 0；全量仍为 21 个 `node:test` 用例 + 49 个脚本，共 70 项通过。测试进程结束后检查生成物，仅还原了测试刷新过的 Issue #129 截图，没有留下意外二进制改动。
+
+- 调整：`tests/fullscreen-e2e.cjs` 统一调用 `tests/electron-test-startup.cjs` 的 Electron 启动、首窗口与控制凭据等待、限时关闭/进程诊断；重启阶段要求新 token，避免旧 `control.json` 让恢复断言连到已关闭应用。真实运行首轮发现 `WebContents` 销毁监听在标签状态清除前序列化 shell state，导致已销毁页面访问 `getTitle()` 并使 `/rooms` 返回 400。销毁监听现只清理全屏归属，随后由 `closeTab()` 在移除标签后统一发布状态。
+- 回归：将全屏菜单项放在原有首项之后，保持站点工具菜单初始焦点，权限 E2E 同步验证 ArrowDown 落到新增全屏项。`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` 均 EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，21 个 `node:test` 用例和 49 个独立脚本，共 70 项通过。`node --check` 和 `git diff --check` 通过。
+- 环境与边界：macOS、Node.js v24.14.1、Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture。未使用 OAuth、真实账号或模型，npm test 不含真实模型 smoke test。已目视检查菜单截图，范围与限制见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-全屏菜单桌面状态-issue-141)；未做人工屏幕阅读或原生窗口全屏截图。Windows/Linux、打包版本和真实网站未覆盖。
+
+## 2026-11-03 内置 Agent 流式文本与工具活动验收（Issue #5）
+
+- 缺口：Agent 事件适配器已映射文本片段和浏览器工具开始/结束事件，工作台也已有任务事件呈现，但既有真实 Electron 测试只断言最终回复，未证明中间流式进度与工具活动抵达用户界面；工具事件原先还会把 `corvid_page_snapshot` 内部名称直接显示给用户。
+- 回归：`tests/pi-workbench-e2e.cjs` 新增确定性事件 fixture；断言工具开始事件出现、第一段文本在 task 仍为 `running` 时显示、工具完成事件出现、拼合回复写入任务记录，并断言用户界面使用 Corvid 动作文案且不泄露内部工具名。
+- 红绿验证：只增加断言时，旧 fixture 未发出工具事件，测试等待失败；加入本地测试 fixture 的分段文本与工具开始/结束事件后，定向断言再次因旧 UI 暴露内部工具名而失败；更新活动文案后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 通过。
+- 定向回归：`agent-runtime-contract-e2e.cjs`、`pi-runtime-e2e.cjs`、`pi-models-e2e.cjs`、`pi-workbench-e2e.cjs`、`agent-stop-e2e.cjs` 与 `pi-custom-endpoint-e2e.cjs` 均通过；相关 JS `node --check` 和 `git diff --check` 通过。未运行全量 `npm test`。
+- 边界：事件来自确定性本地 fixture，不连接真实模型或 Provider；证明的是事件适配到 Corvid 任务卡的本地 UI 路径及用户可见名称映射，不证明真实 Provider 网络延迟、所有工具种类或真实服务的流式稳定性。
+
+## 2026-11-03 Agent 上下文预览键盘焦点与活动文案本地化（Issue #5）
+
+- 缺口：检查页面上下文后工作台重绘会丢失焦点；旧分支的浏览器工具活动文案仅有中文，且把内部工具名称写进任务事件记录。
+- 调整：预览成功后将焦点移动到必须确认的页面同意复选框；活动事件改为 Corvid 中英双语资源键，任务记录不存储内部工具名，界面按当前语言翻译活动状态；旧任务中的历史工具事件也在显示时映射为通用活动状态，以兼容升级前已保存的记录。
+- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `node tests/localization-e2e.cjs` 均通过；运行时临时链接主工作区既有 `node_modules`，测试后已移除链接。前者以真实 Electron 与确定性本地 fixture 覆盖 Tab/Enter 预览、焦点落在同意复选框、Space 同意、Tab/Enter 发送、流式文本及工具事件；升级前保存的中文事件在重启后分别以中英文通用文案显示，且不暴露旧工具名；另切换语言验证新事件文案，再切回中文。后者验证 zh-CN/en 资源键和值一致、窄窗文案及本地化格式。`node --check` 涉及的 JS/CJS 文件与 `git diff --check` 通过。
+- REA 参考：复用 Kobra `/components/dropdown-menu` 历史受控 Chromium Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`，记录时间 2026-11-03 11:37（Asia/Shanghai）。直接观察限于该路由可访问；未操作菜单，焦点/关闭/键盘行为未知。静态证据只显示菜单示例页面入口，不证明目标交互。本次焦点落点由 Corvid 的显式页面同意流程和真实 Electron 键盘回归决定，不把参考页当验收标准；未复制代码或素材。
+- 边界：本地 Electron 与确定性 fixture，不连接真实模型或 Provider；未覆盖 VoiceOver 与其他平台。
+
+## 2026-11-03 主题色对比度修复（Issue #16）
+
+- 范围：浅/深主题的次要文本、warning/success 状态文字与焦点指示 token。浅色 `--text-muted` 从 `#858c98` 调整为 `#5f6878`，warning 从 `#a56a13` 调整为 `#8f5e16`，success 从 `#268461` 调整为 `#1d7352`，`--focus-ring` 改为复用 `--accent`；深色 `--text-muted` 调整为 `#a4afbf`。
+- 对比度：真实 Electron 获取 computed CSS token，并对主题下全部 `--surface*` 背景断言 muted 文本至少 4.5:1、焦点指示至少 3:1；warning/success 在一般、柔和及对应状态背景上的文字对比至少 4.5:1。最弱实测值：浅色 muted 4.72:1、深色 muted 4.76:1、焦点指示 4.11:1、warning/success 状态文字 5.14:1；深色最弱状态文字为 6.86:1。
+- 验证环境与结果：macOS、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`CORVID_CONTRAST_SCREENSHOT_PATH=docs/qa/screenshots/issue-16-contrast-after.png env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，8 项串行 `node:test` 与 48 个独立 E2E 脚本，共 56 项通过。`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check` 通过。
+- 隔离与截图：测试使用临时 `CORVID_DATA_DIR` 和本地 fixture；页面为 `about:blank`，未使用 OAuth、真实账号或模型。浅色壳截图为 [issue-16-contrast-after.png](../qa/screenshots/issue-16-contrast-after.png)，2560×1636，SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。测试刷新过的两张 Issue #129 截图已还原。
+- 参考与限制：这是依据 Corvid 实际 computed token 和 WCAG 2.2 对比度阈值修正色值，没有移植参考站点的视觉或交互，因此本切片未调用 REA 扫描 UI 灵感站点。自动化只检查列出的 CSS token/背景组合，不等同于所有组件状态的完整 WCAG 审计；未覆盖屏幕阅读器、Windows/Linux、打包版本及其他显示器配置。
+
+## 2026-11-03 Chrome 扩展弹窗原生外点验证（Issue #129）
+
+- 缺口：既有 Playwright CDP 点击未命中原生窗口外点合同；BrowserWindow.focus() 只证明 blur 关闭，不证明物理鼠标输入。
+- 验证：macOS、Electron 45.2.1、Chromium 156、临时 CORVID_DATA_DIR 与合成 MV3 扩展。命令：env -u ELECTRON_RUN_AS_NODE CORVID_NATIVE_POINTER_CHECK=1 node tests/chrome-import-e2e.cjs，EXIT 0。先显式聚焦 Corvid 父窗口，按地址栏 bounding box 中心计算屏幕全局坐标 (768, 130)；该坐标位于父窗口内、扩展弹窗 (911, 150, 320×220) 外。通过 CoreGraphics 发布 mouseMoved/down/up 后，弹窗关闭。
+- 代码范围：仅增加 macOS opt-in 测试路径；默认完整套件仍使用父窗口激活路径。页面产品实现未改变。测试自动更新的两张已有截图已还原，没有产生新的视觉差异证据。
+- 事件传递边界：严格 DOM 诊断未在父页面收到 mousemove/mousedown/mouseup/click，因此只证明原生指针输入导致扩展弹窗因 blur 关闭，不证明点击继续传递到 Corvid 地址栏或网页。
+- REA：尝试对测试 Electron PID/窗口调用 observe_native_ui，REA 返回 pid-not-application（LaunchServices 未暴露 Electron helper 为可观察应用），未产生 Evidence ID、截图或 AX 树。此处明确记为未完成 REA 原生观察，不以 CoreGraphics 窗口枚举代替。已有 Kobra dropdown-menu controlled replay 只作此前设计参考，不证明本次运行行为。
+- 限制：只验证当前 macOS 开发机（使用 Swift toolchain）和 Electron 45.2.1；未验证 Windows/Linux、打包应用、其他显示器/缩放配置、连续高频点击或屏幕阅读器。未访问真实浏览器 Profile、账号或模型。
+
+
 ## 2026-11-03 扩展弹窗失焦关闭的 Electron 验证边界（Issue #129）
 
 - 复核：现有测试在扩展子窗口打开时使用 Playwright CDP 点击 Corvid 页面。CDP 点击没有切换原生窗口焦点，因此超时并不能证明产品关闭逻辑失效；此前记录将其写成“点击弹窗外关闭”证据过强。

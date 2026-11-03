@@ -1,5 +1,20 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 全屏菜单桌面状态（Issue #141）
+
+- 环境与状态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地合成权限 fixture；菜单打开，键盘焦点位于原有“清理此站点数据”首项。未访问真实网站或用户资料，没有 OAuth 或模型请求。
+- 截图与检查：[更多浏览工具菜单](screenshots/issue-141-site-tools-fullscreen.png)，2560×1636，SHA-256 `9c34e9e6b5e2fc7b09dd71faf47b414124a5858b2ea6ebb9571e07cada04ca7f`。人工目视确认菜单靠近触发按钮、边界与焦点状态清楚，新“全屏模式”及 `⌃⌘F` 快捷键可辨。
+- 结果与限制：全屏项排在原有首项之后，不改变打开菜单时的初始焦点；菜单截图来自 Playwright shell 渲染器，不含 macOS 原生标题栏、系统合成窗口边界或独立 `WebContentsView` 页面，因此不能证明原生窗口全屏的完整视觉效果。真实全屏状态、双窗口、网页全屏及重启行为由隔离 Electron E2E 验证；其他平台和打包版未覆盖。
+- UI 参照：本轮沿用 Corvid 自有“更多浏览工具”菜单与键盘焦点合同；未复制 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的组件、样式或素材。
+
+## 2026-11-03 浅/深主题状态文字与焦点对比度（Issue #16）
+
+- 环境与状态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；Corvid 壳显示 `about:blank`，无网页主体、个人数据、账号信息或模型调用。截图对应浅色主题、2560×1636 像素。
+- 检查：真实 Electron computed CSS token。浅色与深色 `--text-muted` 在全部 `--surface*` 背景上达到至少 4.5:1；焦点指示色在这些背景上达到至少 3:1；warning/success 状态文字在一般及对应语义背景上达到至少 4.5:1。实测最弱比值分别为：浅色 muted 4.72:1、深色 muted 4.76:1、焦点指示 4.11:1、浅色状态文字 5.14:1、深色状态文字 6.86:1。
+- 结果：在 [截图](screenshots/issue-16-contrast-after.png) 中，浅色浏览器壳的侧栏标签、次要操作和地址栏提示可辨；截图 SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。各主题状态阈值断言由 [Agent Room 面板 E2E](../../tests/agent-rooms-panel-e2e.cjs) 覆盖。
+- 参考：色值根据 Corvid 实际 token 对比度与 [WCAG 2.2 对比度（最低）](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)及[非文本对比度](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)阈值修正；本切片未移植 UI 组件或样式，也未调用 REA 扫描 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI。
+- 限制：截图只展示一个浅色 `about:blank` 壳状态，不能证明全部文字、图标、悬停/禁用态、组件背景或网站内容均合规。自动化计算选定 token 组合，不代表完整 WCAG 审核；未做 VoiceOver/屏幕阅读器、跨平台和打包版检查。完整自动化覆盖与边界见[验证日志](../reviews/verification-log.md#2026-11-03-主题色对比度修复-issue-16)。
+
 ## 2026-11-03 Profile 扩展权限双语分隔符
 
 - 检查：`tests/chrome-import-e2e.cjs` 在真实 Electron 中使用合成 Chrome 扩展导入夹具，验证 Profile 扩展列表展示必需与可选权限；中文界面使用 `、` 分隔同组权限，英文界面使用 `, `。同时更新 Chrome 导入结果断言，兼容中文/ASCII 括号、英文冒号与中英文状态标点。
@@ -10,8 +25,9 @@
 ## 2026-11-03 Chrome 扩展工具栏弹窗（Issue #129）
 
 - 环境：macOS、Electron 45.2.1、Chromium 156、真实 Corvid Electron 窗口；隔离 `CORVID_DATA_DIR`，使用合成 Chrome Profile 与本地 HTTP 页面。没有读取真实浏览器资料，没有 ChatGPT OAuth 或模型请求。
-- 检查：`tests/chrome-import-e2e.cjs` 实际导入 MV3 合成扩展；打开 Corvid 工具栏中的扩展入口，检查扩展页面、320×220 内容尺寸、默认 Profile Session 路径、sandbox 与 `nodeIntegration=false`；验证 Escape、父窗口获得原生焦点后关闭弹窗、切换浏览身份关闭弹窗，及 Escape 后焦点回到原入口。此前所谓“点击更多浏览工具关闭”由 Playwright CDP 点击，未改变原生弹窗焦点，不能作为真实外点证据；目前记录不声称已验证物理鼠标点击弹窗外。工作 Profile 弹窗的 Session 路径与默认 Profile 不同。上述焦点关闭检查对应本轮 E2E 更新；复测结果记入验证日志。
+- 检查：`tests/chrome-import-e2e.cjs` 实际导入 MV3 合成扩展；打开 Corvid 工具栏中的扩展入口，检查扩展页面、320×220 内容尺寸、默认 Profile Session 路径、sandbox 与 `nodeIntegration=false`；验证 Escape、父窗口获得原生焦点后关闭弹窗、切换浏览身份关闭弹窗，及 Escape 后焦点回到原入口。此前所谓“点击更多浏览工具关闭”由 Playwright CDP 点击，未改变原生弹窗焦点，不能作为真实外点证据。现增加 macOS opt-in 原生 CoreGraphics 指针验证：按 Corvid 地址栏中心计算弹窗外坐标，弹窗在失焦后关闭。严格诊断未在父页面捕获到 DOM 鼠标事件，因此不声称事件继续传递到地址栏。工作 Profile 弹窗的 Session 路径与默认 Profile 不同。
 - 截图： [Corvid 工具栏](screenshots/issue-129-extension-toolbar.png)，2560×1636，SHA-256 `43c7278beb2ed7e8a2b63a31c346c3939313200f115dfe351824de4326c56d4e`；[合成扩展弹窗](screenshots/issue-129-extension-popup.png)，640×440，SHA-256 `be434151e38545dfedb02d99b7bac189d7ee428232c8c45389c89e6774f6c2aa`。仅含本地生成的扩展名称、ID 和页面，不含用户网页或凭据；适用于 PR/Issue 布局审阅。
+- 原生输入复验：`CORVID_NATIVE_POINTER_CHECK=1 node tests/chrome-import-e2e.cjs` EXIT 0；真实 Electron 父窗口先获焦点，原生指针坐标由地址栏中心计算并确认不与扩展弹窗 bounds 相交；CoreGraphics 输入后弹窗关闭。另一次严格 DOM 事件诊断没有在父页面捕获到鼠标事件，因此只验证弹窗关闭，不证明事件传递到网页。REA `observe_native_ui` 因 LaunchServices 不暴露 Electron helper PID 而返回 `pid-not-application`，未取得该次运行的 REA 截图或 AX Evidence；不把窗口清单当作 REA 观察。此验证仅限当前 macOS 开发运行（需 Swift toolchain），不证明其他平台或打包版。既有 Kobra dropdown-menu controlled replay Evidence 仅作为先前交互参考，不是本次原生输入证据。
 - 双语：扩展工具栏名称、入口可访问名、不可用与打开失败状态由 `desktop/locales.js` 同时提供 `zh-CN`/`en` 资源；其余现有浏览器与 Agent UI 还未全量本地化，完整覆盖见执行板 D23。
 - UI/UE 参考与 REA 证据：Kobra `https://kobra.systems/components/dropdown-menu`，REA 隔离 Chromium 156 controlled replay，Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`（2026-11-03；REA inline 结果未提供精确采集时刻）。**直接观察**：REA 到达指定组件路径，并请求 DOM、可访问树与截图；本次用例未操作组件。**静态证据**：本轮没有检查其静态脚本或源码。**推断**：没有依据该参考推导 Corvid 行为；实现采用 Corvid 自己的 Profile/Session 与窗口焦点合同。**未知/限制**：由于当前 REA server 的 `inspect_analysis_view` schema 没有 browser-scenario view，未能从 retained Evidence 再提取 Kobra 控件细节；因此没有声称验证 Kobra 的开合、焦点、Escape、外点或窄窗行为，也没有复制其代码/样式/素材。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描。
 - 限制：MV2 实际弹窗兼容、扩展页面失败路径、屏幕阅读器播报、暗色/窄窗及 Windows/Linux 尚未覆盖；截图是合成夹具视觉证据，不证明第三方商店扩展兼容。

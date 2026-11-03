@@ -7,6 +7,16 @@ function userFacingAgentError(error, fallback=null) {
   const safeFallback=fallback||extensionMessages.t('agentErrorFallback');
   return implementationName.test(message) ? safeFallback : (message||safeFallback);
 }
+function agentEventText(event) {
+  if(event.messageKey)return extensionMessages.t(event.messageKey,event.params);
+  const value=String(event.text||'');
+  if(event.type==='tool'&&value.startsWith('正在使用浏览器工具：'))return extensionMessages.t('agentBrowserActionStarting');
+  if((event.type==='tool'||event.type==='error')&&/^corvid_[\w-]+ 已完成$/.test(value))return extensionMessages.t('agentBrowserActionCompleted');
+  if(event.type==='error'&&/^corvid_[\w-]+ 执行失败$/.test(value))return extensionMessages.t('agentBrowserActionFailed');
+  const retry=value.match(/^连接暂时不稳定，Agent 正在重试（(\d+)\/(\d+)）$/);
+  if(event.type==='retry'&&retry)return extensionMessages.t('agentRetrying',{attempt:retry[1],maxAttempts:retry[2]});
+  return event.type==='error'?userFacingAgentError(value):value;
+}
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
 const extensionPopupOpenIds=new Set();
 let extensionToolbarSignature='';
@@ -34,6 +44,11 @@ function updateNewTabSurface(active) {
 function draw(value) {
   state = value;
   extensionMessages.setLocale(state.uiLocale);
+  const fullscreenToggle=document.querySelector('#toggle-fullscreen');
+  fullscreenToggle.setAttribute('aria-checked',String(Boolean(state.fullscreen)));
+  fullscreenToggle.disabled=Boolean(state.pageFullscreen);
+  fullscreenToggle.title=state.pageFullscreen?extensionMessages.t('fullscreenPageActive'):'';
+  document.querySelector('#fullscreen-shortcut').textContent=state.fullscreenShortcut||'F11';
   document.querySelector('#ui-locale').value = state.uiLocale;
   if(state.needsChromeImportOnboarding&&!chromeImportOnboardingPrompted){chromeImportOnboardingPrompted=true;void openShellDialog('#chrome-import-onboarding');}
   if(piBinding&&(piBinding.profileId!==state.activeProfileId||!state.rooms.some(room=>room.id===piBinding.roomId&&room.tabs.some(tab=>tab.id===piBinding.tabId)))){piBinding=null;piContextPreview=null;}
@@ -301,7 +316,7 @@ async function renderPiTasks(){
     }
     row.append(meta);
     for(const turn of task.conversation||[]){const message=document.createElement('div');message.className=`pi-task-output ${turn.role==='user'?'from-user':'from-pi'}`;message.dataset.role=turn.role;message.setAttribute('aria-label',turn.role==='user'?extensionMessages.t('you'):'Corvid Agent');message.textContent=turn.text|| (turn.status==='running'?`${extensionMessages.t('taskRunning')}…`:'');row.append(message);}
-    for(const event of task.events||[]){if(task.error&&event.type==='error'&&String(event.text||'').includes(task.error))continue;const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=event.type==='error'?userFacingAgentError(event.text):event.text;line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
+    for(const event of task.events||[]){if(task.error&&event.type==='error'&&String(event.text||'').includes(task.error))continue;const line=document.createElement('div');line.className='pi-task-event';line.dataset.type=event.type;line.textContent=agentEventText(event);line.setAttribute('role',event.type==='error'?'alert':'status');row.append(line);}
     if(task.status==='failed'){
       const failure=document.createElement('div');failure.className='pi-task-error';failure.setAttribute('role','alert');
       const heading=document.createElement('strong');heading.textContent=extensionMessages.t('taskIncomplete');failure.append(heading);
@@ -398,7 +413,7 @@ function renderPiWorkbench(){
   }
   const prompt=document.createElement('textarea');prompt.id='pi-task-prompt';prompt.setAttribute('aria-label',extensionMessages.t('describeBrowserTask'));prompt.placeholder=extensionMessages.t('askAboutPagePlaceholder');prompt.value=piPromptDraft;prompt.oninput=()=>{piPromptDraft=prompt.value;};form.append(prompt);
   const modelControls=document.createElement('div');modelControls.className='pi-model-controls';form.insertBefore(modelControls,prompt);void renderPiModelControls(modelControls);
-  const previewButton=button(extensionMessages.t('verifyPageContext'),async()=>{if(!piBinding){page.textContent=extensionMessages.t('connectPageFirst');return;}try{piContextPreview=await api.invoke('preparePiTask',piBinding);renderPiWorkbench();}catch(error){page.textContent=extensionMessages.t('cannotReadPageContext',{message:userFacingAgentError(error)});}});previewButton.className='pi-secondary-action';previewButton.disabled=!piBinding;form.append(previewButton);
+  const previewButton=button(extensionMessages.t('verifyPageContext'),async()=>{if(!piBinding){page.textContent=extensionMessages.t('connectPageFirst');return;}try{piContextPreview=await api.invoke('preparePiTask',piBinding);renderPiWorkbench();document.querySelector('#pi-context-consent')?.focus();}catch(error){page.textContent=extensionMessages.t('cannotReadPageContext',{message:userFacingAgentError(error)});}});previewButton.className='pi-secondary-action';previewButton.disabled=!piBinding;form.append(previewButton);
   if(piContextPreview){
     const details=document.createElement('div');details.className='pi-context';details.textContent=`${extensionMessages.t('shareWithAgent')}\n${piContextPreview.title}\n${piContextPreview.url}${piContextPreview.snapshotTruncated?`\n${extensionMessages.t('truncatedPagePreview')}`:''}\n\n${piContextPreview.snapshot}`;form.append(details);
     const consent=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.id='pi-context-consent';consent.className='pi-consent';consent.append(check,document.createTextNode(extensionMessages.t('pageShareConsent')));form.append(consent);
@@ -672,7 +687,7 @@ document.querySelector('#show-history').onclick = event => {if(libraryKind==='hi
 document.querySelector('#show-downloads').onclick = event => showLibrary('downloads',event.currentTarget);
 document.querySelector('#library-search').oninput=()=>{void renderLibrary();};
 const siteToolsMenu=document.querySelector('#site-tools'),siteToolsTrigger=document.querySelector('#more-tools');
-function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
+function siteToolsItems(){return [...siteToolsMenu.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')].filter(item=>!item.disabled);}
 function closeSiteTools(returnFocus=false){if(siteToolsMenu.hidden)return;siteToolsMenu.hidden=true;siteToolsTrigger.setAttribute('aria-expanded','false');if(returnFocus)siteToolsTrigger.focus();}
 function openSiteTools(last=false){siteToolsMenu.hidden=false;siteToolsTrigger.setAttribute('aria-expanded','true');(last?siteToolsItems().at(-1):siteToolsItems()[0])?.focus();}
 function focusOutsideSiteTools(backward){
@@ -694,6 +709,7 @@ async function requestPagePrint(tabId){
   if(state)draw(state);
 }
 document.querySelector('#print-page').onclick=()=>{closeSiteTools(true);const tab=activeTab();if(tab)void requestPagePrint(tab.id);};
+document.querySelector('#toggle-fullscreen').onclick=async()=>{closeSiteTools(true);try{await api.invoke('toggleFullscreen');}catch{controlError=extensionMessages.t('fullscreenFailed');if(state)draw(state);}};
 api.onPrintPage(({id})=>{if(typeof id==='string')void requestPagePrint(id);});
 siteToolsTrigger.onclick=()=>siteToolsMenu.hidden?openSiteTools():closeSiteTools(true);
 siteToolsTrigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openSiteTools(event.key==='ArrowUp');}};

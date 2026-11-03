@@ -2,6 +2,7 @@ const {_electron}=require('playwright-core');
 const electron=require('electron');
 const assert=require('node:assert/strict');
 const crypto=require('node:crypto');
+const {execFileSync}=require('node:child_process');
 const fs=require('node:fs');
 const http=require('node:http');
 const os=require('node:os');
@@ -12,6 +13,25 @@ const chromeImport=require('../desktop/chrome-import.cjs');
 const project=path.resolve(__dirname,'..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(25);}throw new Error(`Timed out waiting for ${label}`);};
+
+// Opt-in native input is used because CDP clicks cannot exercise the operating-system window focus boundary; this path requires macOS and Swift.
+function clickNativeScreenPoint({x,y}){
+  assert.equal(process.platform,'darwin','native pointer verification currently requires macOS');
+  const source=`import AppKit
+import CoreGraphics
+import Darwin
+import Foundation
+guard CommandLine.arguments.count == 3, let x = Double(CommandLine.arguments[1]), let y = Double(CommandLine.arguments[2]) else { exit(2) }
+let point = CGPoint(x: x, y: y)
+for type in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+  guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: .left) else { exit(3) }
+  event.post(tap: .cghidEventTap)
+  usleep(80000)
+}
+print("native pointer event posted")`;
+  const output=execFileSync('swift',['-e',source,String(x),String(y)],{encoding:'utf8',timeout:20000,stdio:'pipe'});
+  console.log('NATIVE_POINTER_EVENT',output.trim());
+}
 
 function writeBookmarks(profileDir,entries){
   const urls=entries.map((entry,index)=>({type:'url',id:String(index+4),name:entry.title,url:entry.url}));
@@ -311,10 +331,36 @@ async function allowCookieImport(shell){
     await app.evaluate(({webContents},url)=>{const popup=webContents.getAllWebContents().find(contents=>contents.getURL()===url);popup.sendInputEvent({type:'keyDown',keyCode:'ESC'});popup.sendInputEvent({type:'keyUp',keyCode:'ESC'});},popupPage.url());
     await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup Escape close');
     assert.equal(await shell.evaluate(()=>document.activeElement?.dataset.extensionId),chromeProfiles[0].extensionId,'Escape should return focus to the toolbar trigger');
+    let nativePointerAddressBounds;
+    if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
+      nativePointerAddressBounds=await shell.locator('#address').boundingBox();
+      assert.ok(nativePointerAddressBounds,'the browser address field should be available as an outside-click target');
+    }
+    if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
+      const parentFocused=await app.evaluate(({BrowserWindow})=>{const parent=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'));parent?.focus();return parent?.isFocused()===true;});
+      assert.equal(parentFocused,true,'native pointer test should activate the Corvid parent window before opening its popup');
+    }
     await popupTrigger.click();
     await until(async()=>extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup reopen');
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'))?.focus());
-    await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes after native parent-window activation');
+    if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
+      const clickTarget=await app.evaluate(({BrowserWindow,screen},bounds)=>{
+        const parent=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'));
+        const content=parent.getContentBounds(),popup=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('chrome-extension://'))?.getBounds();
+        const point={x:Math.round(content.x+bounds.x+bounds.width/2),y:Math.round(content.y+bounds.y+bounds.height/2)};
+        if(popup&&point.x>=popup.x&&point.x<popup.x+popup.width&&point.y>=popup.y&&point.y<popup.y+popup.height)throw new Error('native pointer target overlaps the extension popup');
+        const display=screen.getDisplayMatching(parent.getBounds());
+        return {point,contentBounds:content,parentBounds:parent.getBounds(),popupBounds:popup,displayBounds:display.bounds,scaleFactor:display.scaleFactor,pid:process.pid};
+      },nativePointerAddressBounds);
+      console.log('NATIVE_POINTER_CLICK_POINT',JSON.stringify({clickTarget,addressBounds:nativePointerAddressBounds}));
+      assert.equal(await extensionPopupWindowOpen(app,popupUrlPrefix),true,'test setup must leave the popup open until native pointer input');
+      const pointerPause=Math.min(60000,Math.max(0,Number(process.env.CORVID_NATIVE_POINTER_PAUSE_MS)||0));
+      if(pointerPause){console.log('NATIVE_POINTER_OBSERVATION_PAUSE_MS',pointerPause);await delay(pointerPause);}
+      clickNativeScreenPoint(clickTarget.point);
+      await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes after native pointer click outside');
+    }else{
+      await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'))?.focus());
+      await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes after native parent-window activation');
+    }
     await shell.locator('#more-tools').click();
     await shell.locator('#site-tools').waitFor();
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'failed extension copies must not remain in managed state');
