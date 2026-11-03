@@ -49,18 +49,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const firstWindow=(await api('/windows')).windows[0];
     await click('corvid-new-tab');
     await until(async()=>{const state=await api('/rooms'),tabs=state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs;return tabs?.length===2&&tabs.every(tab=>tab.ready);},'new tab is ready in the focused user window');
-    await click('corvid-new-window');
-    await until(async()=>(await api('/windows')).windows.length===2,'second browser window');
-    const windows=(await api('/windows')).windows;
-    const secondWindow=windows.find(window=>window.id!==firstWindow.id);
-    const secondMenu=await menu();
-    assert.ok(find(secondMenu,`corvid-window-${secondWindow.id}`),'the Window menu lists each open Corvid window');
-    await click(`corvid-window-${firstWindow.id}`);
-    await until(async()=>(await api('/windows')).focusedWindowId===firstWindow.id,'Window menu focuses the selected window');
-    const selectedMenu=await menu();
-    assert.equal(find(selectedMenu,`corvid-window-${firstWindow.id}`).checked,true);
-    await click('corvid-new-tab');
-    await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
+
+    // Exercise Agent ownership while there is only one native window. This
+    // helper calls Electron MenuItem.click directly and cannot reliably
+    // transfer OS focus between BrowserWindows like a native menu selection.
     const agentRoom=await api('/rooms', {name:'Agent-owned menu fixture',profileId:'default'});
     assert.equal(agentRoom.name,'Agent-owned menu fixture');
     await api(`/rooms/${agentRoom.id}/activate`,{},'POST');
@@ -74,6 +66,19 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal((await api('/profiles')).profiles.find(profile=>profile.id==='default').zoom,zoomBefore,'zoom shortcut cannot modify an Agent-owned page');
     await api(`/rooms/${firstWindow.activeRoomId}/activate`,{},'POST');
     await until(async()=>find(await menu(),'corvid-new-tab')?.enabled===true,'user actions restored in a user-owned Room');
+
+    await click('corvid-new-window');
+    await until(async()=>(await api('/windows')).windows.length===2,'second browser window');
+    const windows=(await api('/windows')).windows;
+    const secondWindow=windows.find(window=>window.id!==firstWindow.id);
+    const secondMenu=await menu();
+    assert.ok(find(secondMenu,`corvid-window-${secondWindow.id}`),'the Window menu lists each open Corvid window');
+    await click(`corvid-window-${firstWindow.id}`);
+    await until(async()=>(await api('/windows')).focusedWindowId===firstWindow.id,'Window menu focuses the selected window');
+    const selectedMenu=await menu();
+    assert.equal(find(selectedMenu,`corvid-window-${firstWindow.id}`).checked,true);
+    await click('corvid-new-tab');
+    await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
 
     await shell.locator('#show-settings').click();
     await shell.locator('#ui-locale').selectOption('en');

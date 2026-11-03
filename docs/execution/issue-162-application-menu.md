@@ -1,6 +1,6 @@
 # Issue #162：Corvid 原生浏览器菜单
 
-状态：进行中  
+状态：实现与当前 macOS 定向验收完成，等待 PR review/合并；跨平台与辅助技术验收未完成
 对应执行板：[`feature-board.md` D16](feature-board.md)  
 GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单](https://github.com/heyallencao/corvid/issues/162)
 
@@ -20,8 +20,8 @@ GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单]
 ## 验收
 
 - 纯模块合同核对中英文菜单、快捷键、标准编辑角色、窗口列表和无调试入口。
-- 隔离真实 Electron E2E 覆盖菜单树、菜单动作、双窗口焦点路由、Agent Room 菜单项禁用、语言实时切换和重启保持；另验证 Agent Room 中的快捷键受同一控制权保护。
-- 通过真实 Electron/原生桌面观察菜单显示与焦点，不把 DOM/API 菜单树检查当作像素或 VoiceOver 验收。修复前曾用隔离 profile 的 macOS 原生“窗口”菜单复现勾选状态与 Corvid 焦点 API 不一致（[Issue #167](https://github.com/heyallencao/corvid/issues/167)）；证据与截图见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-167)。
+- 隔离真实 Electron E2E 覆盖菜单树、菜单动作、双窗口菜单 callback 路由、Agent Room 菜单项禁用、语言实时切换和重启保持；另验证 Agent Room 中的快捷键受同一控制权保护。
+- 通过真实 Electron/原生桌面观察菜单显示与焦点，不把 DOM/API 菜单树检查当作像素或 VoiceOver 验收。修复前曾用隔离 profile 的 macOS 原生“窗口”菜单复现勾选状态与 Corvid 焦点 API 不一致；修复后通过 System Events 双向切换窗口并核对 `AXMenuItemMarkChar` 与 `/windows` 焦点 ID，详见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-167)。
 - 更新 D16、测试索引和验证日志；截图只使用隔离数据且不含个人浏览内容。
 
 ## UI 参考与证据边界
@@ -36,15 +36,15 @@ GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单]
 - **静态证据**：页面文档描述从触发器一侧展开，并以轻微缩放和向内位移表达来源；DOM/无障碍树可见 `side`、`open`、`defaultOpen`、`onOpenChange` 等 API。该内容是 EasyUI 自身组件文档和公开 DOM 信息，不证明其实现的屏幕阅读器兼容性、动画时序或跨浏览器行为。
 - **对 Corvid 的判断**：可迁移的是菜单项分组和动作语义、清楚的展开状态、稳定的触发器到菜单锚定关系，以及禁用/危险动作要能辨认。Corvid 菜单使用 Electron/OS 原生角色；网页 CSS、阴影、圆角、弹簧动画不应移植到原生菜单。当前代码的菜单分组和本地化标签按平台菜单习惯评估；原生焦点、键盘移动、VoiceOver 朗读与像素效果仍须在隔离的真实 Electron 窗口验收。
 - **覆盖限制与未知**：这是单一公开 React 组件页，不代表所有优秀产品或系统菜单；只观察了 macOS 上的 Chromium 参考页面，不验证 Corvid 菜单、OS 原生辅助技术、窄窗布局、Windows/Linux 菜单行为或减少动态效果设置下的组件细节。未复制页面代码、图标或素材。EasyUI 页面曾报告 Cloudflare Insights 脚本受 CSP 拦截；该分析脚本错误不影响已采集的组件预览和访问树，但可观察范围限于所记录状态。
-- **记录边界**：此参考证据不能代替本项目原生 Electron REA Evidence；项目截图与目标应用真实菜单证据仍待 Electron 空闲后补充。
+- **记录边界**：此参考证据不能代替本项目原生 Electron REA Evidence；目标应用原生菜单已用 macOS System Events 与隔离 Electron 做 AX 勾选/焦点双向复核，但 REA 原生 provider 仍不可用，且未采集修复后截图或 VoiceOver 证据。
 
 ### 关联缺陷
 
-- macOS 窗口菜单切换后勾选状态未同步见 [Issue #167](https://github.com/heyallencao/corvid/issues/167)。修复已在本分支提交 `59671f2`；真实 Electron E2E 仍需完成窗口焦点切换后的菜单动作路由验收后再关闭该 issue。
+- macOS 窗口菜单切换后勾选状态未同步见 [Issue #167](https://github.com/heyallencao/corvid/issues/167)。修复在 `59671f2`；隔离 Electron 菜单 E2E、快捷键回归和 macOS System Events 原生菜单双向切换已通过。Issue 将在 PR review 与合并后关闭。
 
 ## 完成后可以声明
 
-- 仅声明已由 macOS 真实 Electron E2E/REA 观察和当前本地化合同直接证明的菜单行为。
+- 仅声明已由 macOS 真实 Electron E2E、System Events 原生菜单状态与当前本地化合同直接证明的菜单行为；EasyUI REA 只用于 Web 菜单分组与状态细节参考，不代表 Corvid 原生系统菜单证据。
 
 ## 完成后仍不能声明
 
