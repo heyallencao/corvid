@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-const SCHEMA_VERSION = 1;
+const LEGACY_SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const emptyState = () => ({ schemaVersion: SCHEMA_VERSION, providers: {} });
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const throwIfAborted = signal => signal?.throwIfAborted?.();
@@ -43,11 +44,26 @@ function recordToCredential(record) {
   throw new Error('Agent credential record has an unsupported type');
 }
 
-function validateState(state) {
+function validateProviderId(providerId) {
+  if (!providerId || /[\u0000-\u001f]/.test(providerId)) throw new Error('Corvid Agent credential provider ID is invalid');
+}
+
+function validateLegacyState(state) {
+  if (!state || state.schemaVersion !== LEGACY_SCHEMA_VERSION || !state.providers || typeof state.providers !== 'object' || Array.isArray(state.providers)) throw new Error('Corvid Agent credentials have an unsupported or invalid format');
+  for (const [providerId, record] of Object.entries(state.providers)) {
+    validateProviderId(providerId);
+    recordToCredential(record);
+  }
+  return state;
+}
+
+function validateEncryptedState(state) {
   if (!state || state.schemaVersion !== SCHEMA_VERSION || !state.providers || typeof state.providers !== 'object' || Array.isArray(state.providers)) throw new Error('Corvid Agent credentials have an unsupported or invalid format');
   for (const [providerId, record] of Object.entries(state.providers)) {
-    if (!providerId || /[\u0000-\u001f]/.test(providerId)) throw new Error('Corvid Agent credential provider ID is invalid');
-    recordToCredential(record);
+    validateProviderId(providerId);
+    if (!record || typeof record !== 'object' || !['api_key', 'oauth'].includes(record.kind) || typeof record.encryptedCredential !== 'string' || !record.encryptedCredential) throw new Error('Corvid Agent encrypted credential record is invalid');
+    const bytes = Buffer.from(record.encryptedCredential, 'base64');
+    if (!bytes.length || bytes.toString('base64') !== record.encryptedCredential) throw new Error('Corvid Agent encrypted credential data is invalid');
   }
   return state;
 }
@@ -56,25 +72,73 @@ function decodeLegacy(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('旧账号授权数据格式无效，原文件已保留');
   const providers = {};
   for (const [providerId, credential] of Object.entries(value)) {
-    if (!providerId || /[\u0000-\u001f]/.test(providerId)) throw new Error('旧账号授权数据包含无效 Provider，原文件已保留');
-    providers[providerId] = credentialToRecord(credential);
+    validateProviderId(providerId);
+    providers[providerId] = recordToCredential(credentialToRecord(credential));
   }
   return providers;
 }
 
-function createAgentCredentialStore({ dataDir, legacyAuthPath = null }) {
+function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorage, platform = process.platform }) {
   if (typeof dataDir !== 'string' || !dataDir) throw new TypeError('dataDir is required for Corvid Agent credential storage');
+  if (!safeStorage || typeof safeStorage.encryptStringAsync !== 'function' || typeof safeStorage.decryptStringAsync !== 'function' || typeof safeStorage.isAsyncEncryptionAvailable !== 'function') throw new TypeError('Electron asynchronous safeStorage is required for Corvid Agent credentials');
   const file = path.join(dataDir, 'agent-credentials.json');
+  const migrationBackup = `${file}.migration-backup`;
   const queues = new Map();
   let initializationPromise;
 
-  function readState() {
-    try { return validateState(JSON.parse(fs.readFileSync(file, 'utf8'))); }
-    catch (error) { if (error.code === 'ENOENT') return emptyState(); if (error instanceof SyntaxError) throw new Error(`Corvid Agent credentials are unreadable; the original file was preserved: ${error.message}`); throw error; }
+  function readStateFile() {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch (error) {
+      if (error.code === 'ENOENT') return null;
+      if (error instanceof SyntaxError) throw new Error(`Corvid Agent credentials are unreadable; the original file was preserved: ${error.message}`);
+      throw error;
+    }
+  }
+
+  function storageError(message, cause) {
+    return new Error(`${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+  }
+
+  async function ensureSecureStorage() {
+    let available;
+    try { available = await safeStorage.isAsyncEncryptionAvailable(); }
+    catch (error) { throw storageError('无法访问系统安全存储。', error); }
+    if (!available) throw storageError('系统安全存储当前不可用。');
+    if (platform === 'linux') {
+      let backend;
+      try { backend = safeStorage.getSelectedStorageBackend?.(); }
+      catch (error) { throw storageError('无法确认 Linux 密码管理器状态。', error); }
+      if (!backend || backend === 'unknown' || backend === 'basic_text') throw storageError('Linux 当前没有可用的安全密码管理器，已禁止以弱保护方式保存账号授权。');
+    }
+  }
+
+  async function encryptCredential(credential) {
+    await ensureSecureStorage();
+    const plainRecord = credentialToRecord(credential);
+    let encrypted;
+    try { encrypted = await safeStorage.encryptStringAsync(JSON.stringify(plainRecord)); }
+    catch (error) { throw storageError('系统安全存储无法加密账号授权。', error); }
+    if (!Buffer.isBuffer(encrypted) || !encrypted.length) throw storageError('系统安全存储没有返回有效的加密结果。');
+    return { kind: plainRecord.kind, encryptedCredential: encrypted.toString('base64') };
+  }
+
+  async function decryptCredential(record) {
+    await ensureSecureStorage();
+    const encrypted = Buffer.from(record.encryptedCredential, 'base64');
+    let result;
+    try { result = await safeStorage.decryptStringAsync(encrypted); }
+    catch (error) { throw storageError('系统安全存储无法解密已保存的账号授权。', error); }
+    if (!result || typeof result.result !== 'string') throw new Error('系统安全存储返回了无效的解密结果；原凭据文件已保留');
+    let plainRecord;
+    try { plainRecord = JSON.parse(result.result); }
+    catch (error) { throw new Error(`Corvid Agent encrypted credential is unreadable; the original file was preserved: ${error.message}`); }
+    const credential = recordToCredential(plainRecord);
+    if (plainRecord.kind !== record.kind) throw new Error('Corvid Agent encrypted credential type does not match its metadata; the original file was preserved');
+    return { credential, plainRecord, shouldReEncrypt: result.shouldReEncrypt === true };
   }
 
   function writeState(state) {
-    validateState(state);
+    validateEncryptedState(state);
     fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
     fs.chmodSync(dataDir, 0o700);
     const temporary = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
@@ -93,30 +157,120 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null }) {
     }
   }
 
-  function migrateLegacyCredentials() {
-    if (!legacyAuthPath) return;
-    let legacy;
-    try { legacy = JSON.parse(fs.readFileSync(legacyAuthPath, 'utf8')); }
-    catch (error) { if (error.code === 'ENOENT') return; throw new Error(`无法迁移旧账号授权数据，原文件已保留：${error.message}`); }
-    const oldProviders = decodeLegacy(legacy);
-    const state = readState();
-    const merged = { ...oldProviders, ...state.providers };
-    if (JSON.stringify(merged) !== JSON.stringify(state.providers)) {
-      const next = { schemaVersion: SCHEMA_VERSION, providers: merged };
-      writeState(next);
-      const verified = readState();
-      if (JSON.stringify(verified.providers) !== JSON.stringify(next.providers)) throw new Error('Corvid Agent 账号授权迁移未通过校验，旧文件已保留');
+  async function readEncryptedState() {
+    const state = readStateFile();
+    return state ? validateEncryptedState(state) : emptyState();
+  }
+
+  async function verifyState(state, expected = null) {
+    validateEncryptedState(state);
+    await ensureSecureStorage();
+    for (const [providerId, record] of Object.entries(state.providers)) {
+      const decrypted = await decryptCredential(record);
+      if (expected && Object.hasOwn(expected, providerId) && JSON.stringify(credentialToRecord(decrypted.credential)) !== JSON.stringify(credentialToRecord(expected[providerId]))) {
+        throw new Error(`Corvid Agent credential migration verification failed for ${providerId}; original credentials were preserved`);
+      }
     }
-    try { fs.unlinkSync(legacyAuthPath); } catch (error) { if (error.code !== 'ENOENT') throw new Error(`账号授权已迁移，但旧授权副本无法清理：${error.message}`); }
   }
 
-  function initialize() {
-    if (!initializationPromise) initializationPromise = Promise.resolve().then(migrateLegacyCredentials);
-    return initializationPromise;
+  function preserveMigrationSource() {
+    if (!fs.existsSync(file)) return false;
+    fs.copyFileSync(file, migrationBackup, fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(migrationBackup, 0o600);
+    try { const directory = fs.openSync(dataDir, 'r'); fs.fsyncSync(directory); fs.closeSync(directory); } catch {}
+    return true;
   }
 
-  function serialize(_providerId, operation) {
-    // Each mutation replaces one whole JSON file, so serialize across providers too.
+  async function recoverMigrationBackup() {
+    if (!fs.existsSync(migrationBackup)) return;
+    let current;
+    try { current = readStateFile(); } catch { current = null; }
+    if (current?.schemaVersion === SCHEMA_VERSION) {
+      try {
+        await verifyState(validateEncryptedState(current));
+        fs.unlinkSync(migrationBackup);
+        return;
+      } catch (error) {
+        if (/系统安全存储|Linux 当前没有/.test(error.message)) throw error;
+      }
+    } else if (current?.schemaVersion === LEGACY_SCHEMA_VERSION) {
+      fs.unlinkSync(migrationBackup);
+      return;
+    }
+    fs.renameSync(migrationBackup, file);
+    try { fs.chmodSync(file, 0o600); } catch {}
+  }
+
+  async function migrateLegacyCredentials() {
+    await recoverMigrationBackup();
+    const current = readStateFile();
+    const encryptedProviders = {};
+    const plainProviders = {};
+    let currentWasLegacy = false;
+    if (current) {
+      if (current.schemaVersion === LEGACY_SCHEMA_VERSION) {
+        validateLegacyState(current);
+        currentWasLegacy = true;
+        for (const [providerId, record] of Object.entries(current.providers)) plainProviders[providerId] = recordToCredential(record);
+      } else if (current.schemaVersion === SCHEMA_VERSION) {
+        Object.assign(encryptedProviders, validateEncryptedState(current).providers);
+      } else throw new Error('Corvid Agent credentials have an unsupported or invalid format; the original file was preserved');
+    }
+
+    let legacyAuthExists = false;
+    if (legacyAuthPath) {
+      let legacy;
+      try { legacy = JSON.parse(fs.readFileSync(legacyAuthPath, 'utf8')); legacyAuthExists = true; }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw new Error(`无法迁移旧账号授权数据，原文件已保留：${error.message}`);
+      }
+      if (legacyAuthExists) {
+        const legacyProviders = decodeLegacy(legacy);
+        for (const [providerId, credential] of Object.entries(legacyProviders)) {
+          if (!Object.hasOwn(plainProviders, providerId)) plainProviders[providerId] = credential;
+        }
+      }
+    }
+
+    if (!currentWasLegacy && !legacyAuthExists) return;
+
+    await ensureSecureStorage();
+    const expected = {};
+    for (const [providerId, record] of Object.entries(encryptedProviders)) {
+      expected[providerId] = (await decryptCredential(record)).credential;
+    }
+    const nextProviders = { ...encryptedProviders };
+    for (const [providerId, credential] of Object.entries(plainProviders)) {
+      if (Object.hasOwn(encryptedProviders, providerId)) continue;
+      expected[providerId] = credential;
+      nextProviders[providerId] = await encryptCredential(credential);
+    }
+    const next = { schemaVersion: SCHEMA_VERSION, providers: nextProviders };
+
+    let hadSource = false;
+    try {
+      hadSource = preserveMigrationSource();
+      writeState(next);
+      await verifyState(next, expected);
+      if (legacyAuthExists) {
+        try { fs.unlinkSync(legacyAuthPath); }
+        catch (error) { if (error.code !== 'ENOENT') throw new Error(`账号授权已加密，但旧授权副本无法清理：${error.message}`); }
+      }
+      // The encrypted file is already committed and verified. If cleanup is
+      // interrupted, startup recovery verifies it and removes the backup.
+      if (hadSource) { try { fs.unlinkSync(migrationBackup); } catch {} }
+    } catch (error) {
+      if (hadSource && fs.existsSync(migrationBackup)) {
+        try { fs.renameSync(migrationBackup, file); fs.chmodSync(file, 0o600); }
+        catch (restoreError) { throw new Error(`账号授权迁移失败，旧副本仍保留于 ${migrationBackup}；恢复原文件也失败：${restoreError.message}`, { cause: error }); }
+      } else if (!current && fs.existsSync(file)) {
+        try { fs.unlinkSync(file); } catch {}
+      }
+      throw error;
+    }
+  }
+
+  function serialize(operation) {
     const queueKey = '__credential_file__';
     const previous = queues.get(queueKey) || Promise.resolve();
     const result = previous.catch(() => {}).then(operation);
@@ -126,30 +280,57 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null }) {
     return result;
   }
 
+  async function reEncryptIfNeeded(providerId, oldRecord, credential) {
+    await serialize(async () => {
+      const state = await readEncryptedState();
+      const current = state.providers[providerId];
+      if (!current || current.encryptedCredential !== oldRecord.encryptedCredential) return;
+      const providers = { ...state.providers, [providerId]: await encryptCredential(credential) };
+      writeState({ schemaVersion: SCHEMA_VERSION, providers });
+    });
+  }
+
+  async function initialize() {
+    if (!initializationPromise) initializationPromise = Promise.resolve().then(migrateLegacyCredentials);
+    return initializationPromise;
+  }
+
   return Object.freeze({
     async read(providerId, options = {}) {
       await initialize();
       throwIfAborted(options.signal);
-      const record = readState().providers[providerId];
-      return record ? recordToCredential(record) : undefined;
+      const state = await readEncryptedState();
+      const record = state.providers[providerId];
+      if (!record) return undefined;
+      const decoded = await decryptCredential(record);
+      if (decoded.shouldReEncrypt) await reEncryptIfNeeded(providerId, record, decoded.credential);
+      return decoded.credential;
     },
     async list(options = {}) {
       await initialize();
       throwIfAborted(options.signal);
-      return Object.entries(readState().providers).map(([providerId, record]) => ({ providerId, type: record.kind }));
+      await ensureSecureStorage();
+      return Object.entries((await readEncryptedState()).providers).map(([providerId, record]) => ({ providerId, type: record.kind }));
     },
     async modify(providerId, callback, options = {}) {
       if (typeof providerId !== 'string' || !providerId) throw new TypeError('providerId is required');
       if (typeof callback !== 'function') throw new TypeError('credential callback is required');
       await initialize();
-      return serialize(providerId, async () => {
+      return serialize(async () => {
         throwIfAborted(options.signal);
-        const state = readState();
+        const state = await readEncryptedState();
         const currentRecord = state.providers[providerId];
-        const nextCredential = await callback(currentRecord ? recordToCredential(currentRecord) : undefined);
+        const current = currentRecord ? await decryptCredential(currentRecord) : null;
+        const nextCredential = await callback(current?.credential);
         throwIfAborted(options.signal);
-        if (nextCredential === undefined) return currentRecord ? recordToCredential(currentRecord) : undefined;
-        const providers = { ...state.providers, [providerId]: credentialToRecord(nextCredential) };
+        if (nextCredential === undefined) {
+          if (current?.shouldReEncrypt) {
+            const providers = { ...state.providers, [providerId]: await encryptCredential(current.credential) };
+            writeState({ schemaVersion: SCHEMA_VERSION, providers });
+          }
+          return current?.credential;
+        }
+        const providers = { ...state.providers, [providerId]: await encryptCredential(nextCredential) };
         writeState({ schemaVersion: SCHEMA_VERSION, providers });
         return clone(nextCredential);
       });
@@ -157,9 +338,9 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null }) {
     async delete(providerId, options = {}) {
       if (typeof providerId !== 'string' || !providerId) throw new TypeError('providerId is required');
       await initialize();
-      return serialize(providerId, async () => {
+      return serialize(async () => {
         throwIfAborted(options.signal);
-        const state = readState();
+        const state = await readEncryptedState();
         if (!Object.hasOwn(state.providers, providerId)) return;
         const providers = { ...state.providers };
         delete providers[providerId];

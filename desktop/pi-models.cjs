@@ -6,11 +6,11 @@ const DEFAULT_SELECTION = { providerId: 'openai-codex', modelId: 'gpt-6-luna' };
 const NO_AUTH_API_KEY = 'corvid-no-auth';
 const ENDPOINT_CREDENTIAL_REFERENCE = '$CORVID_AGENT_ENDPOINT_CREDENTIAL';
 
-function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, openExternal = async () => {}, onAuthEvent = () => {}, promptAuth = async (_providerId, prompt) => { throw new Error(`Corvid cannot complete this ${prompt.type} authentication prompt yet`); } }) {
+function createPiModelManager({ dataDir, agentDir: configuredAgentDir = null, safeStorage, openExternal = async () => {}, onAuthEvent = () => {}, promptAuth = async (_providerId, prompt) => { throw new Error(`Corvid cannot complete this ${prompt.type} authentication prompt yet`); } }) {
   const file = path.join(dataDir, 'agent-model.json');
   const endpointsFile = path.join(dataDir, 'pi-models.json');
   const agentDir = configuredAgentDir || path.join(dataDir, 'pi-agent');
-  const credentialStore = createAgentCredentialStore({ dataDir, legacyAuthPath: path.join(agentDir, 'auth.json') });
+  const credentialStore = createAgentCredentialStore({ dataDir, legacyAuthPath: path.join(agentDir, 'auth.json'), safeStorage });
   let runtimePromise;
   let endpointMigrationPromise;
 
