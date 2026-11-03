@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
-const { clearPageFullscreen } = require('./page-fullscreen.cjs');
+const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 let dataDirectoryError = null;
@@ -648,13 +648,10 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;
     clearPageFullscreen(windowRecords.get(s.windowId),tabId);
   });
+  // Keep HTML fullscreen ownership scoped to this tab; BrowserWindow events lack a tab identity.
   view.webContents.on('enter-html-full-screen',()=>{
     const owner=windowRecords.get(s.windowId);
-    if(!owner)return;
-    if(owner.fullscreenRestoreMaximized===null)owner.fullscreenRestoreMaximized=owner.browserWindow.isMaximized()||owner.lastKnownMaximized;
-    owner.htmlFullscreen=true;
-    owner.htmlFullscreenTabId=tabId;
-    if(!owner.browserWindow.isDestroyed())owner.browserWindow.webContents.send('shell-state',describe(owner,true));
+    markPageFullscreen(owner,tabId,describe);
   });
   view.webContents.on('leave-html-full-screen',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
   view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId));
@@ -1422,17 +1419,6 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
     record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);
     if(!record.htmlFullscreen&&transitionTarget!==true)record.fullscreenRestoreMaximized=null;
     update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
-  });
-  browserWindow.on('enter-html-full-screen',()=>{
-    if(record.fullscreenRestoreMaximized===null)record.fullscreenRestoreMaximized=browserWindow.isMaximized()||record.lastKnownMaximized;
-    record.htmlFullscreen=true;
-    if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
-  });
-  browserWindow.on('leave-html-full-screen',()=>{
-    record.htmlFullscreen=false;
-    record.htmlFullscreenTabId=null;
-    if(!record.appFullscreen&&record.fullscreenTransitionTarget!==true){record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);record.fullscreenRestoreMaximized=null;scheduleWindowStateSave();}
-    if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
   });
   browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});

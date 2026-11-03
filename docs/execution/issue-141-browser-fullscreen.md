@@ -22,7 +22,8 @@
 
 ## 当前证据与限制
 
-- 本地纯逻辑验证：2026-11-03 16:42（Asia/Shanghai）复跑 `node --test tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，9 项通过；状态单测覆盖不匹配标签、匹配标签退出原生全屏、保留应用全屏、重复清理、窗口销毁和关闭中边界。本轮 `node --check` 覆盖 `desktop/main.cjs`、`desktop/page-fullscreen.cjs`、`tests/fullscreen-e2e.cjs`、`tests/localization-e2e.cjs`，`git diff --check` 通过。此前已检查 `desktop/window-shortcuts.cjs`、`desktop/renderer.js`，并验证 `package.json` 可解析。
+- 本地纯逻辑验证：2026-11-03 16:47（Asia/Shanghai）复跑 `node --test tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，12 项通过；状态单测覆盖不匹配标签、迟到的旧标签退出不清理新标签状态、匹配标签退出原生全屏、最大化快照清理、重复清理、窗口销毁和关闭中边界。本轮 `node --check` 覆盖 `desktop/main.cjs`、`desktop/page-fullscreen.cjs`、`tests/window-fullscreen-state.test.mjs`、`tests/fullscreen-e2e.cjs`，`git diff --check` 通过。此前已检查 `desktop/window-shortcuts.cjs`、`desktop/renderer.js`，并验证 `package.json` 可解析。
+- 2026-11-03 16:47（Asia/Shanghai）静态 review 发现窗口级 HTML Fullscreen 退出事件没有标签身份，可能在迟到时清除另一个标签当前的全屏归属；现改由每个 `WebContents` 的进入/退出事件维护精确标签状态，并清除失效的最大化快照。纯逻辑测试覆盖了这类事件顺序，但尚未通过真实 Electron 复现或验收。
 - 真实 Electron 定向运行已覆盖菜单切换、最大化还原、macOS 快捷键和两个窗口的独立状态；后续运行进入网页 HTML Fullscreen，并观察到 Corvid 将窗口级切换禁用且不会覆盖页面状态。运行也暴露了关闭全屏标签后窗口状态可能残留的问题，当前代码已加入按标签清理逻辑，尚待复验。
 - **未完成：**最新版 `tests/fullscreen-e2e.cjs` 与 `tests/localization-e2e.cjs` 尚未完整通过；窗口尺寸/状态重启恢复、Agent 工作区全屏可见性、中英文实时切换、UI 截图和平台人工检查仍未验收。当前 CUA 观察到 macOS 锁屏，锁屏期间的全屏失败不作为产品通过或失败证据；待用户解锁后重跑定向 E2E 和全量回归。
 - 2026-11-03 16:43（Asia/Shanghai）通过 CUA `getState()` 复核：`apps` 为空，原生应用枚举返回“Mac is locked and automatic unlock could not unlock it”。本轮没有启动 Corvid/Electron；该结果证明当前无法进行桌面验收，不证明功能通过或失败。

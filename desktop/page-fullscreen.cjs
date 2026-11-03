@@ -1,3 +1,14 @@
+function markPageFullscreen(record, tabId, describe) {
+  if (!record || record.closing || record.browserWindow.isDestroyed()) return false;
+  if (record.fullscreenRestoreMaximized === null) {
+    record.fullscreenRestoreMaximized = record.browserWindow.isMaximized() || record.lastKnownMaximized;
+  }
+  record.htmlFullscreen = true;
+  record.htmlFullscreenTabId = tabId;
+  record.browserWindow.webContents.send('shell-state', describe(record, true));
+  return true;
+}
+
 function clearPageFullscreen(record, tabId, describe) {
   if (!record?.htmlFullscreen || record.htmlFullscreenTabId !== tabId) return false;
   record.htmlFullscreen = false;
@@ -8,8 +19,12 @@ function clearPageFullscreen(record, tabId, describe) {
     record.fullscreenTransitionTarget = false;
     browserWindow.setFullScreen(false);
   }
+  if (!record.appFullscreen && !browserWindow.isDestroyed() && !browserWindow.isFullScreen()) {
+    record.lastKnownMaximized = Boolean(browserWindow.isMaximized() || record.fullscreenRestoreMaximized);
+    record.fullscreenRestoreMaximized = null;
+  }
   if (!record.closing && !browserWindow.isDestroyed()) browserWindow.webContents.send('shell-state', describe(record, true));
   return true;
 }
 
-module.exports = { clearPageFullscreen };
+module.exports = { clearPageFullscreen, markPageFullscreen };
