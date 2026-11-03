@@ -9,6 +9,33 @@ const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const safeStorageTimeoutMs = 15_000;
+
+async function assertSafeStorageAvailable(app, phase) {
+  let timer;
+  try {
+    const available = await Promise.race([
+      app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`Electron safeStorage availability did not resolve during ${phase} within ${safeStorageTimeoutMs} ms`);
+          error.code = 'CORVID_SAFE_STORAGE_TIMEOUT';
+          reject(error);
+        }, safeStorageTimeoutMs);
+      }),
+    ]);
+    assert.equal(available, true,
+      `the running Electron build reports asynchronous OS credential protection available during ${phase}`);
+  } catch (error) {
+    if (error.code === 'CORVID_SAFE_STORAGE_TIMEOUT') {
+      // A native credential prompt can leave the Electron main thread blocked; terminate it so this test cannot hang.
+      app.process()?.kill('SIGKILL');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function launch(dataDir) {
   const extraArgs = String(process.env.CORVID_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
@@ -72,8 +99,7 @@ async function openApiKeyProvider(app) {
     await initialShell.getByLabel(/地址或搜索|Address or search/i).fill(pageUrl);
     await initialShell.getByLabel(/地址或搜索|Address or search/i).press('Enter');
     await waitForPage(dataDir, pageUrl);
-    assert.equal(await app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()), true,
-      'the running Electron build reports asynchronous OS credential protection available');
+    await assertSafeStorageAvailable(app, 'initial credential-store check');
     let shell = await openApiKeyProvider(app);
     await shell.locator('.pi-model-key').fill(secret);
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).click();
@@ -94,7 +120,7 @@ async function openApiKeyProvider(app) {
 
     await app.close();
     app = await launch(dataDir);
-    assert.equal(await app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()), true);
+    await assertSafeStorageAvailable(app, 'post-restart credential-store check');
     shell = await openApiKeyProvider(app);
     await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
     assert.equal(await shell.locator('.pi-model-key').count(), 0,
