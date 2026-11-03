@@ -98,8 +98,8 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     }
   }
 
-  function storageError(message, cause, code = null) {
-    const marker = code ? `[[corvid-error:${code}]] ` : '';
+  function storageError(message, cause, code = 'secure-storage-unavailable') {
+    const marker = `[[corvid-error:${code}]] `;
     return new Error(`${marker}${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
   }
 

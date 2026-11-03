@@ -15,15 +15,17 @@ const safeStorage=createFakeSafeStorage();
   const rendererErrorStart=rendererSource.indexOf('function userFacingAgentError');
   const rendererErrorEnd=rendererSource.indexOf('\nlet state',rendererErrorStart);
   assert.ok(rendererErrorStart>=0&&rendererErrorEnd>rendererErrorStart,'renderer error formatter is present for locale contract coverage');
-  for(const {language,expected} of [
-    {language:'zh-CN',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
-    {language:'en-US',expected:'Linux could not confirm that the system password manager protects this credential'},
+  for(const {language,marker,expected} of [
+    {language:'zh-CN',marker:'secure-storage-unavailable',expected:'系统安全存储当前不可用'},
+    {language:'en-US',marker:'secure-storage-unavailable',expected:'Secure system storage is unavailable'},
+    {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
+    {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
   ]){
     const context={navigator:{language},window:{}};
     vm.runInNewContext(localeSource,context);
     context.extensionMessages=context.window.corvidI18n;
     vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
-    assert.ok(context.userFacingAgentError({message:'[[corvid-error:secure-storage-provider-unverified]] provider tag rejected'}).startsWith(expected),`${language} localizes the secure-storage refusal before it reaches the UI`);
+    assert.ok(context.userFacingAgentError({message:`[[corvid-error:${marker}]] provider tag rejected`}).startsWith(expected),`${language} localizes ${marker} before it reaches the UI`);
   }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
   const dataDir = path.join(root, 'corvid');
