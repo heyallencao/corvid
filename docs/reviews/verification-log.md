@@ -17,6 +17,14 @@
 - REA 与设计记录：EGO、Kaze、Kobra 的可用证据和直接观察/推断/未知、重采集失败及覆盖边界，记录于[浏览器参考分析](../research/browser-reference-analysis.md#2026-11-04-agent-后续消息队列设计复核)与[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-agent-运行中消息队列issue-180)。两张截图来自本地合成页面，不含个人数据。
 - 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux 应用 UI、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)。PR #184 已于 2026-11-04 合并（提交 `86267e1`），Issue #180 已关闭；D25 已标记完成。
 
+## 2026-11-04 Chrome 导入类别独立读取（Issue #18）
+
+- 修复：预览分别读取书签与历史；单类读取失败时只报告并禁用对应类别。提交只读取已勾选类别，因此损坏的未选数据库不再阻断其他可读资料。Cookie 的预览计数与既有明确同意后读取合同保持不变。
+- 自动化：macOS、Node.js v24.22.1、Electron 45.2.1，合成 Chrome Profile 和隔离 `CORVID_DATA_DIR`。`node --check desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 通过；`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 通过 zh-CN 与 en 两个真实 Electron 场景：损坏 History 被禁用、可读书签保持可选并成功导入、目标历史为空；英文和中文错误状态均逐字断言。`git diff --check` 与 `package.json` JSON 解析通过。完整 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 随后也 EXIT 0，既有 Cookie、导入、扩展与弹窗路径全部通过。未运行全量 `npm test`。
+- 跨平台运行：GitHub Actions [Chrome 导入类别隔离跨平台验收 #41695935717](https://github.com/heyallencao/corvid/actions/runs/41695935717) 中 macOS 14、Windows 2022、Ubuntu 24.04 的真实 Electron 类别隔离场景全部通过。三平台均使用合成 Profile；只覆盖 zh-CN/en 中 History 损坏时仍能导入书签，不代表完整 Chrome 导入、Cookie/钥匙串、原生目录选择器、打包版或其他平台 UI 均已通过。
+- 截图：中文[损坏历史类别状态](../qa/screenshots/issue-18-category-isolation-zh-CN.png)，英文[对应状态](../qa/screenshots/issue-18-category-isolation-en.png)，均来自隔离本地合成资料；SHA-256 分别为 `332f1412cbd988f4d286c76964764fd29807e69e709ca3a16f77fba358028215` 与 `e144fdf6b6a06645bd5f14edbeb68dfbb1bd4ae7cbce5855aa902842490783a0`。
+- 未覆盖：未运行全量 `npm test`；此前整份导入 E2E 曾有后段原生窗口激活/弹窗关闭焦点超时，但本轮当前提交完整重跑通过。未读取真实 Chrome Profile、未访问真实网站、未调用系统钥匙串、OAuth 或模型。Windows/Linux 仅覆盖上述类别隔离子场景；完整导入路径、原生目录选择器、钥匙串、打包版和真实 Chrome 锁定/损坏形态仍未验证。
+
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
 - 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。
@@ -1144,3 +1152,24 @@
 - 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
 - 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
 - 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。
+
+## 2026-11-04 Chrome 导入类别隔离重放与完整 E2E 边界（Issue #18）
+
+- 主线与分支：将 PR #176 从旧基线重放到 `origin/main` `c111f356`（包含 PR #187/#188），当前重放提交 `4f6005b`。重放无冲突。
+- 合同与静态检查：`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check` 和 `git diff --check origin/main...HEAD` 通过。
+- 隔离真实 Electron：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 通过，覆盖 zh-CN/en 下 History 损坏时仍可选择并导入书签。使用合成 Chrome Profile 与隔离 `CORVID_DATA_DIR`，未读取本机 Chrome、系统钥匙串、OAuth 或模型。
+- 完整导入 E2E：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 在扩展弹窗关闭流程中等待“原生父窗口激活后关闭弹窗”超时，尚未进入 Chrome 导入步骤。干净 `c111f35` 基线运行同一命令，在相同原生激活断言超时；当前 CUA 报告 Mac 锁屏。故本次结果不能归因于 PR #176 的导入改动，也不能算作完整导入 E2E 通过。
+- 清理与限制：两次 Electron 进程均退出；测试生成的 Issue #129 与 #18 截图已还原，基线 worktree 已移除。完整导入 E2E 需在已解锁桌面重跑；真实 Chrome、钥匙串授权/拒绝、打包版及全量 `npm test` 仍未覆盖。
+
+## 2026-11-04 Chrome Cookie 预览隔离合同补充（Issue #18）
+
+- 变更：为 `tests/chrome-import-categories.test.mjs` 增加损坏 Cookies 文件用例，断言可读书签仍显示；macOS 上计数失败只设置 `errors.cookies`，未选择 Cookie 的读取不触碰该文件。复核 `package.json` 后将 QA 测试索引同步为 31 个 `node:test` 用例、共 86 项自动化检查，并标明 Cookie 计数路径仅在 macOS 验证。
+- 验证：当前环境 `darwin`；`node --test tests/chrome-import-categories.test.mjs` 3/3 通过（含 macOS Cookie 计数失败分支）；`git diff --check` 通过。
+- 边界：仅是模块合同测试，不运行 Electron UI，也不代表完整 Chrome 导入 E2E；完整测试仍因本机桌面锁屏在导入步骤前无法完成。此用例未访问真实 Chrome Profile、钥匙串、OAuth 或模型。
+
+## 2026-11-04 Chrome 导入完整流程隔离回归（Issue #18）
+
+- 环境：macOS arm64、Node.js v24.14.1、Electron 45.2.1；使用测试创建的合成 Chrome Profile、合成 Cookie key 和临时 Corvid 数据目录。
+- 验证：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过。覆盖完整 Chrome 导入流程、Cookie 解密/写入/Profile 隔离与持久化、失败重试、回滚、强杀后重导、扩展导入/恢复等；`node --check tests/chrome-import-e2e.cjs` 和 `git diff --check` 通过。
+- 跳过范围：测试在扩展弹窗重开后通过 Playwright 直接关闭合成弹窗，绕过锁屏导致的原生父窗口激活/点外关闭步骤；除此之外脚本继续执行完整导入场景。该结果证明导入功能路径通过，不证明原生弹窗失焦行为。
+- 限制：默认无环境变量模式仍需在已解锁桌面验收原生扩展弹窗失焦关闭；未读取本机 Chrome、未使用系统钥匙串、OAuth 或真实模型。全量 `npm test` 未运行。

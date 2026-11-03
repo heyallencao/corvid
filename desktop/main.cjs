@@ -1011,9 +1011,9 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(typeof args.sourceId!=='string')throw new Error('请选择 Chrome Profile');
       const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
       if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const content=chromeImport.readProfilePreview(selectedRoot,args.sourceId);
       const extensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId)).map(({sourcePath,...extension})=>extension);
-      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,canImportCookies:process.platform==='darwin',extensions};
+      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,errors:content.errors,canImportCookies:process.platform==='darwin',extensions};
     }
     case 'importChromeData': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
@@ -1024,7 +1024,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       chromeImport.assertCookieConsent(args.categories,args.cookieConsent);
       const sources=chromeImport.profiles(selectedRoot);
       if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const content=chromeImport.readSelectedProfile(selectedRoot,args.sourceId,args.categories);
       const sourceExtensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId));
       const chosenExtensionIds=args.extensionIds;
       if(args.categories.includes('extensions')){

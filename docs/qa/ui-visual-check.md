@@ -15,6 +15,13 @@
 - REA 覆盖与未知：EGO Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`；Kaze Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`、`ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`；Kobra 两个视口 Evidence `ev_f0bdd424946decdaac56fa07cc3d4d8b4ac6c817e744a955fea8f6f08574e882`、`ev_e5e809415d68356fb436392675b4d3034c6860e68446a5c22e0df174c3d49a22`。本轮重新捕获 Kobra 失败于初始导航，未获得新证据；REA doctor 显示 Codex 注册与 Skill 一致，但本机分析引擎环境不完整。上述竞品 Evidence 未观察运行中消息队列、权限边界或真实模型行为。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描；未移植任何素材或代码。
 - 验证及限制：`node tests/agent-message-queue-contract.cjs`、`node tests/agent-task-continuation-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 和 `git diff --check` 均通过。队列合同使用确定性 Runtime；真实 Electron 使用本地 fixture，UI 中所选 GPT-6 Luna 仅为模型选择界面 fixture，没有 OAuth 或真实模型请求，也没有消耗模型额度。未运行完整 `npm test`；未覆盖打包版、Windows/Linux、VoiceOver、真实 Provider 时序或真实网页。
 
+## 2026-11-04 Chrome 导入损坏类别状态（Issue #18）
+
+- 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 和合成 Chrome Profile；1280×818 CSS px 的导入对话框。截图[中文状态](screenshots/issue-18-category-isolation-zh-CN.png)，2560×1636，SHA-256 `332f1412cbd988f4d286c76964764fd29807e69e709ca3a16f77fba358028215`；[英文状态](screenshots/issue-18-category-isolation-en.png)，2560×1636，SHA-256 `e144fdf6b6a06645bd5f14edbeb68dfbb1bd4ae7cbce5855aa902842490783a0`。页面背景与书签/扩展名称来自本地 fixture；无个人网页、账号、凭据或真实浏览资料。
+- 直接观察：书签保持勾选可用，合成损坏的 History 呈禁用状态并显示琥珀色说明；其他类别仍列出计数。中英文布局均未截断，错误文字靠近对应类别，层级和间距延续导入对话框现有样式。截图状态由真实 Electron 和 E2E 断言验证。
+- 视觉判断：类别级就地说明让用户能判断哪些资料仍可导入；当前文字两行英文/一行中文，颜色用于提示风险而不盖过主要内容。窄窗布局与深色主题尚未验证。英文截图中 Chrome Profile 和扩展描述包含 fixture 提供的中文数据，类别标签与新增状态文案本身已本地化。
+- UI/UE 参考与 REA 证据：复用 Kobra Alert `https://kobra.systems/components/alert`，REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（2026-11-03 09:20 Asia/Shanghai，本轮未重新采集）。**直接观察**：页面可访问树中有命名 alert 区域，并展示 Error/Warning/Success/Info 状态示例。**静态证据**：本轮未检查其源码/脚本。**推断**：类别读取失败适合使用靠近类别的简短 warning 说明；Corvid 保持自有布局、色彩和措辞。**未知/限制**：该证据不证明 Kobra 的交互行为、窄窗、键盘焦点或读屏输出；未复制代码、样式或素材。Rare UI、EasyUI、Pin UI、Aceternity UI 与 EGO 本轮未重新扫描。
+
 ## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
 
 - 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture；窗口 704×420，实际 shell 视口 704×388 CSS px。截图[短高窗口欢迎态](screenshots/issue-16-agent-short-height-704x420.png)，SHA-256 `dfbd257e684cf76331e066e153aa4f7dc0c3365079d7ad93f0915cd8b5d50a4c`；页面主体是明确标注的 Corvid 本地 fixture，不含个人网页、账号或凭据。

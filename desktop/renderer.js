@@ -744,15 +744,24 @@ async function openChromeImportDialog(){
   await openShellDialog('#chrome-import');
 }
 function showChromePreview(preview){
-  document.querySelector('#chrome-import-preview').textContent=extensionMessages.t('importPreviewSummary',{source:preview.sourceName,bookmarks:extensionMessages.formatNumber(preview.bookmarks),history:extensionMessages.formatNumber(preview.history),cookies:preview.cookies===null?'':extensionMessages.t('cookiePreviewSuffix',{count:extensionMessages.formatNumber(preview.cookies)}),extensions:extensionMessages.t('extensionPreviewSuffix',{count:extensionMessages.formatNumber(preview.extensions.length)})});
-  document.querySelector('#chrome-bookmark-count').textContent=extensionMessages.t('itemCount',{count:extensionMessages.formatNumber(preview.bookmarks)});
-  document.querySelector('#chrome-history-count').textContent=extensionMessages.t('itemCount',{count:extensionMessages.formatNumber(preview.history)});
-  document.querySelector('#chrome-cookie-count').textContent=preview.cookies===null?(preview.canImportCookies?extensionMessages.t('databaseUnavailable'):extensionMessages.t('unsupportedPlatform')):extensionMessages.t('itemCount',{count:extensionMessages.formatNumber(preview.cookies)});
+  const errors=preview.errors||{},unavailable=extensionMessages.t('categoryCountUnavailable');
+  const bookmarkCount=errors.bookmarks?unavailable:extensionMessages.formatNumber(preview.bookmarks);
+  const historyCount=errors.history?unavailable:extensionMessages.formatNumber(preview.history);
+  const cookieCount=errors.cookies?unavailable:preview.cookies===null?null:extensionMessages.formatNumber(preview.cookies);
+  const summaryKey=Object.keys(errors).length?'importPreviewSomeCategoriesUnavailable':'importPreviewSummary';
+  document.querySelector('#chrome-import-preview').textContent=extensionMessages.t(summaryKey,{source:preview.sourceName,bookmarks:bookmarkCount,history:historyCount,cookies:cookieCount===null?'':extensionMessages.t('cookiePreviewSuffix',{count:cookieCount}),extensions:extensionMessages.t('extensionPreviewSuffix',{count:extensionMessages.formatNumber(preview.extensions.length)})});
+  document.querySelector('#chrome-bookmark-count').textContent=errors.bookmarks?unavailable:extensionMessages.t('itemCount',{count:bookmarkCount});
+  document.querySelector('#chrome-history-count').textContent=errors.history?unavailable:extensionMessages.t('itemCount',{count:historyCount});
+  document.querySelector('#chrome-cookie-count').textContent=errors.cookies?unavailable:preview.cookies===null?(preview.canImportCookies?extensionMessages.t('databaseUnavailable'):extensionMessages.t('unsupportedPlatform')):extensionMessages.t('itemCount',{count:cookieCount});
   document.querySelector('#chrome-extension-count').textContent=extensionMessages.t('itemCount',{count:extensionMessages.formatNumber(preview.extensions.length)});
   const checks=[...document.querySelectorAll('input[name="chrome-category"]')];
-  checks.find(input=>input.value==='bookmarks').disabled=preview.bookmarks===0;
-  checks.find(input=>input.value==='history').disabled=preview.history===0;
-  checks.find(input=>input.value==='cookies').disabled=!preview.canImportCookies||preview.cookies===null||preview.cookies===0;
+  for(const category of ['bookmarks','history','cookies']){
+    const input=checks.find(item=>item.value===category),failed=Boolean(errors[category]);
+    input.disabled=failed||(category==='bookmarks'?preview.bookmarks===0:category==='history'?preview.history===0:!preview.canImportCookies||preview.cookies===null||preview.cookies===0);
+    const categoryId={bookmarks:'bookmark',history:'history',cookies:'cookie'}[category];
+    const status=document.querySelector(`#chrome-${categoryId}-error`);
+    status.hidden=!failed;status.textContent=failed?extensionMessages.t('categoryReadUnavailable'):'';
+  }
   checks.find(input=>input.value==='extensions').disabled=preview.extensions.length===0;
   for(const input of checks) if(input.disabled) input.checked=false;
   const choices=document.querySelector('#chrome-extension-choices');choices.replaceChildren();
