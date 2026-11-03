@@ -143,3 +143,23 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 运行态证据继续支持“网页画布保持浏览器主角；Space/标签和 Agent 入口可持续找到；模型选择贴近对话输入”的信息层级。静态 Preload 结果只提供一条实现层启发：跨进程能力应由明确、窄范围的 Corvid bridge 暴露，具体浏览动作继续经过 Room/Page、控制权和授权检查；不能把 Kaze 的 bridge 或 IPC 结构视为安全合同，也不能据其静态存在推断某动作真实可用。
 
 本轮没有改变主线或 D21 执行顺序。日常浏览器完整度、任务状态与接管、Corvid Agent 工作台和 BrowserMCP 权限边界已在执行板 D20/D21、Issue #4/#16/#56 追踪；当前没有新的、未跟踪且由直接运行态证据证实的产品缺口，因此不新增 Issue。该分析不替代 Corvid 自身的真实 Electron、双语、键盘/窄窗和本地 fixture 验收。
+
+
+## 2026-11-04 REA 交互参考补充：Agent 输入与侧栏展示
+
+本次观察时间为 2026-11-04 06:45–06:51（Asia/Shanghai）。使用 REA provider-owned 临时 Chromium 156，在 1280×800、英文、浅色、`reduced_motion=reduce` 环境打开公开组件页；只读取页面可见截图、DOM/无障碍文本和最终 URL。临时浏览器进程已由 provider 清理。没有使用登录态，也没有向页面提交表单或触发写入。
+
+### 直接观察
+
+- **Kobra Chat Input**：REA `capture_browser_scenario` Evidence `ev_996ee85086d0d37ca6f674d30e7fe76884766d21c66af9c8f561d80dd054864d`，页面 `https://kobra.systems/components/chat-input`，截图 SHA-256 `9045547a47a52c28ff743f2e4a388136fef80aa5dc5fc7599f9398703858c8b5`。中心演示区把提示输入、模型名“Opus 5.5”、附件入口、麦克风和语音/发送按钮排在同一条紧凑 Composer 中；左侧是组件目录，右侧是组件用途、安装命令、属性和组合说明。无障碍树也把页面说明为 Agent prompt composer，并列出原生 `<form>` props 与 `data-slot` 说明。该页面的“Opus 5.5”是演示文案；本次没有展开模型菜单、发送消息或验证提交行为。截图：![Kobra Chat Input 的 Composer 布局](screenshots/rea-kobra-2026-11-04.png)
+- **Aceternity Sidebar**：REA `capture_browser_scenario` Evidence `ev_d07c9fc718f1a9794c43b6269b5cc741c9867f20f6614a2665c5c7b6b5fbf4d5`，页面 `https://ui.aceternity.com/components/sidebar`，截图 SHA-256 `54997c19d6d0069162a4c3334d0b567ede2739d2acaa9da78dbdebe252af362e`。页面上方为组件站全局导航，左侧列出模板/区块类别，中间为 Sidebar 预览及 Preview/Code 工具，右侧为产品介绍和升级入口。页内写有 hover 展开、移动端与暗色支持；本次未执行 hover、窄窗重排或主题切换，因此这些仍是站点说明，不是本轮独立行为验证。截图：![Aceternity Sidebar 展示页布局](screenshots/rea-aceternity-2026-11-04.png)
+- **Rare UI**：REA Evidence `ev_b4c540b1a1a73cff7b33a99944025ae7f01175f4ade0e03375069588b1bfec48`，页面 `https://rareui.com/` 返回 Vercel Security Checkpoint“Failed to verify your browser / Code 21”。截图 SHA-256 `f137318936e9944d88f6ed179692bbe93fcfdfebcdbd662270a64bdb832931bb`。没有取得 Rare UI 组件或交互证据，本节不对其设计作判断。EasyUI 与 Pin UI 本轮未检查。
+
+### 与 EGO、Kaze 及 Corvid 的取舍
+
+- **产品事实沿用已有窗口证据**：EGO 的 REA 窗口记录 `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 显示标准浏览器 chrome 与可见 Space 入口；Kaze 的 `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067` 显示 Browser/Skills/Scheduled/Activity 导航、Space/标签组织与网页画布；`ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 显示模型选择器贴近 Agent 输入。以上是 2026-11-02 的有限窗口观察，不是本轮重测，也不证明未观察到的交互。
+- **产品判断**：Corvid 的主窗口继续保持 EGO 式日常浏览：网页、标签、地址栏和常用浏览入口占据主要空间；Agent 用可持续找到的并行工作区承载任务、消息、模型选择和用户接管。Kobra 的可复用细节是把当前模型和输入动作放在同一 Composer 附近；Corvid 还要明确页面上下文、授权和运行状态。麦克风、语音发送等演示控件只有在 Corvid 明确支持这些能力时才加入，不从参考组件推导需求。
+- **不采用参考站整体布局**：Kobra 的三栏是组件目录、演示区和组件文档；Aceternity 还增加商品推广栏。这些结构服务于组件发现/销售，不适合作为 Corvid 的日常浏览壳。对 Corvid 有用的是职责清楚和选中状态易辨，不是照搬三栏比例、商业入口或组件配色。
+- **当前未验证**：本轮没有重新读取 EGO/Kaze 原生窗口，也没有在 Corvid 当前主分支运行相同 viewport 的实机对照。CUA 报告 macOS 仍处于锁屏状态，因此不能把历史 EGO/Kaze 证据写成今日现场复测。模型菜单展开、真实 Agent 消息流程、键盘/读屏、窄窗及暗色表现均需各自的产品运行态验收。
+
+结论与现有 D21、Issue #16 和 Issue #56 一致，本次没有发现新的未跟踪缺口，不另开 Issue。后续 UI 切片按 Corvid 自身流程验收：浏览器画布优先、Agent 状态与输入可达、当前模型及页面来源清楚，且双语、键盘、窄窗和控制权反馈完整。组件页只提供局部交互参考，不构成 Corvid 的视觉规范，也不授权复制代码、图标或素材。
