@@ -71,7 +71,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.ok(latestCatalog.providers.some(provider => provider.id === 'corvid-fixture-endpoint'), 'custom provider appears in the model catalog');
     await selection.selectOption(customOption[0].value);
     await shell.getByText('已连接').waitFor();
-    await shell.getByRole('button', { name: '关闭' }).click();
+    await shell.getByRole('button', { name: '关闭', exact: true }).click();
 
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     await shell.getByText(/任务页面：Corvid Agent 对话/).waitFor();
