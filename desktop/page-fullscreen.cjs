@@ -4,11 +4,11 @@ function clearPageFullscreen(record, tabId, describe) {
   record.htmlFullscreenTabId = null;
 
   const browserWindow = record.browserWindow;
-  if (!record.appFullscreen && !browserWindow.isDestroyed() && browserWindow.isFullScreen()) {
+  if (!record.closing && !record.appFullscreen && !browserWindow.isDestroyed() && browserWindow.isFullScreen()) {
     record.fullscreenTransitionTarget = false;
     browserWindow.setFullScreen(false);
   }
-  if (!browserWindow.isDestroyed()) browserWindow.webContents.send('shell-state', describe(record, true));
+  if (!record.closing && !browserWindow.isDestroyed()) browserWindow.webContents.send('shell-state', describe(record, true));
   return true;
 }
 

@@ -70,3 +70,12 @@ test('clears state without calling a destroyed BrowserWindow', () => {
   assert.deepEqual(calls.setFullScreen, []);
   assert.deepEqual(calls.sent, []);
 });
+
+test('clears state without starting another fullscreen transition while closing', () => {
+  const { record, calls } = createRecord({ record: { closing: true } });
+  assert.equal(clearPageFullscreen(record, 'tab-a', describe), true);
+  assert.equal(record.htmlFullscreen, false);
+  assert.equal(record.htmlFullscreenTabId, null);
+  assert.deepEqual(calls.setFullScreen, []);
+  assert.deepEqual(calls.sent, []);
+});
