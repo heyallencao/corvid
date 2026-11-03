@@ -127,3 +127,19 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 **推断**：保留 EGO 的浏览器主画布，沿用 Kaze 的任务/模型入口组织；把后续消息放在原 Corvid Agent 对话卡片中，而不是另建占据浏览主画面的队列中心。消息条目提供可见顺序、编辑、上下移动和移除；运行中只保存消息；当前轮结束后仅允许显式检查新页面、查看快照并同意后发送队首。排队、恢复或重启都不触发自动派发。队列列表独立限高滚动，减少短窗口里长列表挤压对话输入与网页的风险。
 
 这借鉴的是 EGO/Kaze 的浏览器与协作信息层级，以及 Kobra 的聊天记录/输入分区。REA 未观察到上述竞品队列交互的完整运行态；本地实现仍需用确定性 Runtime、真实 Electron、双语和短高窗口验收。不得把组件页或更新说明当作竞品稳定性、权限安全或服务质量结论。
+
+## 2026-11-04 Kaze 已安装包的 REA 静态复核
+
+为补充“EGO 日常浏览器 + Kaze Agent 协作”的证据，本轮用 REA 对当前安装的 `/Applications/Kaze.app/Contents/Resources/app.asar` 做定向分析。包 SHA-256 为 `c168a2ef9b3586a9de0965972ec82bebb9391fa68dfbf876e4b7c173ce6682d4`，与此前记录相同。只选择 `out/main/agent.js` 和 `out/preload/shell.cjs` 两个 JS 文件；REA 总结 Evidence `ev_521b1a7b3a1d30294f91690ead6e99621a0048361cc99db00120799e5b819915`，完整 parent Evidence `ev_d664837cb9fea6eb6a43e2354a610a8852979ad975d25b21303995dcbc8acb53`。后续 retained-evidence 精确查询的 bridge/IPC 视图沿用 parent Evidence。
+
+### 直接观察与静态证据
+
+- **此前运行态观察（历史 Evidence）**：REA 窗口截图 `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067` 可见 Kaze 的 Browser/Skills/Scheduled/Activity 导航、Space/标签分区和网页主画布；截图 `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 可见 Agent 面板、模型选择器和输入区相邻。它们是有限窗口截图，不证明其他状态下的布局或完整交互。
+- **本轮静态结构（REA）**：Preload 在 `shell.cjs` 中声明 `kaze` bridge，静态识别出 `invoke`、`language`、`on`、`pathForFile`、`platform` 五个成员；另有 `browserAction` bridge，但 API 状态为 dynamic，成员无法静态确定。REA 同时识别到 `browserAction.update` 监听，以及 `IPC_PREFIX + channel/event` 等动态 IPC 表达式。该数据只证明所选文件中存在这些静态结构，不能证明 renderer 调用、运行时注册、执行权限或动作效果。
+- **覆盖范围/未知**：仅解析 2 个 JS 文件；另有 14,852 个包内文件未做源码分析。REA 报告 5 项 unpacked native 文件完整性矛盾，相关字节按 observed-untrusted 处理；这些差异限制相应 native 文件的来源判断。JavaScript 未执行；Kaze Agent 面板运行态、模型选择行为、授权、失败恢复和 BrowserMCP 执行链仍未知。EGO 本体在此轮未重跑 REA；其闭源运行态判断仍只沿用此前具名窗口 Evidence，不从公开 ego-lite harness 推断桌面内部实现。
+
+### 对 Corvid 的产品判断
+
+运行态证据继续支持“网页画布保持浏览器主角；Space/标签和 Agent 入口可持续找到；模型选择贴近对话输入”的信息层级。静态 Preload 结果只提供一条实现层启发：跨进程能力应由明确、窄范围的 Corvid bridge 暴露，具体浏览动作继续经过 Room/Page、控制权和授权检查；不能把 Kaze 的 bridge 或 IPC 结构视为安全合同，也不能据其静态存在推断某动作真实可用。
+
+本轮没有改变主线或 D21 执行顺序。日常浏览器完整度、任务状态与接管、Corvid Agent 工作台和 BrowserMCP 权限边界已在执行板 D20/D21、Issue #4/#16/#56 追踪；当前没有新的、未跟踪且由直接运行态证据证实的产品缺口，因此不新增 Issue。该分析不替代 Corvid 自身的真实 Electron、双语、键盘/窄窗和本地 fixture 验收。
