@@ -39,6 +39,8 @@ test('启动超时诊断读取最后阶段且忽略损坏或缺失的阶段文�
     fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), JSON.stringify({ stage: 'tab-bootstrap-page-debugger', pid: 4321, token: 'secret' }));
     assert.equal(startupStage(dataDir), 'tab-bootstrap-page-debugger');
     assert.equal(startupStage(dataDir, 4322), '没有当前主进程的阶段记录');
+    fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), JSON.stringify({ stage: 'leak-secret\n', pid: 4321 }));
+    assert.equal(startupStage(dataDir, 4321), '阶段不可用');
     fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), '{');
     assert.equal(startupStage(dataDir), '阶段记录不可读取');
   } finally {

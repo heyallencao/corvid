@@ -62,7 +62,7 @@ function startupStage(dataDir, expectedPid) {
   try {
     const value = JSON.parse(fs.readFileSync(path.join(dataDir, 'startup-progress.json'), 'utf8'));
     if (Number.isInteger(expectedPid) && value.pid !== expectedPid) return '没有当前主进程的阶段记录';
-    return typeof value.stage === 'string' ? value.stage : '阶段不可用';
+    return typeof value.stage === 'string' && /^[a-z0-9-]{1,80}$/.test(value.stage) ? value.stage : '阶段不可用';
   } catch (error) {
     return error.code === 'ENOENT' ? '无阶段记录' : '阶段记录不可读取';
   }
