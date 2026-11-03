@@ -5,6 +5,9 @@ function userFacingAgentError(error, fallback='Corvid Agent 暂时无法完成�
   return implementationName.test(message) ? fallback : (message||fallback);
 }
 let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
+const extensionPopupOpenIds=new Set();
+let extensionToolbarSignature='';
+const extensionMessages=window.corvidI18n;
 let chromeImportOnboardingPrompted=false;
 const piModelControlVersions=new WeakMap();
 let agentRoomRenderVersion=0;
@@ -37,6 +40,7 @@ function draw(value) {
   const activeProfile=state.profiles.find(profile=>profile.id===state.activeProfileId);
   document.querySelector('.profile-avatar').textContent=(activeProfile?.name||'A').trim().charAt(0).toLocaleUpperCase()||'A';
   profileSelect.onchange=()=>api.invoke('activateProfile',{id:profileSelect.value});
+  renderExtensionToolbar();
   const roomStrip=document.querySelector('#room-strip');roomStrip.replaceChildren();
   for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) {
     const item=button(s.name,()=>api.invoke('activateRoom',{id:s.id}),s.id===state.activeRoomId);
@@ -66,7 +70,7 @@ function draw(value) {
   if(addressDraftDirty && (addressDraftTabId!==active?.id || addressDraftBaseUrl!==active?.url)){addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;}
   if(!addressDraftDirty && document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
-  const status=document.querySelector('#status'); status.replaceChildren();
+  const status=document.querySelector('#status');status.setAttribute('role','status');status.replaceChildren();
   if(active?.isLoading){const loading=document.createElement('span');loading.className='navigation-loading';loading.textContent='正在加载';status.append(loading);}
   if(active?.navigationError){const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=`页面加载失败：${active.navigationError.message}`;status.append(error);if(room.ownership!=='agent'&&!room.userResumePending)status.append(button('重试',()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));}
   if(room.executionRisk) status.append(button('页面执行状态未知 · 查看',()=>api.invoke('reviewExecutionRisk',{id:room.id})));
@@ -78,6 +82,39 @@ function draw(value) {
   if(controlError){const note=document.createElement('span');note.setAttribute('role','alert');note.textContent=controlError;status.append(note);}
   if(siteDataNotice?.tabId===active?.id){const note=document.createElement('span');note.setAttribute('role','status');note.textContent=siteDataNotice.message;status.append(note);}
 }
+function renderExtensionToolbar(){
+  const host=document.querySelector('#extension-toolbar');
+  host.setAttribute('aria-label',extensionMessages.t('extensionToolbar'));
+  const extensions=state.extensionToolbar||[];
+  const signature=[state.activeProfileId,...extensions.map(item=>`${item.id}:${item.name}:${item.icon||''}`)].join('|');
+  if(signature===extensionToolbarSignature)return;
+  extensionToolbarSignature=signature;host.replaceChildren();
+  for(const extension of extensions){
+    const trigger=document.createElement('button');trigger.type='button';trigger.className='extension-toolbar-button';
+    if(extension.icon){const icon=document.createElement('img');icon.src=extension.icon;icon.alt='';icon.draggable=false;trigger.append(icon);}else trigger.textContent=(extension.name.trim().charAt(0)||'E').toLocaleUpperCase();
+    trigger.dataset.extensionId=extension.id;
+    trigger.title=extension.name;trigger.setAttribute('aria-label',extensionMessages.t('extensionPopup',{name:extension.name}));trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded',String(extensionPopupOpenIds.has(extension.id)));
+    trigger.onclick=async()=>{
+      const bounds=trigger.getBoundingClientRect();
+      try{
+        const result=await api.invoke('openExtensionPopup',{profileId:state.activeProfileId,extensionId:extension.id,anchor:{left:bounds.left,right:bounds.right,top:bounds.top,bottom:bounds.bottom}});
+        if(result.open)extensionPopupOpenIds.add(extension.id);else extensionPopupOpenIds.delete(extension.id);
+        trigger.setAttribute('aria-expanded',String(Boolean(result.open)));
+      }catch(error){
+        const status=document.querySelector('#status');status.textContent=error?.code==='EXTENSION_POPUP_UNAVAILABLE'?extensionMessages.t('extensionPopupUnavailable'):extensionMessages.t('extensionPopupFailed');
+        status.setAttribute('role','alert');
+        trigger.focus();
+      }
+    };
+    host.append(trigger);
+  }
+}
+api.onExtensionPopupState(({id,open,focusTrigger})=>{
+  if(typeof id!=='string')return;
+  if(open)extensionPopupOpenIds.add(id);else extensionPopupOpenIds.delete(id);
+  const trigger=document.querySelector(`.extension-toolbar-button[data-extension-id="${CSS.escape(id)}"]`);
+  if(trigger){trigger.setAttribute('aria-expanded',String(Boolean(open)));if(focusTrigger)trigger.focus();}
+});
 let dialogTabId;
 async function showPageDialog(tab) {
   dialogTabId=tab.id;document.querySelector('#page-dialog-message').textContent=tab.dialog.message;

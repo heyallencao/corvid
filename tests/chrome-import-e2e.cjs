@@ -23,8 +23,10 @@ function writeExtension(profileDir,name,marker){
   const {publicKey}=crypto.generateKeyPairSync('rsa',{modulusLength:1024,publicKeyEncoding:{type:'spki',format:'der'},privateKeyEncoding:{type:'pkcs1',format:'pem'}});
   const id=crypto.createHash('sha256').update(publicKey).digest().subarray(0,16).toString('hex').replace(/[0-9a-f]/g,n=>String.fromCharCode('a'.charCodeAt(0)+parseInt(n,16)));
   const versionDir=path.join(idDir,id,'1.0.0');fs.mkdirSync(versionDir,{recursive:true});
-  fs.writeFileSync(path.join(versionDir,'manifest.json'),JSON.stringify({manifest_version:3,name,version:'1.0.0',key:publicKey.toString('base64'),permissions:['storage'],optional_permissions:['tabs'],host_permissions:['<all_urls>'],optional_host_permissions:['https://*.example.com/*'],content_scripts:[{matches:['<all_urls>'],js:['content.js'],run_at:'document_end'}]}));
+  fs.writeFileSync(path.join(versionDir,'manifest.json'),JSON.stringify({manifest_version:3,name,version:'1.0.0',key:publicKey.toString('base64'),permissions:['storage'],optional_permissions:['tabs'],host_permissions:['<all_urls>'],optional_host_permissions:['https://*.example.com/*'],action:{default_popup:'popup.html'},content_scripts:[{matches:['<all_urls>'],js:['content.js'],run_at:'document_end'}]}));
   fs.writeFileSync(path.join(versionDir,'content.js'),`document.documentElement.dataset.${marker}='loaded';`);
+  fs.writeFileSync(path.join(versionDir,'popup.html'),`<!doctype html><html><head><meta charset="utf-8"><style>html,body{width:320px;height:220px;margin:0}body{box-sizing:border-box;padding:24px;font:14px system-ui;color:#1c2430;background:#fff}.card{padding:18px;border:1px solid #e4e8ef;border-radius:14px}small{color:#64748b}</style></head><body><section class="card"><strong id="popup-name">${name}</strong><p>本地扩展弹窗夹具</p><small id="popup-id"></small></section><script src="popup.js"></script></body></html>`);
+  fs.writeFileSync(path.join(versionDir,'popup.js'),`document.querySelector('#popup-id').textContent=chrome.runtime.id;`);
   return id;
 }
 
@@ -34,6 +36,8 @@ function addExtensionVersion(profileDir,id,version){
   const manifest=JSON.parse(fs.readFileSync(path.join(source,'manifest.json'),'utf8'));manifest.version=version;
   fs.writeFileSync(path.join(destination,'manifest.json'),JSON.stringify(manifest));
   fs.copyFileSync(path.join(source,'content.js'),path.join(destination,'content.js'));
+  fs.copyFileSync(path.join(source,'popup.html'),path.join(destination,'popup.html'));
+  fs.copyFileSync(path.join(source,'popup.js'),path.join(destination,'popup.js'));
 }
 
 function makeChromeFixture(root){
@@ -147,6 +151,9 @@ async function extensionValue(app,url,key,partition='persist:corvid'){
     const page=webContents.getAllWebContents().find(contents=>contents.getURL()===target&&contents.session.getStoragePath()?.endsWith(storageSuffix));
     return page?page.executeJavaScript(`document.documentElement.dataset.${keyName} || ''`):'';
   },{target:url,keyName:key,partitionName:partition});
+}
+async function extensionPopupWindowOpen(app,urlPrefix){
+  return app.evaluate(({BrowserWindow},prefix)=>BrowserWindow.getAllWindows().some(window=>window.webContents.getURL().startsWith(prefix)),urlPrefix);
 }
 
 async function installDialogFixture(app,chromeRoot){
@@ -282,6 +289,32 @@ async function allowCookieImport(shell){
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
     await shell.getByRole('button',{name:'Extension Fixture'}).waitFor();
     await until(async()=>await extensionValue(app,extensionUrl,'corvidDefaultExtension')==='loaded','default Chrome extension content script');
+    const popupTrigger=shell.locator('#extension-toolbar .extension-toolbar-button');
+    await popupTrigger.waitFor();assert.equal(await popupTrigger.count(),1,'only the enabled extension declaring a popup should appear in the toolbar');
+    const localeContract=await shell.evaluate(()=>({locale:window.corvidI18n.locale,catalogs:window.corvidI18n.catalogs,label:window.corvidI18n.t('extensionPopup',{name:'Corvid Marker'})}));
+    assert.deepEqual(Object.keys(localeContract.catalogs['zh-CN']).sort(),Object.keys(localeContract.catalogs.en).sort(),'extension popup UI strings must be complete in both locales');
+    assert.equal(await popupTrigger.getAttribute('aria-label'),localeContract.label,'extension toolbar accessible name should use the active locale');
+    const screenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(screenshotDir,{recursive:true});
+    await shell.screenshot({path:path.join(screenshotDir,'issue-129-extension-toolbar.png')});
+    await popupTrigger.click();
+    const popupUrlPrefix=`chrome-extension://${chromeProfiles[0].extensionId}/popup.html`;
+    const popupPage=await until(async()=>app.windows().find(page=>page.url().startsWith(popupUrlPrefix))||null,'extension popup window');
+    await popupPage.locator('#popup-id').waitFor();assert.equal(await popupPage.locator('#popup-id').textContent(),chromeProfiles[0].extensionId);
+    const popupSize=await popupPage.evaluate(()=>({width:innerWidth,height:innerHeight}));
+    await popupPage.screenshot({path:path.join(screenshotDir,'issue-129-extension-popup.png')});
+    assert.deepEqual(popupSize,{width:320,height:220},'popup window should follow the extension content size within the Corvid bounds');
+    const popupSessionPath=await app.evaluate(({webContents},url)=>webContents.getAllWebContents().find(contents=>contents.getURL()===url)?.session.getStoragePath(),popupPage.url());
+    assert.ok(popupSessionPath?.endsWith(`${path.sep}Partitions${path.sep}corvid`),'popup should use the default Profile partition');
+    const popupPreferences=await app.evaluate(({webContents},url)=>webContents.getAllWebContents().find(contents=>contents.getURL()===url)?.getLastWebPreferences(),popupPage.url());
+    assert.equal(popupPreferences?.nodeIntegration,false,'extension popup must not receive Node integration');assert.equal(popupPreferences?.sandbox,true,'extension popup must remain sandboxed');
+    await popupPage.bringToFront();await until(()=>popupPage.evaluate(()=>document.hasFocus()),'extension popup focus before Escape');
+    await app.evaluate(({webContents},url)=>{const popup=webContents.getAllWebContents().find(contents=>contents.getURL()===url);popup.sendInputEvent({type:'keyDown',keyCode:'ESC'});popup.sendInputEvent({type:'keyUp',keyCode:'ESC'});},popupPage.url());
+    await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup Escape close');
+    assert.equal(await shell.evaluate(()=>document.activeElement?.dataset.extensionId),chromeProfiles[0].extensionId,'Escape should return focus to the toolbar trigger');
+    await popupTrigger.click();
+    await until(async()=>extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup reopen');
+    await shell.bringToFront();await shell.locator('#more-tools').click();
+    await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup outside click close');
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'failed extension copies must not remain in managed state');
     assert.equal(fs.existsSync(require('../desktop/chrome-extensions.cjs').managedPath(appData,'default',chromeProfiles[0].symlinkExtensionId,'1.0.0')),false,'failed extension copies must be cleaned up');
 
@@ -340,9 +373,19 @@ async function allowCookieImport(shell){
     await shell.getByRole('button',{name:'Extension Fixture'}).waitFor();
     await until(async()=>await extensionValue(app,extensionUrl,'corvidWorkExtension',`persist:corvid-profile-${work.id}`)==='loaded','work Chrome extension content script');
     assert.equal(await extensionValue(app,extensionUrl,'corvidDefaultExtension',`persist:corvid-profile-${work.id}`),'','default extension must not be loaded in work Profile');
+    const workPopupTrigger=shell.locator('#extension-toolbar .extension-toolbar-button');await workPopupTrigger.waitFor();
+    await workPopupTrigger.click();
+    const workPopupUrl=`chrome-extension://${chromeProfiles[1].extensionId}/popup.html`;
+    const workPopupPage=await until(async()=>app.windows().find(page=>page.url().startsWith(workPopupUrl))||null,'work Profile extension popup');
+    const workPopupSession=await app.evaluate(({webContents},url)=>webContents.getAllWebContents().find(contents=>contents.getURL()===url)?.session.getStoragePath(),workPopupPage.url());
+    assert.ok(workPopupSession?.endsWith(`${path.sep}Partitions${path.sep}corvid-profile-${work.id}`),'work popup should use only its owning Profile session');
+    await shell.locator('#profile-select').selectOption('default');
+    await until(async()=>!await extensionPopupWindowOpen(app,workPopupUrl),'Profile switch should close the open extension popup');
+    await shell.locator('#profile-select').selectOption(work.id);
     await shell.locator('#show-settings').click();
     await shell.getByRole('checkbox',{name:'停用 Corvid Work Marker'}).click();
     await shell.getByRole('checkbox',{name:'启用 Corvid Work Marker'}).waitFor();
+    assert.equal(await shell.locator('#extension-toolbar .extension-toolbar-button').count(),0,'disabled extensions should disappear from the toolbar');
     await shell.locator('#settings').press('Escape').catch(()=>{});
     await shell.locator('#address').fill('about:blank');await shell.locator('#address').press('Enter');
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
