@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
+const { permissionDisplayName } = require('./permission-labels.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 let dataDirectoryError = null;
@@ -410,9 +411,10 @@ function installDownloads(partition,profileId) {
     // before displaying the request so new automation cannot race the choice.
     if(room.ownership==='agent') {for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);pageDebugger.cancelChooser(findTab(tabId).view.webContents).catch(()=>{});}room.ownership='user';room.yielded=true;room.manualControl=Boolean(room.userResumePending);update();}
     const requestedUrl=details.requestingUrl;
-    const media=Array.isArray(details.mediaTypes) && details.mediaTypes.length ? `（${details.mediaTypes.join('、')}）` : '';
-    const scope=rememberable.has(permission) ? '允许后，本次运行期间此 Profile 的同来源页面可使用该权限。' : '此选择仅针对当前请求。';
-    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求 ${permission}${media} 权限`,detail:`空间：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
+    const profile=findProfile(room.profileId);
+    const permissionName=permissionDisplayName(permission,details.mediaTypes);
+    const scope=rememberable.has(permission) ? '允许后，本次运行期间此浏览身份的同来源页面可使用该权限。' : '此选择仅针对当前请求。';
+    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求以下权限：${permissionName}`,detail:`浏览身份：${profile.name}；空间：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
       .then(({response})=>{const allowed=response===1 && !contents.isDestroyed() && contents.getURL()===requestedUrl;if(allowed && rememberable.has(permission))grants.add(grantKey(origin,permission));callback(allowed);},()=>callback(false));
   });
   browserSession.on('will-download',(event,item,contents) => {
@@ -993,7 +995,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可管理权限的 HTTP(S) 站点');}
       const grants=permissionGrants.get(partitionFor(profile.id));if(!grants)throw new Error('浏览身份权限状态不可用');
       const allowed=[...grants].map(key=>JSON.parse(key)).filter(([site])=>site===origin).map(([,permission])=>permission);
-      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`浏览身份：${profile.name}。${allowed.length ? allowed.join('、') : '暂无已记录的允许权限'}。同一浏览身份的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
+      const allowedNames=allowed.map(permission=>permissionDisplayName(permission));
+      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`浏览身份：${profile.name}。${allowedNames.length ? allowedNames.join('、') : '暂无已记录的允许权限'}。同一浏览身份的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
       if(choice.response!==1)return {revoked:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
       if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');

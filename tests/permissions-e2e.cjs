@@ -1,5 +1,14 @@
 const {_electron}=require('playwright-core');const electron=require('electron');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const http=require('node:http');const assert=require('node:assert/strict');
+const {permissionDisplayName,unknownPermissionLabel}=require('../desktop/permission-labels.cjs');
+const electronTypes=fs.readFileSync(require.resolve('electron/electron.d.ts'),'utf8');
+const permissionUnion=electronTypes.match(/setPermissionRequestHandler\(handler: \(\(webContents: WebContents, permission: ([^,]+), callback:/);
+assert.ok(permissionUnion,'Electron permission types must remain discoverable');
+const permissionTypes=permissionUnion[1].split('|').map(value=>value.trim().slice(1,-1));
+for(const permission of permissionTypes){const label=permissionDisplayName(permission);assert.ok(label && !label.includes(permission),`${permission} must have a readable localized label`);if(permission!=='unknown')assert.notEqual(label,unknownPermissionLabel,`${permission} needs a specific label`);}
+assert.equal(permissionDisplayName('future-permission-id'),unknownPermissionLabel,'unknown identifiers stay hidden');
+assert.match(permissionDisplayName('media',['audio','video']),/麦克风.*摄像头/);
+assert.equal(permissionDisplayName('display-capture',['video','audio']),'共享屏幕或窗口及音频');
 const project=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 (async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-permissions-'));const fixture=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end('<title>Permission fixture</title>');});await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));let app;
 try{app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,CORVID_DATA_DIR:dir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});const shell=await app.firstWindow();let config;for(let i=0;i<200;i++){try{config=JSON.parse(fs.readFileSync(path.join(dir,'control.json')));break;}catch{await delay(25);}}assert.ok(config);
@@ -7,12 +16,12 @@ const call=async(method,route,body)=>{const response=await fetch(config.baseUrl+
 await app.evaluate(({dialog})=>{globalThis.permissionPrompts=[];dialog.showMessageBox=async(_window,options)=>{globalThis.permissionPrompts.push(options);return {response:0};};});
 const room=await call('POST','/rooms',{name:'Permission fixture'});const tab=room.tabs[0];await call('POST',`/tabs/${tab.id}/navigate`,{url:`http://127.0.0.1:${fixture.address().port}/`});
 const result=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'Notification.requestPermission()'}});assert.equal(result.value,'denied');
-const prompts=await app.evaluate(()=>globalThis.permissionPrompts);assert.equal(prompts.length,1);assert.match(prompts[0].message,/127\.0\.0\.1.*notifications/);assert.match(prompts[0].detail,/Permission fixture/);
+const prompts=await app.evaluate(()=>globalThis.permissionPrompts);assert.equal(prompts.length,1);assert.match(prompts[0].message,/127\.0\.0\.1.*通知/);assert.doesNotMatch(prompts[0].message,/notifications/);assert.match(prompts[0].detail,/浏览身份：默认.*空间：Permission fixture/);assert.deepEqual(prompts[0].buttons,['拒绝','允许']);assert.equal(prompts[0].defaultId,0);assert.equal(prompts[0].cancelId,0);
 assert.equal((await call('GET','/rooms')).rooms.find(s=>s.id===room.id).ownership,'user');await call('POST',`/rooms/${room.id}/resumeControl`,{});
 await app.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.permissionPrompts.push(options);return {response:1};};});
 await call('POST',`/tabs/${tab.id}/navigate`,{url:`http://localhost:${fixture.address().port}/`});
 const allowed=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'Notification.requestPermission()'}});assert.equal(allowed.value,'granted');
-assert.match((await app.evaluate(()=>globalThis.permissionPrompts))[1].message,/localhost.*notifications/);
+assert.match((await app.evaluate(()=>globalThis.permissionPrompts))[1].message,/localhost.*发送通知/);assert.doesNotMatch((await app.evaluate(()=>globalThis.permissionPrompts))[1].message,/notifications/);
 assert.equal((await call('GET','/rooms')).rooms.find(s=>s.id===room.id).ownership,'user');await call('POST',`/rooms/${room.id}/resumeControl`,{});
 const afterGrant=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:"(async()=>({notification:Notification.permission,query:(await navigator.permissions.query({name:'notifications'})).state}))()"}});assert.deepEqual(afterGrant.value,{notification:'granted',query:'granted'});
 const again=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'Notification.requestPermission()'}});assert.equal(again.value,'granted');assert.equal((await app.evaluate(()=>globalThis.permissionPrompts)).length,2);
@@ -38,7 +47,7 @@ await siteToolsTrigger.click();await shell.locator('#address').click();await sit
 assert.equal(await siteToolsTrigger.getAttribute('aria-expanded'),'false','outside click resets expanded state');
 await siteToolsTrigger.press('ArrowDown');await shell.keyboard.press('Tab');await siteTools.waitFor({state:'hidden'});
 assert.equal(await siteToolsTrigger.getAttribute('aria-expanded'),'false');assert.equal(await shell.evaluate(()=>document.activeElement.closest('#site-tools')===null),true,'Tab leaves the menu');assert.notEqual(await shell.evaluate(()=>document.activeElement.id),'more-tools','Tab advances away from the menu trigger');
-await app.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.permissionReview=options;return {response:0};};});await siteToolsTrigger.click();await shell.getByRole('menuitem',{name:'管理站点权限'}).click();await delay(50);assert.equal(await query(shared,'Notification.permission'),'granted');assert.match((await app.evaluate(()=>globalThis.permissionReview)).detail,/notifications/);
+await app.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.permissionReview=options;return {response:0};};});await siteToolsTrigger.click();await shell.getByRole('menuitem',{name:'管理站点权限'}).click();await delay(50);assert.equal(await query(shared,'Notification.permission'),'granted');assert.match((await app.evaluate(()=>globalThis.permissionReview)).detail,/发送通知/);assert.doesNotMatch((await app.evaluate(()=>globalThis.permissionReview)).detail,/notifications/);
 assert.equal(await siteToolsTrigger.getAttribute('aria-haspopup'),'menu');assert.equal(await siteToolsTrigger.getAttribute('aria-expanded'),'false');assert.equal(await shell.evaluate(()=>document.activeElement.id),'more-tools','menu actions return focus to the trigger');
 await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});});await shell.getByRole('button',{name:'更多浏览工具'}).click();await shell.getByRole('menuitem',{name:'管理站点权限'}).click();await shell.getByRole('status').getByText(/已撤销/).waitFor();assert.equal(await query(shared,'Notification.permission'),'denied');assert.equal((await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'Notification.permission'}})).value,'denied');assert.equal(await query(isolated,'Notification.permission'),'granted');
 assert.equal(await query(shared,'Notification.requestPermission()'),'granted');await call('POST',`/rooms/${shared.id}/resumeControl`,{});
