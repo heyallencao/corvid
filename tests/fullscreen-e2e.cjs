@@ -32,6 +32,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     const shell=await app.firstWindow();
     await until(()=>{try{config=JSON.parse(fs.readFileSync(path.join(dataDir,'control.json')));return Boolean(config);}catch{return false;}},'control API config');
+    await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
+    await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
     await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),'maximized window before full screen');
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
@@ -42,6 +44,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>{const state=await api('/rooms');return state.windows[0]?.fullscreen===true;},'app full-screen state');
     assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen()),true);
     assert.equal(await shell.locator('#rooms').isVisible(),true,'browser navigation remains visible in app full screen');
+    assert.equal(await shell.locator('#library[data-kind="pi-workbench"]').isVisible(),true,'Corvid Agent workspace remains visible in app full screen');
 
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
     assert.equal(await shell.getByRole('menuitemcheckbox',{name:'全屏模式'}).getAttribute('aria-checked'),'true');
