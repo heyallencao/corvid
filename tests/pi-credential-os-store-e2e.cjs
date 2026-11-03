@@ -5,13 +5,17 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function launch(dataDir) {
   const extraArgs = String(process.env.CORVID_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
-  const app = await _electron.launch({ executablePath: electronPath, args: [...extraArgs, project], env: {
+  const packagedAppPath = process.env.CORVID_PACKAGED_APP_PATH ? path.resolve(process.env.CORVID_PACKAGED_APP_PATH) : null;
+  if (packagedAppPath && process.env.CORVID_REQUIRE_PACKAGED_SIGNATURE === '1') assertDeveloperIdSignature(packagedAppPath);
+  const executablePath = packagedAppPath ? path.join(packagedAppPath, 'Contents', 'MacOS', 'Corvid') : electronPath;
+  const app = await _electron.launch({ executablePath, args: packagedAppPath ? extraArgs : [...extraArgs, project], env: {
     ...process.env,
     CORVID_DATA_DIR: dataDir,
     CORVID_PORT: '0',
@@ -61,6 +65,8 @@ async function openApiKeyProvider(app) {
   let app;
   try {
     app = await launch(dataDir);
+    if (process.env.CORVID_PACKAGED_APP_PATH) assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.isPackaged), true,
+      'the credential flow runs inside the packaged Corvid app');
     const initialShell = await app.firstWindow();
     const pageUrl = `http://127.0.0.1:${site.address().port}/`;
     await initialShell.getByLabel(/地址或搜索|Address or search/i).fill(pageUrl);
