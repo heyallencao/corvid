@@ -170,6 +170,13 @@
 - 原生 macOS 复核：使用隔离临时数据启动 Electron，以 `System Events` 在真实“窗口”菜单中双向选择窗口，分别读取 `AXMenuItemMarkChar` 勾选与 Corvid `/windows` 焦点 ID；两个方向均一致。人工诊断脚本在菜单仍打开时由 `closeElectron` 超时后结束了本轮自启进程，但在退出前已读完证据；随后检查无残留 Electron。REA `observe_native_ui` 仍因 provider 无法读取进程启动时间而 `capability_unavailable`；此处不宣称 REA 原生观察。
 - 全量回归边界：首次 `npm test` 曾在全屏测试的异步最大化断言失败，已由 [Issue #168](https://github.com/heyallencao/corvid/issues/168) 修正为等待原窗口恢复；后续完整运行已通过该测试，继续在 #5 的 `pi-workbench-e2e.cjs:99` 超时，见上方 #168 记录，不计入 #162 菜单 E2E 失败。
 - 未覆盖与限制：全套 `npm test`、VoiceOver、Windows/Linux、打包版、真实鼠标截图/像素与其他系统语言设置尚未完成；网页菜单的 EasyUI REA Evidence 只提供交互分组参考，不是系统菜单验收依据。本次未调用 OAuth 或真实模型。
+## 2026-11-04 设置中心 PR 重放与定向复验（Issue #165）
+
+- 基线处理：将设置中心分支重放到最新 `origin/main`，保留主线 Agent 消息队列合同，并把设置偏好/当前网站两项 E2E 追加至 `npm test` 和索引；索引现含 63 项入口、7 个 `node:test` 文件（28 项）及 57 条独立脚本命令。
+- 定向验证：使用隔离临时数据目录与 macOS Electron，`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 与 `... node tests/settings-site-e2e.cjs` 均通过；覆盖设置迁移/保存/启动与下载合同、站点来源及权限/数据取消与确认，生成双语常规、窄窗截图。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check desktop/locales.js` 与 `git diff --check` 通过。
+- 非设置路径限制：同一轮 `tests/localization-e2e.cjs` 在 `.pi-model-manage` 定位处 30 秒超时，尚未执行到设置合同；该入口属于另一个 Agent 工作台变化，本 PR 不修改其实现。全量 `npm test` 未执行，不能宣称全量通过。
+- 视觉参考：REA controlled replay 观察 Aceternity UI Grouped Sidebar，Evidence `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb`；直接观察到可访问树中的分组/子项及页面尺寸说明，但没有操作控件。它只用于设置分类命名与选中状态的参考评估；Corvid 未复制代码/样式。运行时与未知范围见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-设置中心首个切片-issue-165)。
+
 ## 2026-11-03 浏览器设置中心首个切片（Issue #165）
 
 - 实现：隔离 Electron 设置中心按常规/搜索、下载、外观、当前网站、浏览身份、Agent/连接分组；应用级主题、启动恢复/新标签、起始页/空白页、下载目录与询问偏好统一写入 `browser-preferences.json` schemaVersion 2（0600，原子替换），兼容迁移只含主题的 schemaVersion 1。网站无 HTTP(S) 来源时站点操作禁用；导航焦点与设置内容滚动已有双语回归。启动与下载偏好行为已由独立 Electron E2E 验收，合同见[执行说明](../execution/issue-165-settings-center.md)。

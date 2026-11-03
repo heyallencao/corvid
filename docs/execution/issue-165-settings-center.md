@@ -20,7 +20,7 @@
 
 ## 验收
 
-- 已有 `tests/localization-e2e.cjs` 检查首个设置切片的 zh-CN/en 资源、分类选择与焦点、无当前网页时站点操作禁用、主题即时应用、0600 持久化和重启恢复。
+- 首个设置切片的 `tests/localization-e2e.cjs` 曾检查 zh-CN/en 资源、分类选择与焦点、无当前网页时站点操作禁用、主题即时应用、0600 持久化和重启恢复。重放至当前主线后复跑该脚本，在 Agent 模型管理入口 `.pi-model-manage` 等待超时，尚未到达设置断言；这是前置工作台路径回归，不能记作本次设置验收通过。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 已通过，覆盖 schemaVersion 1 迁移、设置保存/重启、空白页注入开关、启动新标签复用、下载取消与自动保存、失效目录中英文错误，以及 700×420 设置布局；更新的中英文截图见[视觉检查记录](../qa/ui-visual-check.md)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-site-e2e.cjs` 已通过：空白页禁用站点操作；活动 HTTP(S) 来源显示与操作启用；合成通知权限获准后可在设置中取消审查并保留授权、确认撤销；取消站点数据清理保持 fixture localStorage，确认后清除且不改变独立权限；确认默认选择为非破坏项；语言切换后动态来源仍正确。Electron 权限/清理确认框用替身控制结果。测试截图在 700×420 需滚动内容区，并验证范围说明、当前来源、两个操作按钮及固定底部动作可完整显示。
 - 系统文件夹/保存对话框由测试替身覆盖；真实桌面对话框还需单独验收。
@@ -31,4 +31,4 @@
 
 ## UI/UE 参考
 
-本切片采用 EasyUI 首页的信息分区和可访问状态表达作为有限参考，REA Evidence 与观察/推断/未知边界见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-设置中心首个切片-issue-165)。该参考不是设置产品要求；Corvid 保留自身品牌、组件和交互合同。
+本切片参考 EasyUI 首页的信息分区与可访问状态表达，并检查 Aceternity UI Grouped Sidebar 页面上的分组导航与选中状态，REA Evidence、观察时间及证据边界见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-设置中心首个切片-issue-165)。两者只提供有限的分区/状态灵感，不构成设置产品要求；Corvid 保留自身品牌、组件和交互合同。

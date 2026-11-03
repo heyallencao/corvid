@@ -2,6 +2,7 @@
 
 本索引覆盖 `tests/` 下 72 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 63 条独立脚本命令，共 94 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
+
 ## 共同前提与限制
 
 - 环境：本机 macOS、Electron 45.2.1、Node.js v24.14.1；Issue #113 多窗口同步修正后，2026-11-03 连续两轮全量串行回归均退出码 0，每轮 45 条独立脚本命令 + 3 个 `node:test` 用例，共 48 项。
