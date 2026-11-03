@@ -147,12 +147,12 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 
 ## 2026-11-04 REA 交互参考补充：Agent 输入与侧栏展示
 
-本次使用 REA provider-owned 临时 Chromium 156，在 1280×800、英文、浅色、`reduced_motion=reduce` 环境打开公开组件页；只读取页面可见截图、DOM/无障碍文本和最终 URL。临时浏览器进程已由 provider 清理。没有使用登录态，也没有向页面提交表单或触发写入。
+本次观察时间为 2026-11-04 06:45–06:51（Asia/Shanghai）。使用 REA provider-owned 临时 Chromium 156，在 1280×800、英文、浅色、`reduced_motion=reduce` 环境打开公开组件页；只读取页面可见截图、DOM/无障碍文本和最终 URL。临时浏览器进程已由 provider 清理。没有使用登录态，也没有向页面提交表单或触发写入。
 
 ### 直接观察
 
-- **Kobra Chat Input**：REA `capture_browser_scenario` Evidence `ev_b3cb680b8e95ff9af3c484575dbf963306d2ba269e5a0ecc5569253374faab24`，页面 `https://kobra.systems/components/chat-input`，截图 SHA-256 `21cf1b2cfed47ca5d6fbe7ee6dc5dde441f23b8a766935f15fda24e60a65fa28`。中心演示区把提示输入、模型名“Opus 5.5”、附件入口、麦克风和语音/发送按钮排在同一条紧凑 Composer 中；左侧是组件目录，右侧是组件用途、安装命令、属性和组合说明。无障碍树也把页面说明为 Agent prompt composer，并列出原生 `<form>` props 与 `data-slot` 说明。该页面的“Opus 5.5”是演示文案；本次没有展开模型菜单、发送消息或验证提交行为。
-- **Aceternity Sidebar**：REA `capture_browser_scenario` Evidence `ev_1eba12247d1d656a1eb51ec2cf246a58e1924804371e5cf2fdf77f999c1f3353`，页面 `https://ui.aceternity.com/components/sidebar`，截图 SHA-256 `319516e2dfb5facba48883c404b2d57c3a31a1508bfae7f3cc4195debf167d66`。页面上方为组件站全局导航，左侧列出模板/区块类别，中间为 Sidebar 预览及 Preview/Code 工具，右侧为产品介绍和升级入口。页内写有 hover 展开、移动端与暗色支持；本次未执行 hover、窄窗重排或主题切换，因此这些仍是站点说明，不是本轮独立行为验证。
+- **Kobra Chat Input**：REA `capture_browser_scenario` Evidence `ev_996ee85086d0d37ca6f674d30e7fe76884766d21c66af9c8f561d80dd054864d`，页面 `https://kobra.systems/components/chat-input`，截图 SHA-256 `9045547a47a52c28ff743f2e4a388136fef80aa5dc5fc7599f9398703858c8b5`。中心演示区把提示输入、模型名“Opus 5.5”、附件入口、麦克风和语音/发送按钮排在同一条紧凑 Composer 中；左侧是组件目录，右侧是组件用途、安装命令、属性和组合说明。无障碍树也把页面说明为 Agent prompt composer，并列出原生 `<form>` props 与 `data-slot` 说明。该页面的“Opus 5.5”是演示文案；本次没有展开模型菜单、发送消息或验证提交行为。截图：![Kobra Chat Input 的 Composer 布局](screenshots/rea-kobra-2026-11-04.png)
+- **Aceternity Sidebar**：REA `capture_browser_scenario` Evidence `ev_d07c9fc718f1a9794c43b6269b5cc741c9867f20f6614a2665c5c7b6b5fbf4d5`，页面 `https://ui.aceternity.com/components/sidebar`，截图 SHA-256 `54997c19d6d0069162a4c3334d0b567ede2739d2acaa9da78dbdebe252af362e`。页面上方为组件站全局导航，左侧列出模板/区块类别，中间为 Sidebar 预览及 Preview/Code 工具，右侧为产品介绍和升级入口。页内写有 hover 展开、移动端与暗色支持；本次未执行 hover、窄窗重排或主题切换，因此这些仍是站点说明，不是本轮独立行为验证。截图：![Aceternity Sidebar 展示页布局](screenshots/rea-aceternity-2026-11-04.png)
 - **Rare UI**：REA Evidence `ev_b4c540b1a1a73cff7b33a99944025ae7f01175f4ade0e03375069588b1bfec48`，页面 `https://rareui.com/` 返回 Vercel Security Checkpoint“Failed to verify your browser / Code 21”。截图 SHA-256 `f137318936e9944d88f6ed179692bbe93fcfdfebcdbd662270a64bdb832931bb`。没有取得 Rare UI 组件或交互证据，本节不对其设计作判断。EasyUI 与 Pin UI 本轮未检查。
 
 ### 与 EGO、Kaze 及 Corvid 的取舍
