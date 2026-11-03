@@ -1150,5 +1150,7 @@
 
 - 证据：Issue #87 双轮全量回归 Actions `41705755809` 的第一轮在 Agent Room 面板检查失败。macOS 704px 视口中所有网页视图为 320px，但卡片内容宽度为 265px，目标为至少 280px。失败日志无目标产品截图。
 - 静态原因判断：窗口预算没有为 Agent 面板列表在 macOS 预留的纵向滚动条空间留出余量。将窗口最小内容宽度和面板宽度回归起点调整为 719px；同步更新最小窗口断言和 D21/QA 记录。
-- 静态验证：待提交前运行 `node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check`。
-- 未完成验证：本机 Mac 锁定期间无法启动真实 Electron；定向 `agent-rooms-panel-e2e.cjs`、连续完整回归、跨显示缩放比例检查及窄窗截图尚未完成。根因判断和修复效果仍待该定向 E2E/CI 结果确认。
+- 静态验证：`node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs`、Ruby YAML parser 与 `git diff --check` 均通过。
+- 真实 Electron：GitHub Actions macOS 14 定向回归在最新代码上通过（27 秒），重新覆盖 719px 最小窗口和 719/720/721/800/860/873/874/900/972/983/984/1024/1280px 宽度；网页视图均不少于 320px、Agent 卡片均不少于 280px，任务列表无横向溢出。运行记录：[Actions 41708289824](https://github.com/heyallencao/corvid/actions/runs/41708289824)。
+- 截图：隔离 fixture 运行生成 [719×572px 面板截图](../qa/screenshots/issue-16-agent-panel-719px-macos.png)，SHA-256 `7c134eb29110649a4a972dca910cdd707ea30cadfc1e97b4dd81c7a41bdb867a`；画面不含个人网页或账户内容。
+- 限制：Mac 锁屏期间未做本机手工验收；未运行完整 `npm test`，未覆盖 Windows/Linux、显示缩放比例和屏幕阅读器。
