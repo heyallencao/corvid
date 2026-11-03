@@ -163,3 +163,31 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 - **当前未验证**：本轮没有重新读取 EGO/Kaze 原生窗口，也没有在 Corvid 当前主分支运行相同 viewport 的实机对照。CUA 报告 macOS 仍处于锁屏状态，因此不能把历史 EGO/Kaze 证据写成今日现场复测。模型菜单展开、真实 Agent 消息流程、键盘/读屏、窄窗及暗色表现均需各自的产品运行态验收。
 
 结论与现有 D21、Issue #16 和 Issue #56 一致，本次没有发现新的未跟踪缺口，不另开 Issue。后续 UI 切片按 Corvid 自身流程验收：浏览器画布优先、Agent 状态与输入可达、当前模型及页面来源清楚，且双语、键盘、窄窗和控制权反馈完整。组件页只提供局部交互参考，不构成 Corvid 的视觉规范，也不授权复制代码、图标或素材。
+
+
+## 2026-11-04 REA 市面浏览器 Agent 入口与上下文控制复核
+
+**问题与时间：** 复核优秀浏览器如何把 AI 放进日常浏览，而不让 Agent 取代浏览器本身。观察时间约 2026-11-04 07:15–07:33（Asia/Shanghai）。Google、Edge、Comet 由 REA 启动隔离 Chromium 156.0.8078.80，英文、UTC、浅色、减少动态效果、无用户登录；窗口尺寸在各 Evidence 中列明。没有访问或导入个人浏览器数据，也没有运行真实模型任务。
+
+### 直接观察
+
+| 产品与页面 | 运行态可见内容与交互 | REA Evidence / 覆盖 |
+| --- | --- | --- |
+| [Google Gemini in Chrome](https://www.google.com/chrome/ai-innovations/gemini-in-chrome/) | 页面把“始终可用的 AI”、跨标签/Google 产品、自动浏览、可复用 Skills 和选中页面内容后提问分成独立功能块；“功能演示”用可选卡片呈现学习辅助、个性化建议、日历、食谱等场景。REA 实际点击“Create study aids”演示卡后，选中态及主说明同步切换到学习辅助示例，URL 不变。视觉上以白底、居中标题和浏览器示例画面维持聚焦；这是官网演示页，不是 Chrome 内真实 Gemini 对话。 | 页面 AX：ev_e5df2164fd98359a5ada568e5e1080b4293e305c996dbab9548b78b226145501，1280×800。交互及选中态：ev_74d42c34ee53cb5b2495ff42e1aa87017075303251851841ea5de64e6bf424bc，点击 1 个演示标签后 AX 状态完整。截图：ev_8482c9328b31237981f4f2379831a632b2cf0b27a04b11e903c0f20c9d23aabd，1440×900，PNG SHA-256 5141b28f650315d82081130c00548aea2c4a04fd52a4ac92377f7864a7088831。 |
+| [Microsoft Copilot in Edge](https://explore.microsoft.com/en-us/edge/copilot) | AX 显示提示输入、语音输入、Vision 入口和 12 个可选任务案例，包括总结标签、整理旅行、跨页比较与从大量标签提炼；页面还分开展示侧栏与 Copilot 新标签页入口、Journeys 浏览连续性，以及用户控制/权限说明。内容证明官网如何展示入口和场景，不证明这些任务在本次已执行。 | REA 受控重放：ev_306a7a03e21eb849e8046e18e52ff833708468ddc70fe637e926304a6b2f7ed4，最终 URL 重定向至 explore.microsoft.com/.../copilot?form=MA13SQ&profile=personal，AX、URL、截图请求均完整；环境 Chromium 156.0.8078.80，1280×800。 |
+| [Perplexity Comet](https://www.perplexity.ai/comet) | 页面把研究、构建网页、邮件草稿、学习计划、购物等任务分成使用案例，并将暂停 Assistant 作为其中一个明确例子；首页用编辑式衬线标题、暖色底、抽象大形状和浏览器示意图表达品牌。它是产品介绍页，无法证明运行 Agent 的停止时序、授权边界或任务成功率。 | REA AX：ev_b8d596eb4b3a2c9fd2a6836175d49e4030aa69683cb94dc6f196d0689b448357，1120×780；截图：ev_c698d508ad09a5f3f38bd9ee9d30bf3045728b03d4798a3ae02a48cfc57492c5，1440×900，PNG SHA-256 ae70fa1bdabe10477d5aa5e153b83a7e1fa59254719a8533a11daea5d32bf2ee。较早同主题 Evidence ev_978ad6d2448261d922739156315e035286d5337b6f0fdf2c2194f6e7b318a585 也为隔离无登录受控重放。 |
+
+Google 官方帮助页另说明：Gemini in Chrome 默认使用当前标签内容，桌面端可分享最多 10 个标签；用户可在对话中增删共享标签、弹出/停靠面板、暂停活动并管理权限。Auto Browse 在需要用户帮助时会暂停；功能可用地区、账号与订阅存在限制。此处是[官方帮助文档](https://support.google.com/chrome/answer/16283624?hl=en)的静态说明，不是 REA 对已登录 Chrome 的功能验收；本轮没有用个人账号尝试启用。
+
+**已有 EGO/Kaze 直接运行证据：** EGO ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e 显示常规标签/地址栏/书签栏、新标签网页与 Space/Profile 入口；Kaze ev_3c3ee4f92ab10275d5eaae96a797c818258f403328bf9ee16d740bbdb9067 与 ev_fdb1ec28706c6b2401549b230199346e86c42a50c2e12ce04b0a06f7073563b3 显示 Browser/Skills/Scheduled/Activity 导航、Space 标签与网站主画布；ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7 显示 Kaze Agent 面板中模型选择紧邻输入区。以上是 2026-11-02 的既有 REA 原生窗口快照，只观察单个窗口；AX/截图曾包含网站区域，研究记录不保存其私人内容。EGO/Kaze 可见界面只能证明该窗口当时显示了这些入口，不能证明未观察到的后台隔离、权限和任务恢复语义。Kaze 产品方 README 的 Agent/BrowserMCP 说明仍是厂商声明，不等同真实端到端验收。
+
+### 对 Corvid 的产品判断
+
+1. **浏览器仍是首要入口。** EGO 的可见结构证明用户先获得完整浏览器、标签和空间；Kaze、Edge、Google 展示了 Agent 可以驻留在侧栏或浏览器工作区。Corvid 应保持普通浏览任务无需 Agent 也完整可用，把 Agent 作为随页面可召回的协作能力，而不是用聊天首页替换浏览器。
+2. **每条任务都应说明它看了哪些页面。** Edge/Google 都把跨标签能力作为具体场景；Google 帮助文档还区分当前标签默认共享与用户增删标签。Corvid 沿用当前页面显式同意、Room/Profile/Page 绑定合同，在输入区附近展示可检查、可移除的页面上下文；多标签默认行为应由 Corvid 自己按权限与可理解性定义，不照搬对方“最多 10 个”上限。
+3. **先给可理解的起步方式，再提供复用。** Edge 的示例任务和 Google 的可切换演示/Skills 说明，支持把常用任务入口放在空态或输入框旁，完成后再允许收藏/复用。Corvid 不需要把 12 个示例都搬进首屏，也不应因演示页视觉而在工作区增加轮播。
+4. **任务状态和用户控制需要同一处可见。** Google 官方说明列有暂停活动、管理权限/共享标签；Edge/Comet 页面把“Journeys”或“Pause”作为用户可理解的概念。Corvid 应继续让运行/暂停/等待用户/完成/结果待检查状态与 Room 控制权分开显示；在执行可能改变网站数据的动作前展示范围与确认，提供停止、接管、恢复入口，并在未确认中止时禁止对同一 transcript 续写。执行板 D12/D19、Issue #68、#73 已承接这类合同。
+5. **从两类视觉中提炼 Corvid 自己的层级。** Google 的产品页把主体收敛到清楚标题、功能场景和操作入口；Comet 采用更鲜明的衬线字体、暖色表面与品牌图形。两者都能清楚表达产品定位，但不是 Corvid 视觉规范。Corvid 应优先统一浏览器壳、网页画布、Agent 侧栏和列表/设置表面的排版与留白，保留克制的品牌强调；动效和大面积装饰必须服务状态或动作。作为局部补充，沿用 2026-11-03 [Kobra Chat Input](https://kobra.systems/components/chat-input) REA Evidence ev_996ee85086d0d37ca6f674d30e7fe76884766d21c66af9c8f561d80dd054864d 中“模型入口与 Composer 相邻”的结构观察，不复制组件代码或风格。
+6. **维持既有路线与执行顺序。** 以上证据强化“EGO 日常浏览器模式 + Kaze Agent/BrowserMCP 能力”的既有战略，并未证明需要新增产品功能或调整 D21 优先级。工作台与消息队列用 D12/D19 和开放 Issue #5/#68/#73 持续验收；整体浏览器壳与 Agent 视觉沿 D21 / Issue #16；设置及日常面板沿 D24 / Issue #165。没有新增 Issue，避免重复现有范围。
+
+**静态、推断与未知边界：** 本节 Google、Edge、Comet 的 REA 证据来自受控 Chromium 访问厂商公开页面，其中只有 Google 演示标签切换由本轮实际点击；未登录对应浏览器应用、未启动真实模型、未检查真实输出、任务中断恢复、站点授权提示或失败状态。Google 功能权限与地区说明取自官方帮助文本；其他页面中的能力描述按厂商展示理解，不作为独立实测结论。对比形成的 Corvid 建议是结合现有路线的产品推断。截图 SHA-256 用于辨认当次图像；原图是第三方网站页面素材，未复制进项目仓库。未运行 Corvid 测试。D21/D12/D19/D24 的范围和验收顺序未改变。
