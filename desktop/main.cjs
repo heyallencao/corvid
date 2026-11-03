@@ -279,6 +279,18 @@ function requestWindowFullscreen(record, enabled) {
 function isWindowFullscreenRequested(record) {
   return record.fullscreenTransitionTarget ?? record.appFullscreen;
 }
+function clearPageFullscreen(record, tabId) {
+  if(!record?.htmlFullscreen || record.htmlFullscreenTabId!==tabId)return false;
+  record.htmlFullscreen=false;
+  record.htmlFullscreenTabId=null;
+  const browserWindow=record.browserWindow;
+  if(!record.appFullscreen && !browserWindow.isDestroyed() && browserWindow.isFullScreen()){
+    record.fullscreenTransitionTarget=false;
+    browserWindow.setFullScreen(false);
+  }
+  if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
+  return true;
+}
 const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
@@ -643,7 +655,15 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
     return tab.homeInjection;
   };
-  view.webContents.on('did-navigate',()=>{tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;});
+  view.webContents.on('did-navigate',()=>{
+    tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;
+    clearPageFullscreen(windowRecords.get(s.windowId),tabId);
+  });
+  view.webContents.on('enter-html-full-screen',()=>{
+    const owner=windowRecords.get(s.windowId);
+    if(owner)owner.htmlFullscreenTabId=tabId;
+  });
+  view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId));
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
   view.webContents.on('will-prevent-unload',event=>{
@@ -729,6 +749,7 @@ async function closeTab(tabId) {
   } catch(error) {if(!contents.isDestroyed())await pageDebugger.ensure(contents);throw error;}
   if(!closed){await pageDebugger.ensure(contents);throw new Error('页面取消关闭，未保存的内容仍保留');}
   const owner=windowRecords.get(s.windowId);
+  clearPageFullscreen(owner,tabId);
   if(owner && !owner.browserWindow.isDestroyed()){owner.browserWindow.contentView.removeChildView(t.view);if(owner.frontView===t.view)owner.frontView=null;}
   tabs.delete(tabId);s.tabIds=s.tabIds.filter(x=>x!==tabId);
   if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;update();
@@ -1382,7 +1403,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   focusWindow(record);
   browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record))scheduleWindowStateSave();layout(record);});
@@ -1415,6 +1436,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   });
   browserWindow.on('leave-html-full-screen',()=>{
     record.htmlFullscreen=false;
+    record.htmlFullscreenTabId=null;
     if(!record.appFullscreen&&record.fullscreenTransitionTarget!==true){record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);record.fullscreenRestoreMaximized=null;scheduleWindowStateSave();}
     if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
   });
