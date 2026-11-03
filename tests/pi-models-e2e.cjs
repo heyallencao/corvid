@@ -158,6 +158,39 @@ const safeStorage=createFakeSafeStorage();
   assert.deepEqual(fs.readFileSync(failedVerificationPath),failedVerificationBytes,'read-back verification failure restores the original file byte-for-byte');
   assert.equal(fs.existsSync(`${failedVerificationPath}.migration-backup`),false,'failed verification restores the original and consumes its backup');
 
+  const interruptedSecureRecoveryDir=path.join(root,'interrupted-secure-recovery');fs.mkdirSync(interruptedSecureRecoveryDir,{recursive:true});
+  const interruptedSecureRecoveryPath=path.join(interruptedSecureRecoveryDir,'agent-credentials.json');
+  const interruptedSecureBackupPath=`${interruptedSecureRecoveryPath}.migration-backup`;
+  const oldPlaintextBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-plaintext-backup'}}}));
+  fs.writeFileSync(interruptedSecureRecoveryPath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-plaintext'}}}),{mode:0o600});
+  const interruptedMigrationSeed=createAgentCredentialStore({dataDir:interruptedSecureRecoveryDir,safeStorage:createFakeSafeStorage({providerTag:'v10'}),platform:'darwin'});
+  await interruptedMigrationSeed.list();
+  const currentEncryptedCredentialBytes=fs.readFileSync(interruptedSecureRecoveryPath);
+  fs.writeFileSync(interruptedSecureBackupPath,oldPlaintextBackupBytes,{mode:0o600});
+  const unsupportedRecoveryStore=createAgentCredentialStore({dataDir:interruptedSecureRecoveryDir,safeStorage:createFakeSafeStorage({backend:'gnome_libsecret',providerTag:'v10'}),platform:'linux'});
+  await assert.rejects(unsupportedRecoveryStore.list(),error=>{
+    assert.equal(error.code,'secure-storage-provider-unverified');
+    assert.match(error.message,/\[\[corvid-error:secure-storage-provider-unverified\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(interruptedSecureRecoveryPath),currentEncryptedCredentialBytes,'provider rejection preserves current schema 2 credentials byte-for-byte');
+  assert.deepEqual(fs.readFileSync(interruptedSecureBackupPath),oldPlaintextBackupBytes,'provider rejection preserves the migration backup byte-for-byte');
+  assert.equal(JSON.parse(fs.readFileSync(interruptedSecureRecoveryPath,'utf8')).schemaVersion,2,'provider rejection does not downgrade the current schema');
+
+  const corruptRecoveryDir=path.join(root,'corrupt-data-recovery');fs.mkdirSync(corruptRecoveryDir,{recursive:true});
+  const corruptRecoveryPath=path.join(corruptRecoveryDir,'agent-credentials.json');
+  const corruptRecoveryBackupPath=`${corruptRecoveryPath}.migration-backup`;
+  const corruptCurrentBytes=Buffer.from(JSON.stringify({schemaVersion:2,providers:{anthropic:{kind:'api_key',encryptedCredential:'not-base64!'}}}));
+  const recoverableLegacyBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-recoverable-legacy-backup'}}}));
+  fs.writeFileSync(corruptRecoveryPath,corruptCurrentBytes,{mode:0o600});
+  fs.writeFileSync(corruptRecoveryBackupPath,recoverableLegacyBytes,{mode:0o600});
+  const corruptRecoveryStore=createAgentCredentialStore({dataDir:corruptRecoveryDir,safeStorage});
+  assert.deepEqual(await corruptRecoveryStore.read('anthropic'),{type:'api_key',key:'sk-recoverable-legacy-backup'},'non-security schema corruption still recovers the legacy backup');
+  const recoveredCredentialBytes=fs.readFileSync(corruptRecoveryPath);
+  assert.equal(JSON.parse(recoveredCredentialBytes.toString('utf8')).schemaVersion,2,'recovered legacy credentials are migrated back to schema 2');
+  assert.equal(recoveredCredentialBytes.toString('utf8').includes('sk-recoverable-legacy-backup'),false,'recovered credentials are encrypted before the migration backup is removed');
+  assert.equal(fs.existsSync(corruptRecoveryBackupPath),false,'a verified recovered migration consumes its backup');
+
   const rotatedDir=path.join(root,'rotated-data');
   const rotatingStore=createAgentCredentialStore({dataDir:rotatedDir,safeStorage});
   await rotatingStore.modify('rotating',()=>({type:'api_key',key:'rotation-fixture'}));

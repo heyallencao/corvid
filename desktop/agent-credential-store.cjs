@@ -100,7 +100,9 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
 
   function storageError(message, cause, code = 'secure-storage-unavailable') {
     const marker = `[[corvid-error:${code}]] `;
-    return new Error(`${marker}${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+    const error = new Error(`${marker}${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+    error.code = code;
+    return error;
   }
 
   async function ensureSecureStorage() {
@@ -199,7 +201,7 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
         fs.unlinkSync(migrationBackup);
         return;
       } catch (error) {
-        if (/系统安全存储|Linux 当前没有/.test(error.message)) throw error;
+        if (typeof error?.code === 'string' && error.code.startsWith('secure-storage-')) throw error;
       }
     } else if (current?.schemaVersion === LEGACY_SCHEMA_VERSION) {
       fs.unlinkSync(migrationBackup);
