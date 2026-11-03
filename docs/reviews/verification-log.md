@@ -21,8 +21,9 @@
 
 - 修复：预览分别读取书签与历史；单类读取失败时只报告并禁用对应类别。提交只读取已勾选类别，因此损坏的未选数据库不再阻断其他可读资料。Cookie 的预览计数与既有明确同意后读取合同保持不变。
 - 自动化：macOS、Node.js v24.22.1、Electron 45.2.1，合成 Chrome Profile 和隔离 `CORVID_DATA_DIR`。`node --check desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 通过；`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 通过 zh-CN 与 en 两个真实 Electron 场景：损坏 History 被禁用、可读书签保持可选并成功导入、目标历史为空；英文和中文错误状态均逐字断言。`git diff --check` 与 `package.json` JSON 解析通过。完整 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 随后也 EXIT 0，既有 Cookie、导入、扩展与弹窗路径全部通过。未运行全量 `npm test`。
+- 跨平台运行：GitHub Actions [Chrome 导入类别隔离跨平台验收 #41695935717](https://github.com/heyallencao/corvid/actions/runs/41695935717) 中 macOS 14、Windows 2022、Ubuntu 24.04 的真实 Electron 类别隔离场景全部通过。三平台均使用合成 Profile；只覆盖 zh-CN/en 中 History 损坏时仍能导入书签，不代表完整 Chrome 导入、Cookie/钥匙串、原生目录选择器、打包版或其他平台 UI 均已通过。
 - 截图：中文[损坏历史类别状态](../qa/screenshots/issue-18-category-isolation-zh-CN.png)，英文[对应状态](../qa/screenshots/issue-18-category-isolation-en.png)，均来自隔离本地合成资料；SHA-256 分别为 `332f1412cbd988f4d286c76964764fd29807e69e709ca3a16f77fba358028215` 与 `e144fdf6b6a06645bd5f14edbeb68dfbb1bd4ae7cbce5855aa902842490783a0`。
-- 未覆盖：未运行全量 `npm test`；此前整份导入 E2E 曾有后段原生窗口激活/弹窗关闭焦点超时，但本轮当前提交完整重跑通过。未读取真实 Chrome Profile、未访问真实网站、未调用系统钥匙串、OAuth 或模型；Windows/Linux、打包版和真实 Chrome 锁定/损坏形态未覆盖。
+- 未覆盖：未运行全量 `npm test`；此前整份导入 E2E 曾有后段原生窗口激活/弹窗关闭焦点超时，但本轮当前提交完整重跑通过。未读取真实 Chrome Profile、未访问真实网站、未调用系统钥匙串、OAuth 或模型。Windows/Linux 仅覆盖上述类别隔离子场景；完整导入路径、原生目录选择器、钥匙串、打包版和真实 Chrome 锁定/损坏形态仍未验证。
 
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
