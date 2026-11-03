@@ -196,6 +196,16 @@
 - 验证：真实 Electron、macOS、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。本地 HTTP fixture 暂停 Agent A 的 `/slow` 导航响应；A 的导航请求确认仍未结束后，Agent B 对其独立获准 Room 的 `/fast` 导航在 3 秒界限内返回 200，之后释放 A 并确认其也返回 200。既有断言同时确认越权 Room/Tab 读写仍返回 `403/CORVID_FORBIDDEN`。`node --check tests/agent-access-e2e.cjs`、`git diff --check` 和 `env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 均通过。
 - 边界：证明的是同一 Corvid 主进程中按 Room 分开的浏览器操作队列可独立推进，不证明真实 Provider/模型并发、多个操作系统进程之间的运行调度或抵御同一 OS 用户恶意进程。Issue #96 继续开放。
 
+## 2026-11-03 Agent runtime 切换首轮失败时保留 checkpoint（Issue #78）
+
+- 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；新 session 在初始化时即可能返回空会话 checkpoint，当前流程会在首轮成功前覆盖旧引用。首轮失败、主动停止或 Room 接管都会使原 runtime 的恢复材料提前丢失。
+- 红测：将更新后的 `tests/agent-runtime-contract-e2e.cjs` 放入 `origin/main` `0dc6a38` 临时基线副本运行，断言失败：实际记录被替换为 runtime 的未提交空会话 checkpoint（`runtimeId=delayed-checkpoint-runtime`），预期仍为原 `future-runtime` opaque checkpoint。基线副本已移除；测试仅使用临时目录和确定性 runtime，不启动 Electron。
+- 修复：transcript 回退会话从初始化到首轮成功前保留旧引用；首轮失败、主动停止和 Room 接管不提交未完成的新 runtime checkpoint。首轮成功后再以新 checkpoint 替换旧值，若没有新 checkpoint 则清除过期引用；Corvid 保存的 transcript 仍允许继续。
+- 验证：更新后的回归在 `origin/main` `0dc6a38` 基线失败、在修复分支通过。`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `git diff --check` 均通过；初始基线上的全量回归为 8 项串行 `node:test` 和 48 条独立脚本，共 56 项。随后分支重放到合并 #141 后的最新 `origin/main` `e83627b`，再次运行 `env -u ELECTRON_RUN_AS_NODE npm test` 并通过：21 项 `node:test` 和 49 条独立脚本，共 70 项。真实 Electron 使用临时数据目录和本地页面 fixture。为复用已安装依赖，测试期间临时链接 #141 worktree 的 `node_modules`；测试后已移除链接，未改依赖清单。全量套件中 Chrome 扩展截图测试改写的两张 Issue #129 截图已恢复。
+- 最新主线复验（2026-11-04）：重放到 `62da03c` 后，`node tests/agent-runtime-contract-e2e.cjs` 通过；`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs` 与 `git diff origin/main...HEAD --check` 通过。附加运行 `pi-workbench-e2e.cjs` 在 700×420 布局断言失败（提示词和页面复核控件首屏不可见）。为定位归属，在干净 `origin/main` `62da03c` worktree 上同命令得到完全相同的 `page/select/status/action=true`、`prompt/preview=false` 失败；该失败发生在 checkpoint 续聊路径之前，是当前主线已有的窄窗失败，不归因本次 checkpoint 改动。
+- 当前主线复验（2026-11-04，重放到 `origin/main` `e2d0ec3f32d56b8069614f230cd5c1fae685ba8a`）：`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、相关 `node --check` 与 `git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在真实 Electron 中 EXIT 0，覆盖未知 checkpoint 的 transcript 恢复、重新确认页面、同一 task ID、旧记录保留、首轮失败/重试、停止/接管和重启路径。环境为 macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；应用使用隔离临时数据目录和本地 HTTP fixture，没有调用真实 Provider、模型或 OAuth。该 E2E 会刷新 Issue #180/#186 的三张跟踪截图，本轮已恢复测试产生的图片副产物。
+- 边界：没有运行全量 `npm test`、屏幕阅读器、签名打包或 Windows/Linux；未调用真实 Provider，也没有验证真实 runtime 升级时的 checkpoint 格式转换与凭据重授权。模块合同和本次 UI E2E 只证明 Corvid transcript 回退与旧 checkpoint 保护路径，不代表真实跨版本 runtime 迁移已完成。Issue #78 保持开放。
+
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
 - 范围：隔离最新主线 `d475c07`，macOS、Electron 45.2.1、临时 `CORVID_DATA_DIR`；仅打开导入向导，未选择或读取真实 Chrome 资料。
