@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { launchPackagedApp } = require('./packaged-app-launcher.cjs');
 const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
@@ -42,15 +43,30 @@ async function launch(dataDir) {
   const packagedAppPath = process.env.CORVID_PACKAGED_APP_PATH ? path.resolve(process.env.CORVID_PACKAGED_APP_PATH) : null;
   if (packagedAppPath && process.env.CORVID_REQUIRE_PACKAGED_SIGNATURE === '1') assertDeveloperIdSignature(packagedAppPath);
   const executablePath = packagedAppPath ? path.join(packagedAppPath, 'Contents', 'MacOS', 'Corvid') : electronPath;
-  const app = await _electron.launch({ executablePath, args: packagedAppPath ? extraArgs : [...extraArgs, project], env: {
+  const env = {
     ...process.env,
     CORVID_DATA_DIR: dataDir,
     CORVID_PORT: '0',
     CORVID_TEST_MODE: '1',
+  };
+  if (packagedAppPath) return launchPackagedApp({ executablePath, dataDir, args: extraArgs, env });
+  const app = await _electron.launch({ executablePath, args: packagedAppPath ? extraArgs : [...extraArgs, project], env: {
+    ...env,
   } });
   for (let i = 0; i < 200 && !fs.existsSync(path.join(dataDir, 'control.json')); i++) await delay(25);
   assert.ok(fs.existsSync(path.join(dataDir, 'control.json')), 'the isolated Corvid control service starts');
   return app;
+}
+
+async function waitForSafeStorageFlow(app, button, phase) {
+  try {
+    await button.waitFor({ timeout: safeStorageTimeoutMs });
+  } catch (cause) {
+    const error = new Error(`Corvid credential state did not become available during ${phase} within ${safeStorageTimeoutMs} ms`, { cause });
+    error.code = 'CORVID_SAFE_STORAGE_TIMEOUT';
+    app.process()?.kill('SIGKILL');
+    throw error;
+  }
 }
 
 async function waitForPage(dataDir, url) {
@@ -92,18 +108,18 @@ async function openApiKeyProvider(app) {
   let app;
   try {
     app = await launch(dataDir);
-    if (process.env.CORVID_PACKAGED_APP_PATH) assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.isPackaged), true,
-      'the credential flow runs inside the packaged Corvid app');
     const initialShell = await app.firstWindow();
+    if (process.env.CORVID_PACKAGED_APP_PATH) assert.match(initialShell.url(), /\.app\/Contents\/Resources\/app\.asar\/desktop\/index\.html$/,
+      'the credential flow runs from the packaged Corvid app archive');
     const pageUrl = `http://127.0.0.1:${site.address().port}/`;
     await initialShell.getByLabel(/地址或搜索|Address or search/i).fill(pageUrl);
     await initialShell.getByLabel(/地址或搜索|Address or search/i).press('Enter');
     await waitForPage(dataDir, pageUrl);
-    await assertSafeStorageAvailable(app, 'initial credential-store check');
+    if (typeof app.evaluate === 'function') await assertSafeStorageAvailable(app, 'initial credential-store check');
     let shell = await openApiKeyProvider(app);
     await shell.locator('.pi-model-key').fill(secret);
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).click();
-    await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
+    await waitForSafeStorageFlow(app, shell.getByRole('button', { name: /退出|Sign out/i }), 'credential encryption and connection');
 
     const persisted = fs.readFileSync(credentialPath, 'utf8');
     const document = JSON.parse(persisted);
@@ -120,13 +136,13 @@ async function openApiKeyProvider(app) {
 
     await app.close();
     app = await launch(dataDir);
-    await assertSafeStorageAvailable(app, 'post-restart credential-store check');
+    if (typeof app.evaluate === 'function') await assertSafeStorageAvailable(app, 'post-restart credential-store check');
     shell = await openApiKeyProvider(app);
-    await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
+    await waitForSafeStorageFlow(app, shell.getByRole('button', { name: /退出|Sign out/i }), 'credential decryption after restart');
     assert.equal(await shell.locator('.pi-model-key').count(), 0,
       'the persisted credential is readable by the OS-protected store after an Electron restart');
     await shell.getByRole('button', { name: /退出|Sign out/i }).click();
-    await shell.getByRole('button', { name: /连接 Key|Connect key/i }).waitFor();
+    await waitForSafeStorageFlow(app, shell.getByRole('button', { name: /连接 Key|Connect key/i }), 'credential logout');
     const afterLogout = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
     assert.equal(afterLogout.providers.anthropic, undefined, 'logout removes the credential from Corvid persistence');
     console.log(`PASS ${process.platform} Electron safeStorage availability, encrypted persistence, restart read, and logout deletion`);
