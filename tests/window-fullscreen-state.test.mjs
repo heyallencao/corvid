@@ -61,3 +61,12 @@ test('is safe to repeat after state has already been cleared', () => {
   assert.deepEqual(calls.setFullScreen, [false]);
   assert.equal(calls.sent.length, 1);
 });
+
+test('clears state without calling a destroyed BrowserWindow', () => {
+  const { record, calls } = createRecord({ destroyed: true });
+  assert.equal(clearPageFullscreen(record, 'tab-a', describe), true);
+  assert.equal(record.htmlFullscreen, false);
+  assert.equal(record.htmlFullscreenTabId, null);
+  assert.deepEqual(calls.setFullScreen, []);
+  assert.deepEqual(calls.sent, []);
+});
