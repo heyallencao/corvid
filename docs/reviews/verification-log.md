@@ -202,7 +202,8 @@
 - 红测：将更新后的 `tests/agent-runtime-contract-e2e.cjs` 放入 `origin/main` `0dc6a38` 临时基线副本运行，断言失败：实际记录被替换为 runtime 的未提交空会话 checkpoint（`runtimeId=delayed-checkpoint-runtime`），预期仍为原 `future-runtime` opaque checkpoint。基线副本已移除；测试仅使用临时目录和确定性 runtime，不启动 Electron。
 - 修复：transcript 回退会话从初始化到首轮成功前保留旧引用；首轮失败、主动停止和 Room 接管不提交未完成的新 runtime checkpoint。首轮成功后再以新 checkpoint 替换旧值，若没有新 checkpoint 则清除过期引用；Corvid 保存的 transcript 仍允许继续。
 - 验证：更新后的回归在 `origin/main` `0dc6a38` 基线失败、在修复分支通过。`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `git diff --check` 均通过；初始基线上的全量回归为 8 项串行 `node:test` 和 48 条独立脚本，共 56 项。随后分支重放到合并 #141 后的最新 `origin/main` `e83627b`，再次运行 `env -u ELECTRON_RUN_AS_NODE npm test` 并通过：21 项 `node:test` 和 49 条独立脚本，共 70 项。真实 Electron 使用临时数据目录和本地页面 fixture。为复用已安装依赖，测试期间临时链接 #141 worktree 的 `node_modules`；测试后已移除链接，未改依赖清单。全量套件中 Chrome 扩展截图测试改写的两张 Issue #129 截图已恢复。
-- 边界：确定性替代 runtime 合同与真实 Electron 工作台恢复提示均已覆盖；未运行真实 Provider、模型请求或 OAuth，也未验证签名打包、Windows/Linux 安全存储或跨版本 checkpoint 转换。
+- 最新主线复验（2026-11-04）：重放到 `62da03c` 后，`node tests/agent-runtime-contract-e2e.cjs` 通过；`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs` 与 `git diff origin/main...HEAD --check` 通过。附加运行 `pi-workbench-e2e.cjs` 在 700×420 布局断言失败（提示词和页面复核控件首屏不可见）。为定位归属，在干净 `origin/main` `62da03c` worktree 上同命令得到完全相同的 `page/select/status/action=true`、`prompt/preview=false` 失败；该失败发生在 checkpoint 续聊路径之前，是当前主线已有的窄窗失败，不归因本次 checkpoint 改动。
+- 边界：确定性替代 runtime 合同与此前真实 Electron 工作台恢复提示均已覆盖；本轮最新主线上的工作台 E2E 未通过且全量 `npm test` 未运行；未运行真实 Provider、模型请求或 OAuth，也未验证签名打包、Windows/Linux 安全存储或跨版本 checkpoint 转换。
 
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
