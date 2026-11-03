@@ -25,6 +25,13 @@
 - 发现并修复：首次 E2E 发现主进程预筛窗口/Room 引用后未把 Profile ID 一同传进纯合同校验器，导致真实占用被错误判为空；现修复映射并增加逐类模块合同断言。首次清理失败的用户端错误也映射到明确的重试说明，不透出测试或内部错误名。
 - 全量回归情况：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，27 个 `node:test` 用例和前置 43 条脚本（包含本切片 E2E）通过后，在现有 `tests/pi-workbench-e2e.cjs` 因 `#pi-task-form .pi-primary-action` 超时中止。为判断是否回归，在独立临时 worktree 的未改基线 `2286159` 上单独运行同一用例，也 EXIT 1（按钮定位超时）；该工作台覆盖由已有 [Issue #5](https://github.com/heyallencao/corvid/issues/5) 跟踪。本次随后单独运行其后 10 条脚本（Pi 工作台短窗、Agent 停止/端点、Chrome 导入、授权、导航、本地化和应用菜单），均通过。因此未把全量套件记为通过；此缺口在本切片之前已可复现。
 - 限制：没有获得完整全量 `npm test` 通过结果；未使用真实 Agent Provider 或 OAuth；扩展和 Agent 运行时目录清理失败由模块注入合同覆盖，未在 UI E2E 逐项故障注入；未检查 SQLite/Chromium 文件层的每一类可恢复字节，也未覆盖其他操作系统或打包应用。Issue #174 尚待独立 review、主线集成和中文 PR。
+## 2026-11-04 资料库空态双语与窄窗回归（Issue #16）
+
+- 基线与隔离：macOS；独立 worktree，临时 `CORVID_DATA_DIR` 和本地 HTTP fixture。基线来自 `origin/main` `b88fe7e`。测试复用主工作区已安装的 Node 依赖，通过 `NODE_PATH` 解析，没有在主工作区或隔离 worktree 创建依赖链接。
+- 实现：书签、历史和下载在空库时显示各自中英双语标题与说明；有可收藏 HTTP(S) 当前页时提供空态快捷收藏；空库隐藏搜索框并清空旧搜索条件；有数据时保留搜索，无匹配显示说明和“清除搜索”操作。测试新增空/非空/无匹配、收藏与删除、中英文空态、700×420 中英书签空态不超出面板边界断言。
+- 验证通过：`env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/library-e2e.cjs` EXIT 0；真实 Electron 覆盖 Room 创建、fixture 导航、搜索无结果与清除、空态书签快捷操作、历史/书签删除、重启持久化、中英空态和窄窗边界，生成 11 张基线/修改后隔离截图。截图、哈希、人工目视观察及 REA 边界见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-书签历史与下载空态-issue-16)。
+- 额外回归限制：`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/localization-e2e.cjs` 连续两次未通过；均运行到 Agent 模型设置区域时，等待 `.pi-model-manage` 超时（`tests/localization-e2e.cjs:117`），尚未判明是窗口交互/测试前置状态或产品问题。此失败发生在独立 Agent 设置路径；不能据此宣称完整本地化套件通过，也不据此归因本次 Library 改动。完整 `npm test` 未运行；该套件未覆盖真实 VoiceOver/Narrator/Orca、打包应用或其他平台。
+- 参考：复用本日 REA 对 Kobra `/components/alert` 的历史直接观察，只作清晰状态文案的有限参考，不作为空态布局证据；完整直接观察/静态证据/推断/未知范围和 Rare UI checkpoint 记录见视觉检查记录。本轮未移植任何代码或素材。
 
 ## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
 

@@ -234,10 +234,13 @@ async function renderLibrary() {
   if(libraryKind==='pi-workbench'){renderPiWorkbench();return;}
   const kind = libraryKind, profileId=state.activeProfileId, version=++libraryRenderVersion; const result = await api.invoke(kind,{profileId}); if (version!==libraryRenderVersion || libraryKind !== kind || state.activeProfileId!==profileId) return;
   const panel=document.querySelector('#library');panel.dataset.kind=kind;
-  document.querySelector('#library-search').hidden=false;
-  const query=document.querySelector('#library-search').value.trim().toLocaleLowerCase();
+  const search=document.querySelector('#library-search');
+  if(!result[kind].length)search.value='';
+  search.hidden=result[kind].length===0;
+  const query=search.value.trim().toLocaleLowerCase();
   const matching=result[kind].filter(item=>!query || [item.title,item.url,item.filename,item.path].some(value=>typeof value==='string' && value.toLocaleLowerCase().includes(query)));
   const items = document.querySelector('#library-items'); items.replaceChildren();
+  items.dataset.empty=String(!matching.length);
   document.querySelector('#library-title').textContent = kind === 'history' ? extensionMessages.t('historyTitle') : kind === 'downloads' ? extensionMessages.t('downloadsTitle') : extensionMessages.t('bookmarksTitle');
   for (const item of matching) {
     const row = document.createElement('div'); row.className = 'entry';
@@ -263,7 +266,33 @@ async function renderLibrary() {
     const remove = button(extensionMessages.t('delete'), async () => { await api.invoke(kind === 'history' ? 'removeHistory' : 'removeBookmark',{id:item.id,profileId}); await renderLibrary(); });
     remove.setAttribute('aria-label',`${extensionMessages.t('delete')} ${item.title || item.url}`); row.append(link,remove); items.append(row);
   }
-  if (!matching.length) items.textContent = query && result[kind].length ? extensionMessages.t('noMatches') : kind === 'history' ? extensionMessages.t('noHistory') : kind === 'downloads' ? extensionMessages.t('noDownloads') : extensionMessages.t('noBookmarks');
+  if (!matching.length) {
+    const empty=document.createElement('div');empty.className='library-empty-state';empty.setAttribute('role','status');
+    if(query && result[kind].length){
+      const title=document.createElement('h3');title.textContent=extensionMessages.t('noMatches');
+      const description=document.createElement('p');description.textContent=extensionMessages.t('libraryNoMatchesDescription');
+      const clear=button(extensionMessages.t('clearSearch'),()=>{search.value='';void renderLibrary();});clear.className='library-empty-action';
+      empty.append(title,description,clear);
+    }else{
+      const titles={bookmarks:'emptyBookmarksTitle',history:'emptyHistoryTitle',downloads:'emptyDownloadsTitle'};
+      const descriptions={bookmarks:'emptyBookmarksDescription',history:'emptyHistoryDescription',downloads:'emptyDownloadsDescription'};
+      const icon=document.createElement('span');icon.className='library-empty-icon';icon.setAttribute('aria-hidden','true');
+      icon.innerHTML=kind==='bookmarks'
+        ? '<svg viewBox="0 0 24 24"><path d="M6 4.75A1.75 1.75 0 0 1 7.75 3h8.5A1.75 1.75 0 0 1 18 4.75V21l-6-3.8L6 21z"/></svg>'
+        : kind==='history'
+          ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>'
+          : '<svg viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 17v3h14v-3"/></svg>';
+      const title=document.createElement('h3');title.textContent=extensionMessages.t(titles[kind]);
+      const description=document.createElement('p');description.textContent=extensionMessages.t(descriptions[kind]);
+      empty.append(icon,title,description);
+      const tab=activeTab();
+      if(kind==='bookmarks'&&tab&&/^https?:/i.test(tab.url)){
+        const add=button(extensionMessages.t('emptyBookmarkAction'),async()=>{const current=activeTab();if(!current||!/^https?:/i.test(current.url))return;await api.invoke('addBookmark',{url:current.url,title:current.title});await renderLibrary();void renderBookmarksBar();});
+        add.className='library-empty-action';empty.append(add);
+      }
+    }
+    items.append(empty);
+  }
 }
 async function renderAgentRooms(){
   const version=++agentRoomRenderVersion,profileId=state.activeProfileId;

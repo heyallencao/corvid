@@ -251,6 +251,14 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #library-search { width: 150px; min-width: 100px; padding: 7px 9px; font-size: 12px; }
 .close-button { width: 30px; height: 30px; flex: none; color: var(--text-muted); font-size: 21px; }
 #library-items { min-height: 0; flex: 1; overflow: auto; padding: 12px 14px; }
+#library-items[data-empty="true"] { display: flex; align-items: center; justify-content: center; }
+.library-empty-state { display: grid; justify-items: center; width: min(100%, 300px); gap: 10px; padding: 28px 18px; text-align: center; }
+.library-empty-icon { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-inset); color: var(--accent); }
+.library-empty-icon svg { width: 21px; height: 21px; }
+.library-empty-state h3 { margin: 2px 0 0; color: var(--text); font-size: 14px; font-weight: 650; line-height: 1.4; letter-spacing: -.01em; }
+.library-empty-state p { max-width: 280px; margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
+.library-empty-action { min-height: 34px; margin-top: 3px; padding: 7px 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text); font-size: 12px; font-weight: 600; }
+.library-empty-action:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-soft); }
 #library[data-kind="pi-workbench"] #library-items { display: none; }
 #pi-workbench-content { display: none; }
 #library[data-kind="pi-workbench"] #pi-workbench-content { min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow: hidden; padding: 12px 14px; }
