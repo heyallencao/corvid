@@ -21,13 +21,13 @@ GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单]
 
 - 纯模块合同核对中英文菜单、快捷键、标准编辑角色、窗口列表和无调试入口。
 - 隔离真实 Electron E2E 覆盖菜单树、菜单动作、双窗口焦点路由、Agent Room 菜单项禁用、语言实时切换和重启保持；另验证 Agent Room 中的快捷键受同一控制权保护。
-- 通过真实 Electron/原生桌面观察菜单显示与焦点，不把 DOM/API 菜单树检查当作像素或 VoiceOver 验收。
+- 通过真实 Electron/原生桌面观察菜单显示与焦点，不把 DOM/API 菜单树检查当作像素或 VoiceOver 验收。修复前曾用隔离 profile 的 macOS 原生“窗口”菜单复现勾选状态与 Corvid 焦点 API 不一致；证据与截图见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-162)。
 - 更新 D16、测试索引和验证日志；截图只使用隔离数据且不含个人浏览内容。
 
 ## UI 参考与证据边界
 
 - 实现按 Electron 与各 OS 的原生菜单角色和键位；不复制 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的 web 菜单样式/素材。它们的网页组件不等同于系统菜单，本切片仅在有可迁移的层级或键盘细节时补充对应 REA Evidence。
-- 直接观察、静态证据和推断需分别记录；当前静态证据为上述源代码和 Electron 菜单文档。REA 原生运行态 Evidence、截图、窗口尺寸、采集时间与限制待完成隔离 Electron 验收后补入。
+- 直接观察、静态证据和推断需分别记录；当前静态证据为上述源代码和 Electron 菜单文档。REA 原生 UI provider 因无法读取目标进程启动时间而拒绝观察；目前保留隔离 Electron 与 macOS System Events 的原生菜单证据，但不标为 REA 证据。REA 故障、截图、尺寸、采集时间及菜单交互覆盖见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-162)。VoiceOver 与原生像素复测仍待完成。
 
 ### EasyUI OriginDropdown 参考（REA）
 

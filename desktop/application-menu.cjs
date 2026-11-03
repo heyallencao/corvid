@@ -117,7 +117,11 @@ function syncApplicationMenuState(menu,{canCreateTab=false,canCloseTab=false,can
   if(fullScreenItem)fullScreenItem.checked=Boolean(fullscreen);
   for(const item of menu.items||[]){
     if(item.id!=='corvid-window-menu')continue;
-    for(const windowItem of item.submenu?.items||[])if(windowItem.id?.startsWith('corvid-window-'))windowItem.checked=windowItem.id===`corvid-window-${focusedWindowId}`;
+    // Electron radio groups clear their sibling when the selected item becomes
+    // checked. Setting every sibling to false afterwards can reselect the last
+    // native item on macOS, leaving the Window menu out of sync with focus.
+    const focusedWindowItem=(item.submenu?.items||[]).find(windowItem=>windowItem.id===`corvid-window-${focusedWindowId}`);
+    if(focusedWindowItem)focusedWindowItem.checked=true;
   }
 }
 

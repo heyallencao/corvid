@@ -61,9 +61,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(find(selectedMenu,`corvid-window-${firstWindow.id}`).checked,true);
     await click('corvid-new-tab');
     await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
-    const afterAgentRoom=await api('/rooms', {name:'Agent-owned menu fixture',profileId:'default'});
-    const agentRoom=afterAgentRoom.rooms.find(room=>room.name==='Agent-owned menu fixture');
-    assert.ok(agentRoom);
+    const agentRoom=await api('/rooms', {name:'Agent-owned menu fixture',profileId:'default'});
+    assert.equal(agentRoom.name,'Agent-owned menu fixture');
     await api(`/rooms/${agentRoom.id}/activate`,{},'POST');
     await until(async()=>find(await menu(),'corvid-new-tab')?.enabled===false,'user-only actions disabled in an Agent-owned Room');
     assert.equal(find(await menu(),'corvid-close-tab').enabled,false);

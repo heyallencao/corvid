@@ -3,8 +3,10 @@
 ## 2026-11-03 原生菜单切片定向合同与未完成回归（Issue #162）
 
 - 静态/模块检查：`node --test tests/application-menu.test.mjs` 与 `node --test tests/window-shortcuts.test.mjs` 各 3/3 通过；`node --check desktop/main.cjs`、`node --check desktop/application-menu.cjs`、`node --check tests/application-menu-e2e.cjs` 和 `git diff --check` 通过。
+- 菜单 E2E 与修正：首轮真实 Electron E2E 在窗口菜单勾选状态断言失败。macOS 隔离原生菜单实操（System Events 选择“窗口 1”）及 Corvid `/windows` 状态复核确认焦点 API 已切至 `legacy-window`，但原生菜单仍勾选“窗口 2”。修正 radio 组同步为只勾选当前窗口；对应模块测试 3/3 通过，重跑后窗口菜单勾选断言通过。REA `observe_native_ui` 因 provider 无法读取目标进程启动时间而返回 `capability_unavailable`；实际截图与证据边界见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-162)。
+- 后续 E2E 结果：继续运行时发现测试夹具把 `POST /rooms` 的单 Room 响应误当作 `{rooms:[...]}` 总览；已按现有 API 合同修正夹具。之后测试在“切换至选中窗口后新建标签”处超时（`tests/application-menu-e2e.cjs:63`），尚不能判为产品回归或模拟限制；需要继续查明。当前 #162 专属真实 Electron E2E 未通过，不能声明菜单切片已完成。
 - 未完成回归：一次误将包含 `*.e2e.mjs` 的 `node --test` 命令当作纯模块测试启动。该命令实际启动真实 Electron；`tests/browser.e2e.mjs` 在输入时报告 `Input focus was not acquired`，`tests/dialogs.e2e.mjs` 未等到 alert 对话框，其后 3 个测试入口因手动 Ctrl+C 取消。现有证据不足以判定这些结果由本切片引入，也不足以作为全量回归结论；需桌面测试窗口释放后单独复核。
-- 清理与边界：该命令没有覆盖 #162 专属 Electron E2E、原生菜单像素、VoiceOver 或 REA 运行态观察；进程检查未发现残留 Electron/Corvid 测试进程。等待同机另一会话完成其 Electron 短验收并明确释放后，再继续真实桌面测试。本次未调用 OAuth 或真实模型。
+- 清理与边界：每轮测试后已检查 Electron/Corvid 进程并清理本轮创建的临时 Profile。原生菜单截图仅含菜单本身，无网页主体或账号资料。尚未通过完整 E2E、REA 原生观察、VoiceOver 或全平台测试；当前同机另一会话正在排查其 #5 Electron E2E，待它释放桌面后继续。本次未调用 OAuth 或真实模型。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 

@@ -57,7 +57,12 @@ test('application menu has a branded app menu only on macOS and window items sel
 
 test('menu enablement, full-screen state and focused-window check follow the current browser context', () => {
   const template=createApplicationMenuTemplate({locale:'en',platform:'linux',handlers:{newTab:()=>{},newWindow:()=>{},closeTab:()=>{},closeWindow:()=>{},back:()=>{},forward:()=>{},reload:()=>{},find:()=>{},print:()=>{},fullscreen:()=>{},zoomIn:()=>{},zoomOut:()=>{},resetZoom:()=>{},focusWindow:()=>{}},windows:[{id:'one',focused:true},{id:'two',focused:false}]});
-  const makeMenu=items=>({items:items.map(item=>({...item,submenu:Array.isArray(item.submenu)?makeMenu(item.submenu):item.submenu}))});
+  const makeMenu=items=>{
+    const children=items.map(item=>({...item,submenu:Array.isArray(item.submenu)?makeMenu(item.submenu):item.submenu}));
+    const radios=children.filter(item=>item.type==='radio').map(item=>({item,checked:Boolean(item.checked)}));
+    for(const state of radios)Object.defineProperty(state.item,'checked',{enumerable:true,get:()=>state.checked,set:value=>{state.checked=Boolean(value);if(value)for(const sibling of radios)if(sibling!==state)sibling.checked=false;}});
+    return {items:children};
+  };
   const menu={...makeMenu(template),getMenuItemById(id){const find=items=>{for(const item of items){if(item.id===id)return item;const nested=item.submenu&&find(item.submenu.items||[]);if(nested)return nested;}return null;};return find(this.items);}};
 
   syncApplicationMenuState(menu,{canCreateTab:false,canCloseTab:false,canUseActiveTab:false,canGoBack:false,canGoForward:false,fullscreen:true,focusedWindowId:'two'});
