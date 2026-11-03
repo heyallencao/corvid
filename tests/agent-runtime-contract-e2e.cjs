@@ -217,17 +217,21 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     fs.writeFileSync(taskFile(delayedCheckpointDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[delayedCheckpointTask]}),{mode:0o600});
     const delayedCheckpointRuntime=makeRuntime('delayed-checkpoint-runtime');
     let delayedCheckpointPromptAttempts=0;
-    delayedCheckpointRuntime.createSession=async()=>({
-      checkpoint:()=>null,
-      async prompt(){if(++delayedCheckpointPromptAttempts===1)throw new Error('first message failed before a new checkpoint was saved');},
-      async abort(){},dispose(){},
-    });
+    delayedCheckpointRuntime.createSession=async()=>{
+      const attempt=++delayedCheckpointPromptAttempts;
+      const initialCheckpoint=attempt===1?{runtimeId:'delayed-checkpoint-runtime',runtimeVersion:'1.0.0',data:{token:'empty-session'}}:null;
+      return {
+        checkpoint:()=>initialCheckpoint,
+        async prompt(){if(attempt===1)throw new Error('first message failed before a new checkpoint was saved');},
+        async abort(){},dispose(){},
+      };
+    };
     const delayedCheckpointIdentity=testAgentIdentity();
     const delayedCheckpointWorkbench=createAgentWorkbench({dataDir:delayedCheckpointDir,runtime:delayedCheckpointRuntime,...delayedCheckpointIdentity});
     await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry with a new runtime',includePageContext:true,contextPreview});
     for(let attempt=0;attempt<20&&delayedCheckpointWorkbench.list()[0].status!=='failed';attempt++) await new Promise(resolve=>setTimeout(resolve,5));
     const delayedCheckpoint=JSON.parse(fs.readFileSync(taskFile(delayedCheckpointDir),'utf8')).tasks[0];
-    assert.deepEqual(delayedCheckpoint.sessionRef,delayedCheckpointTask.sessionRef,'a null checkpoint from the new runtime must not erase the old opaque checkpoint before its first successful save');
+    assert.deepEqual(delayedCheckpoint.sessionRef,delayedCheckpointTask.sessionRef,'an uncommitted checkpoint from the new runtime must not erase the old opaque checkpoint before its first successful turn');
     assert.equal(delayedCheckpoint.conversation[0].text,delayedCheckpointTask.conversation[0].text,'a first-message failure preserves prior Corvid messages');
     assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','the failed replacement remains continuable from the saved transcript');
     await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry after transient failure',includePageContext:true,contextPreview});
@@ -236,6 +240,42 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(completedCheckpoint.status,'completed','the transcript retry must complete');
     assert.equal(completedCheckpoint.sessionRef,null,'after a successful transcript turn without a new checkpoint, the obsolete runtime checkpoint must be cleared');
     assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','clearing the old reference leaves transcript continuation available');
+
+    const fallbackHandoffDir=path.join(root,'fallback-handoff');fs.mkdirSync(fallbackHandoffDir);
+    const fallbackHandoffTask={...futureTask,id:'fallback-handoff-task'};
+    fs.writeFileSync(taskFile(fallbackHandoffDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[fallbackHandoffTask]}),{mode:0o600});
+    const fallbackHandoffRuntime=makeRuntime('fallback-handoff-runtime');
+    let finishFallbackPrompt;
+    fallbackHandoffRuntime.createSession=async()=>({
+      checkpoint:()=>({runtimeId:'fallback-handoff-runtime',runtimeVersion:'1.0.0',data:{token:'unfinished-session'}}),
+      prompt:()=>new Promise(resolve=>{finishFallbackPrompt=resolve;}),
+      async abort(){finishFallbackPrompt?.({stopReason:'aborted'});},dispose(){},
+    });
+    const fallbackHandoffIdentity=testAgentIdentity();
+    const fallbackHandoffWorkbench=createAgentWorkbench({dataDir:fallbackHandoffDir,runtime:fallbackHandoffRuntime,...fallbackHandoffIdentity});
+    await fallbackHandoffWorkbench.continueTask({taskId:fallbackHandoffTask.id,message:'pause before transcript migration commits',includePageContext:true,contextPreview});
+    await fallbackHandoffWorkbench.pauseRoom(fallbackHandoffTask.roomId);
+    const pausedFallback=JSON.parse(fs.readFileSync(taskFile(fallbackHandoffDir),'utf8')).tasks[0];
+    assert.deepEqual(pausedFallback.sessionRef,fallbackHandoffTask.sessionRef,'a transcript fallback paused before a successful turn preserves the old opaque checkpoint');
+    assert.equal(pausedFallback.status,'waiting_for_user');
+
+    const fallbackStopDir=path.join(root,'fallback-stop');fs.mkdirSync(fallbackStopDir);
+    const fallbackStopTask={...futureTask,id:'fallback-stop-task'};
+    fs.writeFileSync(taskFile(fallbackStopDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[fallbackStopTask]}),{mode:0o600});
+    const fallbackStopRuntime=makeRuntime('fallback-stop-runtime');
+    let finishStoppedFallbackPrompt;
+    fallbackStopRuntime.createSession=async()=>({
+      checkpoint:()=>({runtimeId:'fallback-stop-runtime',runtimeVersion:'1.0.0',data:{token:'stopped-session'}}),
+      prompt:()=>new Promise(resolve=>{finishStoppedFallbackPrompt=resolve;}),
+      async abort(){finishStoppedFallbackPrompt?.({stopReason:'aborted'});},dispose(){},
+    });
+    const fallbackStopIdentity=testAgentIdentity();
+    const fallbackStopWorkbench=createAgentWorkbench({dataDir:fallbackStopDir,runtime:fallbackStopRuntime,...fallbackStopIdentity});
+    await fallbackStopWorkbench.continueTask({taskId:fallbackStopTask.id,message:'stop before transcript migration commits',includePageContext:true,contextPreview});
+    await fallbackStopWorkbench.stop(fallbackStopTask.id);
+    const stoppedFallback=JSON.parse(fs.readFileSync(taskFile(fallbackStopDir),'utf8')).tasks[0];
+    assert.deepEqual(stoppedFallback.sessionRef,fallbackStopTask.sessionRef,'stopping a transcript fallback before a successful turn preserves the old opaque checkpoint');
+    assert.equal(stoppedFallback.status,'interrupted');
 
     const unknownDir = path.join(root, 'unknown-schema');
     fs.mkdirSync(unknownDir);

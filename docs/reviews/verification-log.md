@@ -198,10 +198,10 @@
 
 ## 2026-11-03 Agent runtime 切换首轮失败时保留 checkpoint（Issue #78）
 
-- 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；若新 session 尚未产出 checkpoint，首条 prompt 失败会先把旧不透明引用清空，失去用户之后切回原 runtime 时可能仍可用的恢复材料。
-- 红测：在 `origin/main` `0dc6a38` 上运行新增的 `node tests/agent-runtime-contract-e2e.cjs` 用例，断言失败：实际 `sessionRef` 为 `null`，原值为 `future-runtime` 的 opaque checkpoint。该脚本仅使用临时目录和确定性 runtime，不启动 Electron。
-- 修复：启动 transcript 替代会话时保留旧引用；新 runtime 首条 prompt 失败且没有新 checkpoint 时继续保留。transcript 重试成功后，若仍没有新 checkpoint，再清除过期引用；Corvid 保存的 transcript 仍允许继续。
-- 验证：修复后 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、相邻的 `node tests/agent-task-continuation-contract.cjs` 与 `git diff --check` 均通过。全量 `npm test` 尚未运行；另一会话仍保留 #141 的 Electron 验收运行窗口，本分支没有启动 Electron，避免竞争运行窗口。
+- 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；新 session 在初始化时即可能返回空会话 checkpoint，当前流程会在首轮成功前覆盖旧引用。首轮失败、主动停止或 Room 接管都会使原 runtime 的恢复材料提前丢失。
+- 红测：将更新后的 `tests/agent-runtime-contract-e2e.cjs` 放入 `origin/main` `0dc6a38` 临时基线副本运行，断言失败：实际记录被替换为 runtime 的未提交空会话 checkpoint（`runtimeId=delayed-checkpoint-runtime`），预期仍为原 `future-runtime` opaque checkpoint。基线副本已移除；测试仅使用临时目录和确定性 runtime，不启动 Electron。
+- 修复：transcript 回退会话从初始化到首轮成功前保留旧引用；首轮失败、主动停止和 Room 接管不提交未完成的新 runtime checkpoint。首轮成功后再以新 checkpoint 替换旧值，若没有新 checkpoint 则清除过期引用；Corvid 保存的 transcript 仍允许继续。
+- 验证：修复后 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、相邻的 `node tests/agent-task-continuation-contract.cjs` 与 `git diff --check` 均通过。更新后的回归在 `origin/main` 基线失败、在修复分支通过。全量 `npm test` 尚未运行：Mac 当前锁屏，#141 会话持有下一次桌面验收优先权；本轮未启动 Electron。
 - 边界：只验证确定性替代 runtime 的 session/checkpoint/prompt 生命周期；未运行 Pi SDK、真实 Provider、模型或 OAuth；真实 Electron 工作台恢复提示由既有 `pi-workbench-e2e.cjs` 覆盖，本轮尚未复跑。
 
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）

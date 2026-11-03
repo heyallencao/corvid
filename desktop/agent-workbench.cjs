@@ -33,6 +33,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   const taskStore = createAgentTaskStore(dataDir);
   let tasks = [];
   const sessions = new Map();
+  const transcriptFallbackSessions = new Set();
   const sessionCredentialIds = new Map();
   const continuationClaims = new Set();
   const taskStartClaims = new Set();
@@ -228,7 +229,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         session.dispose?.();
         throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
-      task.sessionRef = session.checkpoint() || task.sessionRef || null;
+      if (priorConversation) transcriptFallbackSessions.add(task.id);
+      task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
       changed();
       sessions.set(task.id, session);
       if (typeof session.subscribe === 'function') session.subscribe(event => {
@@ -243,12 +245,14 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         if (task.status !== 'running') return;
         const checkpoint = session.checkpoint();
         task.sessionRef = checkpoint || (priorConversation ? null : task.sessionRef || null);
+        transcriptFallbackSessions.delete(task.id);
         finishAssistantTurn(task, 'completed');
         task.status = 'completed'; addEvent(task, 'completed', 'Agent 已完成本轮回复'); sessions.delete(task.id);
         try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
       }, async error => {
         if (task.status !== 'running') return;
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
+        task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
+        transcriptFallbackSessions.delete(task.id);
         finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Agent 未能完成：${task.error}`); sessions.delete(task.id);
         try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
@@ -266,7 +270,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   async function stop(taskId) {
     const task = taskById(taskId), session = sessions.get(taskId);
     if (!session || task.status !== 'running') return copy(present(task));
-    task.sessionRef = session.checkpoint() || task.sessionRef || null;
+    if (!transcriptFallbackSessions.has(taskId)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
+    transcriptFallbackSessions.delete(taskId);
     task.status = 'interrupted';
     finishAssistantTurn(task, 'interrupted');
     addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
@@ -297,19 +302,20 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         continue;
       }
       task.status = 'waiting_for_user';
-      task.sessionRef = session.checkpoint() || task.sessionRef || null;
+      if (!transcriptFallbackSessions.has(task.id)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
       finishAssistantTurn(task, 'waiting_for_user');
       addEvent(task, 'waiting_for_user', '你已接管此空间；Agent 已暂停，交还后可检查页面并继续。');
       sessions.delete(task.id);
       await revokeSessionCredential(task.id);
       try {
         await session.abort?.();
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
+        if (!transcriptFallbackSessions.has(task.id)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
       } catch (error) {
         task.status = 'interrupted';
         task.error = `无法确认 Agent 已暂停：${String(error?.message || error).slice(0, 500)}`;
         addEvent(task, 'error', task.error);
       } finally {
+        transcriptFallbackSessions.delete(task.id);
         session.dispose?.();
         changed();
       }
