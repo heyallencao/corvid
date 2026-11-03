@@ -1058,3 +1058,24 @@
 - 验证：`node tests/agent-task-continuation-contract.cjs` EXIT 0，覆盖同 Room 页面读取期间重复提交、已运行任务期间再次启动被拒、不同 Room 同时运行、页面预览失效后可重试、双语状态/稳定错误映射及原有续聊/接管竞态。`node --check desktop/agent-workbench.cjs`、`desktop/renderer.js`、`desktop/locales.js`、两项相关测试脚本与 `git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在隔离数据目录和本地页面夹具下通过；新增断言确认键盘启动后发送操作立即禁用、设置 `aria-busy=true` 并显示“正在启动 Agent 任务…”，之后原有完整工作台流程通过。第一次运行暴露了测试选择器依赖按钮旧文案的问题，已改用稳定的工作台按钮选择器；测试等待模型目录选择器就绪后再检查隔离配置目录。没有调用真实模型或 OAuth。
 - UI 参考与限制：本切片只增加既有主操作按钮的处理中/禁用状态，不改变布局或视觉系统。REA 控制 Chromium 156.0.8078.79 在 1280×720、英文、减少动态效果环境访问 EasyUI 首页；Evidence `ev_652b871de812ab8074a21ed310b9c75273249de4e15e7de6d4699aafc71032c8`。直接观察：页面可访问树将未完成的组件预览标成 `status`，文案为“Loading component preview…”，首页另有可访问名称明确的搜索、主题切换和组件入口；截图与 DOM 均被采集。设计推断：等待状态应能被读屏用户识别，进度按钮文案应清楚表达正在发生的动作，因此本切片同步提供启动中本地化文字与 `aria-busy`。未知：该首页捕获没有触发任何组件或按钮交互，不能证明 EasyUI 的具体加载动画、焦点行为、窄窗表现或错误态；参考只用于状态反馈，不作为 Corvid 视觉规范。REA 一次较早的调用因 `capture` 参数格式错误在执行前拒绝，已改用 `capture.at_end` 重做并取得上述证据。
 - 范围：合成 runtime、临时数据目录；不连接 Provider，不证明不同 OS 版本或真实模型调用行为。
+
+## 2026-11-03 最新主线全量回归与桌面锁屏干扰（Issue #87）
+
+- 基线：隔离 worktree 基于 `origin/main` `56b3089`（包含 PR #152 与 #153）；通过临时 `node_modules` 链接复用项目依赖，测试后自动移除。执行 `env -u ELECTRON_RUN_AS_NODE npm test`，在串行 `node:test` 阶段约 32 秒后 EXIT 1，19/22 项通过、3 项失败，因此尚未运行后续 46 条独立 E2E 脚本。
+- 失败：`tests/browser.e2e.mjs` 报 `Input focus was not acquired`；`tests/dialogs.e2e.mjs` 的页面 alert 未触发；`tests/uploads.e2e.mjs` 的文件选择器等待超时。该批用例均依赖桌面焦点/原生窗口交互。
+- 环境观察：测试结束后 Electron、Node 测试进程均已退出，临时依赖链接已清理。随后的 CUA 桌面状态查询明确返回“Mac is locked and automatic unlock could not unlock it”；这一状态与三项焦点失败一致，但不能证明每项失败都只由锁屏导致，也不能解释 Issue #87 历史上的启动挂起。
+- 启动诊断合同：同一轮中 `tests/electron-startup.e2e.mjs` 的 6 项合成启动/清理测试全部通过；真实 Library 与慢恢复 E2E 因 node:test 阶段失败而未运行。本轮不计为全量回归通过，也未复现 Issue #87 的 Electron 启动挂起。真实 Electron 复验等待桌面解锁后重新执行。
+- 解锁后续跑核验：用户回复已解锁、其他会话确认 Electron 桌面空闲后，再次以同一 worktree 和临时依赖链接运行 `env -u ELECTRON_RUN_AS_NODE npm test`；测试后依赖链接自动移除。实际仅 19/22 项通过，仍是 browser 输入焦点、dialogs alert 和 uploads 文件选择器三项失败，6 项 `electron-startup.e2e.mjs` 合成诊断继续通过，后续 46 条独立脚本仍未开始。CUA 随后核验却明确报告 Mac 仍锁屏且自动解锁失败，因此这次交互失败仍不能作为产品缺陷证据；测试中有 Electron 成功写出 `control.json`，未复现启动挂起。下一步需由用户在本机实际解锁后再做 UI/Electron 回归；启动挂起根因仍未定位。
+
+## 2026-11-03 启动挂起阶段现场记录补充（Issue #87）
+
+- 改动：主进程仅在 `CORVID_TEST_MODE=1` 时用原子 rename 在隔离数据目录更新 `startup-progress.json`，权限设为 0600；覆盖主模块加载、app ready、会话读取、窗口 `loadFile`、恢复标签页的扩展加载与 debugger/bootstrap、初始 Room、服务监听和 `control.json` 写入，启动完成后冻结阶段值。启动超时错误新增最后阶段字段，并按 Electron 子进程 PID 忽略旧进程记录；阶段记录解析只打印阶段名，不打印记录其他字段或凭据。正常用户运行不启用阶段文件。
+- 验证：`node --check desktop/main.cjs`、`node --check desktop/startup-progress.cjs`、`node --check tests/electron-test-startup.cjs` 均通过；`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 8/8 通过，覆盖阶段记录禁用/启用、原子更新、0600 权限、临时文件清理、缺失/损坏/旧 PID/非法阶段记录、超时阶段显示及凭据不泄露；`git diff --check` 通过。
+- 限制：本机 CUA 仍报告 macOS 锁屏。本轮没有启动真实 Electron，也没有运行完整 `npm test`；阶段写入通过独立模块的合成测试核验，尚未用真实 Electron 证明所有启动阶段均按预期更新。Issue #87 的历史挂起仍未复现，根因未确定。
+
+## 2026-11-03 解锁后全量回归与真实启动阶段校验（Issue #87）
+
+- 环境：macOS；CUA 状态查询不再报告锁屏；Node.js v24.22.1、Electron 45.2.1；隔离 worktree `/private/tmp/corvid-issue87-current-main`、隔离临时 Corvid 数据目录；测试通过临时 `node_modules` 链接复用仓库依赖，退出时自动移除。
+- 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，24 项串行 `node:test` 与 43 条独立脚本共 67 项通过；覆盖慢恢复、Library、Agent、MCP、Chrome 导入和本地模型 fixture 等路径。本轮没有触发模型 OAuth。
+- 真实启动证据：之后单独运行 `env -u ELECTRON_RUN_AS_NODE node --test tests/browser.e2e.mjs`，1/1 通过；该真实 Electron 用例现在等待并检查隔离目录中的 `startup-progress.json`，确认记录到 `startup-complete`，PID 与 Electron 主进程一致且记录不含凭据。`tests/electron-startup.e2e.mjs` 另有 8/8 合成诊断测试通过，覆盖原子写入、权限、旧 PID 与非法阶段处理。
+- 清理与限制：临时依赖链接已移除，工作区最初被 Chrome 导入 E2E 重生成的两张 Issue #129 截图已按已提交版本还原；本次测试进程退出。完整回归连续成功一次，但没有复现 Issue #87 历史启动挂起，也未证明根因；持续间歇挂起仍由该 Issue 跟踪。

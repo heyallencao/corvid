@@ -62,6 +62,12 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
     } catch (error) {
       throw new Error(`${error.message}; Electron exit=${child.exitCode}, signal=${child.signalCode}\n${output}`);
     }
+    const startupProgress = await eventually(async () => {
+      const value = JSON.parse(await readFile(path.join(dataDir, 'startup-progress.json'), 'utf8'));
+      return value.stage === 'startup-complete' ? value : null;
+    });
+    assert.equal(startupProgress.pid, child.pid, 'startup progress belongs to the current Electron main process');
+    assert.equal(Object.hasOwn(startupProgress, 'token'), false, 'startup progress must not contain credentials');
     assert.equal((await stat(path.join(dataDir, 'control.json'))).mode & 0o777, 0o600);
     const request = async (method, route, body) => {
       const response = await fetch(connection.baseUrl + route, {
