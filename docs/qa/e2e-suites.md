@@ -19,7 +19,7 @@
 | 2 | `tests/dialogs.e2e.mjs` | 页面 alert/confirm/prompt 与触发动作同时挂起时的观察与应答；prompt 默认值与取消返回 `null`；连续两个对话框；HTTP 请求中断后新连接可继续应答。 | 仅顶层文档；Electron 的 `prompt` 由 preload 同步桥提供；跨 frame、应用重启、调试器被外部工具分离未验证。 |
 | 3 | `tests/uploads.e2e.mjs` | `setInputFiles` 多文件/单文件/空数组清空、相对路径/缺失路径/`multiple` 约束；同源 iframe 与开放 Shadow DOM；frame 文档替换后引用失效；`waitForFileChooser` 的 arm/click/setFiles/cancel、动态 input、节点移除、交还与超时。 | 无目录上传、跨源 frame、原生选择器 UI；清空文件输入使用非 `isTrusted` 合成事件；本地夹具。 |
 | 4 | `tests/rpc-e2e.cjs` | 直接 HTTP 控制接口：不暴露 CDP 地址、Bearer 认证、Snapshot 引用与 fill/click/text/evaluate、截图 base64、等待动作与 `yieldControl` 的队列顺序、导航后旧引用失效、`/shutdown` 清除 `control.json`。 | API 级验证，不经过桌面 UI；本地夹具。 |
-| 5 | `tests/library-e2e.cjs` | Playwright 驱动桌面 UI：创建 Room、地址栏导航、标题与历史记录、添加/删除书签、重启持久化、删除后重启为空。 | 本地夹具；不覆盖搜索、系统对话框、真实站点。 |
+| 5 | `tests/library-e2e.cjs` | Playwright 驱动桌面 UI：创建 Room；等待空间创建模态框关闭后执行地址栏导航，检查标题与历史记录；添加/删除书签、重启持久化、删除后重启为空。 | 本地夹具；不覆盖搜索、系统对话框、真实站点。空间按钮可能先于创建对话框关闭出现，测试须等对话框隐藏后再操作地址栏，避免向被模态框遮挡的输入框提交假操作。 |
 | 6 | `tests/sdk-e2e.cjs` | 包装脚本：启动隔离桌面并运行 `sdk/e2e.js`。SDK 覆盖截图（视口/整页/裁剪/路径与尺寸校验）、`waitForURL` 多种匹配、`waitForSelector` 四态、`waitForFunction`、定位符（css/xpath/text/role/href/frame）、Snapshot 引用与失效、`isTrusted: true` 的点击/输入/按键、`selectOption`、拖放/滚轮/鼠标、交还后动作被拒、popup 等待、`evaluate` 超时。 | 夹具仅单层同源 iframe 与开放 Shadow DOM；select 与清空为非 `isTrusted`；截图未逐像素校验；整体 30 秒超时。 |
 | 7 | `tests/download-e2e.cjs` | 下载完成内容、同名文件不覆盖并标记失败、慢下载进度与取消、状态文案、重启历史、文件名/URL 搜索；使用临时下载目录。 | 保存对话框被测试模式绕开，非原生交互；本地夹具；断点续传与其他下载协议未验证。 |
 | 8 | `tests/profiles-e2e.cjs` | 旧 schema（无 `profileId`）迁移到 default Profile；同 Profile Cookie 共享、跨 Profile Cookie/书签/历史/下载隔离；UI 创建与重命名 Profile（取消/空白/裁剪）；重启保持 ID、名称与隔离；未知 `profileId` 报错。 | 未覆盖删除 Profile、默认 Profile 选择；不使用真实 Chromium Profile；本地夹具。 |

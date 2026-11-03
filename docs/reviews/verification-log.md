@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 修正书签 E2E 的空间对话框时序（Issue #111）
+
+- 现象：在最新 `origin/main` 上，独立运行 `tests/library-e2e.cjs` 时，地址栏草稿断言失败，表面上与已修复的 Issue #101 相同。
+- 根因：测试只等待新空间按钮出现；`createTab` 的早期 `shell-state` 可先渲染空间按钮，而创建 Room 的异步调用尚未完成、模态对话框仍打开。Playwright 随即对被模态对话框遮挡的地址栏执行 `fill`，未触发输入事件。输入事件探针为空且地址栏未获焦点；等待 `#new-room` 隐藏后原路径通过。这是测试前置条件错误，不是产品草稿丢失。
+- 修正：E2E 在填写地址栏前明确等待 `#new-room` 隐藏；导航、标题、书签、历史和重启持久化断言保持原样。
+- 验证：macOS、Node.js 24.14.1、Electron 45.2.1、每轮使用隔离 Electron 数据目录与本地 HTTP fixture。修正后 `env -u ELECTRON_RUN_AS_NODE node tests/library-e2e.cjs` 连续 3 次通过；`env -u ELECTRON_RUN_AS_NODE npm test` 完整串行回归 EXIT 0。未连接真实站点或用户 Profile。
+- 限制：该记录只覆盖 macOS 开发版与本地 fixture，不代表真实网页、打包版或其他平台验证。
+
 ## 2026-11-03 关闭最后一个用户标签后返回起始页（Issue #108）
 
 - 行为决策：用户空间关闭最后一个标签后保留原空间、Profile 和窗口，并在同一空间创建由用户打开的 `about:blank` 起始页；仅在原页成功关闭后创建。Agent/API 关闭路径不补建用户起始页。
