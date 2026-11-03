@@ -15,7 +15,7 @@
 ## 实现与验收
 
 - 快捷键判定：`desktop/window-shortcuts.cjs`；平台矩阵单测：`tests/window-shortcuts.test.mjs`。
-- 窗口状态、异步原生事件和持久化：`desktop/main.cjs`。
+- 窗口状态、异步原生事件和持久化：`desktop/main.cjs`。网页全屏状态使用 `WebContents` 级 enter/leave 事件绑定到具体标签；实现依据 Electron 45.2.1 本地类型定义和 [Electron WebContents API](https://www.electronjs.org/docs/latest/api/web-contents)。
 - 菜单、本地化与状态呈现：`desktop/index.html`、`desktop/renderer.js`、`desktop/locales.js`、`desktop/styles.css`。
 - 隔离 Electron 验收：`tests/fullscreen-e2e.cjs`；中英文回归：`tests/localization-e2e.cjs`。快捷键通过 Electron `WebContents.sendInputEvent` 触发，以覆盖 `before-input-event`；Playwright CDP 键盘输入不经过该处理器。
 - 必须在可交互桌面上通过菜单和快捷键进入/退出；验证两窗口状态隔离、网页 HTML Fullscreen 边界、原尺寸与最大化状态恢复、关闭/退出期间不反复进入全屏；随后更新 D06、测试索引、验证日志并保存脱敏截图。

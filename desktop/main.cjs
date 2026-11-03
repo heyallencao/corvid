@@ -650,8 +650,13 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   });
   view.webContents.on('enter-html-full-screen',()=>{
     const owner=windowRecords.get(s.windowId);
-    if(owner)owner.htmlFullscreenTabId=tabId;
+    if(!owner)return;
+    if(owner.fullscreenRestoreMaximized===null)owner.fullscreenRestoreMaximized=owner.browserWindow.isMaximized()||owner.lastKnownMaximized;
+    owner.htmlFullscreen=true;
+    owner.htmlFullscreenTabId=tabId;
+    if(!owner.browserWindow.isDestroyed())owner.browserWindow.webContents.send('shell-state',describe(owner,true));
   });
+  view.webContents.on('leave-html-full-screen',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
   view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId));
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
