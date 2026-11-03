@@ -2,7 +2,7 @@
 
 ## 2026-11-03 原生菜单切片定向合同与未完成回归（Issue #162）
 
-- 静态/模块检查：`node --test tests/application-menu.test.mjs` 3/3 通过；`node --check desktop/main.cjs`、`node --check desktop/application-menu.cjs`、`node --check tests/application-menu-e2e.cjs` 和 `git diff --check` 通过。
+- 静态/模块检查：`node --test tests/application-menu.test.mjs` 与 `node --test tests/window-shortcuts.test.mjs` 各 3/3 通过；`node --check desktop/main.cjs`、`node --check desktop/application-menu.cjs`、`node --check tests/application-menu-e2e.cjs` 和 `git diff --check` 通过。
 - 未完成回归：一次误将包含 `*.e2e.mjs` 的 `node --test` 命令当作纯模块测试启动。该命令实际启动真实 Electron；`tests/browser.e2e.mjs` 在输入时报告 `Input focus was not acquired`，`tests/dialogs.e2e.mjs` 未等到 alert 对话框，其后 3 个测试入口因手动 Ctrl+C 取消。现有证据不足以判定这些结果由本切片引入，也不足以作为全量回归结论；需桌面测试窗口释放后单独复核。
 - 清理与边界：该命令没有覆盖 #162 专属 Electron E2E、原生菜单像素、VoiceOver 或 REA 运行态观察；进程检查未发现残留 Electron/Corvid 测试进程。等待同机另一会话完成其 Electron 短验收并明确释放后，再继续真实桌面测试。本次未调用 OAuth 或真实模型。
 
