@@ -1166,3 +1166,10 @@
 - 变更：为 `tests/chrome-import-categories.test.mjs` 增加损坏 Cookies 文件用例，断言可读书签仍显示；macOS 上计数失败只设置 `errors.cookies`，未选择 Cookie 的读取不触碰该文件。复核 `package.json` 后将 QA 测试索引同步为 31 个 `node:test` 用例、共 86 项自动化检查，并标明 Cookie 计数路径仅在 macOS 验证。
 - 验证：当前环境 `darwin`；`node --test tests/chrome-import-categories.test.mjs` 3/3 通过（含 macOS Cookie 计数失败分支）；`git diff --check` 通过。
 - 边界：仅是模块合同测试，不运行 Electron UI，也不代表完整 Chrome 导入 E2E；完整测试仍因本机桌面锁屏在导入步骤前无法完成。此用例未访问真实 Chrome Profile、钥匙串、OAuth 或模型。
+
+## 2026-11-04 Chrome 导入完整流程隔离回归（Issue #18）
+
+- 环境：macOS arm64、Node.js v24.14.1、Electron 45.2.1；使用测试创建的合成 Chrome Profile、合成 Cookie key 和临时 Corvid 数据目录。
+- 验证：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过。覆盖完整 Chrome 导入流程、Cookie 解密/写入/Profile 隔离与持久化、失败重试、回滚、强杀后重导、扩展导入/恢复等；`node --check tests/chrome-import-e2e.cjs` 和 `git diff --check` 通过。
+- 跳过范围：测试在扩展弹窗重开后通过 Playwright 直接关闭合成弹窗，绕过锁屏导致的原生父窗口激活/点外关闭步骤；除此之外脚本继续执行完整导入场景。该结果证明导入功能路径通过，不证明原生弹窗失焦行为。
+- 限制：默认无环境变量模式仍需在已解锁桌面验收原生扩展弹窗失焦关闭；未读取本机 Chrome、未使用系统钥匙串、OAuth 或真实模型。全量 `npm test` 未运行。

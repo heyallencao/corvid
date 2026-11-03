@@ -103,7 +103,8 @@
 ## 单独运行
 
 - Chrome 导入完整 E2E 包含“激活原生父窗口后扩展弹窗关闭”的检查；macOS 锁屏时窗口无法完成原生激活，测试会在导入流程之前超时。锁屏结果不作为导入功能失败或通过的证据，需在已解锁桌面重跑。
-- 8 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs`，共 29 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件及 `application-menu.test.mjs` 使用纯 Node 合同测试。
+- 如桌面锁屏导致原生父窗口激活检查无法通过，可用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 运行 Chrome 导入完整流程；该模式只直接关闭测试扩展弹窗以继续导入验收，不验证原生点外/失焦关闭，不能替代解锁桌面下的默认 E2E。
+- 8 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs`，共 31 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件及 `application-menu.test.mjs` 使用纯 Node 合同测试。
 - 55 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。

@@ -477,7 +477,12 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     }
     await popupTrigger.click();
     await until(async()=>extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup reopen');
-    if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
+    if(process.env.CORVID_TEST_SKIP_NATIVE_POPUP_BLUR==='1'){
+      const reopenedPopup=await until(async()=>app.windows().find(page=>page.url().startsWith(popupUrlPrefix))||null,'extension popup for test-only close');
+      await reopenedPopup.close();
+      await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes without native blur input');
+      console.log('SKIPPED_NATIVE_EXTENSION_POPUP_OUTSIDE_CLICK','the test closed its fixture popup directly and continued with the full Chrome import flow');
+    }else if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
       const clickTarget=await app.evaluate(({BrowserWindow,screen},bounds)=>{
         const parent=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'));
         const content=parent.getContentBounds(),popup=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('chrome-extension://'))?.getBounds();
