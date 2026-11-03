@@ -6,6 +6,7 @@
 - 修正：安全存储错误携带稳定 `error.code`，provider 未验证与解密返回值不符合 Electron 合同均按 `secure-storage-*` 错误码传播。旧备份清理与 schemaVersion 2 解密校验拆开；校验成功但备份删除失败时以 `credential-migration-backup-cleanup-failed` 传播本地化提示并保留当前密文和备份。遇到更新或未知 schemaVersion 时以 `credential-format-unsupported` 拒绝回退并保留两份文件。非安全存储类格式损坏仍回退到备份，之后加密迁移并回读校验。
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` EXIT 0。确定性假安全存储分别模拟 Linux `v10` 当前密文、非字符串解密返回，并一次性注入备份删除 `EACCES`；断言稳定错误码且安全场景中当前文件和备份逐字节不变。另验证非安全格式损坏仍可恢复旧备份并迁移成不含明文的 schemaVersion 2，以及安全存储、备份清理和未知格式错误的 zh-CN/en 映射；未知 schemaVersion 3 与旧备份并存时两份文件均保持原字节。未启动 Electron、未访问真实账号或模型。
 - 跨平台回归：代码提交 `00f0e7b` 对应的 [GitHub Actions 三平台凭据检查全部通过](https://github.com/heyallencao/corvid/actions/runs/41622464087)：macOS Keychain、Windows DPAPI、Ubuntu Secret Service。
+- 最新代码提交 `3a6d078` 的 [GitHub Actions 三平台凭据检查全部通过](https://github.com/heyallencao/corvid/actions/runs/41623672048)：macOS Keychain、Windows DPAPI、Ubuntu Secret Service。
 - 边界：provider 恢复路径为 Node 模块合同测试；真实 macOS/Windows/Linux safeStorage 行为继续由独立原生 runner 覆盖。本次没有验证签名打包及断电发生在文件系统各条写入指令时的持久化语义。
 
 
