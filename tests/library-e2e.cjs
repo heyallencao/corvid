@@ -53,6 +53,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('#room-name').fill('测试Room');
     await shell.getByRole('button', { name: '创建', exact: true }).click();
     await shell.getByRole('button', { name: '测试Room' }).waitFor();
+    await shell.locator('#new-room').waitFor({state:'hidden'});
     await shell.locator('#address').fill(url);
     const activeRoomId=(await request('/rooms')).activeRoomId;
     await shell.evaluate(()=>{window.__libraryStateUpdateSeen=false;window.browserShell.onState(()=>{window.__libraryStateUpdateSeen=true;});});
