@@ -10,7 +10,7 @@
 - 保存窗口状态时保留进入全屏前的普通尺寸、位置和最大化状态；应用退出与重启不得把临时全屏尺寸当作普通窗口尺寸。
 - 网页 HTML Fullscreen 属于网页自身状态。Corvid 的窗口级全屏动作在网页已请求 HTML Fullscreen 时不可用，不调用 `setFullScreen` 覆盖网页状态，也不改变站点权限。
 - 网页进入 HTML Fullscreen 的状态绑定到具体标签。该标签导航或关闭时，清理状态；如果原生窗口仍因网页全屏而处于全屏，则退出原生全屏，避免“全屏禁用”状态残留。
-- `toggleFullscreen` 仅供 Corvid 桌面界面调用；本机控制 API/外部 Agent 不得借此切换窗口。
+- `toggleFullscreen` 仅供 Corvid 桌面界面调用；本机控制 API/外部 Agent 不得借此切换窗口。全屏 E2E 检查外部控制 API 不提供窗口全屏路由。
 
 ## 实现与验收
 
@@ -25,7 +25,7 @@
 - 本地纯逻辑验证：2026-11-03 16:51（Asia/Shanghai）复跑 `node --test tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，13 项通过；状态单测覆盖不匹配标签、迟到的旧标签退出不清理新标签状态、匹配标签退出原生全屏、最大化快照清理、重复清理、无 `describe` 时安全清理、窗口销毁和关闭中边界。本轮 `node --check` 覆盖 `desktop/main.cjs`、`desktop/page-fullscreen.cjs`、`tests/window-fullscreen-state.test.mjs`、`tests/fullscreen-e2e.cjs`，`git diff --check` 通过。此前已检查 `desktop/window-shortcuts.cjs`、`desktop/renderer.js`，并验证 `package.json` 可解析。
 - 2026-11-03 16:47（Asia/Shanghai）静态 review 发现窗口级 HTML Fullscreen 退出事件没有标签身份，可能在迟到时清除另一个标签当前的全屏归属；现改由每个 `WebContents` 的进入/退出事件维护精确标签状态，并清除失效的最大化快照。纯逻辑测试覆盖了这类事件顺序，但尚未通过真实 Electron 复现或验收。
 - 2026-11-03 16:51（Asia/Shanghai）静态 review 发现导航、标签关闭、`WebContents` 销毁三个清理调用点原先未传入状态序列化函数，窗口存活时可能在清理路径抛错；所有调用点现已传入该函数，清理模块也对无序列化函数的 teardown 做防御处理，并由纯逻辑回归覆盖。该异常此前未在真实 Electron 中复现。
-- 2026-11-03 16:54（Asia/Shanghai）将 Corvid Agent 工作区打开并保持可见加入全屏 E2E 断言；`node --check tests/fullscreen-e2e.cjs` 通过，13 项纯逻辑测试复跑通过。E2E 本身未启动，故该断言仍未实测。
+- 2026-11-03 16:57（Asia/Shanghai）全屏 E2E 新增两项产品边界：全屏时 Corvid Agent 工作区保持可见，外部控制 API 不暴露窗口全屏路由；`node --check tests/fullscreen-e2e.cjs` 通过，13 项纯逻辑测试复跑通过。E2E 本身未启动，故两项断言仍未实测。
 - 真实 Electron 定向运行已覆盖菜单切换、最大化还原、macOS 快捷键和两个窗口的独立状态；后续运行进入网页 HTML Fullscreen，并观察到 Corvid 将窗口级切换禁用且不会覆盖页面状态。运行也暴露了关闭全屏标签后窗口状态可能残留的问题，当前代码已加入按标签清理逻辑，尚待复验。
 - **未完成：**最新版 `tests/fullscreen-e2e.cjs` 与 `tests/localization-e2e.cjs` 尚未完整通过；窗口尺寸/状态重启恢复、中英文实时切换、UI 截图和平台人工检查仍未验收。Agent 工作区全屏可见性已有 E2E 断言但尚未运行。当前 CUA 观察到 macOS 锁屏，锁屏期间的全屏失败不作为产品通过或失败证据；待用户解锁后重跑定向 E2E 和全量回归。
 - 2026-11-03 16:43（Asia/Shanghai）通过 CUA `getState()` 复核：`apps` 为空，原生应用枚举返回“Mac is locked and automatic unlock could not unlock it”。本轮没有启动 Corvid/Electron；该结果证明当前无法进行桌面验收，不证明功能通过或失败。

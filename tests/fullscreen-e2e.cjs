@@ -32,6 +32,9 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     const shell=await app.firstWindow();
     await until(()=>{try{config=JSON.parse(fs.readFileSync(path.join(dataDir,'control.json')));return Boolean(config);}catch{return false;}},'control API config');
+    const firstWindow=(await api('/windows')).windows[0];
+    const externalFullscreen=await fetch(`${config.baseUrl}/windows/${firstWindow.id}/fullscreen`,{method:'POST',headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},body:'{}'});
+    assert.equal(externalFullscreen.status,404,'the external control API must not expose a browser-window fullscreen action');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
