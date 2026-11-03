@@ -19,6 +19,10 @@ assert.match(permissionDisplayName('media',['audio','video'],'en'),/microphone.*
 assert.equal(permissionDisplayName('display-capture',['video','audio']),'共享屏幕或窗口及音频');
 assert.equal(permissionDisplayName('display-capture',['video','audio'],'en'),'share a screen or window and audio');
 const localeContract=createMainLocale('en');assert.equal(localeContract.t('closeSpaceDetails',{tabs:localeContract.plural('tabs',2),ownership:localeContract.t('userOwnsSpace')}).includes('2 tabs'),true);
+for(const scopeKey of ['permissionAllowedThisSession','permissionCurrentRequestOnly']){
+  const detail=localeContract.t('permissionRequestDetail',{profile:'Default',room:'Example',scope:localeContract.t(scopeKey),deviceLimit:localeContract.t('permissionDeviceLimit')});
+  assert.match(detail,/\. System or device restrictions/,'English permission detail keeps a word boundary between complete sentences');
+}
 const project=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 (async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-permissions-'));const fixture=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end('<title>Permission fixture</title>');});await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));let app;
 try{app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,CORVID_DATA_DIR:dir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});const shell=await app.firstWindow();let config;for(let i=0;i<200;i++){try{config=JSON.parse(fs.readFileSync(path.join(dir,'control.json')));break;}catch{await delay(25);}}assert.ok(config);
@@ -27,7 +31,7 @@ await app.evaluate(({dialog})=>{globalThis.permissionPrompts=[];dialog.showMessa
 await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
 const room=await call('POST','/rooms',{name:'Permission fixture'});const tab=room.tabs[0];await call('POST',`/tabs/${tab.id}/navigate`,{url:`http://127.0.0.1:${fixture.address().port}/`});
 const result=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'Notification.requestPermission()'}});assert.equal(result.value,'denied');
-const prompts=await app.evaluate(()=>globalThis.permissionPrompts);assert.equal(prompts.length,1);assert.match(prompts[0].title,/Website permission request/);assert.match(prompts[0].message,/127\.0\.0\.1.*send notifications/);assert.equal(prompts[0].message,`${prompts[0].message.split(' is requesting')[0]} is requesting permission to send notifications.`);assert.match(prompts[0].detail,/Browsing profile: Default.*space: Permission fixture/);assert.deepEqual(prompts[0].buttons,['Deny','Allow']);assert.equal(prompts[0].defaultId,0);assert.equal(prompts[0].cancelId,0);
+const prompts=await app.evaluate(()=>globalThis.permissionPrompts);assert.equal(prompts.length,1);assert.match(prompts[0].title,/Website permission request/);assert.match(prompts[0].message,/127\.0\.0\.1.*send notifications/);assert.equal(prompts[0].message,`${prompts[0].message.split(' is requesting')[0]} is requesting permission to send notifications.`);assert.match(prompts[0].detail,/Browsing profile: Default.*space: Permission fixture/);assert.match(prompts[0].detail,/session\. System or device restrictions/);assert.deepEqual(prompts[0].buttons,['Deny','Allow']);assert.equal(prompts[0].defaultId,0);assert.equal(prompts[0].cancelId,0);
 assert.equal((await call('GET','/rooms')).rooms.find(s=>s.id===room.id).ownership,'user');await call('POST',`/rooms/${room.id}/resumeControl`,{});
 await app.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.permissionPrompts.push(options);return {response:1};};});
 await call('POST',`/tabs/${tab.id}/navigate`,{url:`http://localhost:${fixture.address().port}/`});

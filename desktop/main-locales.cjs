@@ -23,7 +23,7 @@ const catalogs = Object.freeze({
     dataDirectoryFailure: 'Corvid cannot use the data directory: {path}\nCheck that your user can read, write, and execute files there, then try again.\nSystem error: {error}',
     navigationServerNotFound: 'Server not found', navigationNetworkDisconnected: 'Network connection lost', navigationServerRefused: 'Server refused the connection', navigationTimedOut: 'Connection timed out', navigationSecureConnectionFailed: 'Secure connection failed', navigationLoadFailed: 'Unable to load this page',
     defaultProfileName: 'Default', sitePermissionTitle: 'Website permission request', permissionRefuse: 'Deny', permissionAllow: 'Allow', permissionDisplayCaptureWithAudio: 'share a screen or window and audio',
-    permissionRequestMessage: '{origin} is requesting permission to {permission}.', permissionRequestDetail: 'Browsing profile: {profile}; space: {room}. {scope}{deviceLimit}',
+    permissionRequestMessage: '{origin} is requesting permission to {permission}.', permissionRequestDetail: 'Browsing profile: {profile}; space: {room}. {scope} {deviceLimit}',
     permissionAllowedThisSession: 'If allowed, pages from this site in this profile can use this permission for this session.', permissionCurrentRequestOnly: 'This choice applies to this request only.', permissionDeviceLimit: 'System or device restrictions may still prevent access.',
     saveDownloadDialog: 'Save download', chooseChromeDirectoryDialog: 'Choose a Google Chrome user data directory',
     leavePageTitle: 'Leave this page?', stayOnPage: 'Stay on page', leavePage: 'Leave page', unsavedChangesMessage: 'This page says you have unsaved changes.', unsavedChangesDetail: 'Space: {room}. Leaving may cause those changes to be lost.',

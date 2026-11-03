@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 主进程权限与导航错误双语
+
+- 调整：主进程系统提示和权限名称迁移到 `desktop/main-locales.cjs`；导航失败文本按应用语言选择资源。英文权限详情在权限范围句与设备限制句之间补上可见空格，并在权限 E2E 中同时检查两种范围模板。
+- 重放：PR #148 从旧基线重放到 `origin/main` `2649c66`，保留该基线已有的原生菜单重建和浏览身份删除逻辑；修复合并时发现的英文权限详情句间缺空格，并添加覆盖“本次授权”和“仅当前请求”两类范围的断言。
+- 静态验证：`node --check` 覆盖主进程、本地化资源、权限映射与两项 E2E 脚本；资源键对齐和英文句间空格检查通过；`git diff --check` 通过。
+- 真实 Electron 验证：`permissions-e2e.cjs`、`evaluation-risk-e2e.cjs`、`claim-e2e.cjs`、`beforeunload-e2e.cjs`、`navigation-error-e2e.cjs` 与 `localization-e2e.cjs` 均通过。Chrome 导入默认模式在系统原生弹窗关闭时等待超时；启用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 后完整导入主体通过，但该模式不验证原生点外/失焦关闭。应用菜单结构合同测试 3/3 通过；`application-menu-e2e.cjs` 在键盘检查前因 `BrowserWindow.getFocusedWindow()` 返回 null 退出，因此尚未验证重放后的菜单语言切换运行态。
+- 未覆盖：未运行全量 `npm test`；上述结果来自本机 macOS、Node.js v24.14.1、Electron 45.2.1 与隔离临时数据/本地 fixture。仍未证明原生系统对话框布局、VoiceOver、其他 OS、打包签名、所有 Chromium 错误码或全产品文案盘点；Issue #130 与 D24 保持开放/部分。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。
