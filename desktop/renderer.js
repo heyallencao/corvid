@@ -725,7 +725,13 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
     if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();
     if(document.querySelector('#settings').open)void renderProfileExtensions();
   }
-  catch(reason){error.textContent=userFacingAgentError(reason);if(reason.message.includes('回滚未完整完成'))error.dataset.partial='true';}
+  catch(reason){
+    const message=String(reason?.message||reason||'');
+    const timedOut=reason?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT'||message.includes('CORVID_COOKIE_PERSISTENCE_TIMEOUT');
+    const partial=timedOut||message.includes('回滚未完整完成');
+    error.textContent=timedOut?extensionMessages.t('cookiePersistenceTimeoutPartial'):userFacingAgentError(reason);
+    if(partial)error.dataset.partial='true';
+  }
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
 document.querySelector('#chrome-import-target-profile').onchange=event=>{if(!chromeImportProfileLocked)chromeImportProfileId=event.target.value;};
