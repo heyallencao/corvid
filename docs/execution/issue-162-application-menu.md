@@ -29,6 +29,15 @@ GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单]
 - 实现按 Electron 与各 OS 的原生菜单角色和键位；不复制 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的 web 菜单样式/素材。它们的网页组件不等同于系统菜单，本切片仅在有可迁移的层级或键盘细节时补充对应 REA Evidence。
 - 直接观察、静态证据和推断需分别记录；当前静态证据为上述源代码和 Electron 菜单文档。REA 原生运行态 Evidence、截图、窗口尺寸、采集时间与限制待完成隔离 Electron 验收后补入。
 
+### EasyUI OriginDropdown 参考（REA）
+
+- **页面与时间**：EasyUI [OriginDropdown 组件页](https://easyui.site/components/origin-dropdown)，2026-11-03 21:16（Asia/Shanghai）；REA 使用 provider-owned Chromium 156.0.8078.79，隔离临时 profile，1280×900、en-US、UTC、light、reduced motion。打开菜单状态 Evidence：`ev_38f293f46bdfbc5074a2b5e80f9ecdcdfd8dbfb277b1821bf57a69cce353e522`；稳定首屏 Evidence：`ev_e62f44ddcf7e519829c9094fa1276d4567e4de0d2431528a2919f386256862b8`。菜单打开步骤成功，临时浏览器已由 REA 清理。
+- **直接观察**：组件文档用顶栏、面包屑、左侧组件导航和主内容组成两栏层级；预览区留出充足空间。演示菜单贴近触发按钮展开，采用浅表面、细边框、轻阴影和紧凑条目；三项操作有标题与辅助说明，Sign out 用单独颜色强调。访问树将触发器标为 button 并报告 `[expanded]`，弹层标为 menu，条目标为 menuitem，名称可读。
+- **静态证据**：页面文档描述从触发器一侧展开，并以轻微缩放和向内位移表达来源；DOM/无障碍树可见 `side`、`open`、`defaultOpen`、`onOpenChange` 等 API。该内容是 EasyUI 自身组件文档和公开 DOM 信息，不证明其实现的屏幕阅读器兼容性、动画时序或跨浏览器行为。
+- **对 Corvid 的判断**：可迁移的是菜单项分组和动作语义、清楚的展开状态、稳定的触发器到菜单锚定关系，以及禁用/危险动作要能辨认。Corvid 菜单使用 Electron/OS 原生角色；网页 CSS、阴影、圆角、弹簧动画不应移植到原生菜单。当前代码的菜单分组和本地化标签按平台菜单习惯评估；原生焦点、键盘移动、VoiceOver 朗读与像素效果仍须在隔离的真实 Electron 窗口验收。
+- **覆盖限制与未知**：这是单一公开 React 组件页，不代表所有优秀产品或系统菜单；只观察了 macOS 上的 Chromium 参考页面，不验证 Corvid 菜单、OS 原生辅助技术、窄窗布局、Windows/Linux 菜单行为或减少动态效果设置下的组件细节。未复制页面代码、图标或素材。EasyUI 页面曾报告 Cloudflare Insights 脚本受 CSP 拦截；该分析脚本错误不影响已采集的组件预览和访问树，但可观察范围限于所记录状态。
+- **记录边界**：此参考证据不能代替本项目原生 Electron REA Evidence；项目截图与目标应用真实菜单证据仍待 Electron 空闲后补充。
+
 ## 完成后可以声明
 
 - 仅声明已由 macOS 真实 Electron E2E/REA 观察和当前本地化合同直接证明的菜单行为。
