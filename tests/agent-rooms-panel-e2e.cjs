@@ -9,6 +9,64 @@ const http = require('node:http');
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function rgbChannels(value) {
+  const hex = value.match(/^#([\da-f]{3}|[\da-f]{6})$/i);
+  if (hex) {
+    const expanded = hex[1].length === 3 ? [...hex[1]].map(part => part + part).join('') : hex[1];
+    return [0, 2, 4].map(index => parseInt(expanded.slice(index, index + 2), 16));
+  }
+  const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+  assert.equal(channels?.length, 3, `unsupported computed CSS color: ${value}`);
+  return channels;
+}
+
+function relativeLuminance(color) {
+  const [red, green, blue] = rgbChannels(color).map(channel => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground, background) {
+  const first = relativeLuminance(foreground);
+  const second = relativeLuminance(background);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+function assertPaletteContrast(palette, theme) {
+  for (const [surfaceName, surface] of Object.entries(palette.surfaces)) {
+    assert.ok(contrastRatio(palette.textMuted, surface) >= 4.5, `${theme} muted text on ${surfaceName} is below WCAG AA text contrast`);
+    assert.ok(contrastRatio(palette.focusRing, surface) >= 3, `${theme} focus indicator on ${surfaceName} is below non-text contrast`);
+  }
+  for (const [text, surfaces] of [[palette.warning, ['--surface', '--surface-soft', '--surface-warning']], [palette.success, ['--surface', '--surface-soft', '--surface-success']]]) {
+    for (const surfaceName of surfaces) {
+      assert.ok(contrastRatio(text, palette.surfaces[surfaceName]) >= 4.5, `${theme} semantic status text on ${surfaceName} is below WCAG AA text contrast`);
+    }
+  }
+}
+
+async function readContrastPalette(shell) {
+  return shell.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const surfaces = Object.fromEntries(Array.from({ length: root.length }, (_, index) => root[index])
+      .filter(name => name.startsWith('--surface') && !name.endsWith('-text'))
+      .map(name => [name, root.getPropertyValue(name).trim()]));
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--focus-ring)';
+    document.body.append(probe);
+    const focusRing = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      textMuted: root.getPropertyValue('--text-muted').trim(),
+      warning: root.getPropertyValue('--warning').trim(),
+      success: root.getPropertyValue('--success').trim(),
+      focusRing,
+      surfaces,
+    };
+  });
+}
+
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-agent-rooms-'));
   const site=http.createServer((_request,response)=>response.end('<!doctype html><title>Room task fixture</title><h1>Fixture</h1>'));
@@ -72,6 +130,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: '新建空间' }).waitFor();
     await shell.getByRole('button', { name: '我的空间', exact: true }).waitFor();
     assert.equal(await shell.locator('#spaces-heading').textContent(), '空间');
+    await shell.emulateMedia({colorScheme:'light'});
+    assertPaletteContrast(await readContrastPalette(shell), 'light');
+    if (process.env.CORVID_CONTRAST_SCREENSHOT_PATH) await shell.screenshot({path:process.env.CORVID_CONTRAST_SCREENSHOT_PATH});
 
     const bookmarksTrigger=shell.locator('#show-bookmarks');
     await bookmarksTrigger.click();
@@ -97,10 +158,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(await shell.evaluate(() => document.activeElement.id), 'show-agent-rooms', 'keyboard activation keeps focus on the Agent workspace trigger');
     await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
     await shell.emulateMedia({colorScheme:'light'});
+    assertPaletteContrast(await readContrastPalette(shell), 'light');
     const lightShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector('#rooms')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tabs')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
     await shell.emulateMedia({colorScheme:'dark'});
     await shell.waitForFunction(()=>matchMedia('(prefers-color-scheme: dark)').matches&&getComputedStyle(document.documentElement).colorScheme==='dark');
     await shell.waitForFunction(()=>getComputedStyle(document.querySelector('#address-form')).backgroundColor==='rgb(34, 40, 51)');
+    assertPaletteContrast(await readContrastPalette(shell), 'dark');
     const darkShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector('#rooms')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tabs')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor,ctaBackground:getComputedStyle(document.querySelector('.workspace-empty-action')).backgroundColor,ctaText:getComputedStyle(document.querySelector('.workspace-empty-action')).color}));
     assert.deepEqual(darkShellPalette,{background:'rgb(24, 28, 36)',sidebar:'rgb(20, 24, 32)',tabs:'rgb(32, 37, 47)',address:'rgb(34, 40, 51)',panel:'rgb(24, 28, 36)',ctaBackground:'rgb(83, 103, 216)',ctaText:'rgb(255, 255, 255)'},'dark palette covers browser chrome, Agent workspace and high-contrast primary action');
     assert.notDeepEqual({background:darkShellPalette.background,sidebar:darkShellPalette.sidebar,tabs:darkShellPalette.tabs,address:darkShellPalette.address,panel:darkShellPalette.panel},lightShellPalette,'system color scheme changes the visible browser and workspace surfaces');

@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 浅/深主题状态文字与焦点对比度（Issue #16）
+
+- 环境与状态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；Corvid 壳显示 `about:blank`，无网页主体、个人数据、账号信息或模型调用。截图对应浅色主题、2560×1636 像素。
+- 检查：真实 Electron computed CSS token。浅色与深色 `--text-muted` 在全部 `--surface*` 背景上达到至少 4.5:1；焦点指示色在这些背景上达到至少 3:1；warning/success 状态文字在一般及对应语义背景上达到至少 4.5:1。实测最弱比值分别为：浅色 muted 4.72:1、深色 muted 4.76:1、焦点指示 4.11:1、浅色状态文字 5.14:1、深色状态文字 6.86:1。
+- 结果：在 [截图](screenshots/issue-16-contrast-after.png) 中，浅色浏览器壳的侧栏标签、次要操作和地址栏提示可辨；截图 SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。各主题状态阈值断言由 [Agent Room 面板 E2E](../../tests/agent-rooms-panel-e2e.cjs) 覆盖。
+- 参考：色值根据 Corvid 实际 token 对比度与 [WCAG 2.2 对比度（最低）](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)及[非文本对比度](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast)阈值修正；本切片未移植 UI 组件或样式，也未调用 REA 扫描 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI。
+- 限制：截图只展示一个浅色 `about:blank` 壳状态，不能证明全部文字、图标、悬停/禁用态、组件背景或网站内容均合规。自动化计算选定 token 组合，不代表完整 WCAG 审核；未做 VoiceOver/屏幕阅读器、跨平台和打包版检查。完整自动化覆盖与边界见[验证日志](../reviews/verification-log.md#2026-11-03-主题色对比度修复-issue-16)。
+
 ## 2026-11-03 Profile 扩展权限双语分隔符
 
 - 检查：`tests/chrome-import-e2e.cjs` 在真实 Electron 中使用合成 Chrome 扩展导入夹具，验证 Profile 扩展列表展示必需与可选权限；中文界面使用 `、` 分隔同组权限，英文界面使用 `, `。同时更新 Chrome 导入结果断言，兼容中文/ASCII 括号、英文冒号与中英文状态标点。
