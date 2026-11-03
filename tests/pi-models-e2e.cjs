@@ -149,6 +149,29 @@ const safeStorage=createFakeSafeStorage();
   const afterRotation=JSON.parse(fs.readFileSync(rotatingPath,'utf8')).providers.rotating.encryptedCredential;
   assert.notEqual(afterRotation,beforeRotation,'rotated key material rewrites the encrypted credential record');
 
+  const secureLinuxBackends=['gnome_libsecret','kwallet','kwallet5','kwallet6'];
+  for(const backend of secureLinuxBackends){
+    const linuxDir=path.join(root,`linux-${backend}`);
+    const linuxStorage=createFakeSafeStorage({backend});
+    const linuxStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:linuxStorage,platform:'linux'});
+    await linuxStore.modify('fixture-provider',()=>({type:'api_key',key:`secret-${backend}`}));
+    const linuxCredentialBytes=fs.readFileSync(path.join(linuxDir,'agent-credentials.json'),'utf8');
+    assert.equal(linuxCredentialBytes.includes(`secret-${backend}`),false,`${backend} persists only encrypted credential data`);
+    assert.equal((await linuxStore.read('fixture-provider')).key,`secret-${backend}`,`${backend} can encrypt and decrypt a credential`);
+  }
+
+  for(const backend of ['basic_text','unknown','future_secure_or_weak_backend',null]){
+    const linuxDir=path.join(root,`linux-rejected-${backend ?? 'missing'}`);
+    const seedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage,platform:'darwin'});
+    await seedStore.modify('fixture-provider',()=>({type:'api_key',key:'existing-encrypted-fixture'}));
+    const credentialPath=path.join(linuxDir,'agent-credentials.json');
+    const originalBytes=fs.readFileSync(credentialPath);
+    const unsupportedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({backend}),platform:'linux'});
+    await assert.rejects(unsupportedStore.read('fixture-provider'),/Linux 当前没有可用的安全密码管理器/);
+    await assert.rejects(unsupportedStore.modify('fixture-provider',()=>({type:'api_key',key:'replacement-fixture'})),/Linux 当前没有可用的安全密码管理器/);
+    assert.deepEqual(fs.readFileSync(credentialPath),originalBytes,`${backend ?? 'missing'} leaves existing encrypted credentials byte-for-byte intact`);
+  }
+
   const concurrentCredentialStore = createAgentCredentialStore({ dataDir: path.join(root, 'concurrent-credentials'), safeStorage });
   await Promise.all([
     concurrentCredentialStore.modify('provider-a', async () => { await new Promise(resolve => setTimeout(resolve, 10)); return { type: 'api_key', key: 'fixture-key-a' }; }),

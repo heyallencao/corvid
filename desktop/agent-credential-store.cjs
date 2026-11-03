@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 
 const LEGACY_SCHEMA_VERSION = 1;
 const SCHEMA_VERSION = 2;
+const SECURE_LINUX_BACKENDS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
 const emptyState = () => ({ schemaVersion: SCHEMA_VERSION, providers: {} });
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const throwIfAborted = signal => signal?.throwIfAborted?.();
@@ -108,7 +109,8 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
       let backend;
       try { backend = safeStorage.getSelectedStorageBackend?.(); }
       catch (error) { throw storageError('无法确认 Linux 密码管理器状态。', error); }
-      if (!backend || backend === 'unknown' || backend === 'basic_text') throw storageError('Linux 当前没有可用的安全密码管理器，已禁止以弱保护方式保存账号授权。');
+      // Electron may add backend identifiers; require a reviewed secure provider instead of trusting an unknown value.
+      if (!SECURE_LINUX_BACKENDS.has(backend)) throw storageError('Linux 当前没有可用的安全密码管理器，已禁止以弱保护方式保存账号授权。');
     }
   }
 
