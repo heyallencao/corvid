@@ -197,7 +197,7 @@ function runApplicationMenuAction(action) {
 function applicationMenuHandlers() {
   const active=()=>applicationMenuContext();
   const dispatchActive=method=>{const current=active();if(current.canUseActiveTab)return dispatchQueued(method,{id:current.tab.id});};
-  const adjustZoom=delta=>{const current=active();if(!current.record)return;const settings=profileSettings(current.record.activeProfileId);const zoom=delta===null?1:Math.round(Math.min(3,Math.max(0.5,settings.zoom+delta))*10)/10;saveSettings(current.record.activeProfileId,{zoom});applyZoom(current.record.activeProfileId);update(current.record);};
+  const adjustZoom=delta=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;const settings=profileSettings(current.record.activeProfileId);const zoom=delta===null?1:Math.round(Math.min(3,Math.max(0.5,settings.zoom+delta))*10)/10;saveSettings(current.record.activeProfileId,{zoom});applyZoom(current.record.activeProfileId);update(current.record);});
   return {
     canCreateTab:()=>applicationMenuContext().canCreateTab,
     canCloseTab:()=>applicationMenuContext().canCloseTab,
@@ -218,9 +218,9 @@ function applicationMenuHandlers() {
     find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
     print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
     fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
-    zoomIn:()=>{if(active().canUseActiveTab)adjustZoom(0.1);},
-    zoomOut:()=>{if(active().canUseActiveTab)adjustZoom(-0.1);},
-    resetZoom:()=>{if(active().canUseActiveTab)adjustZoom(null);},
+    zoomIn:()=>adjustZoom(0.1),
+    zoomOut:()=>adjustZoom(-0.1),
+    resetZoom:()=>adjustZoom(null),
     focusWindow:id=>{const target=windowRecords.get(id);if(target&&!target.browserWindow.isDestroyed())target.browserWindow.focus();},
     showShortcuts:()=>{
       const text=applicationMenuText(uiLocale),owner=activeRecord()?.browserWindow,options={type:'info',message:text.shortcutsTitle,detail:text.shortcutsDetail};
