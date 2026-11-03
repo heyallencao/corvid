@@ -55,6 +55,12 @@
 - 验证：`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 9/9 通过；包含真实 Node 子进程 fixture，断言清理前快照在失败信息中保留、平台字段存在且命令行哨兵参数未泄漏。`node --check tests/electron-test-startup.cjs`、`node --check tests/electron-startup.e2e.mjs` 与 `git diff --check` 均通过。重放至最新主线 `62da03c` 后，同一启动诊断命令再次 9/9 通过，两个文件语法检查和提交 diff 检查通过。
 - 限制：未启动真实 Electron，未运行全量 `npm test`，没有复现 Issue #87 的历史启动挂起；该改动只增加下一次启动失败的现场诊断，不构成根因修复。当前验证只在 macOS 执行；Windows 的 `tasklist` 字段格式未在本机实测，Windows/Linux 与打包环境仍待 CI 或对应平台验证。Issue #87 保持开放。
 
+## 2026-11-04 Issue #87 进程快照合同跨平台 CI
+
+- 改动：新增 `.github/workflows/electron-startup-snapshot.yml`，在 macOS、Ubuntu 与 Windows 只运行 `tests/electron-startup.e2e.mjs` 中启动失败时记录 OS 进程快照且不记录命令行的合同用例；不启动真实 Electron，也不将该切片当作启动挂起根因验证。
+- 本地验证：`node --test --test-name-pattern="启动失败在清理前记录操作系统进程快照且不包含命令行" tests/electron-startup.e2e.mjs` 通过；跨平台 CI 结果待当前 PR 运行后补录。
+- 限制：其余启动诊断测试和 Electron 启动/首窗过程仍未在 Windows/Linux 运行，真实挂起仍未复现，Issue #87 保持开放。
+
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 
 - 复现：迁移中断后，当前 `agent-credentials.json` 可为 schemaVersion 2，而 `.migration-backup` 保留旧 schemaVersion 1。Linux 异步安全存储可用但密文标记为固定口令回退 `v10` 时，provider 拒绝错误文本未匹配旧恢复分支的本地化字符串判断；`decryptStringAsync()` 返回非字符串 `result` 时的普通错误也会被当作可回退的数据损坏；此外，schemaVersion 2 已成功解密校验后若删除 `.migration-backup` 遇到文件系统错误，原 `try/catch` 会把清理失败误判为验证失败；比当前代码更新的 schemaVersion 3 也会落入旧备份回退分支；读取当前文件遇到 EACCES/EIO 还会被宽泛 `catch` 当作文件不存在。这些路径都会覆盖较新的凭据或用户更高版本数据。
