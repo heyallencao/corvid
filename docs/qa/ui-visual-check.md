@@ -303,3 +303,12 @@
 - UI 参考及 REA：Chrome 官方“管理 Chrome 个人资料”帮助页 `https://support.google.com/chrome/answer/2364824?hl=en`，Evidence `ev_030a3fa846bf1e55eb2d59ebda668384a07c40fac4ae003df523927da1747a99`，直接证据限官方帮助页 DOM/AX 描述：从身份管理选择删除并给出删除后果，未观察原生 Chrome 确认框。Safari 官方用户指南 `https://support.apple.com/guide/safari/ibrwf3a9e7d6/mac`，Evidence `ev_97475b45ef50f6216275a5e422ca3577d94f6bc9c09ffe0158cb93f185022e73`，静态说明其保留默认身份并列出清理/保留数据边界，未观察原生 Safari 删除交互。Kobra Alert `https://kobra.systems/components/alert`，REA controlled replay Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`；直接观察到具名 alert 区域和多种状态预览，页面没有执行组件交互。本实现只采用清楚标明阻断状态的可访问 `status` 区域这一点；浏览身份/数据范围以 Corvid 自身合同为准。以上参考不作为产品验收标准，也未复制代码、样式或素材。
 - 证据分层：截图、Playwright DOM 矩形和 E2E 操作是 Corvid 本机真实 Electron 运行观察；语言键、`aria-live`、阻断映射与响应式 CSS 是仓库静态证据；将影响范围先于破坏性操作呈现、并在短窗保持主操作可见，是结合 Corvid 安全合同与上述有限参考作出的设计推断。
 - 未知与限制：REA 没有观察 Chrome/Safari 原生窗口、删除失败恢复或窄窗行为；本次产品运行未测试 VoiceOver、Windows/Linux、打包版、暗色模式或扩展专属外部数据；没有将截图解释为 Chromium 所有磁盘残留均已抹除的证明。
+
+
+## 2026-11-04 macOS Agent 面板最小宽度修复（Issue #16）
+
+- 运行态问题证据：macOS 全量回归 Actions `41705755809` 在 `tests/agent-rooms-panel-e2e.cjs` 读取到 704px CSS 视口、网页 `WebContentsView` 均为 320px，但 Agent Room 卡片内容宽度仅 265px，低于 280px 验收线。测试日志未附带目标产品截图。
+- 静态证据与判断：布局预算为侧栏 64px、网页 320px、间距 10px、工作区 310px；面板列表 `overflow:auto` 在 macOS 预留的约 15px 纵向滚动条空间使卡片实际内容落至 265px。该原因由失败数据与当前 CSS/主进程尺寸预算共同推断，尚待真实 Electron 复验。
+- 最小调整：将内容窗口最小宽度从 704px 提升至 719px，保留现有面板内边距和滚动行为，不压缩卡片内容；回归检查从 719px 起验证网页视图至少 320px、Agent 卡片至少 280px。
+- 参考灵感：Kobra Popover 页面在 640×800 REA 捕获中将组件目录收起为具名入口并保留居中预览，证据 `ev_645c9d06f0a67ccc366ac255fff6ae4ca02e774ae2a53ae58d70f9a608bf7853`。这仅支持窄窗中保留可读主内容与收纳次要导航的取舍，不作为 Corvid 布局标准；该页面目录按钮点击后的变化未知。
+- 当前验证边界：本机 Electron 无法启动（Mac 仍锁定）；本轮未采集可安全附加的 Corvid 窄窗截图，未做视觉手工验收。定向 E2E 与 CI 结果待补。

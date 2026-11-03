@@ -1144,3 +1144,11 @@
 - 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
 - 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
 - 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。
+
+
+## 2026-11-04 macOS Agent 面板窄窗滚动条宽度修复（Issue #16）
+
+- 证据：Issue #87 双轮全量回归 Actions `41705755809` 的第一轮在 Agent Room 面板检查失败。macOS 704px 视口中所有网页视图为 320px，但卡片内容宽度为 265px，目标为至少 280px。失败日志无目标产品截图。
+- 静态原因判断：窗口预算没有为 Agent 面板列表在 macOS 预留的纵向滚动条空间留出余量。将窗口最小内容宽度和面板宽度回归起点调整为 719px；同步更新最小窗口断言和 D21/QA 记录。
+- 静态验证：待提交前运行 `node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check`。
+- 未完成验证：本机 Mac 锁定期间无法启动真实 Electron；定向 `agent-rooms-panel-e2e.cjs`、连续完整回归、跨显示缩放比例检查及窄窗截图尚未完成。根因判断和修复效果仍待该定向 E2E/CI 结果确认。
