@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { createPiModelManager } = require('../desktop/pi-models.cjs');
 const { createAgentWorkbench } = require('../desktop/agent-workbench.cjs');
 const { createAgentCredentialStore } = require('../desktop/agent-credential-store.cjs');
@@ -9,6 +10,34 @@ const { createFakeSafeStorage } = require('./fake-safe-storage.cjs');
 const safeStorage=createFakeSafeStorage();
 
 (async () => {
+  const localeSource=fs.readFileSync(path.join(__dirname,'../desktop/locales.js'),'utf8');
+  const rendererSource=fs.readFileSync(path.join(__dirname,'../desktop/renderer.js'),'utf8');
+  const rendererErrorStart=rendererSource.indexOf('function userFacingAgentError');
+  const rendererErrorEnd=rendererSource.indexOf('\nlet state',rendererErrorStart);
+  assert.ok(rendererErrorStart>=0&&rendererErrorEnd>rendererErrorStart,'renderer error formatter is present for locale contract coverage');
+  for(const {language,marker,expected} of [
+    {language:'zh-CN',marker:'secure-storage-unavailable',expected:'系统安全存储当前不可用'},
+    {language:'en-US',marker:'secure-storage-unavailable',expected:'Secure system storage is unavailable'},
+    {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
+    {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
+    {language:'zh-CN',marker:'secure-storage-response-invalid',expected:'系统安全存储返回了无效响应'},
+    {language:'en-US',marker:'secure-storage-response-invalid',expected:'System secure storage returned an invalid response'},
+    {language:'zh-CN',marker:'credential-migration-backup-cleanup-failed',expected:'已验证新凭据，但无法删除旧迁移备份'},
+    {language:'en-US',marker:'credential-migration-backup-cleanup-failed',expected:'The new credential was verified, but the old migration backup could not be removed'},
+    {language:'zh-CN',marker:'credential-format-unsupported',expected:'当前凭据文件使用 Corvid 尚不支持的数据版本'},
+    {language:'en-US',marker:'credential-format-unsupported',expected:'The current credential file uses a Corvid data version this build does not support'},
+    {language:'zh-CN',marker:'credential-file-access-failed',expected:'无法读取 Corvid 凭据文件'},
+    {language:'en-US',marker:'credential-file-access-failed',expected:'Could not read the Corvid credential file'},
+    {language:'zh-CN',marker:'credential-file-corrupt',expected:'Corvid 凭据文件格式已损坏'},
+    {language:'en-US',marker:'credential-file-corrupt',expected:'The Corvid credential file is malformed'},
+  ]){
+    const context={navigator:{language},window:{},document:{documentElement:{lang:''},querySelectorAll(){return[];}}};
+    vm.runInNewContext(localeSource,context);
+    context.window.corvidI18n.setLocale(language);
+    context.extensionMessages=context.window.corvidI18n;
+    vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
+    assert.ok(context.userFacingAgentError({message:`[[corvid-error:${marker}]] provider tag rejected`}).startsWith(expected),`${language} localizes ${marker} before it reaches the UI`);
+  }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
   const dataDir = path.join(root, 'corvid');
   const agentDir = path.join(root, 'pi-agent');
@@ -139,6 +168,145 @@ const safeStorage=createFakeSafeStorage();
   assert.deepEqual(fs.readFileSync(failedVerificationPath),failedVerificationBytes,'read-back verification failure restores the original file byte-for-byte');
   assert.equal(fs.existsSync(`${failedVerificationPath}.migration-backup`),false,'failed verification restores the original and consumes its backup');
 
+  const interruptedSecureRecoveryDir=path.join(root,'interrupted-secure-recovery');fs.mkdirSync(interruptedSecureRecoveryDir,{recursive:true});
+  const interruptedSecureRecoveryPath=path.join(interruptedSecureRecoveryDir,'agent-credentials.json');
+  const interruptedSecureBackupPath=`${interruptedSecureRecoveryPath}.migration-backup`;
+  const oldPlaintextBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-plaintext-backup'}}}));
+  fs.writeFileSync(interruptedSecureRecoveryPath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-plaintext'}}}),{mode:0o600});
+  const interruptedMigrationSeed=createAgentCredentialStore({dataDir:interruptedSecureRecoveryDir,safeStorage:createFakeSafeStorage({providerTag:'v10'}),platform:'darwin'});
+  await interruptedMigrationSeed.list();
+  const currentEncryptedCredentialBytes=fs.readFileSync(interruptedSecureRecoveryPath);
+  fs.writeFileSync(interruptedSecureBackupPath,oldPlaintextBackupBytes,{mode:0o600});
+  const unsupportedRecoveryStore=createAgentCredentialStore({dataDir:interruptedSecureRecoveryDir,safeStorage:createFakeSafeStorage({backend:'gnome_libsecret',providerTag:'v10'}),platform:'linux'});
+  await assert.rejects(unsupportedRecoveryStore.list(),error=>{
+    assert.equal(error.code,'secure-storage-provider-unverified');
+    assert.match(error.message,/\[\[corvid-error:secure-storage-provider-unverified\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(interruptedSecureRecoveryPath),currentEncryptedCredentialBytes,'provider rejection preserves current schema 2 credentials byte-for-byte');
+  assert.deepEqual(fs.readFileSync(interruptedSecureBackupPath),oldPlaintextBackupBytes,'provider rejection preserves the migration backup byte-for-byte');
+  assert.equal(JSON.parse(fs.readFileSync(interruptedSecureRecoveryPath,'utf8')).schemaVersion,2,'provider rejection does not downgrade the current schema');
+
+  const corruptRecoveryDir=path.join(root,'corrupt-data-recovery');fs.mkdirSync(corruptRecoveryDir,{recursive:true});
+  const corruptRecoveryPath=path.join(corruptRecoveryDir,'agent-credentials.json');
+  const corruptRecoveryBackupPath=`${corruptRecoveryPath}.migration-backup`;
+  const corruptCurrentBytes=Buffer.from(JSON.stringify({schemaVersion:2,providers:{anthropic:{kind:'api_key',encryptedCredential:'not-base64!'}}}));
+  const recoverableLegacyBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-recoverable-legacy-backup'}}}));
+  fs.writeFileSync(corruptRecoveryPath,corruptCurrentBytes,{mode:0o600});
+  fs.writeFileSync(corruptRecoveryBackupPath,recoverableLegacyBytes,{mode:0o600});
+  const corruptRecoveryStore=createAgentCredentialStore({dataDir:corruptRecoveryDir,safeStorage});
+  assert.deepEqual(await corruptRecoveryStore.read('anthropic'),{type:'api_key',key:'sk-recoverable-legacy-backup'},'non-security schema corruption still recovers the legacy backup');
+  const recoveredCredentialBytes=fs.readFileSync(corruptRecoveryPath);
+  assert.equal(JSON.parse(recoveredCredentialBytes.toString('utf8')).schemaVersion,2,'recovered legacy credentials are migrated back to schema 2');
+  assert.equal(recoveredCredentialBytes.toString('utf8').includes('sk-recoverable-legacy-backup'),false,'recovered credentials are encrypted before the migration backup is removed');
+  assert.equal(fs.existsSync(corruptRecoveryBackupPath),false,'a verified recovered migration consumes its backup');
+
+  const invalidResponseRecoveryDir=path.join(root,'invalid-response-recovery');fs.mkdirSync(invalidResponseRecoveryDir,{recursive:true});
+  const invalidResponseRecoveryPath=path.join(invalidResponseRecoveryDir,'agent-credentials.json');
+  const invalidResponseBackupPath=`${invalidResponseRecoveryPath}.migration-backup`;
+  fs.writeFileSync(invalidResponseRecoveryPath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-before-invalid-response'}}}),{mode:0o600});
+  const invalidResponseSeed=createAgentCredentialStore({dataDir:invalidResponseRecoveryDir,safeStorage,platform:'darwin'});
+  await invalidResponseSeed.list();
+  const invalidResponseCurrentBytes=fs.readFileSync(invalidResponseRecoveryPath);
+  const invalidResponseBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-invalid-response-backup'}}}));
+  fs.writeFileSync(invalidResponseBackupPath,invalidResponseBackupBytes,{mode:0o600});
+  const malformedSafeStorage=createFakeSafeStorage({decryptResult:{result:42,shouldReEncrypt:false}});
+  const invalidResponseRecoveryStore=createAgentCredentialStore({dataDir:invalidResponseRecoveryDir,safeStorage:malformedSafeStorage,platform:'linux'});
+  await assert.rejects(invalidResponseRecoveryStore.list(),error=>{
+    assert.equal(error.code,'secure-storage-response-invalid');
+    assert.match(error.message,/\[\[corvid-error:secure-storage-response-invalid\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(invalidResponseRecoveryPath),invalidResponseCurrentBytes,'invalid safeStorage response preserves current encrypted credentials byte-for-byte');
+  assert.deepEqual(fs.readFileSync(invalidResponseBackupPath),invalidResponseBackupBytes,'invalid safeStorage response preserves the older backup byte-for-byte');
+  assert.equal(JSON.parse(fs.readFileSync(invalidResponseRecoveryPath,'utf8')).schemaVersion,2,'invalid safeStorage response does not downgrade the current schema');
+
+  const cleanupFailureDir=path.join(root,'backup-cleanup-failure');fs.mkdirSync(cleanupFailureDir,{recursive:true});
+  const cleanupFailurePath=path.join(cleanupFailureDir,'agent-credentials.json');
+  const cleanupFailureBackupPath=`${cleanupFailurePath}.migration-backup`;
+  fs.writeFileSync(cleanupFailurePath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-newer-credential'}}}),{mode:0o600});
+  const cleanupFailureSeed=createAgentCredentialStore({dataDir:cleanupFailureDir,safeStorage});
+  await cleanupFailureSeed.list();
+  const cleanupFailureCurrentBytes=fs.readFileSync(cleanupFailurePath);
+  const cleanupFailureBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-backup-credential'}}}));
+  fs.writeFileSync(cleanupFailureBackupPath,cleanupFailureBackupBytes,{mode:0o600});
+  const originalUnlinkSync=fs.unlinkSync;
+  let blockBackupCleanup=true;
+  fs.unlinkSync=function(target){
+    if(blockBackupCleanup&&path.resolve(target)===path.resolve(cleanupFailureBackupPath)){
+      blockBackupCleanup=false;
+      const error=new Error('fixture backup cleanup permission failure');error.code='EACCES';throw error;
+    }
+    return originalUnlinkSync.call(this,target);
+  };
+  try{
+    const cleanupFailureStore=createAgentCredentialStore({dataDir:cleanupFailureDir,safeStorage});
+    await assert.rejects(cleanupFailureStore.list(),error=>{
+      assert.equal(error.code,'credential-migration-backup-cleanup-failed');
+      assert.match(error.message,/\[\[corvid-error:credential-migration-backup-cleanup-failed\]\]/);
+      assert.match(error.cause?.message||'',/fixture backup cleanup permission failure/);
+      return true;
+    });
+  }finally{fs.unlinkSync=originalUnlinkSync;}
+  assert.deepEqual(fs.readFileSync(cleanupFailurePath),cleanupFailureCurrentBytes,'backup cleanup failure preserves the already verified current credential bytes');
+  assert.deepEqual(fs.readFileSync(cleanupFailureBackupPath),cleanupFailureBackupBytes,'backup cleanup failure leaves the legacy backup for a later retry');
+  assert.equal(JSON.parse(fs.readFileSync(cleanupFailurePath,'utf8')).schemaVersion,2,'backup cleanup failure never downgrades verified credentials');
+
+  const unsupportedVersionDir=path.join(root,'unsupported-credential-version');fs.mkdirSync(unsupportedVersionDir,{recursive:true});
+  const unsupportedVersionPath=path.join(unsupportedVersionDir,'agent-credentials.json');
+  const unsupportedVersionBackupPath=`${unsupportedVersionPath}.migration-backup`;
+  const unsupportedVersionCurrentBytes=Buffer.from(JSON.stringify({schemaVersion:3,providers:{anthropic:{kind:'api_key',encryptedCredential:'future-format-ciphertext'}}}));
+  const unsupportedVersionBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-unsupported-version-backup'}}}));
+  fs.writeFileSync(unsupportedVersionPath,unsupportedVersionCurrentBytes,{mode:0o600});
+  fs.writeFileSync(unsupportedVersionBackupPath,unsupportedVersionBackupBytes,{mode:0o600});
+  const unsupportedVersionStore=createAgentCredentialStore({dataDir:unsupportedVersionDir,safeStorage});
+  await assert.rejects(unsupportedVersionStore.list(),error=>{
+    assert.equal(error.code,'credential-format-unsupported');
+    assert.match(error.message,/\[\[corvid-error:credential-format-unsupported\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(unsupportedVersionPath),unsupportedVersionCurrentBytes,'unsupported current credential schema is preserved byte-for-byte');
+  assert.deepEqual(fs.readFileSync(unsupportedVersionBackupPath),unsupportedVersionBackupBytes,'unsupported schema preserves its migration backup byte-for-byte');
+
+  const unreadableCurrentDir=path.join(root,'unreadable-current-credentials');fs.mkdirSync(unreadableCurrentDir,{recursive:true});
+  const unreadableCurrentPath=path.join(unreadableCurrentDir,'agent-credentials.json');
+  const unreadableCurrentBackupPath=`${unreadableCurrentPath}.migration-backup`;
+  fs.writeFileSync(unreadableCurrentPath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-before-read-error'}}}),{mode:0o600});
+  const unreadableCurrentSeed=createAgentCredentialStore({dataDir:unreadableCurrentDir,safeStorage});
+  await unreadableCurrentSeed.list();
+  const unreadableCurrentBytes=fs.readFileSync(unreadableCurrentPath);
+  const unreadableBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-read-error-backup'}}}));
+  fs.writeFileSync(unreadableCurrentBackupPath,unreadableBackupBytes,{mode:0o600});
+  const originalReadFileSync=fs.readFileSync;
+  let blockCurrentRead=true;
+  fs.readFileSync=function(target,...args){
+    if(blockCurrentRead&&typeof target==='string'&&path.resolve(target)===path.resolve(unreadableCurrentPath)){
+      blockCurrentRead=false;
+      const error=new Error('fixture credential read permission failure');error.code='EACCES';throw error;
+    }
+    return originalReadFileSync.call(this,target,...args);
+  };
+  try{
+    const unreadableCurrentStore=createAgentCredentialStore({dataDir:unreadableCurrentDir,safeStorage});
+    await assert.rejects(unreadableCurrentStore.list(),error=>{
+      assert.equal(error.code,'credential-file-access-failed');
+      assert.match(error.message,/\[\[corvid-error:credential-file-access-failed\]\]/);
+      assert.match(error.cause?.message||'',/fixture credential read permission failure/);
+      return true;
+    });
+  }finally{fs.readFileSync=originalReadFileSync;}
+  assert.deepEqual(fs.readFileSync(unreadableCurrentPath),unreadableCurrentBytes,'credential read I/O failure preserves the current encrypted file byte-for-byte');
+  assert.deepEqual(fs.readFileSync(unreadableCurrentBackupPath),unreadableBackupBytes,'credential read I/O failure preserves the legacy backup byte-for-byte');
+
+  const syntacticallyCorruptRecoveryDir=path.join(root,'syntax-corrupt-recovery');fs.mkdirSync(syntacticallyCorruptRecoveryDir,{recursive:true});
+  const syntacticallyCorruptPath=path.join(syntacticallyCorruptRecoveryDir,'agent-credentials.json');
+  const syntacticallyCorruptBackupPath=`${syntacticallyCorruptPath}.migration-backup`;
+  fs.writeFileSync(syntacticallyCorruptPath,'{broken json',{mode:0o600});
+  fs.writeFileSync(syntacticallyCorruptBackupPath,recoverableLegacyBytes,{mode:0o600});
+  const syntaxRecoveryStore=createAgentCredentialStore({dataDir:syntacticallyCorruptRecoveryDir,safeStorage});
+  assert.deepEqual(await syntaxRecoveryStore.read('anthropic'),{type:'api_key',key:'sk-recoverable-legacy-backup'},'JSON syntax damage may still recover a valid migration backup');
+  assert.equal(JSON.parse(fs.readFileSync(syntacticallyCorruptPath,'utf8')).schemaVersion,2,'syntax recovery migrates the valid legacy backup');
+
   const rotatedDir=path.join(root,'rotated-data');
   const rotatingStore=createAgentCredentialStore({dataDir:rotatedDir,safeStorage});
   await rotatingStore.modify('rotating',()=>({type:'api_key',key:'rotation-fixture'}));
@@ -148,6 +316,40 @@ const safeStorage=createFakeSafeStorage();
   assert.equal((await rotationStore.read('rotating')).key,'rotation-fixture');
   const afterRotation=JSON.parse(fs.readFileSync(rotatingPath,'utf8')).providers.rotating.encryptedCredential;
   assert.notEqual(afterRotation,beforeRotation,'rotated key material rewrites the encrypted credential record');
+
+  for(const providerTag of ['v11','v12']){
+    const legacyBackend=providerTag==='v12'?'basic_text':'gnome_libsecret';
+    const linuxDir=path.join(root,`linux-async-${providerTag}`);
+    const linuxStorage=createFakeSafeStorage({backend:legacyBackend,providerTag});
+    const linuxStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:linuxStorage,platform:'linux'});
+    await linuxStore.modify('fixture-provider',()=>({type:'api_key',key:`secret-${providerTag}`}));
+    const linuxCredentialBytes=fs.readFileSync(path.join(linuxDir,'agent-credentials.json'),'utf8');
+    assert.equal(linuxCredentialBytes.includes(`secret-${providerTag}`),false,`${providerTag} persists only encrypted credential data`);
+    assert.equal((await linuxStore.read('fixture-provider')).key,`secret-${providerTag}`,`${providerTag} can encrypt and decrypt a credential`);
+  }
+
+  for(const {backend,providerTag} of [
+    {backend:'gnome_libsecret',providerTag:'v10'},
+    {backend:'basic_text',providerTag:'v10'},
+    {backend:'gnome_libsecret',providerTag:'v13'},
+    {backend:'gnome_libsecret',providerTag:Buffer.from([0xf6,0xb1,0xb2])},
+  ]){
+    const providerLabel=Buffer.isBuffer(providerTag)?'high-bit-v12':providerTag;
+    const rejectedWriteDir=path.join(root,`linux-new-rejected-${backend}-${providerLabel}`);
+    const rejectedWriteStore=createAgentCredentialStore({dataDir:rejectedWriteDir,safeStorage:createFakeSafeStorage({backend,providerTag}),platform:'linux'});
+    await assert.rejects(rejectedWriteStore.modify('fixture-provider',()=>({type:'api_key',key:'rejected-fallback-fixture'})),error=>{assert.match(error.message,/无法确认系统密码管理器已保护/);assert.match(error.message,/\[\[corvid-error:secure-storage-provider-unverified\]\]/);return true;});
+    assert.equal(fs.existsSync(path.join(rejectedWriteDir,'agent-credentials.json')),false,`${backend}/${providerTag} does not create a credential file`);
+
+    const linuxDir=path.join(root,`linux-rejected-${backend}-${providerLabel}`);
+    const seedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({providerTag}),platform:'darwin'});
+    await seedStore.modify('fixture-provider',()=>({type:'api_key',key:'existing-encrypted-fixture'}));
+    const credentialPath=path.join(linuxDir,'agent-credentials.json');
+    const originalBytes=fs.readFileSync(credentialPath);
+    const unsupportedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({backend,providerTag}),platform:'linux'});
+    await assert.rejects(unsupportedStore.read('fixture-provider'),/无法确认系统密码管理器已保护/);
+    await assert.rejects(unsupportedStore.modify('fixture-provider',()=>({type:'api_key',key:'replacement-fixture'})),/无法确认系统密码管理器已保护/);
+    assert.deepEqual(fs.readFileSync(credentialPath),originalBytes,`${backend}/${providerTag} leaves existing encrypted credentials byte-for-byte intact`);
+  }
 
   const concurrentCredentialStore = createAgentCredentialStore({ dataDir: path.join(root, 'concurrent-credentials'), safeStorage });
   await Promise.all([

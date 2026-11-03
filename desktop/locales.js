@@ -351,6 +351,13 @@
       extensionPopup: '打开扩展：{name}',
       extensionPopupUnavailable: '扩展弹窗当前不可用',
       extensionPopupFailed: '无法打开扩展弹窗，请检查扩展状态后重试。',
+      secureStorageUnavailable: '系统安全存储当前不可用，现有账号授权和文件已保留。请检查并解锁系统钥匙串或密码管理器后重试。',
+      credentialStorageResponseInvalid: '系统安全存储返回了无效响应。现有账号授权和文件已保留；请检查系统钥匙串或密码管理器后重试。',
+      credentialMigrationBackupCleanupFailed: '已验证新凭据，但无法删除旧迁移备份。当前密文与备份均已保留；请检查数据目录权限后重试。',
+      credentialFormatUnsupported: '当前凭据文件使用 Corvid 尚不支持的数据版本。现有文件与迁移备份均已保留；请升级到兼容版本后重试。',
+      credentialFileAccessFailed: '无法读取 Corvid 凭据文件。现有凭据与迁移备份均已保留。请检查数据目录权限及存储状态后重试。',
+      credentialFileCorrupt: 'Corvid 凭据文件格式已损坏。原文件已保留；如果存在迁移备份，Corvid 将尝试恢复。',
+      credentialStorageProviderUnavailable: 'Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。请设置并解锁受支持的系统密码管理器后重试；现有账号授权和文件已保留。',
       plural: {
         tabs: { one: '{count} 个标签页', other: '{count} 个标签页' },
       },
@@ -706,6 +713,13 @@
       extensionPopup: 'Open extension: {name}',
       extensionPopupUnavailable: 'This extension popup is unavailable.',
       extensionPopupFailed: 'Could not open the extension popup. Check the extension and try again.',
+      secureStorageUnavailable: 'Secure system storage is unavailable. Existing credentials and files were preserved. Check and unlock the system keychain or password manager, then retry.',
+      credentialStorageResponseInvalid: 'System secure storage returned an invalid response. Existing credentials and files were preserved. Check the system keychain or password manager, then retry.',
+      credentialMigrationBackupCleanupFailed: 'The new credential was verified, but the old migration backup could not be removed. The current ciphertext and backup were preserved. Check the data directory permissions, then retry.',
+      credentialFormatUnsupported: 'The current credential file uses a Corvid data version this build does not support. Existing files and the migration backup were preserved. Upgrade Corvid to a compatible version, then retry.',
+      credentialFileAccessFailed: 'Could not read the Corvid credential file. Existing credentials and the migration backup were preserved. Check the data directory permissions and storage, then retry.',
+      credentialFileCorrupt: 'The Corvid credential file is malformed. The original file was preserved; if a migration backup exists, Corvid will try to recover it.',
+      credentialStorageProviderUnavailable: 'Linux could not confirm that the system password manager protects this credential, so saving or reading it was refused. Set up and unlock a supported system password manager, then retry. Existing credentials and files were preserved.',
       plural: {
         tabs: { one: '{count} tab', other: '{count} tabs' },
       },
@@ -756,5 +770,19 @@
     formatNumber(value, options) { return new Intl.NumberFormat(locale, options).format(value); },
     formatDate(value, options) { return new Intl.DateTimeFormat(locale, options).format(value instanceof Date ? value : new Date(value)); },
       formatList(values, options) { return new Intl.ListFormat(locale, options).format(values); },
+    userFacingError(message) {
+      const match = String(message || '').match(/^\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
+      if (!match) return null;
+      const key = {
+        'secure-storage-unavailable': 'secureStorageUnavailable',
+        'secure-storage-provider-unverified': 'credentialStorageProviderUnavailable',
+        'secure-storage-response-invalid': 'credentialStorageResponseInvalid',
+        'credential-migration-backup-cleanup-failed': 'credentialMigrationBackupCleanupFailed',
+        'credential-format-unsupported': 'credentialFormatUnsupported',
+        'credential-file-access-failed': 'credentialFileAccessFailed',
+        'credential-file-corrupt': 'credentialFileCorrupt',
+      }[match[1].toLowerCase()];
+      return this.t(key || 'agentErrorFallback');
+    },
   });
 })();

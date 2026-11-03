@@ -4,6 +4,9 @@ const crypto = require('node:crypto');
 
 const LEGACY_SCHEMA_VERSION = 1;
 const SCHEMA_VERSION = 2;
+// Electron 45.2.1 / Chromium 156 async tags: v10 is the fixed-key POSIX fallback;
+// v11 is Secret Service and v12 is the Portal provider. Re-review on Electron upgrades.
+const SECURE_LINUX_ASYNC_PROVIDER_TAGS = new Set(['v11', 'v12']);
 const emptyState = () => ({ schemaVersion: SCHEMA_VERSION, providers: {} });
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const throwIfAborted = signal => signal?.throwIfAborted?.();
@@ -90,13 +93,38 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch (error) {
       if (error.code === 'ENOENT') return null;
-      if (error instanceof SyntaxError) throw new Error(`Corvid Agent credentials are unreadable; the original file was preserved: ${error.message}`);
-      throw error;
+      if (error instanceof SyntaxError) {
+        const corrupt = new Error('[[corvid-error:credential-file-corrupt]] Corvid 凭据文件格式已损坏。原文件已保留；如果存在迁移备份，Corvid 将尝试恢复。');
+        corrupt.code = 'credential-file-corrupt';
+        throw corrupt;
+      }
+      const inaccessible = new Error('[[corvid-error:credential-file-access-failed]] 无法读取 Corvid 凭据文件。现有凭据与迁移备份均已保留。请检查数据目录权限及存储状态后重试。', { cause: error });
+      inaccessible.code = 'credential-file-access-failed';
+      throw inaccessible;
     }
   }
 
-  function storageError(message, cause) {
-    return new Error(`${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+  function storageError(message, cause, code = 'secure-storage-unavailable') {
+    const marker = `[[corvid-error:${code}]] `;
+    const error = new Error(`${marker}${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+    error.code = code;
+    return error;
+  }
+
+  function migrationBackupCleanupError(cause) {
+    const code = 'credential-migration-backup-cleanup-failed';
+    const marker = `[[corvid-error:${code}]] `;
+    const error = new Error(`${marker}已验证新凭据，但无法删除旧迁移备份；当前密文与备份均已保留。请检查数据目录权限后重试。`, { cause });
+    error.code = code;
+    return error;
+  }
+
+  function unsupportedCredentialFormatError() {
+    const code = 'credential-format-unsupported';
+    const marker = `[[corvid-error:${code}]] `;
+    const error = new Error(`${marker}当前凭据文件使用 Corvid 尚不支持的数据版本；现有文件与迁移备份均已保留。请升级到兼容版本后重试。`);
+    error.code = code;
+    return error;
   }
 
   async function ensureSecureStorage() {
@@ -104,11 +132,13 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { available = await safeStorage.isAsyncEncryptionAvailable(); }
     catch (error) { throw storageError('无法访问系统安全存储。', error); }
     if (!available) throw storageError('系统安全存储当前不可用。');
-    if (platform === 'linux') {
-      let backend;
-      try { backend = safeStorage.getSelectedStorageBackend?.(); }
-      catch (error) { throw storageError('无法确认 Linux 密码管理器状态。', error); }
-      if (!backend || backend === 'unknown' || backend === 'basic_text') throw storageError('Linux 当前没有可用的安全密码管理器，已禁止以弱保护方式保存账号授权。');
+  }
+
+  function ensureSecureLinuxCiphertext(encrypted) {
+    if (platform !== 'linux') return;
+    const tag = encrypted.subarray(0, 3).toString('latin1');
+    if (!SECURE_LINUX_ASYNC_PROVIDER_TAGS.has(tag)) {
+      throw storageError('Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。', undefined, 'secure-storage-provider-unverified');
     }
   }
 
@@ -119,16 +149,20 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { encrypted = await safeStorage.encryptStringAsync(JSON.stringify(plainRecord)); }
     catch (error) { throw storageError('系统安全存储无法加密账号授权。', error); }
     if (!Buffer.isBuffer(encrypted) || !encrypted.length) throw storageError('系统安全存储没有返回有效的加密结果。');
+    ensureSecureLinuxCiphertext(encrypted);
     return { kind: plainRecord.kind, encryptedCredential: encrypted.toString('base64') };
   }
 
   async function decryptCredential(record) {
     await ensureSecureStorage();
     const encrypted = Buffer.from(record.encryptedCredential, 'base64');
+    ensureSecureLinuxCiphertext(encrypted);
     let result;
     try { result = await safeStorage.decryptStringAsync(encrypted); }
     catch (error) { throw storageError('系统安全存储无法解密已保存的账号授权。', error); }
-    if (!result || typeof result.result !== 'string') throw new Error('系统安全存储返回了无效的解密结果；原凭据文件已保留');
+    if (!result || typeof result.result !== 'string') {
+      throw storageError('系统安全存储返回了无效响应，现有账号授权和文件已保留。', undefined, 'secure-storage-response-invalid');
+    }
     let plainRecord;
     try { plainRecord = JSON.parse(result.result); }
     catch (error) { throw new Error(`Corvid Agent encrypted credential is unreadable; the original file was preserved: ${error.message}`); }
@@ -184,18 +218,29 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   async function recoverMigrationBackup() {
     if (!fs.existsSync(migrationBackup)) return;
     let current;
-    try { current = readStateFile(); } catch { current = null; }
+    try { current = readStateFile(); }
+    catch (error) {
+      if (error?.code === 'credential-file-corrupt') current = null;
+      else throw error;
+    }
     if (current?.schemaVersion === SCHEMA_VERSION) {
+      let verified = false;
       try {
         await verifyState(validateEncryptedState(current));
-        fs.unlinkSync(migrationBackup);
-        return;
+        verified = true;
       } catch (error) {
-        if (/系统安全存储|Linux 当前没有/.test(error.message)) throw error;
+        if (typeof error?.code === 'string' && error.code.startsWith('secure-storage-')) throw error;
+      }
+      if (verified) {
+        try { fs.unlinkSync(migrationBackup); }
+        catch (error) { throw migrationBackupCleanupError(error); }
+        return;
       }
     } else if (current?.schemaVersion === LEGACY_SCHEMA_VERSION) {
       fs.unlinkSync(migrationBackup);
       return;
+    } else if (current !== null) {
+      throw unsupportedCredentialFormatError();
     }
     fs.renameSync(migrationBackup, file);
     try { fs.chmodSync(file, 0o600); } catch {}
