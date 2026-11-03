@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 macOS 原生 Chrome 目录选择器复核（Issue #18）
+
+- 缺口：自动化 `chrome-import-e2e` 以测试替身替换原生目录对话框，Issue #18 仍要求人工核对本机选择器。
+- 直接观察：macOS、隔离 Corvid 数据目录、真实 Electron 45.2.1。设置中进入 Chrome 导入后，系统显示标题为“选择 Google Chrome 用户资料目录”的原生文件夹面板。为避免读取开发机真实资料，只用“前往文件夹”定位到临时合成 User Data（含合成 `Local State` 和 `Default/Bookmarks`）；选择后 UI 显示“临时合成资料 (Default)”与 1 个书签、0 条历史/Cookie/扩展。再次打开选择器并取消后，已有来源和计数仍保留；未按“导入所选资料”，没有写入目标资料。
+- REA：静态桌面目录清点 Evidence `ev_3d3466f904b9aa76b1e4184202671dc36e2338df9c50bae989db7f1a799007f1`；覆盖 110 个条目，运行态为 unknown，不能当作原生对话框的 REA 动态证据。运行态细节来自本机 CUA 无障碍树观察。未引用 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI：本次只验收 macOS 系统面板，不评审 Corvid 自绘 UI。
+- 静态实现对照：`desktop/main.cjs` 的 `chooseChromeImportSource` 通过 `dialog.showOpenDialog(..., properties:['openDirectory'])` 打开目录面板，取消时返回 `canceled:true`；该静态代码只能说明预期分支，动态结论以上述 UI 观察为准。
+- 限制：仅 macOS 手动验证一个合成目录及取消；没有导入、真实 Chrome 数据、真实钥匙串、磁盘/崩溃时序、打包版、Windows/Linux 验收。Issue #18 继续保持开放。
+
 ## 2026-11-03 09:48 外部 Agent Room 授权并发回归（Issue #96）
 
 - 缺口：此前 `agent-access-e2e.cjs` 依次验证两个 scoped credential；Issue #96 的验收要求两个客户端并行操作不同获准 Room，但测试没有覆盖并发到达时的读写隔离。
