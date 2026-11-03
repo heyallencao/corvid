@@ -79,4 +79,4 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 
 **静态证据：** Corvid 当前 Profile 由 `profiles.json` 和 `persist:corvid-profile-${profileId}` session partition 标识；History/Bookmarks/Downloads 与 managed extension records 由独立数据文件持有；Agent task/conversation 和 runtime checkpoint 还分布在 `agent-tasks.json` 与 `agent-sessions/`。这些事实来自 Corvid 当前源代码，不是竞品证据。
 
-**未观察/未知：** 本轮未通过 REA 操作 Chrome/Safari 原生 Profile 管理界面；未检查 EGO/Kaze Profile 删除交互；也没有测量窄窗状态、确认对话框视觉层级、键盘操作或删除失败后的恢复行为。由此不对这些行为作竞品结论。视觉交互实现还需按 UI QA 流程在隔离 Corvid 数据目录及小/常规窗口检查。
+**未观察/未知：** 本轮尝试启动独立 Chrome 临时 Profile 并从 REA 原生 UI 观察 Profile picker，但没有取得有效截图或 AX Evidence：Chrome 加载请求后显示为 New Tab；REA `observe_native_ui` 首次因当前 Mach-O target 不匹配拒绝，选中 Chrome 二进制后又因 provider 无法读取该进程 launch time 返回 `capability_unavailable`。临时 Chrome 进程已退出；这次失败没有具名 Evidence ID。未通过 REA 操作 Chrome/Safari 原生 Profile 管理界面；未检查 EGO/Kaze Profile 删除交互；也没有测量窄窗状态、确认对话框视觉层级、键盘操作或删除失败后的恢复行为。由此不对这些行为作竞品结论。视觉交互实现还需按 UI QA 流程在隔离 Corvid 数据目录及小/常规窗口检查。
