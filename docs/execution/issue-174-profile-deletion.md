@@ -29,9 +29,9 @@
 - [x] 浏览器市场参考：用 REA 隔离配置读取 Chrome 与 Safari 官方身份帮助页；记录具体行为、证据 ID 和未观察边界。
 - [x] Issue 与执行范围已建立。
 - [x] Profile 删除事务与重试边界已复核并实现可注入协调器：默认身份与引用阻断、Agent 写入锁、持久删除标记、Session 数据和缓存清理、扩展/资料库移除、最终删除 Profile 记录；模块合同覆盖故障后重试。
-- [ ] 在 Electron 主流程中接入协调器，补齐 Room/窗口/下载实测引用检查和用户可见“重试清理”入口。
-- [ ] 双语 UI、数据清理、预检和 E2E 实现。
-- [ ] 真实 Electron 小/常规窗口检查、截图与中文 PR。
+- [x] 在 Electron 主流程中接入协调器，按窗口、Room、进行中下载和 Agent 活动对话做二次预检；失败的 `deletionPending` 身份可从浏览身份菜单重新打开删除流程并重试。
+- [x] 双语 UI、数据清理、预检和 E2E 实现；首次 Session 清理失败的真实 Electron UI 路径会保留身份并成功重试。
+- [x] 真实 Electron 常规/700×420 窗口检查并保存合成数据截图；仍需独立 review、最新主线集成和中文 PR。
 
 ## 证据与取舍
 
@@ -39,3 +39,4 @@
 - Safari 官方说明固定保留 Personal (Default)；删除会关掉该身份的网站、清除 tabs/history/site data，但保留非空收藏夹目录；iCloud Keychain 密码跨身份可用。REA Evidence `ev_97475b45ef50f6216275a5e422ca3577d94f6bc9c09ffe0158cb93f185022e73` 同样是帮助页 DOM/AX 捕获。
 - Kobra 的计划卡 REA Evidence `ev_c855872bf1206ac32d64dbfea78ed383499bbde08ab53f811bcbf8d415256b07` 显示待办、当前状态和待用户动作在卡片上分区；`ev_82b410170686a21723ebde805c5c5b4aec0617a625e153208b85b5d248e02f25` 单次“View Plan”动作前后 AX 摘要未变，不能据此声称其交互稳定。这里只借鉴“阻断原因与用户可做的下一步分开呈现”，不复制组件/源码。
 - 尚无本轮 EGO/Kaze Profile 删除运行态证据；本范围不据此作功能对标结论。REA 页面分析未观察原生浏览器 Profile 窗口、删除失败恢复或窄窗行为。
+- Corvid 运行态截图/断言来自真实 Electron 45.2.1、Playwright 窗口和临时本地 HTTP fixture；它们是本产品运行证据，不是 REA 参考站点证据。窗口/Room/下载/Agent 四类阻断由模块合同逐类核验，真实 Electron UI 本轮实际覆盖窗口与 Room 阻断及 Session 失败后的可见重试。
