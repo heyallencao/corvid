@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 Chrome 导入向导空白问题复核（Issue #124）
+
+- 环境：macOS、隔离 worktree（主线提交 `d475c07`）、Electron 45.2.1；使用临时 `CORVID_DATA_DIR`，未读取真实 Chrome 资料。
+- 操作：在实际 Corvid 窗口依次打开“设置 → 从 Google Chrome 导入”；对照 macOS 屏幕截图、Playwright `_electron` 全窗口截图、DOM 可见状态及布局尺寸。
+- 结果：未复现“正文空白”。屏幕和 Playwright 截图均完整显示导入标题、说明、浏览身份选择、资料目录按钮、资料类别、限制说明和导入按钮；DOM 计算样式为可见，布局矩形非零。截图暂存 `/tmp/corvid-issue124-playwright.png`，不纳入仓库。最初报告来自不同桌面观察结果，现有证据不足以归因于产品样式缺陷。
+- 处理：在 Issue #124 以中文补充复核范围与限制后关闭；没有修改 CSS 或创建产品修复 PR。若能提供特定系统显示设置、窗口尺寸或操作步骤下的复现，可重新打开。
+- 限制：没有选择资料目录或导入项目；只检查当前 macOS/Electron 环境与默认窗口尺寸；未覆盖暗色主题、窄窗、其他系统和屏幕阅读器。REA 被动 DOM 证据不等同于像素呈现，本结论以同一隔离运行状态下的 CUA 屏幕截图与 Playwright Electron 截图为依据。
+
 ## 2026-11-03 浏览器标签与空间控件的辅助技术语义（Issue #16）
 
 - Corvid 运行态：隔离 Electron 45.2.1 / Chrome 156.0.8078.75，`desktop/index.html`，REA 目标 Evidence `ev_1f81589c3247e56ea4de1db93f239a52086654699750f538b047bcb5382897ef`；被动 DOM Evidence `ev_8c9f4ce02b8bd6f50d425c60b49e3ce5a68d873048ae156cee4b4db2236b4893`（2026-11-03 01:22:13 UTC）。REA 仅观察本地 `file://` shell 的 DOM 树，脚本/资源受到策略过滤，不执行点击，也不提供可访问性树或 VoiceOver 语音。
