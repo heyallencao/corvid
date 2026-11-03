@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 56 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（6 个文件、22 个 `node:test` 用例）和 50 条独立脚本命令，共 72 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 57 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（7 个文件、28 个 `node:test` 用例）和 51 条独立脚本命令，共 79 项自动化检查；原生菜单模块合同见 `tests/application-menu.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -71,6 +71,7 @@
 | 54 | `tests/pi-credential-os-store-e2e.cjs` | macOS、Windows、Linux 真实 Electron：检查异步 `safeStorage` 可用；通过 Corvid UI 保存合成 API Key，断言 schemaVersion 2 文件只含密文；POSIX 平台检查权限为 0600，Linux 另校验密文实际以 `v11`/`v12` 开头；重启 Electron 后确认 Provider 仍连接；登出后断言凭据记录删除。由 `.github/workflows/credential-os-store.yml` 在三个原生 runner 执行。 | 使用临时 `CORVID_DATA_DIR` 与合成 Key，不调用真实模型/OAuth；Linux runner 安装并解锁 GNOME Keyring，测试开发版 Electron，不验证签名包、真实 Linux 桌面差异或同用户进程隔离；Windows runner 不检查文件 ACL。每个平台的实际结果以验证记录中的 Actions 运行链接为准。 |
 | 55 | `tests/pi-real-model-smoke.cjs`（手动运行） | 在隔离 `CORVID_DATA_DIR` 中经 Corvid 发起 ChatGPT OAuth，断言 Corvid 加密凭据文件存在、Agent 任务固定使用 `openai-codex/gpt-6-luna`，并通过 Corvid UI 向本地 HTTP 页面上下文发起真实请求、收到标记响应。 | 会访问真实 OpenAI/Codex 服务并消耗账户用量；不得读取外部 CLI 凭据，不纳入 `npm test`；需在 Corvid OAuth 对话框及浏览器中完成账号授权；当前执行证据限本机 macOS。 |
 | 56 | `tests/packaged-app-e2e.cjs` | 从 `dist/mac-arm64/Corvid.app` 内的可执行文件启动真实 Electron，验证 `app.isPackaged`、macOS arm64/Electron 版本、`app.asar` 资源、BrowserWindow、首个 Room、隔离 `CORVID_DATA_DIR`、Room 控制接口，以及 `/shutdown` 后进程退出和 `control.json` 清理。 | 必须先在 Apple Silicon 上运行 `npm run package:mac:dir`；只覆盖未签名开发包和本机 arm64。无真实网站、Profile、OAuth、模型、安装器、签名/公证、macOS x64、Windows 或 Linux。 |
+| 57 | `tests/application-menu-e2e.cjs` | 隔离真实 Electron：Corvid 双语原生应用菜单树；新建标签/窗口、窗口菜单焦点切换与当前窗口路由；Agent 所有空间禁用用户浏览菜单动作；语言实时切换和重启保持；无 Electron/runtime 或开发者工具菜单入口。 | 本地临时数据目录；Electron 菜单动作通过菜单项 callback 调用，不验证 macOS 原生菜单点击像素、VoiceOver 或 Windows/Linux Alt 唤出；编辑角色只检查菜单树，剪贴板/输入控件行为另需平台验收。 |
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
@@ -92,11 +93,12 @@
 | D24 本地化 | `localization-e2e`（应用语言选择/拒绝无效 locale、资源键对齐、浏览器壳层与站点工具菜单名称/提示、Intl 格式、窄窗导航与中英文设置对话框滚动/保存动作可达、偏好权限与重启恢复；仅首批静态覆盖） |
 | D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航） |
 | D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、可选择非活动 Profile 作为目标并在失败重试时锁定目标、合成 v10 Cookie 解密、Cookie 预览仅 `COUNT(*) ... NOT INDEXED` 且不物化行字段；未同意或合成密钥读取失败时不查询 Cookie 行；Cookie 类别单独确认、Profile 隔离、扩展执行与重启恢复、重复导入、Cookie flushStore 故障回滚/重试、只读 Profile 目录下持久 Cookie 落盘核验及重启重试、损坏 Cookie 索引完整性拒绝、预览后 SQLite 占用错误分类与源/目标不变、删除失败告警与同名旧路径 Cookie 保留、不同值 Cookie 冲突保留、library.json 替换失败回滚/重试、引导状态；真实系统钥匙串授权未覆盖） |
+| D16 日常浏览器功能 | `application-menu.test.mjs`（菜单结构、zh-CN/en 文案、快捷键、编辑角色与菜单状态合同）、`application-menu-e2e.cjs`（隔离 Electron 原生菜单、标签/窗口路由、Agent Room 权限状态和语言持久化；待运行） |
 
 ## 单独运行
 
-- 6 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，共 22 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件使用纯 Node 合同测试。
-- 50 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 7 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs`，共 28 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件及 `application-menu.test.mjs` 使用纯 Node 合同测试。
+- 51 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 
