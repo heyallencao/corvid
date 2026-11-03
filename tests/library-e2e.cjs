@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
 
 const project = path.resolve(__dirname, '..');
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-library-'));
@@ -20,18 +20,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   let app;
 
   async function boot() {
-    app = await _electron.launch({
+    const launched = await launchElectron(_electron, {
       executablePath: electronPath,
       args: [project],
       env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_PORT: '0', CORVID_TEST_MODE: '1' },
-    });
-    const shell = await app.firstWindow();
-    let config;
-    for (let i = 0; i < 200; i++) {
-      try { config = JSON.parse(fs.readFileSync(path.join(dataDir, 'control.json'), 'utf8')); break; }
-      catch { await delay(50); }
-    }
-    assert.ok(config, 'control.json was not created');
+    }, { label: 'library-e2e', dataDir });
+    app = launched.app;
+    const shell = launched.shell;
+    const config = await waitForControl(app, dataDir, { label: 'library-e2e' });
     const request = async (route, method = 'GET', body) => {
       const response = await fetch(config.baseUrl + route, {
         method,
@@ -44,7 +40,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     };
     return { shell, request };
   }
-  async function stop() { await app.close(); app = undefined; }
+  async function stop() { await closeElectron(app); app = undefined; }
 
   try {
     let { shell, request } = await boot();
@@ -87,7 +83,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await stop();
     console.log('PASS UI room creation, navigation, history/bookmarks, restart persistence, deletion and restart');
   } finally {
-    if (app) await app.close().catch(() => {});
+    if (app) await closeElectron(app).catch(error => { console.error(error); process.exitCode = 1; });
     await new Promise(resolve => fixture.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
