@@ -94,6 +94,9 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     },'page receives HTML Fullscreen click');
     assert.equal(fullscreenState.active,true,`HTML Fullscreen request did not activate: ${JSON.stringify(fullscreenState)}`);
     await until(async()=>{const state=await api('/rooms');return state.windows.some(item=>item.pageFullscreen);},'page full-screen state');
+    const pageState=await api('/rooms');
+    const pageWindow=pageState.windows.find(item=>item.id===pageState.rooms[0]?.windowId);
+    assert.equal(pageWindow?.fullscreen,false,'page HTML Fullscreen must remain distinct from Corvid window fullscreen');
     await until(()=>shell.locator('#toggle-fullscreen').isDisabled(),'browser full-screen action is disabled during page fullscreen');
     assert.equal(await shell.locator('#toggle-fullscreen').getAttribute('title'),'请先退出网页全屏，再切换浏览器全屏。');
     const nativeFullscreenBefore=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().some(window=>window.isFullScreen()));

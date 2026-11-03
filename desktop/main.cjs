@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
+const { clearPageFullscreen } = require('./page-fullscreen.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 let dataDirectoryError = null;
@@ -278,18 +279,6 @@ function requestWindowFullscreen(record, enabled) {
 }
 function isWindowFullscreenRequested(record) {
   return record.fullscreenTransitionTarget ?? record.appFullscreen;
-}
-function clearPageFullscreen(record, tabId) {
-  if(!record?.htmlFullscreen || record.htmlFullscreenTabId!==tabId)return false;
-  record.htmlFullscreen=false;
-  record.htmlFullscreenTabId=null;
-  const browserWindow=record.browserWindow;
-  if(!record.appFullscreen && !browserWindow.isDestroyed() && browserWindow.isFullScreen()){
-    record.fullscreenTransitionTarget=false;
-    browserWindow.setFullScreen(false);
-  }
-  if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
-  return true;
 }
 const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
