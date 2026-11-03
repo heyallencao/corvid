@@ -4,7 +4,7 @@
 
 - 调整：`tests/fullscreen-e2e.cjs` 统一调用 `tests/electron-test-startup.cjs` 的 Electron 启动、首窗口与控制凭据等待、限时关闭/进程诊断；重启阶段要求新 token，避免旧 `control.json` 让恢复断言连到已关闭应用。真实运行首轮发现 `WebContents` 销毁监听在标签状态清除前序列化 shell state，导致已销毁页面访问 `getTitle()` 并使 `/rooms` 返回 400。销毁监听现只清理全屏归属，随后由 `closeTab()` 在移除标签后统一发布状态。
 - 回归：将全屏菜单项放在原有首项之后，保持站点工具菜单初始焦点，权限 E2E 同步验证 ArrowDown 落到新增全屏项。`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` 均 EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，21 个 `node:test` 用例和 49 个独立脚本，共 70 项通过。`node --check` 和 `git diff --check` 通过。
-- 环境与边界：macOS、Node.js v24.14.1、Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture。未使用 OAuth、真实账号或模型，npm test 不含真实模型 smoke test。未做人工屏幕阅读或截图；Windows/Linux、打包版本和真实网站未覆盖。
+- 环境与边界：macOS、Node.js v24.14.1、Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture。未使用 OAuth、真实账号或模型，npm test 不含真实模型 smoke test。已目视检查菜单截图，范围与限制见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-全屏菜单桌面状态-issue-141)；未做人工屏幕阅读或原生窗口全屏截图。Windows/Linux、打包版本和真实网站未覆盖。
 
 ## 2026-11-03 主题色对比度修复（Issue #16）
 
