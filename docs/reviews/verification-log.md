@@ -34,6 +34,10 @@
 - 定向验证：`node --check desktop/agent-credential-store.cjs`、`desktop/pi-models.cjs`、`desktop/main.cjs`、`tests/pi-models-e2e.cjs`、`tests/pi-custom-endpoint-e2e.cjs` 与 `git diff --check`；`node tests/pi-models-e2e.cjs` EXIT 0，覆盖 API Key/OAuth 加密、schema v1 与 runtime 授权成功迁移、不可用安全存储/加密失败保持原字节、密钥轮换和并发写入。 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（45 条独立脚本 + 8 个 `node:test` 用例，共 53 项）；全量结果包含加密凭据格式与本地 Electron 自定义端点用例。
 - Electron 集成：`tests/pi-custom-endpoint-e2e.cjs` 仅使用本地 HTTP 模型夹具和合成 Key；验证发现模型与本地 Agent 请求可读取密文凭据、持久化 JSON 不出现明文 Key。未连接真实 Provider、未运行 OAuth 或 GPT-6 Luna 请求。
 - 限制：macOS 开发环境 `safeStorage` 的集成结果不代表签名发布版、Windows/Linux、OS 用户切换、崩溃/断电每个指令点的恢复或真实钥匙串升级体验。同一 OS 用户下的其他进程可能访问应用解密能力；文件权限不提供进程隔离。Electron 官方说明 Linux 可能使用弱 `basic_text`，本实现选择拒绝该后端；macOS Keychain 行为依赖打包签名一致性。
+## 2026-11-03 Agent 空态到工作台的键盘路径（Issue #16）
+
+- `tests/agent-rooms-panel-e2e.cjs` 现从“Agent 工作区”侧栏入口开始，仅用 Enter 打开空态、打开内置 Corvid Agent 并关闭工作台；断言当前焦点留在入口、转入描述输入框，并在关闭后回到侧栏入口。`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check` 通过。仍不代表完整 VoiceOver 验收。
+- UI 参考核验：2026-11-03 通过 REA 受控 Chromium 156.0.8078.79 访问 Kobra Navigation Menu（`https://kobra.systems/components/navigation-menu`）。直接观察：页面 AX 主导航提供有名称的 Products、Solutions、Resources 按钮和 Pricing 链接（`ev_2339b4cab4b45e2596223b85bd032e4df085e8122030453ec35a547f31c7f11e`）；Kobra 页面来源面板写明组件基于 Base UI Navigation Menu primitive（`ev_b7ee07fab2232d4e792dd1e065e21d9846667812fe8a7c8d84ad97faf15ab02e`）。受控 ArrowDown 后 AX 树未显示展开子菜单（`ev_5abe346d7c3f32832d0f148c995ec71c2260bcaa5d8c22cfcee9ea693e9b5556`），故不推断其完整键盘行为。Rare UI（`https://rareui.com/`）仅呈现 Vercel Security Checkpoint（`ev_f2ea0fa5cdeca7d8b14710c80abd66a5e367a3cabc0eff9faa49a22dc8df806e`），该站点没有可观察的组件参考。参考用于检查命名表达，不作为 Corvid 验收标准；未移植代码或素材。
 
 ## 2026-11-03 网站权限提示中文名称（Issue #115）
 
