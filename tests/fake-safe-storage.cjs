@@ -2,7 +2,7 @@ const crypto = require('node:crypto');
 
 const testKey = crypto.createHash('sha256').update('corvid-test-only-safe-storage-key').digest();
 
-function createFakeSafeStorage({ available = true, backend = 'test-secret-store', providerTag = 'v11', encryptError = null, decryptError = null, shouldReEncryptCount = 0 } = {}) {
+function createFakeSafeStorage({ available = true, backend = 'test-secret-store', providerTag = 'v11', encryptError = null, decryptError = null, decryptResult = null, shouldReEncryptCount = 0 } = {}) {
   let reEncryptRemaining=shouldReEncryptCount;
   return {
     async isAsyncEncryptionAvailable() { return available; },
@@ -16,6 +16,7 @@ function createFakeSafeStorage({ available = true, backend = 'test-secret-store'
     },
     async decryptStringAsync(value) {
       if (decryptError) throw decryptError;
+      if (decryptResult !== null) return decryptResult;
       const bytes = Buffer.from(value);
       const payload = bytes.subarray(3);
       const decipher = crypto.createDecipheriv('aes-256-gcm', testKey, payload.subarray(0, 12));

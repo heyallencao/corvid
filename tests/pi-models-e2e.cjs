@@ -20,6 +20,8 @@ const safeStorage=createFakeSafeStorage();
     {language:'en-US',marker:'secure-storage-unavailable',expected:'Secure system storage is unavailable'},
     {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
     {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
+    {language:'zh-CN',marker:'secure-storage-response-invalid',expected:'系统安全存储返回了无效响应'},
+    {language:'en-US',marker:'secure-storage-response-invalid',expected:'System secure storage returned an invalid response'},
   ]){
     const context={navigator:{language},window:{},document:{documentElement:{lang:''},querySelectorAll(){return[];}}};
     vm.runInNewContext(localeSource,context);
@@ -190,6 +192,26 @@ const safeStorage=createFakeSafeStorage();
   assert.equal(JSON.parse(recoveredCredentialBytes.toString('utf8')).schemaVersion,2,'recovered legacy credentials are migrated back to schema 2');
   assert.equal(recoveredCredentialBytes.toString('utf8').includes('sk-recoverable-legacy-backup'),false,'recovered credentials are encrypted before the migration backup is removed');
   assert.equal(fs.existsSync(corruptRecoveryBackupPath),false,'a verified recovered migration consumes its backup');
+
+  const invalidResponseRecoveryDir=path.join(root,'invalid-response-recovery');fs.mkdirSync(invalidResponseRecoveryDir,{recursive:true});
+  const invalidResponseRecoveryPath=path.join(invalidResponseRecoveryDir,'agent-credentials.json');
+  const invalidResponseBackupPath=`${invalidResponseRecoveryPath}.migration-backup`;
+  fs.writeFileSync(invalidResponseRecoveryPath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-before-invalid-response'}}}),{mode:0o600});
+  const invalidResponseSeed=createAgentCredentialStore({dataDir:invalidResponseRecoveryDir,safeStorage,platform:'darwin'});
+  await invalidResponseSeed.list();
+  const invalidResponseCurrentBytes=fs.readFileSync(invalidResponseRecoveryPath);
+  const invalidResponseBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-invalid-response-backup'}}}));
+  fs.writeFileSync(invalidResponseBackupPath,invalidResponseBackupBytes,{mode:0o600});
+  const malformedSafeStorage=createFakeSafeStorage({decryptResult:{result:42,shouldReEncrypt:false}});
+  const invalidResponseRecoveryStore=createAgentCredentialStore({dataDir:invalidResponseRecoveryDir,safeStorage:malformedSafeStorage,platform:'linux'});
+  await assert.rejects(invalidResponseRecoveryStore.list(),error=>{
+    assert.equal(error.code,'secure-storage-response-invalid');
+    assert.match(error.message,/\[\[corvid-error:secure-storage-response-invalid\]\]/);
+    return true;
+  });
+  assert.deepEqual(fs.readFileSync(invalidResponseRecoveryPath),invalidResponseCurrentBytes,'invalid safeStorage response preserves current encrypted credentials byte-for-byte');
+  assert.deepEqual(fs.readFileSync(invalidResponseBackupPath),invalidResponseBackupBytes,'invalid safeStorage response preserves the older backup byte-for-byte');
+  assert.equal(JSON.parse(fs.readFileSync(invalidResponseRecoveryPath,'utf8')).schemaVersion,2,'invalid safeStorage response does not downgrade the current schema');
 
   const rotatedDir=path.join(root,'rotated-data');
   const rotatingStore=createAgentCredentialStore({dataDir:rotatedDir,safeStorage});

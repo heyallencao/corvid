@@ -138,7 +138,9 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     let result;
     try { result = await safeStorage.decryptStringAsync(encrypted); }
     catch (error) { throw storageError('系统安全存储无法解密已保存的账号授权。', error); }
-    if (!result || typeof result.result !== 'string') throw new Error('系统安全存储返回了无效的解密结果；原凭据文件已保留');
+    if (!result || typeof result.result !== 'string') {
+      throw storageError('系统安全存储返回了无效响应，现有账号授权和文件已保留。', undefined, 'secure-storage-response-invalid');
+    }
     let plainRecord;
     try { plainRecord = JSON.parse(result.result); }
     catch (error) { throw new Error(`Corvid Agent encrypted credential is unreadable; the original file was preserved: ${error.message}`); }
