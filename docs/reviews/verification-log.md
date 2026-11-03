@@ -1066,3 +1066,9 @@
 - 环境观察：测试结束后 Electron、Node 测试进程均已退出，临时依赖链接已清理。随后的 CUA 桌面状态查询明确返回“Mac is locked and automatic unlock could not unlock it”；这一状态与三项焦点失败一致，但不能证明每项失败都只由锁屏导致，也不能解释 Issue #87 历史上的启动挂起。
 - 启动诊断合同：同一轮中 `tests/electron-startup.e2e.mjs` 的 6 项合成启动/清理测试全部通过；真实 Library 与慢恢复 E2E 因 node:test 阶段失败而未运行。本轮不计为全量回归通过，也未复现 Issue #87 的 Electron 启动挂起。真实 Electron 复验等待桌面解锁后重新执行。
 - 解锁后续跑核验：用户回复已解锁、其他会话确认 Electron 桌面空闲后，再次以同一 worktree 和临时依赖链接运行 `env -u ELECTRON_RUN_AS_NODE npm test`；测试后依赖链接自动移除。实际仅 19/22 项通过，仍是 browser 输入焦点、dialogs alert 和 uploads 文件选择器三项失败，6 项 `electron-startup.e2e.mjs` 合成诊断继续通过，后续 46 条独立脚本仍未开始。CUA 随后核验却明确报告 Mac 仍锁屏且自动解锁失败，因此这次交互失败仍不能作为产品缺陷证据；测试中有 Electron 成功写出 `control.json`，未复现启动挂起。下一步需由用户在本机实际解锁后再做 UI/Electron 回归；启动挂起根因仍未定位。
+
+## 2026-11-03 启动挂起阶段现场记录补充（Issue #87）
+
+- 改动：主进程仅在 `CORVID_TEST_MODE=1` 时用原子 rename 在隔离数据目录更新 `startup-progress.json`，权限设为 0600；覆盖主模块加载、app ready、会话读取、窗口 `loadFile`、恢复标签页的扩展加载与 debugger/bootstrap、初始 Room、服务监听和 `control.json` 写入，启动完成后冻结阶段值。启动超时错误新增最后阶段字段，并按 Electron 子进程 PID 忽略旧进程记录；阶段记录解析只打印阶段名，不打印记录其他字段或凭据。正常用户运行不启用阶段文件。
+- 验证：`node --check desktop/main.cjs`、`node --check desktop/startup-progress.cjs`、`node --check tests/electron-test-startup.cjs` 均通过；`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 8/8 通过，覆盖阶段记录禁用/启用、原子更新、0600 权限、临时文件清理、缺失/损坏/旧 PID 记录、超时阶段显示及凭据不泄露；`git diff --check` 通过。
+- 限制：本机 CUA 仍报告 macOS 锁屏。本轮没有启动真实 Electron，也没有运行完整 `npm test`；阶段写入通过独立模块的合成测试核验，尚未用真实 Electron 证明所有启动阶段均按预期更新。Issue #87 的历史挂起仍未复现，根因未确定。
