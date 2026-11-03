@@ -25,6 +25,11 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     if(typeof item.click!=='function')throw new Error(`Menu item has no Corvid action: ${itemId}`);
     item.click(item,BrowserWindow.getFocusedWindow(),{});
   },id);
+  const shortcut=async combination=>{
+    const parts=combination.split('+'),keyCode=parts.pop(),modifiers=parts.map(part=>({Meta:'meta',Control:'control',Shift:'shift',Alt:'alt'})[part]);
+    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyDown',keyCode,modifiers}),{keyCode,modifiers});
+    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyUp',keyCode,modifiers}),{keyCode,modifiers});
+  };
   const find=(items,id)=>{for(const item of items){if(item.id===id)return item;const nested=find(item.submenu||[],id);if(nested)return nested;}return null;};
   const labels=items=>items.flatMap(item=>[item.label,...labels(item.submenu||[])]).filter(Boolean);
   try{
@@ -60,6 +65,11 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>find(await menu(),'corvid-new-tab')?.enabled===false,'user-only actions disabled in an Agent-owned Room');
     assert.equal(find(await menu(),'corvid-close-tab').enabled,false);
     for(const id of ['corvid-back','corvid-forward','corvid-reload','corvid-find','corvid-print','corvid-zoom-in','corvid-zoom-out','corvid-reset-zoom'])assert.equal(find(await menu(),id).enabled,false,`${id} is disabled in an Agent-owned Room`);
+    const primary=process.platform==='darwin'?'Meta':'Control',agentState=await api('/rooms'),agentTabCount=agentState.rooms.find(room=>room.id===agentRoom.id).tabs.length,zoomBefore=(await api('/profiles')).profiles.find(profile=>profile.id==='default').zoom;
+    await shortcut(`${primary}+t`);await shortcut(`${primary}+l`);await shortcut(`${primary}+=`);await delay(150);
+    assert.equal((await api('/rooms')).rooms.find(room=>room.id===agentRoom.id).tabs.length,agentTabCount,'new-tab shortcut cannot mutate an Agent-owned Room');
+    assert.notEqual(await shell.locator('#address').evaluate(element=>document.activeElement===element),true,'address-bar shortcut does not take over an Agent-owned page');
+    assert.equal((await api('/profiles')).profiles.find(profile=>profile.id==='default').zoom,zoomBefore,'zoom shortcut cannot modify an Agent-owned page');
     await api(`/rooms/${firstWindow.activeRoomId}/activate`,{},'POST');
     await until(async()=>find(await menu(),'corvid-new-tab')?.enabled===true,'user actions restored in a user-owned Room');
 
