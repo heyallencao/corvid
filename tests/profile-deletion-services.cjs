@@ -108,6 +108,16 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
   assert.ok(events.includes('deleted:work'));
   assert.throws(()=>coordinator.preview('work'),error=>error.code==='CORVID_PROFILE_NOT_FOUND');
 
-  for(const directory of [libraryDir,extensionDir,taskDir,retryDir,coordinatorDir])fs.rmSync(directory,{recursive:true,force:true});
+  const boundaryDir=tempDir(),outsideDir=tempDir(),outsideMarker=path.join(outsideDir,'must-remain');fs.writeFileSync(outsideMarker,'outside');
+  let boundaryProfiles=[{id:'default',name:'默认',isDefault:true},{id:'work',name:'Work'}];
+  const boundaryCoordinator=createProfileDeletion({getProfiles:()=>boundaryProfiles,saveProfiles:next=>{boundaryProfiles=next;},getReferences:()=>({windows:[],rooms:[],downloads:[]}),
+    agentWorkbench:{profileDeletionBlockers:()=>[],beginProfileDeletion(){},removeProfileData:async()=>{},finishProfileDeletion(){}},
+    getSession:()=>browserSession,partitionFor:id=>`persist:corvid-profile-${id}`,library:{removeProfile(){}},managedExtensions:{list:()=>[],removeProfile(){}},
+    extensionRoot:()=>path.join(outsideDir,'malicious-target'),dataDir:boundaryDir,
+  });
+  await assert.rejects(boundaryCoordinator.remove('work'),/越过浏览器资料目录/);
+  assert.equal(fs.readFileSync(outsideMarker,'utf8'),'outside','an injected extension path cannot delete outside the data directory');
+
+  for(const directory of [libraryDir,extensionDir,taskDir,retryDir,coordinatorDir,boundaryDir,outsideDir])fs.rmSync(directory,{recursive:true,force:true});
   console.log('PASS Profile reference guards and retryable data cleanup contracts');
 })().catch(error=>{console.error(error);process.exitCode=1;});

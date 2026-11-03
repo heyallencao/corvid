@@ -50,10 +50,13 @@ function createProfileDeletion({
       await browserSession.clearHostResolverCache();
       for(const extension of browserSession.extensions.getAllExtensions())browserSession.extensions.removeExtension(extension.id);
       removeLoadedExtensions(profileId,browserSession);
-      const root=path.resolve(extensionRoot(dataDir,profileId));
-      const extensionsRoot=path.resolve(dataDir,'extensions');
-      if(!root.startsWith(`${extensionsRoot}${path.sep}`))throw new Error('扩展目录越过浏览器资料目录');
-      fs.rmSync(root,{recursive:true,force:true});
+      const configuredRoot=path.resolve(dataDir),root=path.resolve(extensionRoot(dataDir,profileId));
+      const relative=path.relative(configuredRoot,root);
+      if(!relative.startsWith(`extensions${path.sep}`))throw new Error('扩展目录越过浏览器资料目录');
+      const actualDataRoot=fs.realpathSync(dataDir),actualExtensionsRoot=path.join(actualDataRoot,'extensions');
+      const configuredExtensionsRoot=path.resolve(dataDir,'extensions');
+      if(fs.existsSync(configuredExtensionsRoot)&&fs.realpathSync(configuredExtensionsRoot)!==actualExtensionsRoot)throw new Error('扩展目录符号链接越过浏览器资料目录');
+      fs.rmSync(path.join(actualExtensionsRoot,path.basename(root)),{recursive:true,force:true});
       managedExtensions.removeProfile(profileId);
       library.removeProfile(profileId);
       onDeleted(profileId);
