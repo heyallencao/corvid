@@ -154,7 +154,9 @@ async function closeElectron(app, { gracefulTimeoutMs = 3000, terminateTimeoutMs
     () => { closeSettled = true; },
     error => { closeError = error; closeSettled = true; },
   );
-  await Promise.race([graceful, delay(gracefulTimeoutMs)]);
+  let gracefulTimer;
+  await Promise.race([graceful, new Promise(resolve => { gracefulTimer = setTimeout(resolve, gracefulTimeoutMs); })]);
+  clearTimeout(gracefulTimer);
   const closeTimedOut = !closeSettled;
   if (!closeTimedOut && !closeError && await waitForExit(child, terminateTimeoutMs)) return;
 

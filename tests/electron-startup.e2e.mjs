@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -85,4 +86,38 @@ test('清理阶段超时会报告并结束挂起的 Electron 子进程', async (
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
   }
+});
+
+test('Electron 正常关闭后清除未使用的优雅关闭超时 timer', async () => {
+  const child = new EventEmitter();
+  Object.assign(child, { exitCode: null, signalCode: null, pid: 4323, killed: false });
+  const app = {
+    process: () => child,
+    windows: () => [],
+    close: async () => {
+      child.exitCode = 0;
+      child.emit('exit', 0, null);
+    },
+  };
+  const nativeSetTimeout = globalThis.setTimeout;
+  const nativeClearTimeout = globalThis.clearTimeout;
+  const created = new Set();
+  const cleared = new Set();
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    const timer = nativeSetTimeout(callback, delay, ...args);
+    created.add(timer);
+    return timer;
+  };
+  globalThis.clearTimeout = timer => {
+    if (created.has(timer)) cleared.add(timer);
+    return nativeClearTimeout(timer);
+  };
+  try {
+    await closeElectron(app, { gracefulTimeoutMs: 1000, terminateTimeoutMs: 1000 });
+  } finally {
+    globalThis.setTimeout = nativeSetTimeout;
+    globalThis.clearTimeout = nativeClearTimeout;
+  }
+  assert.ok(created.size > 0, '测试必须观察到优雅关闭回退 timer');
+  assert.equal(cleared.size, created.size, '正常关闭后不得留下未使用的回退 timer');
 });
