@@ -1058,3 +1058,10 @@
 - 验证：`node tests/agent-task-continuation-contract.cjs` EXIT 0，覆盖同 Room 页面读取期间重复提交、已运行任务期间再次启动被拒、不同 Room 同时运行、页面预览失效后可重试、双语状态/稳定错误映射及原有续聊/接管竞态。`node --check desktop/agent-workbench.cjs`、`desktop/renderer.js`、`desktop/locales.js`、两项相关测试脚本与 `git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在隔离数据目录和本地页面夹具下通过；新增断言确认键盘启动后发送操作立即禁用、设置 `aria-busy=true` 并显示“正在启动 Agent 任务…”，之后原有完整工作台流程通过。第一次运行暴露了测试选择器依赖按钮旧文案的问题，已改用稳定的工作台按钮选择器；测试等待模型目录选择器就绪后再检查隔离配置目录。没有调用真实模型或 OAuth。
 - UI 参考与限制：本切片只增加既有主操作按钮的处理中/禁用状态，不改变布局或视觉系统。REA 控制 Chromium 156.0.8078.79 在 1280×720、英文、减少动态效果环境访问 EasyUI 首页；Evidence `ev_652b871de812ab8074a21ed310b9c75273249de4e15e7de6d4699aafc71032c8`。直接观察：页面可访问树将未完成的组件预览标成 `status`，文案为“Loading component preview…”，首页另有可访问名称明确的搜索、主题切换和组件入口；截图与 DOM 均被采集。设计推断：等待状态应能被读屏用户识别，进度按钮文案应清楚表达正在发生的动作，因此本切片同步提供启动中本地化文字与 `aria-busy`。未知：该首页捕获没有触发任何组件或按钮交互，不能证明 EasyUI 的具体加载动画、焦点行为、窄窗表现或错误态；参考只用于状态反馈，不作为 Corvid 视觉规范。REA 一次较早的调用因 `capture` 参数格式错误在执行前拒绝，已改用 `capture.at_end` 重做并取得上述证据。
 - 范围：合成 runtime、临时数据目录；不连接 Provider，不证明不同 OS 版本或真实模型调用行为。
+
+## 2026-11-03 内置 Agent 会话清理失败保护（Issue #5）
+
+- 复现：隔离的模块合同测试用确定性 runtime 让已完成 session 的异步 `dispose()` reject，并让 scoped credential 撤销连续两次 reject。原路径会让 `session.prompt()` 的完成处理 Promise 未处理地 reject；撤销映射也会在远端撤销确认前丢失，使后续清理无法重试。
+- 修正：会话 dispose 统一等待并捕获同步/异步错误，每个 session 最多尝试一次 dispose；完成/失败回调有终端错误处理，清理异常通过现有任务事件以 zh-CN/en 提示。已生成回复仍保留，但标记 `stopUnconfirmed` 并禁止续聊。只有凭据撤销成功才移除内存凭据映射；任务删除在撤销失败时保留记录并返回失败，工作台重新渲染本地化错误事件，用户可再次重试。
+- 验证：`node tests/agent-runtime-contract-e2e.cjs` EXIT 0；合同断言覆盖回复保留、续聊禁用、异步 dispose/revoke reject 不触发 `unhandledRejection`、撤销重试失败后任务和凭据句柄仍保留、再次成功撤销后才删除记录，以及 zh-CN/en 资源。`node --check desktop/agent-workbench.cjs`、`desktop/renderer.js`、`desktop/locales.js`、测试脚本与 `git diff --check` 均通过。未运行 Electron UI 或全量回归；本轮未连接真实模型或 OAuth。
+- 界面参考与限制：复用本记录中 2026-11-03 Kobra Alert 页面直接观察（`https://kobra.systems/components/alert`，REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`）：AX 树显示命名为 `alert` 的上下文消息区域，并列出 Error/Warning/Success/Info 预览。直接观察仅限该页面 AX 区域和预览；本次参考用于核对错误信息沿用 Corvid 现有 alert 语义，不复制代码或样式。未知项仍包括实际屏幕阅读器播报与不同窄窗下的显示；本轮没有运行真实 Electron、截图或读屏检查。

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { createAgentWorkbench, savedConversationContext } = require('../desktop/agent-workbench.cjs');
 const { TASKS_SCHEMA_VERSION } = require('../desktop/agent-task-store.cjs');
 const { PI_RUNTIME_ID, PI_RUNTIME_VERSION, createPiAgentRuntime } = require('../desktop/agent-runtime.cjs');
@@ -189,6 +190,50 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.ok(handoffIdentity.revoked.includes(`builtin:${pauseTask.id}`),'user takeover revokes the scoped identity for the paused Agent');
     assert.equal(handoffWorkbench.list().find(task=>task.id===pauseTask.id).status,'waiting_for_user');
     for(const finish of pendingPrompts)finish({stopReason:'aborted'});
+
+    const cleanupDir=path.join(root,'session-cleanup-failure');fs.mkdirSync(cleanupDir);
+    const cleanupRuntime=makeRuntime('cleanup-runtime');
+    cleanupRuntime.createSession=async input=>{
+      cleanupRuntime.sessions.push(input);
+      return {checkpoint:()=>null,subscribe:()=>()=>{},prompt:async()=>{},dispose:async()=>{throw new Error('synthetic session cleanup failure');}};
+    };
+    let revokeAttempts=0;
+    const cleanupRevoked=[];
+    const cleanupIdentity={
+      issueAgentCredential:async({taskId,roomId})=>({id:`builtin:${taskId}`,token:`secret:${taskId}:${roomId}`}),
+      revokeAgentCredential:async id=>{if(++revokeAttempts<=2)throw new Error('synthetic credential revoke failure');cleanupRevoked.push(id);},
+    };
+    const cleanupWorkbench=createAgentWorkbench({dataDir:cleanupDir,runtime:cleanupRuntime,...cleanupIdentity});
+    const unhandledRejections=[];
+    const captureUnhandled=error=>unhandledRejections.push(error);
+    process.on('unhandledRejection',captureUnhandled);
+    try{
+      const cleanupTask=await cleanupWorkbench.start({profileId:'profile-a',roomId:'room-cleanup',tabId:'tab-cleanup',prompt:'preserve the completed reply',includePageContext:true,contextPreview});
+      await new Promise(resolve=>setImmediate(resolve));
+      const cleanupState=cleanupWorkbench.list()[0];
+      assert.equal(cleanupState.status,'completed','a generated reply remains completed when only session cleanup fails');
+      assert.equal(cleanupState.stopUnconfirmed,true,'the task cannot continue while session cleanup is unconfirmed');
+      assert.equal(cleanupState.canContinue,false,'the incomplete cleanup must disable session/transcript continuation');
+      assert.ok(cleanupState.events.some(event=>event.messageKey==='agentSessionCleanupFailed'),'cleanup failure is surfaced through the localized task event');
+      assert.deepEqual(unhandledRejections,[],'rejected async disposal and credential revocation must not become unhandled process rejections');
+      const failedClear=await cleanupWorkbench.clear(cleanupTask.id);
+      assert.deepEqual(failedClear,{ok:false},'a failed retry is surfaced without deleting the task');
+      assert.equal(cleanupWorkbench.list().length,1,'the task and credential handle remain available for another retry');
+      await cleanupWorkbench.clear(cleanupTask.id);
+      assert.deepEqual(cleanupRevoked,[`builtin:${cleanupTask.id}`],'removing the task retries a failed credential revocation before deleting its record');
+      assert.equal(cleanupWorkbench.list().length,0,'the task is removed only after the retained credential handle is revoked');
+    }finally{process.off('unhandledRejection',captureUnhandled);}
+
+    const localeWindow={};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../desktop/locales.js'),'utf8'),{
+      window:localeWindow,
+      document:{documentElement:{},querySelectorAll:()=>[]},
+      Intl,
+    });
+    for(const [locale,expected] of [['zh-CN','Agent 会话清理失败'],['en','The Agent session could not be cleaned up']]){
+      localeWindow.corvidI18n.setLocale(locale);
+      assert.match(localeWindow.corvidI18n.t('agentSessionCleanupFailed'),new RegExp(expected));
+    }
 
     const preparingDir=path.join(root,'identity-preparation-handoff');fs.mkdirSync(preparingDir);
     let finishSessionCreation,preparingPromptCount=0,preparingDisposeCount=0;
