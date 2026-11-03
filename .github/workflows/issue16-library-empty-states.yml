@@ -1,0 +1,36 @@
+name: Issue 16 资料库空态回归
+
+on:
+  pull_request:
+    paths:
+      - desktop/locales.js
+      - desktop/renderer.js
+      - desktop/styles.css
+      - tests/library-e2e.cjs
+      - .github/workflows/issue16-library-empty-states.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  library-empty-states:
+    name: macOS 资料库空态
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: 运行资料库真实 Electron 回归并采集隔离截图
+        run: env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/library-e2e.cjs
+      - name: 上传隔离资料库截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue16-library-empty-states
+          path: docs/qa/screenshots/issue-16-library-empty-*.png
+          if-no-files-found: ignore
