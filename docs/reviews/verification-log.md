@@ -57,6 +57,12 @@
 - 原生 macOS 复核：使用隔离临时数据启动 Electron，以 `System Events` 在真实“窗口”菜单中双向选择窗口，分别读取 `AXMenuItemMarkChar` 勾选与 Corvid `/windows` 焦点 ID；两个方向均一致。人工诊断脚本在菜单仍打开时由 `closeElectron` 超时后结束了本轮自启进程，但在退出前已读完证据；随后检查无残留 Electron。REA `observe_native_ui` 仍因 provider 无法读取进程启动时间而 `capability_unavailable`；此处不宣称 REA 原生观察。
 - 全量回归边界：首次 `npm test` 曾在全屏测试的异步最大化断言失败，已由 [Issue #168](https://github.com/heyallencao/corvid/issues/168) 修正为等待原窗口恢复；后续完整运行已通过该测试，继续在 #5 的 `pi-workbench-e2e.cjs:99` 超时，见上方 #168 记录，不计入 #162 菜单 E2E 失败。
 - 未覆盖与限制：全套 `npm test`、VoiceOver、Windows/Linux、打包版、真实鼠标截图/像素与其他系统语言设置尚未完成；网页菜单的 EasyUI REA Evidence 只提供交互分组参考，不是系统菜单验收依据。本次未调用 OAuth 或真实模型。
+## 2026-11-03 Issue #34 PASS 后清理阶段观察器
+
+- 改动：`restore-loading-e2e.cjs` 打印 PASS 后开始标记最终 Electron 关闭、HTTP 连接/服务关闭和临时目录清理阶段。若 Node 仍被其他引用句柄阻止退出满 10 秒，未引用的观察器记录当前阶段、Node PID/父 PID、Electron PID/退出状态、HTTP server 监听状态、慢请求数和 `process.getActiveResourcesInfo()` 类型；自身不延迟正常退出。诊断不含命令行或页面内容。
+- 验证：macOS、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` EXIT 0，输出原有 PASS；用例两次启动真实 Electron，最终 Electron、HTTP server 与隔离目录均清理完成，观察器未输出且无 Electron/Corvid 进程残留。另通过临时 preload 在 PASS 后注入一个仅属于 Node 测试进程的 13 秒引用 timer；命令 EXIT 0，watchdog 在 10,002ms 输出 `stage=清理完成`、Node/Electron PID 与退出状态、`httpListening=false` 及活动资源类型，随后合成 timer 到期、Node 正常退出。preload 位于 `/tmp` 且已移除。`node --check tests/restore-loading-e2e.cjs` 与 `git diff --check` 通过。
+- 最新主线复验（2026-11-04）：重放到 `62da03c` 后，`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/restore-loading-e2e.cjs` EXIT 0，真实 Electron 慢恢复、导航、重启路径通过；`node --check tests/restore-loading-e2e.cjs` 与 `git diff HEAD^ HEAD --check` 通过。本次只运行一次，不能说明历史间歇问题已消失。
+- 限制：未运行全量 `npm test`；合成 timer 只验证 PASS 后观察器能运行并记录现场，不等同复现历史 5 分钟挂起，也没有模拟卡在某个具体清理 await 中。观察器只覆盖打印 PASS 后的异步清理挂起，不覆盖 PASS 前挂起或同步阻塞事件循环；Issue #34 历史长停顿尚未复现，根因未确定，Issue 保持开放。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 
