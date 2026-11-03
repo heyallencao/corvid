@@ -34,6 +34,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   const sessions = new Map();
   const sessionCredentialIds = new Map();
   const continuationClaims = new Set();
+  const taskStartClaims = new Set();
   let persistTimer;
   tasks = taskStore.load();
   for (const task of tasks) if (['preparing', 'running'].includes(task.status)) {
@@ -101,15 +102,23 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   async function start({ profileId, roomId, tabId, prompt, includePageContext, contextPreview }) {
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 8_000) throw new Error('任务内容必须为 1 至 8000 个字符');
-    const context = await runtime.readPageContext({ dataDir, profileId, roomId, tabId });
-    const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
-    if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
-    const selectedModel = runtime.getModelSelection();
-    const modelInfo = selectedModel ? await runtime.resolveModel(selectedModel) : null;
-    const task = { id: crypto.randomUUID(), profileId, roomId, tabId, sessionRef: null, ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    tasks.push(task); changed();
-    await run(task, { message: task.prompt, context, consentedSnapshot, initial: true });
-    return copy(present(task));
+    if (taskStartClaims.has(roomId) || tasks.some(task => task.roomId === roomId && ['preparing', 'running'].includes(task.status))) {
+      throw new Error('[[corvid-error:agent-task-room-busy]] 此空间已有 Agent 任务正在启动或运行。请等待完成，或在其他空间并行开始。');
+    }
+    taskStartClaims.add(roomId);
+    try {
+      const context = await runtime.readPageContext({ dataDir, profileId, roomId, tabId });
+      const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
+      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
+      const selectedModel = runtime.getModelSelection();
+      const modelInfo = selectedModel ? await runtime.resolveModel(selectedModel) : null;
+      const task = { id: crypto.randomUUID(), profileId, roomId, tabId, sessionRef: null, ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      tasks.push(task); changed();
+      await run(task, { message: task.prompt, context, consentedSnapshot, initial: true });
+      return copy(present(task));
+    } finally {
+      taskStartClaims.delete(roomId);
+    }
   }
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);

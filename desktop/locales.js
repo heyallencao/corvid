@@ -224,6 +224,8 @@
       truncatedPagePreview: '页面快照过长，以下预览与发送内容均截断至 12 KB。',
       consentPageAndInstruction: '我已检查，并同意将页面内容和继续指令发送给 Agent',
       send: '发送',
+      startingTask: '正在启动 Agent 任务…',
+      agentTaskRoomBusy: '此空间已有 Agent 任务正在启动或运行。请等待完成，或在其他空间并行开始。',
       cancelContinue: '取消继续',
       contextNotChecked: '请先检查当前页面内容并确认是否分享给 Agent。',
       modelCatalogLoading: '读取模型目录…',
@@ -586,6 +588,8 @@
       truncatedPagePreview: 'The page snapshot is long; this preview and the content sent are truncated to 12 KB.',
       consentPageAndInstruction: 'I reviewed and agree to send the page content and follow-up instruction to the Agent',
       send: 'Send',
+      startingTask: 'Starting Agent task…',
+      agentTaskRoomBusy: 'An Agent task is already starting or running in this space. Wait for it to finish, or start a parallel task in another space.',
       cancelContinue: 'Cancel continuation',
       contextNotChecked: 'Review the current page and approve sharing it with the Agent first.',
       modelCatalogLoading: 'Loading model catalog…',
@@ -781,6 +785,7 @@
         'credential-format-unsupported': 'credentialFormatUnsupported',
         'credential-file-access-failed': 'credentialFileAccessFailed',
         'credential-file-corrupt': 'credentialFileCorrupt',
+        'agent-task-room-busy': 'agentTaskRoomBusy',
       }[match[1].toLowerCase()];
       return this.t(key || 'agentErrorFallback');
     },
