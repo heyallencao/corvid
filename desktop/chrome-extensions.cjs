@@ -118,6 +118,12 @@ function createStore(dataDir){
     add(record){if(items.some(item=>item.profileId===record.profileId&&item.id===record.id))throw new Error('该扩展已在目标 Profile 中');save([...items,record]);},
     setEnabled(profileId,id,enabled){const record=this.find(profileId,id);if(!record)throw new Error('Corvid 扩展不存在');save(items.map(item=>item.profileId===profileId&&item.id===id?{...item,enabled:Boolean(enabled)}:item));},
     remove(profileId,id){const record=this.find(profileId,id);if(!record)throw new Error('Corvid 扩展不存在');save(items.filter(item=>item.profileId!==profileId||item.id!==id));return record;},
+    removeProfile(profileId){
+      if(profileId==='default')throw new Error('Cannot remove extensions from the default profile');
+      const removed=items.filter(item=>item.profileId===profileId).map(item=>({...item}));
+      if(removed.length)save(items.filter(item=>item.profileId!==profileId));
+      return removed;
+    },
     all(){return items.map(item=>({...item}));},
   };
 }

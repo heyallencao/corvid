@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -8,6 +8,7 @@ const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
 const { createStartupProgress } = require('./startup-progress.cjs');
+const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 const startupProgress = createStartupProgress({ dataDir, enabled: process.env.CORVID_TEST_MODE === '1', onError: error => console.error(`Corvid test startup progress could not be saved: ${error.message}`) });
@@ -117,6 +118,7 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
+let applicationMenu = null;
 const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
 const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
   issueAgentCredential: ({taskId,roomId}) => {
@@ -178,6 +180,67 @@ function focusWindow(record) {
   frontView = record.frontView;
   activeRoomId = record.activeRoomId;
   activeProfileId = record.activeProfileId;
+  syncApplicationMenu();
+}
+function applicationMenuContext() {
+  const record=activeRecord(),room=record&&rooms.find(item=>item.id===record.activeRoomId),tab=room&&tabs.get(room.activeTabId);
+  const canUseActiveTab=Boolean(record&&room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk&&tab&&!tab.view.webContents.isDestroyed());
+  const history=canUseActiveTab?tab.view.webContents.navigationHistory:null;
+  return {record,room,tab,canUseActiveTab,canCreateTab:Boolean(record&&room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk),canCloseTab:canUseActiveTab,canGoBack:Boolean(history?.canGoBack()),canGoForward:Boolean(history?.canGoForward()),fullscreen:Boolean(record?.appFullscreen),focusedWindowId:record?.id??null};
+}
+function showApplicationMenuError(record) {
+  if(!record||record.browserWindow.isDestroyed())return;
+  void dialog.showMessageBox(record.browserWindow,{type:'warning',message:applicationMenuText(uiLocale).actionUnavailable});
+}
+function runApplicationMenuAction(action) {
+  const record=activeRecord();
+  if(!record||record.browserWindow.isDestroyed())return;
+  try{Promise.resolve(action(record)).catch(error=>{console.error('Corvid application menu action failed:',error.message);showApplicationMenuError(record);});}
+  catch(error){console.error('Corvid application menu action failed:',error.message);showApplicationMenuError(record);}
+}
+function applicationMenuHandlers() {
+  const active=()=>applicationMenuContext();
+  const dispatchActive=method=>{const current=active();if(current.canUseActiveTab)return dispatchQueued(method,{id:current.tab.id});};
+  const adjustZoom=delta=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;const settings=profileSettings(current.record.activeProfileId);const zoom=delta===null?1:Math.round(Math.min(3,Math.max(0.5,settings.zoom+delta))*10)/10;saveSettings(current.record.activeProfileId,{zoom});applyZoom(current.record.activeProfileId);update(current.record);});
+  return {
+    canCreateTab:()=>applicationMenuContext().canCreateTab,
+    canCloseTab:()=>applicationMenuContext().canCloseTab,
+    canUseActiveTab:()=>applicationMenuContext().canUseActiveTab,
+    canGoBack:()=>applicationMenuContext().canGoBack,
+    canGoForward:()=>applicationMenuContext().canGoForward,
+    isFullscreen:()=>applicationMenuContext().fullscreen,
+    newTab:()=>runApplicationMenuAction(()=>{const current=active();if(current.canCreateTab)return dispatchQueued('createTab',{id:current.room.id});}),
+    newWindow:()=>runApplicationMenuAction(()=>dispatchQueued('createWindow',{})),
+    closeTab:()=>runApplicationMenuAction(()=>{const current=active();if(current.canCloseTab)return dispatchQueued('closeTab',{id:current.tab.id});}),
+    closeWindow:()=>runApplicationMenuAction(current=>{
+      if(windowRecords.size<=1){current.browserWindow.close();return;}
+      return dispatchQueued('closeWindow',{id:current.id});
+    }),
+    back:()=>runApplicationMenuAction(()=>dispatchActive('back')),
+    forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
+    reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
+    find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
+    fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
+    zoomIn:()=>adjustZoom(0.1),
+    zoomOut:()=>adjustZoom(-0.1),
+    resetZoom:()=>adjustZoom(null),
+    focusWindow:id=>{const target=windowRecords.get(id);if(target&&!target.browserWindow.isDestroyed())target.browserWindow.focus();},
+    showShortcuts:()=>{
+      const text=applicationMenuText(uiLocale),owner=activeRecord()?.browserWindow,options={type:'info',message:text.shortcutsTitle,detail:text.shortcutsDetail};
+      if(owner&&!owner.isDestroyed())void dialog.showMessageBox(owner,options);else void dialog.showMessageBox(options);
+    },
+  };
+}
+function rebuildApplicationMenu() {
+  const windows=[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(record=>({id:record.id,focused:record.browserWindow.isFocused()}));
+  applicationMenu=Menu.buildFromTemplate(createApplicationMenuTemplate({locale:uiLocale,platform:process.platform,handlers:applicationMenuHandlers(),windows}));
+  Menu.setApplicationMenu(applicationMenu);
+  syncApplicationMenu();
+}
+function syncApplicationMenu() {
+  if(!applicationMenu)return;
+  syncApplicationMenuState(applicationMenu,applicationMenuContext());
 }
 function syncRecordFromAliases(record) {
   if (!record) return;
@@ -220,6 +283,7 @@ function saveUiLocale(locale) {
   fs.writeFileSync(temporaryPath, JSON.stringify({schemaVersion:1,uiLocale:locale}), {mode:0o600});
   fs.renameSync(temporaryPath, uiPreferencesPath);
   uiLocale = locale;
+  rebuildApplicationMenu();
 }
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
@@ -300,6 +364,7 @@ const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
+const { createProfileDeletion, extensionProfileRoot } = require('./profile-deletion.cjs');
 const extensionIconCache = new Map();
 function closeExtensionPopup(record,{restoreFocus=false,focusTrigger=false}={}) {
   const popup=record?.extensionPopup;
@@ -384,14 +449,49 @@ const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
 const activeDownloadRetries = new Map();
 const pendingDownloadRetries = new Map();
+let failProfileDeleteStorageClearOnce=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PROFILE_DELETE_STORAGE_FAIL_ONCE==='1';
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
 let profiles;
 try { profiles=JSON.parse(fs.readFileSync(profilesPath,'utf8')); }
 catch(error) { if(error.code!=='ENOENT') throw error; profiles=[{id:'default',name:'默认',isDefault:true}]; }
 if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Error('Invalid profile data');
-const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
+function saveProfiles(next){
+  const temporary=`${profilesPath}.tmp`;
+  fs.writeFileSync(temporary,JSON.stringify(next),{mode:0o600});fs.chmodSync(temporary,0o600);fs.renameSync(temporary,profilesPath);profiles=next;
+  for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+}
+const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');if(profile.deletionPending)throw Object.assign(new Error('该浏览身份正在清理，完成前不能使用'),{code:'CORVID_PROFILE_DELETING'});return profile; };
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
+const profileDeletion = createProfileDeletion({
+  getProfiles:()=>profiles,
+  saveProfiles,
+  getReferences:profileId=>({
+    windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()&&record.activeProfileId===profileId).map(record=>({id:record.id,activeProfileId:record.activeProfileId})),
+    rooms:rooms.filter(room=>room.profileId===profileId).map(room=>({id:room.id,name:room.name,profileId:room.profileId})),
+    downloads:[
+      ...[...activeDownloads.entries()].filter(([,item])=>item.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'progressing'})),
+      ...[...pendingDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'starting'})),
+      ...[...activeDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'retrying'})),
+    ],
+  }),
+  agentWorkbench,
+  getSession:partition=>{
+    const browserSession=session.fromPartition(partition);
+    if(!failProfileDeleteStorageClearOnce)return browserSession;
+    failProfileDeleteStorageClearOnce=false;
+    return new Proxy(browserSession,{get(target,key){if(key==='clearStorageData')return async()=>{await new Promise(resolve=>setTimeout(resolve,4000));throw new Error('测试注入：Session 存储清理首次失败');};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+  },
+  partitionFor,
+  library,
+  managedExtensions,
+  extensionRoot:extensionProfileRoot,
+  dataDir,
+  onDeleted:profileId=>{
+    const partition=partitionFor(profileId);permissionGrants.delete(partition);downloadPartitions.delete(partition);
+    for(const key of [...extensionLoadErrors.keys()])if(key.startsWith(`${profileId}:`))extensionLoadErrors.delete(key);
+  },
+});
 async function loadProfileExtensions(profileId){
   startupProgress('tab-profile-extensions');
   const browserSession=session.fromPartition(partitionFor(profileId));
@@ -517,6 +617,7 @@ function update(record = activeRecord()) {
     }
   }
   record.browserWindow.webContents.send('shell-state', describe(record,true));
+  syncApplicationMenu();
   if (!restoring) persist();
 }
 function notifyDownloads() {
@@ -806,20 +907,21 @@ function installShortcuts(contents, getWindowRecord = activeRecord) {
     const primary=process.platform==='darwin' ? input.meta : input.control;
     if(input.alt || (process.platform==='darwin' && input.control && primary) || (process.platform!=='darwin' && input.meta)) return;
     const key=input.key.toLowerCase(); const room=rooms.find(s=>s.id===activeRoomId),tab=room && tabs.get(room.activeTabId);
+    const userControlsRoom=Boolean(room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk);
     const cycle=input.control && !input.meta && key==='tab';let action;
     if(cycle && room?.tabIds.length){const index=room.tabIds.indexOf(room.activeTabId),step=input.shift?-1:1;action=()=>dispatchQueued('activateTab',{id:room.tabIds[(index+step+room.tabIds.length)%room.tabIds.length]});}
-    else if(primary && key==='t' && !input.shift && room) action=()=>dispatchQueued('createTab',{id:room.id});
+    else if(primary && key==='t' && !input.shift && userControlsRoom) action=()=>dispatchQueued('createTab',{id:room.id});
     else if(primary && key==='n' && !input.shift) action=()=>dispatchQueued('createWindow',{});
-    else if(primary && key==='w' && !input.shift && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
-    else if(primary && key==='l' && !input.shift) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
-    else if(primary && key==='r' && !input.shift && tab) action=()=>dispatchQueued('reload',{id:tab.id});
-    else if(primary && key==='p' && !input.shift && tab) action=()=>{window.webContents.focus();window.webContents.send('shell-print-page',{id:tab.id});};
-    else if(primary && key==='f' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
-    else if(primary && key==='g' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
-    else if(primary && key==='g' && input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
-    else if(primary && !input.shift && ['[',']'].includes(key) && tab) action=()=>dispatchQueued(key==='['?'back':'forward',{id:tab.id});
+    else if(primary && key==='w' && !input.shift && userControlsRoom && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
+    else if(primary && key==='l' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
+    else if(primary && key==='r' && !input.shift && userControlsRoom && tab) action=()=>dispatchQueued('reload',{id:tab.id});
+    else if(primary && key==='p' && !input.shift && userControlsRoom && tab) action=()=>{window.webContents.focus();window.webContents.send('shell-print-page',{id:tab.id});};
+    else if(primary && key==='f' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
+    else if(primary && key==='g' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
+    else if(primary && key==='g' && input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
+    else if(primary && !input.shift && ['[',']'].includes(key) && userControlsRoom && tab) action=()=>dispatchQueued(key==='['?'back':'forward',{id:tab.id});
     else if(primary && !input.shift && /^[1-9]$/.test(key) && room?.tabIds.length) {const index=key==='9'?room.tabIds.length-1:Number(key)-1;const target=room.tabIds[index];if(target) action=()=>dispatchQueued('activateTab',{id:target});}
-    else if(primary && ['+','=','-','0'].includes(key)) action=()=>{const current=profileSettings(activeProfileId).zoom;const zoom=key==='0'?1:Math.round(Math.min(3,Math.max(0.5,current+(key==='-'?-0.1:0.1)))*10)/10;saveSettings(activeProfileId,{zoom});applyZoom(activeProfileId);update();};
+    else if(primary && userControlsRoom && ['+','=','-','0'].includes(key)) action=()=>{const current=profileSettings(activeProfileId).zoom;const zoom=key==='0'?1:Math.round(Math.min(3,Math.max(0.5,current+(key==='-'?-0.1:0.1)))*10)/10;saveSettings(activeProfileId,{zoom});applyZoom(activeProfileId);update();};
     if(action){event.preventDefault();Promise.resolve(action()).catch(error=>console.error('Shortcut failed:',error));}
   });
 }
@@ -866,6 +968,16 @@ async function dispatch(method, args = {}, fromApi = false) {
       catch(error) { await closeRoom(room.id).catch(()=>{}); throw error; }
     }
     case 'profiles': return {profiles};
+    case 'previewProfileDeletion': {
+      if(fromApi)throw new Error('浏览身份删除预览必须由用户在桌面查看');
+      return profileDeletion.preview(args.id);
+    }
+    case 'deleteProfile': {
+      if(fromApi)throw new Error('浏览身份删除必须由用户在桌面确认');
+      const result=await profileDeletion.remove(args.id);
+      for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+      return result;
+    }
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
@@ -1022,7 +1134,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       for(const record of windowRecords.values()) update(record);
       return {uiLocale};
     }
-    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
+    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const name=args.name.trim();if(profiles.some(profile=>profile.deletionPending&&profile.name===name))throw Object.assign(new Error('同名浏览身份仍在清理中，请先重试清理'),{code:'CORVID_PROFILE_DELETING'});const profile={id:id(),name,isDefault:false};saveProfiles([...profiles,profile]);update();return profile;}
     case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');
@@ -1416,10 +1528,11 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
-  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
   const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
+  rebuildApplicationMenu();
   focusWindow(record);
   browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record))scheduleWindowStateSave();layout(record);});
   browserWindow.on('move',()=>{if(!isTransientFullscreen(record))scheduleWindowStateSave();});
@@ -1446,7 +1559,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   });
   browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
-  browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
+  browserWindow.on('closed',()=>{windowRecords.delete(recordId);rebuildApplicationMenu();if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents,()=>record);
   startupProgress('shell-window-load-file');
   await browserWindow.loadFile(path.join(__dirname,'index.html'));
@@ -1469,6 +1582,8 @@ async function closeWindowRecord(record) {
 }
 app.whenReady().then(async () => {
   startupProgress('app-ready-handler');
+  app.setAboutPanelOptions({applicationName:'Corvid',applicationVersion:app.getVersion()});
+  rebuildApplicationMenu();
   fs.mkdirSync(dataDir,{recursive:true});
   ipcMain.handle('shell-action',(event,method,args) => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);

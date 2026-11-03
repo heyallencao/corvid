@@ -1,5 +1,46 @@
 # 验证记录
 
+## 2026-11-04 Issue #5 清理失败切片合并最新主线复验
+
+- 基线：PR #156 分支合并 `origin/main` `2ae872c`，保留主线新增浏览器菜单、Profile 删除、窄窗及 2026-11-04 文档/截图，同时合并 #5 的 zh-CN/en 清理错误资源与 QA 覆盖行。合并冲突仅在两项新增 locale key 和 E2E 测试索引；逐项保留双方独立新增内容。`npm ci` 成功，376 个包、0 vulnerabilities。
+- 通过项：相关主进程、工作台、renderer、locale 与两项测试脚本 `node --check` 通过；`git diff --check` 通过；`node tests/agent-runtime-contract-e2e.cjs` EXIT 0，覆盖异步 dispose/revoke 失败、回复与凭据句柄保留、禁止续聊、重试和双语错误映射。
+- Electron UI 复验：未修改的 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在第 171 行的既有 700×420 布局断言失败：模型/状态/账号操作可见，但任务输入和页面复核不在当前 form 视口（form clientHeight 57、scrollHeight 156）；用例在本轮新增的会话清理 UI 场景之前退出。失败断言及其窗口设置与 `origin/main` 版本相同；本次没有在独立干净主线 worktree 重跑，因此不能将其确认为主线基线故障。
+- 定向隔离：为继续验证后续 #5 工作台场景，本机临时把该测试设置窗口从 700×420 调为 1280×850，运行 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0，覆盖清理失败后的回复保留、禁止续聊、中文/英文提示与同文件其余工作台路径；测试脚本随即恢复为原始 700×420，不把临时尺寸运行记作窄窗通过。
+- 边界：完整 `npm test` 未执行；最新主线上的 700×420 工作台可用性未通过，需由现有 Issue #16 UI 工作另行复核；未使用真实模型、Provider 或 OAuth；本轮没有修改窗口布局。Issue #5 仍开放，PR #156 保持草稿。
+
+## 2026-11-04 浏览身份删除用户流程（Issue #174）
+
+- 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。
+- 验证：`node --check desktop/renderer.js`、`desktop/main.cjs`、`tests/profile-deletion-e2e.cjs`；`node tests/profile-deletion-services.cjs` EXIT 0；`CORVID_PROFILE_DELETE_QA_DIR=/tmp/corvid-profile-deletion-qa node tests/profile-deletion-e2e.cjs` EXIT 0。模块合同逐类覆盖窗口、Room、进行中下载、Agent 对话和默认身份阻断；真实 Electron UI 覆盖窗口/空间阻断、取消无副作用、清理中的进度/禁用取消/Escape 阻断、首次 Session 清理失败的 `deletionPending` 与可见重试、Cookie/localStorage/书签/历史/下载记录清理、磁盘下载文件保留、重启不复活、同名新 ID 与干净站点存储。
+- 双语与视觉：真实 Electron 中切换英文检查删除菜单/标题/阻断状态，并于 700×420 断言保留数据说明和重试/删除动作可见；常规中文和英文窄窗截图见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-浏览身份删除确认与窄窗布局-issue-174)。首次窄窗观察发现保留说明被操作区挤出，修改间距和 sticky 操作区后复验通过。
+- 发现并修复：首次 E2E 发现主进程预筛窗口/Room 引用后未把 Profile ID 一同传进纯合同校验器，导致真实占用被错误判为空；现修复映射并增加逐类模块合同断言。首次清理失败的用户端错误也映射到明确的重试说明，不透出测试或内部错误名。
+- 全量回归情况：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，27 个 `node:test` 用例和前置 43 条脚本（包含本切片 E2E）通过后，在现有 `tests/pi-workbench-e2e.cjs` 因 `#pi-task-form .pi-primary-action` 超时中止。为判断是否回归，在独立临时 worktree 的未改基线 `2286159` 上单独运行同一用例，也 EXIT 1（按钮定位超时）；该工作台覆盖由已有 [Issue #5](https://github.com/heyallencao/corvid/issues/5) 跟踪。本次随后单独运行其后 10 条脚本（Pi 工作台短窗、Agent 停止/端点、Chrome 导入、授权、导航、本地化和应用菜单），均通过。因此未把全量套件记为通过；此缺口在本切片之前已可复现。
+- 限制：没有获得完整全量 `npm test` 通过结果；未使用真实 Agent Provider 或 OAuth；扩展和 Agent 运行时目录清理失败由模块注入合同覆盖，未在 UI E2E 逐项故障注入；未检查 SQLite/Chromium 文件层的每一类可恢复字节，也未覆盖其他操作系统或打包应用。Issue #174 尚待独立 review、主线集成和中文 PR。
+
+## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
+
+- 问题：真实 Electron 在 704×420 窗口（shell 视口 704×388 CSS px）中，较长的欢迎说明被输入卡片遮挡；英文段落比中文占用更多行，单语截图不足以发现边界问题。
+- 修复：`max-height:480px` 时收起装饰图标，让欢迎标题和双语说明使用整行宽度，并把说明精简为保留原意的短句；正文字号为 10px。窗口高度不超过 440px 时输入卡片上限为内容区 34%，441–480px 时为 52%，均保留独立滚动。420px 窗口中输入卡片首屏只显示部分内容，模型选择、提示词、页面复核仍通过卡片滚动访问。
+- 验证：`CORVID_UI_EVIDENCE_PATH=docs/qa/screenshots/issue-16-agent-short-height-704x420.png env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-short-height-e2e.cjs` EXIT 0。断言 zh-CN/en 标题与完整的短版说明均位于消息区，和输入卡片无重叠；逐项滚动确认模型选择、提示词与页面复核按钮可见。`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过，确认双语资源、浏览器界面语言切换、窄窗可见性与重启持久化。隔离 `CORVID_DATA_DIR`、本地 HTTP fixture，未调用真实模型、Provider 或 OAuth。`pi-workbench-short-height-e2e.cjs` 已加入 `npm test`。
+- 视觉参考：REA Kaze Agent 模型选择器 Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 与 Kobra Composer Evidence `ev_668bf2245d384ec9265daab73179d0986212ea9968e2b05000bd13234459f8f9` 只支持常规窗口输入附近模型入口和有名称控件的有限观察；未观察两者短高窗口行为。细节、直接观察/推断/未知和覆盖限制见[UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-agent-欢迎态短高窗口可读性-issue-16)。
+- 失败基线与边界：本分支首次运行既有 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 时在 `#pi-task-form .pi-primary-action` 等待超时，未由本切片修复或重跑通过；全量 `npm test` 未运行。短高用例只覆盖 macOS 开发版 Electron、浅色主题、一个窗口尺寸和本地页面 fixture；截图未包含独立网页 WebContentsView。VoiceOver、打包版、暗色主题及 Windows/Linux 未验证。
+
+## 2026-11-03 macOS 全屏 E2E 异步最大化恢复竞态（Issue #168）
+
+- 根因证据：隔离 Electron 45.2.1 中，关闭 HTML 全屏标签后原生 `BrowserWindow.isFullScreen()` 先变为 `false`，当时 `isMaximized()` 仍为 `false`，而 `window-state.json` 已保留原最大化状态；约 100ms 后原窗口恢复最大化，Corvid `/rooms` 全屏字段稍后才归零。产品状态最终恢复，失败源于测试仅等待原生全屏标志。
+- 修复：`tests/fullscreen-e2e.cjs` 通过 `app.browserWindow(shell)` 固定跟踪原窗口，等待该窗口恢复最大化，并同时等待所有窗口的 Corvid `fullscreen`/`pageFullscreen` 状态清零后再断言重启前状态。
+- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 通过。随后 `env -u ELECTRON_RUN_AS_NODE npm test` 通过 `fullscreen-e2e.cjs`，继续在 `tests/pi-workbench-e2e.cjs:99` 因 `#pi-task-form .pi-primary-action` 超时；这属于开放 Issue #5，另一个会话在独立 worktree 修改相同工作台测试，本轮没有触碰。全量回归仍未完成。
+- 环境与边界：macOS、Electron 45.2.1、临时 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；未访问真实网站或个人数据，未调用 OAuth/模型。未验证 Windows/Linux、打包版与屏幕阅读器。
+
+## 2026-11-03 原生菜单切片定向合同与 macOS 复核（Issue #162）
+
+- 静态/模块检查：`node --test tests/application-menu.test.mjs` 与 `node --test tests/window-shortcuts.test.mjs` 各 3/3 通过；`node --check desktop/main.cjs`、`node --check desktop/application-menu.cjs`、`node --check tests/application-menu-e2e.cjs` 和 `git diff --check` 通过。
+- 菜单 E2E 与修正：首轮真实 Electron E2E 在窗口菜单勾选状态断言失败。macOS 隔离原生菜单实操（System Events 选择“窗口 1”）及 Corvid `/windows` 状态复核确认焦点 API 已切至 `legacy-window`，但原生菜单仍勾选“窗口 2”（[Issue #167](https://github.com/heyallencao/corvid/issues/167)）。修正 radio 组同步为只勾选当前窗口；对应模块测试 3/3 通过，重跑后窗口菜单勾选断言通过。REA `observe_native_ui` 因 provider 无法读取目标进程启动时间而返回 `capability_unavailable`；实际截图与证据边界见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-167)。
+- 定向回归：修正 `POST /rooms` 测试夹具响应读取，并把 Agent Room 权限验证放在单窗口阶段；Playwright 菜单 callback 不会可靠地改变 macOS 多窗口原生焦点，不能用它模拟 OS 窗口切换。之后 `env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs` 通过，覆盖菜单树、动作、双窗口 callback 路由、Agent Room 权限状态、语言切换和重启保持；`env -u ELECTRON_RUN_AS_NODE node tests/browser-shortcuts-e2e.cjs` 通过。
+- 原生 macOS 复核：使用隔离临时数据启动 Electron，以 `System Events` 在真实“窗口”菜单中双向选择窗口，分别读取 `AXMenuItemMarkChar` 勾选与 Corvid `/windows` 焦点 ID；两个方向均一致。人工诊断脚本在菜单仍打开时由 `closeElectron` 超时后结束了本轮自启进程，但在退出前已读完证据；随后检查无残留 Electron。REA `observe_native_ui` 仍因 provider 无法读取进程启动时间而 `capability_unavailable`；此处不宣称 REA 原生观察。
+- 全量回归边界：首次 `npm test` 曾在全屏测试的异步最大化断言失败，已由 [Issue #168](https://github.com/heyallencao/corvid/issues/168) 修正为等待原窗口恢复；后续完整运行已通过该测试，继续在 #5 的 `pi-workbench-e2e.cjs:99` 超时，见上方 #168 记录，不计入 #162 菜单 E2E 失败。
+- 未覆盖与限制：全套 `npm test`、VoiceOver、Windows/Linux、打包版、真实鼠标截图/像素与其他系统语言设置尚未完成；网页菜单的 EasyUI REA Evidence 只提供交互分组参考，不是系统菜单验收依据。本次未调用 OAuth 或真实模型。
+
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 
 - 复现：迁移中断后，当前 `agent-credentials.json` 可为 schemaVersion 2，而 `.migration-backup` 保留旧 schemaVersion 1。Linux 异步安全存储可用但密文标记为固定口令回退 `v10` 时，provider 拒绝错误文本未匹配旧恢复分支的本地化字符串判断；`decryptStringAsync()` 返回非字符串 `result` 时的普通错误也会被当作可回退的数据损坏；此外，schemaVersion 2 已成功解密校验后若删除 `.migration-backup` 遇到文件系统错误，原 `try/catch` 会把清理失败误判为验证失败；比当前代码更新的 schemaVersion 3 也会落入旧备份回退分支；读取当前文件遇到 EACCES/EIO 还会被宽泛 `catch` 当作文件不存在。这些路径都会覆盖较新的凭据或用户更高版本数据。
