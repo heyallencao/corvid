@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-04 标签页加载反馈（Issue #197）
+
+- 实现：导航进行中在对应标签的 favicon 槽位显示 15px CSS spinner；完成或失败后恢复 favicon。将 `isLoading` 加入标签栏渲染签名，避免状态变化被跳过；加载状态的按钮可访问名称提供 `zh-CN`/`en` 双语，动画沿用现有 `prefers-reduced-motion` 全局策略。没有增加第二条进度条，避免重复表达同一加载状态和挤压标签栏。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。以下四项均在本地真实 Electron 与本地 fixture 下通过：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs`（普通标签慢加载 spinner、zh-CN/en 可访问名称、加载完成恢复 favicon，并覆盖原有查找/拖拽/末标签恢复）；`env -u ELECTRON_RUN_AS_NODE node tests/tab-pin-menu-e2e.cjs`（固定标签保留中心 pin glyph、菜单与拖拽/关闭/重启回归）；`env -u ELECTRON_RUN_AS_NODE node tests/navigation-error-e2e.cjs`（导航错误后 spinner 清除）；`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs`（双语 chrome 与窄窗回归）。`node --check`（所有改动的 JS 文件）与 `git diff --check` 通过。`tab-ux-e2e.cjs` 首次重跑曾在起始页准备阶段超时，单独重跑通过；固定标签测试加入慢加载后，首次因测试试图查找已被新标题替换的旧标题而失败，修正 fixture 导航后通过。未访问真实网站、模型或 OAuth。
+- 截图：本地慢页面加载中 [issue-197-loading.png](../qa/screenshots/issue-197-loading.png) 与完成后 [issue-197-loaded.png](../qa/screenshots/issue-197-loaded.png)，均为 2560×1636 截图，页面为合成 fixture，无个人数据。SHA-256 分别为 `b1841a3162bd0bed29627da6c960b9d495f44ae2c1fd66553a4017eb43b97317`、`2dc6f06d071afa6a49647350975fb1060595926f2f88cf54118acbe98eb146a5`。
+- UI/UE 参考与 REA 边界：沿用已有 Kaze 浏览器标签/网页画布 REA Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02，1440×851）与 EGO 日常浏览 Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`。这些证据直接观察到浏览器标签和网页画布层级，但没有覆盖加载中 spinner 状态；该状态以 Issue #197 的复现记录与本地真实 Electron fixture 为依据。设计推断：在既有 favicon 槽位替换图标可让用户定位到具体加载标签，同时不增加横向密度；spinner 是 Corvid 自有实现，未复制任何站点代码、样式或素材。Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 与 Kaze 本轮未重新采集。未知：其他平台系统动画偏好、屏幕阅读器实播及远程页面 favicon 竞态未覆盖。
+
 ## 2026-11-04 主进程权限与导航错误双语
 
 - 调整：主进程系统提示和权限名称迁移到 `desktop/main-locales.cjs`；导航失败文本按应用语言选择资源。英文权限详情在权限范围句与设备限制句之间补上可见空格，并在权限 E2E 中同时检查两种范围模板。

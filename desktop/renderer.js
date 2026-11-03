@@ -880,37 +880,52 @@ document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKin
 const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
 const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z" fill="#4a5568"/></svg>');
 let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
-function tabElement(tab, room){
-  const el=document.createElement('div');
-  el.className=tab.pinned?'tab pinned':'tab'; el.dataset.active=String(tab.active); el.dataset.tabId=tab.id;
-  if(tab.pinned) el.dataset.pinned='true';
-  const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');
-  if(tab.active)main.setAttribute('aria-current','page');
-  if(tab.pinned){ const pin=document.createElement('img'); pin.className='pin-icon'; pin.alt=extensionMessages.t('pinned'); pin.title=extensionMessages.t('pinned'); pin.draggable=false; pin.src=PIN_ICON; main.append(pin); }
-  const icon=document.createElement('img'); icon.className='favicon'; icon.alt=''; icon.draggable=false; icon.src=tab.faviconUrl || FALLBACK_FAVICON;
-  icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};
-  const title=document.createElement('span'); title.className='tab-title'; title.textContent=tab.title || tab.url || extensionMessages.t('newTab');
-  main.append(icon,title);
+function createTabPinIcon(){const pin=document.createElement('img');pin.className='pin-icon';pin.alt=extensionMessages.t('pinned');pin.title=extensionMessages.t('pinned');pin.draggable=false;pin.src=PIN_ICON;return pin;}
+function createTabFavicon(tab){const icon=document.createElement('img');icon.className='favicon';icon.alt='';icon.draggable=false;icon.src=tab.faviconUrl||FALLBACK_FAVICON;icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};return icon;}
+function syncTabElement(el,tab,room){
+  el.className=tab.pinned?'tab pinned':'tab';el.dataset.active=String(tab.active);el.dataset.tabId=tab.id;
+  if(tab.pinned)el.dataset.pinned='true';else delete el.dataset.pinned;
+  const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close'),titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  if(tab.active)main.setAttribute('aria-current','page');else main.removeAttribute('aria-current');
+  let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('img.favicon'),pin=main.querySelector(':scope > img.pin-icon');
+  if(tab.isLoading){
+    if(!loading){loading=document.createElement('span');loading.className='tab-loading-indicator';loading.setAttribute('aria-hidden','true');if(tab.pinned){loading.dataset.pinned='true';pin ||= createTabPinIcon();loading.append(pin);pin=null;}if(favicon)favicon.replaceWith(loading);else main.insertBefore(loading,main.querySelector('.tab-title'));}
+    main.setAttribute('aria-label',extensionMessages.t(tab.pinned?'pinnedTabLoadingLabel':'tabLoadingLabel',{tab:titleText}));
+  }else{
+    main.removeAttribute('aria-label');
+    if(loading){const retainedPin=loading.querySelector('.pin-icon');favicon=createTabFavicon(tab);loading.replaceWith(favicon);if(tab.pinned)main.insertBefore(retainedPin||createTabPinIcon(),favicon);}
+    else{
+      if(tab.pinned&&!pin){pin=createTabPinIcon();main.insertBefore(pin,favicon||main.querySelector('.tab-title'));}
+      if(!tab.pinned)pin?.remove();
+      if(!favicon){favicon=createTabFavicon(tab);main.insertBefore(favicon,main.querySelector('.tab-title'));}
+      else if(favicon.getAttribute('src')!==(tab.faviconUrl||FALLBACK_FAVICON))favicon.src=tab.faviconUrl||FALLBACK_FAVICON;
+    }
+  }
+  main.querySelector('.tab-title').textContent=titleText;
+  close.title=extensionMessages.t('closeNamedTab',{tab:titleText});
   main.onkeydown=event=>{if(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey)){event.preventDefault();openTabMenu(null,tab,main);}};
-  const close=document.createElement('button'); close.type='button'; close.className='tab-close'; close.textContent='×'; close.setAttribute('aria-label',extensionMessages.t('closeTab')); close.title=extensionMessages.t('closeNamedTab',{tab:tab.title||tab.url||extensionMessages.t('tabs')});
   close.onclick=event=>{event.stopPropagation();void closeTabFromUi(tab.id);};
-  el.append(main,close);
   el.oncontextmenu=event=>{event.preventDefault();openTabMenu(event,tab,main);};
   main.onclick=()=>{closeTabMenu();void api.invoke('activateTab',{id:tab.id}).catch(error=>{controlError=error.message;draw(state);});};
   el.onauxclick=event=>{if(event.button===1){event.preventDefault();void closeTabFromUi(tab.id);}};
   el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;closeTabMenu();startTabDrag(event,el,room);};
   return el;
 }
-let tabsSignature='';
+function tabElement(tab,room){const el=document.createElement('div');const main=document.createElement('button');main.type='button';main.className='tab-main';main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');const title=document.createElement('span');title.className='tab-title';main.append(title);const close=document.createElement('button');close.type='button';close.className='tab-close';close.textContent='×';close.setAttribute('aria-label',extensionMessages.t('closeTab'));el.append(main,close);return syncTabElement(el,tab,room);}
+let tabsStructureSignature='';
 function renderTabs(room){
   // Rebuild only when the room or its tabs actually changed: frequent state
   // updates (download progress, agent activity) must not tear down the tab bar
   // while the user is dragging a tab or clicking its close button.
-  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.title,tab.url,tab.faviconUrl,tab.active,tab.pinned].join('\u0000'))].join('\u0001');
+  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.active,tab.pinned].join('\u0000'))].join('\u0001');
   const existing=document.querySelector('#new-tab');
-  if(signature===tabsSignature && existing && existing.parentElement?.id==='tabs') return;
-  tabsSignature=signature;
-  const tabs=document.querySelector('#tabs'); tabs.replaceChildren();
+  const tabs=document.querySelector('#tabs');
+  if(signature===tabsStructureSignature && existing && existing.parentElement?.id==='tabs'){
+    for(const tab of room.tabs){const el=tabs.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"]`);if(el)syncTabElement(el,tab,room);}
+    return;
+  }
+  tabsStructureSignature=signature;
+  tabs.replaceChildren();
   for(const tab of room.tabs) tabs.append(tabElement(tab,room));
   const add=button('+',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
   add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton')); tabs.append(add);
