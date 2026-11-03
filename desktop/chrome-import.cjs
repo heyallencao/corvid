@@ -112,7 +112,15 @@ function readCookieRows(directory,{checkIntegrity=false}={}) {
 }
 
 function cookieCount(directory){
-  try{return readCookieRows(directory).length;}catch{return null;}
+  let database;
+  try{
+    const file=sourceFile(directory,'Cookies');
+    if(!fs.existsSync(file))return 0;
+    sourceFile(directory,'Cookies-wal');sourceFile(directory,'Cookies-shm');
+    database=new DatabaseSync(file,{readOnly:true});
+    return Number(database.prepare('SELECT COUNT(*) AS count FROM cookies NOT INDEXED').get().count);
+  }catch{return null;}
+  finally{database?.close();}
 }
 
 async function chromeCookieKey(){
@@ -162,8 +170,9 @@ function decodeCookieRows(rows,key){
 
 function readCookiesWithKey(directory,key){return decodeCookieRows(readCookieRows(directory,{checkIntegrity:true}),key);}
 
-async function readCookies(directory){
-  const rows=readCookieRows(directory,{checkIntegrity:true}),key=await chromeCookieKey();
+async function readCookies(directory,{consent=false}={}){
+  assertCookieConsent(['cookies'],consent);
+  const key=await chromeCookieKey(),rows=readCookieRows(directory,{checkIntegrity:true});
   return decodeCookieRows(rows,key);
 }
 

@@ -4,7 +4,7 @@
 
 ## 目录
 
-- `architecture/`：系统边界、架构设计与关键决策。入口：[系统设计](architecture/overview.md)、[统一桌面体验设计](architecture/ui-experience.md)、[界面本地化架构](architecture/localization.md)。
+- `architecture/`：系统边界、架构设计与关键决策。入口：[系统设计](architecture/overview.md)、[统一桌面体验设计](architecture/ui-experience.md)、[界面本地化架构](architecture/localization.md)、[桌面打包与启动边界](architecture/distribution.md)。
 - `execution/`：执行任务板、任务优先级和验收合同。入口：[执行任务板](execution/feature-board.md)；当前切片：[Issue #141 窗口全屏](execution/issue-141-browser-fullscreen.md)。
 - `reviews/`：验证记录、质量门禁和评审证据。入口：[验证记录](reviews/verification-log.md)。
 - `qa/`：端到端测试索引、浏览器/桌面 QA 记录和手动验证记录。入口：[测试索引](qa/e2e-suites.md)，另有 [桌面 UI 视觉检查记录](qa/ui-visual-check.md)。

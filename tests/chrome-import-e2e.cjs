@@ -125,7 +125,7 @@ function writeCorruptCookieIndex(profileDir){
   try{fs.writeSync(descriptor,Buffer.from([0xff]),0,1,(rootPage-1)*pageSize);}finally{fs.closeSync(descriptor);}
 }
 
-function verifyCookieDecryption(tempRoot){
+async function verifyCookieDecryption(tempRoot){
   const profileDir=path.join(tempRoot,'cookie-decrypt');fs.mkdirSync(profileDir,{recursive:true});
   const key=fixtureCookieKey();
   const cipher=crypto.createCipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));
@@ -138,6 +138,41 @@ function verifyCookieDecryption(tempRoot){
   add.run('example.com','unknown_cipher','',Buffer.from('v20ignored'), '/',1,0,0,0,1,'');
   add.run('example.com','partitioned','plain-partitioned','', '/',1,0,0,0,1,'https://top.example');
   database.close();
+
+  if(process.platform==='darwin'){
+    const originalPrepare=DatabaseSync.prototype.prepare;
+    const originalTestMode=process.env.CORVID_TEST_MODE;
+    const originalCookieKey=process.env.CORVID_TEST_CHROME_COOKIE_KEY;
+    const cookieQueries=[];
+    DatabaseSync.prototype.prepare=function(sql,...args){
+      if(/\bFROM\s+cookies\b/i.test(sql))cookieQueries.push(sql);
+      return Reflect.apply(originalPrepare,this,[sql,...args]);
+    };
+    try{
+      assert.equal(chromeImport.readProfile(tempRoot,'cookie-decrypt').cookieCount,4,'Cookie preview should still report the row count');
+      assert.deepEqual(cookieQueries,['SELECT COUNT(*) AS count FROM cookies NOT INDEXED'],'Cookie preview must count rows without selecting Cookie values or relying on secondary indexes');
+
+      cookieQueries.length=0;
+      process.env.CORVID_TEST_MODE='1';
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY=key.toString('hex');
+      await assert.rejects(chromeImport.readCookies(profileDir),/请先确认 Cookie 导入说明/,'Cookie rows must remain unread until explicit consent');
+      assert.deepEqual(cookieQueries,[],'missing consent must not query Cookie rows');
+
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY='00';
+      await assert.rejects(chromeImport.readCookies(profileDir,{consent:true}),/必须是 16 字节/,'keychain/key failure should happen before reading Cookie rows');
+      assert.deepEqual(cookieQueries,[],'key retrieval failure must not query Cookie rows');
+
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY=key.toString('hex');
+      const consented=await chromeImport.readCookies(profileDir,{consent:true});
+      assert.deepEqual(cookieQueries,['SELECT * FROM cookies'],'Cookie rows are read only after consent and successful key retrieval');
+      assert.equal(consented.cookies.find(cookie=>cookie.name==='host_session')?.value,'fixture-session');
+    }finally{
+      DatabaseSync.prototype.prepare=originalPrepare;
+      if(originalTestMode===undefined)delete process.env.CORVID_TEST_MODE;else process.env.CORVID_TEST_MODE=originalTestMode;
+      if(originalCookieKey===undefined)delete process.env.CORVID_TEST_CHROME_COOKIE_KEY;else process.env.CORVID_TEST_CHROME_COOKIE_KEY=originalCookieKey;
+    }
+  }
+
   const result=chromeImport.readCookiesWithKey(profileDir,key);
   assert.equal(result.cookies.length,2);
   assert.equal(result.unsupported,2);
@@ -210,6 +245,45 @@ async function allowCookieImport(shell){
   await shell.locator('#chrome-cookie-consent-check').check();
 }
 
+async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
+  const chromeRoot=path.join(tempRoot,'host-only-chrome-user-data');fs.mkdirSync(chromeRoot);
+  makeChromeFixture(chromeRoot);
+  writeChromeCookies(path.join(chromeRoot,'Default'),cookieKey);
+  addChromeCookie(path.join(chromeRoot,'Default'),'host_only_same_path','fixture-domain-value',{host:'.example.test',cookiePath:'/app'});
+  const dataDir=path.join(tempRoot,'cookie-host-only-collision-data');
+  let app;
+  try{
+    let shell;
+    ({app,shell}=await boot(dataDir,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,chromeRoot);
+    await chooseSource(shell);
+    await app.evaluate(async({session})=>{
+      const destination=session.fromPartition('persist:corvid');
+      await destination.cookies.set({url:'http://example.test/app',name:'host_only_same_path',value:'preserve-host-only-value',path:'/app',expirationDate:1893456000});
+      await destination.cookies.flushStore();
+    });
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+    await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+    await allowCookieImport(shell);
+    await shell.locator('#confirm-chrome-import').click();
+    const status=shell.locator('#chrome-import-error');
+    await status.waitFor({state:'visible',timeout:5000});
+    const statusText=await status.textContent();
+    const cookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'host_only_same_path'}));
+    assert.match(statusText,/Cookie 新增 3 项.*跳过 1 项、不支持 2 项/,'same-name same-path HostOnly/Domain collision must be reported as skipped');
+    assert.equal(await status.getAttribute('data-success'),'true','a same-path host-only collision should be a successful skip');
+    assert.equal(cookies.length,1,'Electron must not be asked to add a same-name same-path domain Cookie over a host-only Cookie');
+    assert.equal(cookies[0].value,'preserve-host-only-value','the host-only destination Cookie must keep its original value');
+  }finally{
+    if(app)await app.close().catch(()=>{});
+  }
+}
+
 (async()=>{
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
@@ -221,8 +295,15 @@ async function allowCookieImport(shell){
   server=http.createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/html'});response.end('<title>Extension Fixture</title><html><body>local extension test</body></html>');});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const extensionUrl=`http://127.0.0.1:${server.address().port}/extension-fixture`;
-  verifyCookieDecryption(tempRoot);
+  await verifyCookieDecryption(tempRoot);
   try{
+    if(supportsCookieImport){
+      await verifyHostOnlyCookieCollision(tempRoot,cookieKey);
+      if(process.env.CORVID_TEST_HOSTONLY_COOKIE_ONLY==='1'){
+        console.log('PASS HostOnly/Domain same-path Cookie import collision');
+        return;
+      }
+    }
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
     assert.throws(()=>chromeImport.assertCookieConsent(['cookies'],false,'darwin'),/请先确认 Cookie 导入说明/,'Cookie import must reject missing explicit consent before reading source secrets');
     assert.doesNotThrow(()=>chromeImport.assertCookieConsent(['cookies'],true,'darwin'),'explicit Cookie consent should be accepted on macOS');

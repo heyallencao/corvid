@@ -128,6 +128,7 @@ let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieSetNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'';
 let failChromeCookieRemoveNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_REMOVE_FAIL_NAME:'';
+function normalizeCookieDomain(domain){return String(domain||'').toLowerCase().replace(/^\./,'').replace(/\.$/,'');}
 async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
@@ -919,12 +920,13 @@ async function dispatch(method, args = {}, fromApi = false) {
       };
       try{
         if(args.categories.includes('cookies')){
-          const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId));
+          const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId),{consent:args.cookieConsent});
           cookieResult.unsupported=sourceCookies.unsupported;
           for(const cookie of sourceCookies.cookies){
             const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
-            const targetDomain=cookie.sourceDomain;
-            if(existing.some(item=>item.domain===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
+            // Electron omits the leading dot for HostOnly cookies, while Chrome Domain cookies include it.
+            const targetDomain=normalizeCookieDomain(cookie.sourceDomain);
+            if(existing.some(item=>normalizeCookieDomain(item.domain)===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
             const {sourceDomain,hostOnly,...cookieDetails}=cookie;
             if(!hostOnly)cookieDetails.domain=sourceDomain;
             try{
