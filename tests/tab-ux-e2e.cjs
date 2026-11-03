@@ -40,6 +40,17 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     call=async(route)=>{const response=await fetch(config.baseUrl+route,{headers:{authorization:`Bearer ${config.token}`}});const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));return data;};
     const primary=process.platform==='darwin'?'Meta':'Control';
     const tabs=shell.locator('.tab');
+    const axSession=await shell.context().newCDPSession(shell);
+    await axSession.send('Accessibility.enable');
+    const {nodes:initialAxNodes}=await axSession.send('Accessibility.getFullAXTree');
+    const initialAxRoles=initialAxNodes.map(node=>node.role?.value);
+    assert.ok(initialAxNodes.some(node=>node.role?.value==='group'&&node.name?.value==='标签页'),'the tab controls are exposed as a named group');
+    assert.ok(initialAxNodes.some(node=>node.role?.value==='group'&&node.name?.value==='空间'),'the Room buttons are exposed as a named group');
+    assert.equal(initialAxRoles.includes('tablist'),false,'the strip does not claim tablist arrow-key behavior');
+    assert.equal(initialAxRoles.includes('tab'),false,'tab cards remain ordinary named buttons with a close action');
+    await axSession.detach();
+    assert.equal(await shell.locator('#tabs .tab-main').first().getAttribute('aria-current'),'page','the active browser tab is announced as current');
+    assert.equal(await shell.locator('#room-strip button').first().getAttribute('aria-current'),'page','the active Room is announced as current');
 
     // Corvid paints its home surface inside the user-owned about:blank WebContentsView.
     await until(()=>homeEval("document.visibilityState==='visible'"),'visible Corvid home view');
@@ -99,7 +110,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),0,'a new Profile must not see another Profile bookmarks');
     await shell.locator('#profile-select').selectOption('default');
     await until(async()=>(await tabs.count())===2 && await shell.locator('#profile-select').inputValue()==='default','return to original Profile');
-    await shell.locator('.tab[aria-selected="true"] .tab-close').click();
+    await shell.locator('.tab[data-active="true"] .tab-close').click();
     await until(async()=>(await tabs.count())===1,'close shortcut tab');
 
     await shell.locator('#address').fill(base+'/');
