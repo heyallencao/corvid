@@ -116,7 +116,28 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('.tab[data-active="true"] .tab-close').click({force:true});
     await until(()=>app.evaluate(({webContents},url)=>!webContents.getAllWebContents().some(contents=>contents.getURL()===url),fixtureUrl),'fullscreen page closes');
     await until(async()=>{const state=await api('/rooms');return state.windows.every(item=>!item.pageFullscreen);},'page full-screen state clears');
-    console.log('PASS full-screen menu reflects native state, preserves browser chrome, and restores the prior maximized state');
+    await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().every(window=>!window.isFullScreen())),'native full-screen state exits after page close');
+    const windowStateBeforeRestart=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(window=>({maximized:window.isMaximized(),bounds:window.getNormalBounds()})));
+    assert.ok(windowStateBeforeRestart.some(window=>window.maximized),'fixture includes a window that was maximized before full screen');
+    await app.close();
+    app=undefined;
+    const persistedWindows=JSON.parse(fs.readFileSync(path.join(dataDir,'window-state.json'),'utf8'));
+    const boundsForSort=windows=>windows.map(window=>({width:window.width??window.bounds.width,height:window.height??window.bounds.height})).sort((a,b)=>a.width-b.width||a.height-b.height);
+    const maximizedBeforeRestart=windowStateBeforeRestart.find(window=>window.maximized);
+    const persistedMaximized=persistedWindows.find(window=>window.maximized);
+    assert.ok(persistedMaximized,'full screen exit must persist the prior maximized state');
+    assert.deepEqual(boundsForSort([persistedMaximized]),boundsForSort([maximizedBeforeRestart]),'full screen bounds must not replace the maximized window’s normal bounds');
+
+    config=undefined;
+    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    await app.firstWindow();
+    await until(()=>{try{config=JSON.parse(fs.readFileSync(path.join(dataDir,'control.json')));return Boolean(config);}catch{return false;}},'control API config after restart');
+    const restoredWindows=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(window=>({fullscreen:window.isFullScreen(),maximized:window.isMaximized(),bounds:window.getNormalBounds()})));
+    assert.ok(restoredWindows.every(window=>!window.fullscreen),'app restart must not restore a transient full-screen state');
+    const restoredMaximized=restoredWindows.find(window=>window.maximized);
+    assert.ok(restoredMaximized,'app restart restores the prior maximized state');
+    assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([maximizedBeforeRestart]),'app restart restores the prior normal bounds');
+    console.log('PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart');
   }finally{
     if(app)await app.close().catch(()=>{});
     await new Promise(resolve=>server.close(resolve));
