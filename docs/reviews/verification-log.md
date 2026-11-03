@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 网站权限提示中文名称（Issue #115）
+
+- 红测：真实 Electron + 隔离数据目录中捕获 `dialog.showMessageBox` 选项，原提示为 `http://127.0.0.1:<port> 请求 notifications 权限`；将站点权限审查的 `notifications` 文案设为中文后，旧实现也按预期失败。
+- 实现：新增 `desktop/permission-labels.cjs`，以锁定的 Electron 45.2.1 `Session.setPermissionRequestHandler` 类型联合为完整映射范围；媒体请求按 `audio` / `video` 显示“麦克风”/“摄像头”，未知类型使用“一项尚未识别的浏览器权限”。请求弹窗与站点权限审查均使用中文名称；保留来源、浏览身份、空间、范围以及默认“拒绝”。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` EXIT 0；真实 Electron + 本地 HTTP fixture 验证通知请求与站点权限审查文案、权限表逐项覆盖、摄像头/麦克风与屏幕共享音频名称映射、未知 ID 脱敏、默认拒绝、授权隔离、撤销、导航竞态和重启。`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（45 条独立脚本 + 8 个 `node:test` 用例，共 53 项）；增加屏幕共享音频映射后再次定向回归通过。`node --check desktop/permission-labels.cjs`、`desktop/main.cjs`、`tests/permissions-e2e.cjs` 与 `git diff --check` 通过。未调用真实模型或 OAuth。
+- 界面参考与限制：本轮仅更换原生确认框的内容文本，不改变布局、焦点或动效；没有使用 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的视觉模式。未取得 EGO/Kaze 权限提示的可引用 REA Evidence，因此不对两者该对话框作比较或结论。E2E 替换了 `dialog.showMessageBox`，证明应用传入正确文案，不证明 macOS 原生对话框渲染/焦点、真实摄像头/麦克风/位置授权或其他平台行为。
+
 ## 2026-11-03 增强 Electron E2E 启动诊断与清理（Issue #87）
 
 - 目标：启动失败要能区分 Playwright launch、首个桌面窗口与 `control.json` 新凭据等待阶段；报告隔离数据目录、进程状态、窗口与最近日志但不输出 token；清理必须有限时，并在挂起时结束测试子进程。
