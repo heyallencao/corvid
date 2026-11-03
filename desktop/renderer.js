@@ -493,7 +493,8 @@ async function renderProfileExtensions(){
     const version=document.createElement('span');version.textContent=`v${extension.version} · MV${extension.manifestVersion}`;heading.append(version);row.append(heading);
     const grants=[...(extension.permissions?.required||[]),...(extension.permissions?.hosts||[])];
     const optional=[...(extension.permissions?.optional||[]),...(extension.permissions?.optionalHosts||[])];
-    const grantText=document.createElement('p');grantText.textContent=`${extensionMessages.t('requiredPermissions',{permissions:grants.join(', ')||extensionMessages.t('permissionsNotDeclared')})}${optional.length?extensionMessages.t('optionalPermissions',{permissions:optional.join(', ')}):''}`;row.append(grantText);
+    const permissionSeparator=extensionMessages.locale==='zh-CN'?'、':', ';
+    const grantText=document.createElement('p');grantText.textContent=`${extensionMessages.t('requiredPermissions',{permissions:grants.join(permissionSeparator)||extensionMessages.t('permissionsNotDeclared')})}${optional.length?extensionMessages.t('optionalPermissions',{permissions:optional.join(permissionSeparator)}):''}`;row.append(grantText);
     if(extension.loadError){const warning=document.createElement('p');warning.className='extension-load-error';warning.textContent=extensionMessages.t('extensionLoadFailed',{message:extension.loadError});row.append(warning);}
     const actions=document.createElement('div');actions.className='profile-extension-actions';
     const toggleLabel=document.createElement('label');toggleLabel.className='extension-enabled';

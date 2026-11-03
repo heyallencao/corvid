@@ -248,7 +248,7 @@ async function allowCookieImport(shell){
       assert.equal((await call('/history')).history.length,0,'failed Cookie import must leave history unchanged');
       await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.flushStore(),{});
       await shell.locator('#confirm-chrome-import').click();
-      await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项（跳过 1 项、不支持 2 项）/).waitFor();
+      await shell.locator('#chrome-import-error').getByText(/Cookie 新增 2 项 ?[（(]跳过 1 项、不支持 2 项[）)]/).waitFor();
       const retriedCookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
       assert.equal(retriedCookies.length,3,'Cookie import must be retryable after a rolled-back flush failure while preserving existing state');
       assert.equal(retriedCookies.find(cookie=>cookie.name==='domain_session')?.value,'corvid-existing-value','Chrome import must skip rather than overwrite a conflicting target Cookie');
@@ -270,7 +270,7 @@ async function allowCookieImport(shell){
     assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved'],'failed import must not partially append Chrome bookmarks');
     assert.equal((await call('/history')).history.length,0,'failed import must not partially append Chrome history');
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 3 项、不支持 2 项）.*':''}扩展新增 1 项.*未导入：Corvid Symlink：Chrome 扩展包含不支持的符号链接`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*历史新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项 ?[（(]跳过 3 项、不支持 2 项[）)]':''}.*扩展新增 1 项.*未导入：Corvid Symlink[:：] ?Chrome 扩展包含不支持的符号链接`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
@@ -327,7 +327,7 @@ async function allowCookieImport(shell){
     await selectAllExtensions(shell);
     if(supportsCookieImport){await shell.locator('input[name="chrome-category"][value="cookies"]').check();await allowCookieImport(shell);}
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项（跳过 3 项、不支持 2 项）.*':''}扩展跳过 1 项`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 0 项.*${supportsCookieImport?'Cookie 新增 0 项 ?[（(]跳过 3 项、不支持 2 项[）)].*':''}扩展跳过 1 项`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2,'repeat import must be idempotent');
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'repeat extension import must skip the existing extension');
     await shell.locator('#cancel-chrome-import').click();
@@ -445,7 +445,7 @@ async function allowCookieImport(shell){
       const beforeRetry=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({}),{});
       assert.equal(beforeRetry.some(cookie=>cookie.name==='write_retry_cookie'),false,'the injected write failure must leave that Cookie absent');
       await shell.locator('#confirm-chrome-import').click();
-      await importStatus.getByText(/Cookie 新增 1 项（跳过 3 项、不支持 2 项）/).waitFor();
+      await importStatus.getByText(/Cookie 新增 1 项 ?[（(]跳过 3 项、不支持 2 项[）)]/).waitFor();
       assert.equal(await importStatus.getAttribute('data-success'),'true','successful retry must return to success state');
       assert.equal(await importStatus.getAttribute('data-partial'),null);
       assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'a successful retry must finish the import');

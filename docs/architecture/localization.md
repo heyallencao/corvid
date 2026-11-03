@@ -10,7 +10,7 @@ Corvid 首发界面支持简体中文（`zh-CN`）和英文（`en`）。本地�
 - 主进程从 `app.getLocale()` 选择初始语言：系统语言为英文时用 `en`，其余情况用 `zh-CN`；`CORVID_TEST_MODE=1` 下未显式设置时固定为 `zh-CN`，确保现有中文 UI 用例不受宿主机语言影响。用户选择优先并持久化到数据目录 `ui-preferences.json`，格式为 `{ "schemaVersion": 1, "uiLocale": "zh-CN" | "en" }`，文件权限为 `0600`。
 - `setUiLocale` 仅供 Corvid 桌面界面调用；本机控制 API 不接受该操作。当前窗口状态仅向桌面 renderer 提供 `uiLocale`，不加入外部 Agent 的共享状态合同。
 - `desktop/locales.js` 是可扩展的 locale 资源与格式化边界，提供安全的 locale 规范化、键值回退、参数插值、复数选择，以及 `Intl.NumberFormat` / `Intl.DateTimeFormat` 包装。
-- 静态 DOM 通过 `data-i18n`、`data-i18n-aria-label`、`data-i18n-title` 和 `data-i18n-placeholder` 绑定资源；动态渲染文案使用 `corvidI18n.t()`、`plural()` 或 locale 格式化函数，不应在业务流程里新增用户可见的硬编码文案。
+- 静态 DOM 通过 `data-i18n`、`data-i18n-aria-label`、`data-i18n-title` 和 `data-i18n-placeholder` 绑定资源；动态渲染文案使用 `corvidI18n.t()`、`plural()` 或 locale 格式化函数，不应在业务流程里新增用户可见的硬编码文案；动态列表中的枚举分隔符也必须遵循当前 locale。
 - 语言选择即时应用并持久化；未支持的 locale 被主进程拒绝。切换后 `document.documentElement.lang`、可见标签与控件名称保持一致。
 - 系统生成的默认 Profile/Space 名称只在桌面 renderer 显示层本地化；Room、Profile 持久化名称与外部控制合同不随 UI locale 改写。用户自行创建/重命名的名称按用户内容原样显示。
 
