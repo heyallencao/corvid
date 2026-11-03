@@ -9,6 +9,8 @@ const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
 const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
+const { createMainLocale } = require('./main-locales.cjs');
+let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 const startupProgress = createStartupProgress({ dataDir, enabled: process.env.CORVID_TEST_MODE === '1', onError: error => console.error(`Corvid test startup progress could not be saved: ${error.message}`) });
@@ -27,14 +29,14 @@ try {
     try { fs.unlinkSync(probe); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
 } catch (error) {
-  dataDirectoryError = new Error(`Corvid 无法使用数据目录：${dataDir}\n请检查当前用户是否有读取、写入和执行权限，然后重试。\n系统错误：${error.message}`);
+  dataDirectoryError = new Error(mainMessages.t('dataDirectoryFailure', {path:dataDir,error:error.message}));
 }
 
 if (!dataDirectoryError) startupProgress('main-module-loaded');
 if (dataDirectoryError) {
   console.error(dataDirectoryError.message);
   void app.whenReady().then(() => {
-    if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox('Corvid 启动失败', dataDirectoryError.message);
+    if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'), dataDirectoryError.message);
     app.exit(1);
   });
 } else {
@@ -278,12 +280,14 @@ try {
 } catch (error) {
   if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
 }
+mainMessages.setLocale(uiLocale);
 function saveUiLocale(locale) {
   const temporaryPath = `${uiPreferencesPath}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify({schemaVersion:1,uiLocale:locale}), {mode:0o600});
   fs.renameSync(temporaryPath, uiPreferencesPath);
   uiLocale = locale;
   rebuildApplicationMenu();
+  mainMessages.setLocale(locale);
 }
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
@@ -462,6 +466,7 @@ function saveProfiles(next){
   for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
 }
 const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');if(profile.deletionPending)throw Object.assign(new Error('该浏览身份正在清理，完成前不能使用'),{code:'CORVID_PROFILE_DELETING'});return profile; };
+const displayProfileName = profile => profile.id === 'default' && profile.isDefault ? mainMessages.t('defaultProfileName') : profile.name;
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
 const profileDeletion = createProfileDeletion({
   getProfiles:()=>profiles,
@@ -650,9 +655,9 @@ function installDownloads(partition,profileId) {
     if(room.ownership==='agent') {for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);pageDebugger.cancelChooser(findTab(tabId).view.webContents).catch(()=>{});}room.ownership='user';room.yielded=true;room.manualControl=Boolean(room.userResumePending);update();}
     const requestedUrl=details.requestingUrl;
     const profile=findProfile(room.profileId);
-    const permissionName=permissionDisplayName(permission,details.mediaTypes);
-    const scope=rememberable.has(permission) ? '允许后，本次运行期间此浏览身份的同来源页面可使用该权限。' : '此选择仅针对当前请求。';
-    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求以下权限：${permissionName}`,detail:`浏览身份：${profile.name}；空间：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
+    const permissionName=permissionDisplayName(permission,details.mediaTypes,mainMessages);
+    const scope=mainMessages.t(rememberable.has(permission)?'permissionAllowedThisSession':'permissionCurrentRequestOnly');
+    dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('permissionRefuse'),mainMessages.t('permissionAllow')],defaultId:0,cancelId:0,title:mainMessages.t('sitePermissionTitle'),message:mainMessages.t('permissionRequestMessage',{origin,permission:permissionName}),detail:mainMessages.t('permissionRequestDetail',{profile:displayProfileName(profile),room:room.name,scope,deviceLimit:mainMessages.t('permissionDeviceLimit')})})
       .then(({response})=>{const allowed=response===1 && !contents.isDestroyed() && contents.getURL()===requestedUrl;if(allowed && rememberable.has(permission))grants.add(grantKey(origin,permission));callback(allowed);},()=>callback(false));
   });
   browserSession.on('will-download',(event,item,contents) => {
@@ -671,7 +676,7 @@ function installDownloads(partition,profileId) {
     let destination;
     try {
       if (process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR) destination=path.join(process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
-      else destination=dialog.showSaveDialogSync(window,{title:'保存下载',defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
+      else destination=dialog.showSaveDialogSync(window,{title:mainMessages.t('saveDownloadDialog'),defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
       if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       let exists=false;try {fs.lstatSync(destination);exists=true;} catch(error) {if(error.code!=='ENOENT') throw error;}
       if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
@@ -779,7 +784,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('will-prevent-unload',event=>{
     if(!tabs.has(tabId))return;
     if(s.ownership==='agent'){for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
-    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:['留在页面','离开页面'],defaultId:0,cancelId:0,title:'离开此页面？',message:'此页面提示有未保存的更改。',detail:`空间：${s.name}。离开可能导致这些更改丢失。`});
+    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:[mainMessages.t('stayOnPage'),mainMessages.t('leavePage')],defaultId:0,cancelId:0,title:mainMessages.t('leavePageTitle'),message:mainMessages.t('unsavedChangesMessage'),detail:mainMessages.t('unsavedChangesDetail',{room:s.name})});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
   installShortcuts(view.webContents,()=>{const currentRoom=rooms.find(room=>room.id===s.id);return currentRoom&&windowRecords.get(currentRoom.windowId);});
@@ -994,7 +999,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
       const home=app.getPath('home');
       const suggested=process.platform==='darwin'?path.join(home,'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(home,'.config','google-chrome');
-      const result=await dialog.showOpenDialog(window,{title:'选择 Google Chrome 用户资料目录',defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
+      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseChromeDirectoryDialog'),defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
       if(result.canceled || !result.filePaths[0]) return {canceled:true};
       const root=result.filePaths[0];
       try { const sources=chromeImport.profiles(root);if(!sources.length)throw new Error('所选目录中没有找到可导入的 Chrome Profile');const sourceToken=id();selectedChromeSources.set(sourceToken,root);return {canceled:false,sourceToken,sources}; }
@@ -1143,7 +1148,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');
       const room=findRoom(target),tabIds=[...room.tabIds],ownership=room.ownership,profileId=room.profileId;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭空间'],defaultId:0,cancelId:0,title:'关闭空间',message:`关闭“${room.name}”？`,detail:`此空间有 ${tabIds.length} 个标签${ownership==='agent' ? '，当前由 Agent 控制' : ''}。关闭会结束这些页面，未保存的内容可能丢失；浏览身份、书签、历史和下载记录会保留。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('closeSpaceAction')],defaultId:0,cancelId:0,title:mainMessages.t('closeSpaceTitle'),message:mainMessages.t('closeSpaceMessage',{room:room.name}),detail:mainMessages.t('closeSpaceDetails',{tabs:mainMessages.plural('tabs',tabIds.length),ownership:mainMessages.t(ownership==='agent'?'agentOwnsSpace':'userOwnsSpace')})});
       if(choice.response!==1)return {closed:false};
       if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间空间已改变，请重新操作');
       await dispatch('closeRoom',{id:room.id},false);return {closed:true};
@@ -1235,7 +1240,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const tab=findTab(target);
       if(tab.pinned){
         const title=tab.view.webContents.getTitle() || tab.view.webContents.getURL() || '固定标签';
-        const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭固定标签'],defaultId:0,cancelId:0,title:'关闭固定标签',message:`“${title}”是固定标签`,detail:'固定标签用于长期保留的页面；关闭后该标签的固定状态一并移除，其他固定标签不受影响。'});
+        const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('closePinnedTabTitle')],defaultId:0,cancelId:0,title:mainMessages.t('closePinnedTabTitle'),message:mainMessages.t('closePinnedTabMessage',{title}),detail:mainMessages.t('closePinnedTabDetails')});
         if(choice.response!==1) return {closed:false};
         if(tabs.get(target)!==tab || !tab.pinned) throw new Error('确认期间标签已改变，请重新操作');
       }
@@ -1308,8 +1313,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       const s=findRoom(target);if(!s.executionRisk) return describe();
       if(s.ownership!=='user') {s.ownership='user';s.yielded=true;s.manualControl=true;}
       update();
-      const message=s.executionRisk.status==='unknown_after_restart' ? '上次执行或接管未完成，之前的操作结果未知。' : '此前的页面代码已超时，可能仍在运行或在稍后产生效果。';
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['保留提示','了解并继续'],defaultId:0,cancelId:0,title:'页面代码执行状态未知',message,detail:'接管或确认不会撤销已发送的请求、定时器或其他页面活动。你可以选择重新加载或关闭页面；这些操作可能丢失页面状态。'});
+      const message=s.executionRisk.status==='unknown_after_restart' ? mainMessages.t('executionUnknownAfterRestart') : mainMessages.t('executionTimedOut');
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('keepNotice'),mainMessages.t('understandAndContinue')],defaultId:0,cancelId:0,title:mainMessages.t('executionUnknownTitle'),message,detail:mainMessages.t('executionUnknownDetails')});
       if(choice.response===1) {s.executionRisk=null;update();}
       return describe();
     }
@@ -1318,7 +1323,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const tab=findTab(target),room=findRoom(tab.roomId),profile=findProfile(room.profileId);
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可清理的 HTTP(S) 站点');}
       const affected=rooms.filter(item=>item.profileId===profile.id).length;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','清理站点数据'],defaultId:0,cancelId:0,title:'清理站点数据',message:`清理 ${origin} 的站点数据？`,detail:`浏览身份：${profile.name}，共有 ${affected} 个空间共享此身份。将清理此来源的站点存储、Service Worker 和 Cache Storage，以及该站点可用的 Cookie；Cookie 可能跨子域、端口或协议共享，相关页面可能退出登录。不会清理站点权限、浏览历史或整个浏览身份的 HTTP 缓存。清理不可撤销，打开的页面可能再次写入数据。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('clearSiteDataAction')],defaultId:0,cancelId:0,title:mainMessages.t('clearSiteDataTitle'),message:mainMessages.t('clearSiteDataMessage',{origin}),detail:mainMessages.t('clearSiteDataDetails',{profile:displayProfileName(profile),spaces:affected})});
       if(choice.response!==1)return {cleared:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
       if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
@@ -1331,8 +1336,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可管理权限的 HTTP(S) 站点');}
       const grants=permissionGrants.get(partitionFor(profile.id));if(!grants)throw new Error('浏览身份权限状态不可用');
       const allowed=[...grants].map(key=>JSON.parse(key)).filter(([site])=>site===origin).map(([,permission])=>permission);
-      const allowedNames=allowed.map(permission=>permissionDisplayName(permission));
-      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`浏览身份：${profile.name}。${allowedNames.length ? allowedNames.join('、') : '暂无已记录的允许权限'}。同一浏览身份的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
+      const allowedNames=allowed.map(permission=>permissionDisplayName(permission,[],mainMessages));
+      const choice=await dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('closeDialog'),mainMessages.t('revokePermissions')],defaultId:0,cancelId:0,title:mainMessages.t('sitePermissionsTitle'),message:mainMessages.t('permissionsGrantedMessage',{origin}),detail:mainMessages.t('permissionsDetails',{profile:displayProfileName(profile),permissions:allowedNames.length?mainMessages.formatList(allowedNames):mainMessages.t('noGrantedPermissions')})});
       if(choice.response!==1)return {revoked:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
       if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
@@ -1385,7 +1390,7 @@ async function claimRoom(room) {
   if(room.ownership!=='user')throw new Error('Only a user-controlled room can be claimed');
   if(room.executionRisk || room.userResumePending)throw new Error('Resolve the pending execution or resumeControl before claiming this room');
   const profile=findProfile(room.profileId),tabIds=[...room.tabIds];
-  const choice=await dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许 Agent 使用'],defaultId:0,cancelId:0,title:'Agent 请求使用空间',message:`允许 Agent 使用空间“${room.name}”？`,detail:`浏览身份：${profile.name}；当前有 ${tabIds.length} 个标签。Agent 可以接管并操作这些页面，页面可能包含登录状态和私人数据。用户创建或来源不明的标签不会因此变成 Agent 创建。`});
+  const choice=await dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('permissionRefuse'),mainMessages.t('allowAgentToUseSpace')],defaultId:0,cancelId:0,title:mainMessages.t('claimSpaceTitle'),message:mainMessages.t('allowAgentToUseSpaceMessage',{room:room.name}),detail:mainMessages.t('allowAgentToUseSpaceDetails',{profile:displayProfileName(profile),tabs:mainMessages.plural('tabs',tabIds.length)})});
   if(choice.response!==1)throw new Error('User declined room claim');
   if(!rooms.includes(room) || room.ownership!=='user' || room.executionRisk || room.userResumePending || room.profileId!==profile.id || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('Room changed while awaiting approval; request it again');
   room.ownership='agent';room.finished=false;room.yielded=false;room.manualControl=false;update();
@@ -1675,7 +1680,7 @@ app.whenReady().then(async () => {
   await startServer();
   startupProgress('startup-complete');
   console.log(`Corvid control: ${connectionPath}`);
-}).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox('Corvid 启动失败',error.message);app.exit(1);});
+}).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'),error.message);app.exit(1);});
 app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
 app.on('window-all-closed',() => app.quit());
 app.on('will-quit',()=>{try{agentDownloads.cleanup();}catch(error){console.error('Agent download cleanup failed:',error.message);}});
