@@ -61,7 +61,7 @@
 
 - 改动：`restore-loading-e2e.cjs` 打印 PASS 后开始标记最终 Electron 关闭、HTTP 连接/服务关闭和临时目录清理阶段。若 Node 仍被其他引用句柄阻止退出满 10 秒，未引用的观察器记录当前阶段、Node PID/父 PID、Electron PID/退出状态、HTTP server 监听状态、慢请求数和 `process.getActiveResourcesInfo()` 类型；自身不延迟正常退出。诊断不含命令行或页面内容。
 - 验证：macOS、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` EXIT 0，输出原有 PASS；用例两次启动真实 Electron，最终 Electron、HTTP server 与隔离目录均清理完成，观察器未输出且无 Electron/Corvid 进程残留。另通过临时 preload 在 PASS 后注入一个仅属于 Node 测试进程的 13 秒引用 timer；命令 EXIT 0，watchdog 在 10,002ms 输出 `stage=清理完成`、Node/Electron PID 与退出状态、`httpListening=false` 及活动资源类型，随后合成 timer 到期、Node 正常退出。preload 位于 `/tmp` 且已移除。`node --check tests/restore-loading-e2e.cjs` 与 `git diff --check` 通过。
-- 最新主线复验（2026-11-04）：重放到 `62da03c` 后，`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/restore-loading-e2e.cjs` EXIT 0，真实 Electron 慢恢复、导航、重启路径通过；`node --check tests/restore-loading-e2e.cjs` 与 `git diff HEAD^ HEAD --check` 通过。本次只运行一次，不能说明历史间歇问题已消失。
+- 最新主线复验（2026-11-04，基线 `b933030`）：重放到当前主线后，`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` EXIT 0，真实 Electron 慢恢复、导航和重启路径通过。复用的依赖通过临时 `node_modules` 符号链接提供，测试后已移除。再次使用仅作用于 Node 测试进程的临时 13 秒 timer，观察器在 10,002ms 输出 `stage=清理完成`、Electron `exitCode=0`、`httpListening=false`、慢请求数和活动资源类型；timer 到期后 Node 正常退出，临时 preload 已移除。`node --check tests/restore-loading-e2e.cjs` 与 `git diff --check` 通过。本次仅一轮真实 Electron 回归，不能说明历史间歇问题已消失。
 - 限制：未运行全量 `npm test`；合成 timer 只验证 PASS 后观察器能运行并记录现场，不等同复现历史 5 分钟挂起，也没有模拟卡在某个具体清理 await 中。观察器只覆盖打印 PASS 后的异步清理挂起，不覆盖 PASS 前挂起或同步阻塞事件循环；Issue #34 历史长停顿尚未复现，根因未确定，Issue 保持开放。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
