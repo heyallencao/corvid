@@ -1,0 +1,88 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { test } from 'node:test';
+
+const require = createRequire(import.meta.url);
+const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
+
+test('Electron 启动失败报告阶段和隔离数据诊断', async () => {
+  await assert.rejects(
+    () => launchElectron({ launch: async () => { throw new Error('fixture launch failure'); } }, {}, {
+      label: 'startup-fixture', dataDir: os.tmpdir(), timeoutMs: 20,
+    }),
+    error => error.message.includes('阶段=Playwright Electron launch')
+      && error.message.includes('fixture launch failure')
+      && error.message.includes('control.json='),
+  );
+});
+
+test('首个窗口等待失败单独标识并关闭已启动应用', async () => {
+  let closed = false;
+  const app = {
+    on() {},
+    process: () => null,
+    windows: () => [],
+    firstWindow: async options => {
+      assert.equal(options.timeout, 25);
+      throw new Error('fixture window timeout');
+    },
+    close: async () => { closed = true; },
+  };
+  await assert.rejects(
+    () => launchElectron({ launch: async options => {
+      assert.equal(options.timeout, 25);
+      return app;
+    } }, {}, { label: 'window-fixture', dataDir: os.tmpdir(), timeoutMs: 25 }),
+    error => error.message.includes('阶段=首个桌面窗口') && error.message.includes('fixture window timeout'),
+  );
+  assert.equal(closed, true, '首个窗口等待失败后必须关闭应用');
+});
+
+test('control.json 超时显示进程状态且不泄露凭据', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-diagnostic-'));
+  try {
+    fs.writeFileSync(path.join(dataDir, 'control.json'), JSON.stringify({ token: 'stale-secret' }));
+    const app = { process: () => ({ exitCode: null, signalCode: null, pid: 4321, killed: false }) };
+    await assert.rejects(
+      () => waitForControl(app, dataDir, { label: 'control-fixture', previousToken: 'stale-secret', timeoutMs: 30 }),
+      error => error.message.includes('阶段=等待 control.json')
+        && error.message.includes('pid=4321 仍在运行')
+        && !error.message.includes('stale-secret'),
+    );
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('Electron 子进程退出时明确报告 control.json 尚未就绪', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-exit-'));
+  try {
+    const app = { process: () => ({ exitCode: 7, signalCode: null, pid: 4322, killed: false }) };
+    await assert.rejects(
+      () => waitForControl(app, dataDir, { label: 'exit-fixture', timeoutMs: 1000 }),
+      error => error.message.includes('主进程提前退出 (code=7')
+        && error.message.includes('control.json=不存在'),
+    );
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('清理阶段超时会报告并结束挂起的 Electron 子进程', async () => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+  const app = { process: () => child, windows: () => [], close: () => new Promise(() => {}) };
+  try {
+    await assert.rejects(
+      () => closeElectron(app, { gracefulTimeoutMs: 20, terminateTimeoutMs: 1000 }),
+      /app\.close\(\) 超过 20ms；已发送 SIGTERM/,
+    );
+    assert.ok(child.exitCode !== null || child.signalCode !== null, '清理后子进程必须退出');
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+});
