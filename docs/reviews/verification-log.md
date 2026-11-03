@@ -17,6 +17,13 @@
 - REA 与设计记录：EGO、Kaze、Kobra 的可用证据和直接观察/推断/未知、重采集失败及覆盖边界，记录于[浏览器参考分析](../research/browser-reference-analysis.md#2026-11-04-agent-后续消息队列设计复核)与[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-agent-运行中消息队列issue-180)。两张截图来自本地合成页面，不含个人数据。
 - 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux 应用 UI、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)。PR #184 已于 2026-11-04 合并（提交 `86267e1`），Issue #180 已关闭；D25 已标记完成。
 
+## 2026-11-04 Chrome 导入类别独立读取（Issue #18）
+
+- 修复：预览分别读取书签与历史；单类读取失败时只报告并禁用对应类别。提交只读取已勾选类别，因此损坏的未选数据库不再阻断其他可读资料。Cookie 的预览计数与既有明确同意后读取合同保持不变。
+- 自动化：macOS、Node.js v24.22.1、Electron 45.2.1，合成 Chrome Profile 和隔离 `CORVID_DATA_DIR`。`node --check desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 通过；`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 通过 zh-CN 与 en 两个真实 Electron 场景：损坏 History 被禁用、可读书签保持可选并成功导入、目标历史为空；英文和中文错误状态均逐字断言。`git diff --check` 与 `package.json` JSON 解析通过。完整 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 随后也 EXIT 0，既有 Cookie、导入、扩展与弹窗路径全部通过。未运行全量 `npm test`。
+- 截图：中文[损坏历史类别状态](../qa/screenshots/issue-18-category-isolation-zh-CN.png)，英文[对应状态](../qa/screenshots/issue-18-category-isolation-en.png)，均来自隔离本地合成资料；SHA-256 分别为 `332f1412cbd988f4d286c76964764fd29807e69e709ca3a16f77fba358028215` 与 `e144fdf6b6a06645bd5f14edbeb68dfbb1bd4ae7cbce5855aa902842490783a0`。
+- 未覆盖：未运行全量 `npm test`；此前整份导入 E2E 曾有后段原生窗口激活/弹窗关闭焦点超时，但本轮当前提交完整重跑通过。未读取真实 Chrome Profile、未访问真实网站、未调用系统钥匙串、OAuth 或模型；Windows/Linux、打包版和真实 Chrome 锁定/损坏形态未覆盖。
+
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
 - 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。

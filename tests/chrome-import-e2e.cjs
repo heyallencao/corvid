@@ -208,7 +208,10 @@ async function extensionValue(app,url,key,partition='persist:corvid'){
   },{target:url,keyName:key,partitionName:partition});
 }
 async function extensionPopupWindowOpen(app,urlPrefix){
-  return app.evaluate(({BrowserWindow},prefix)=>BrowserWindow.getAllWindows().some(window=>window.webContents.getURL().startsWith(prefix)),urlPrefix);
+  try{return await app.evaluate(({BrowserWindow},prefix)=>BrowserWindow.getAllWindows().some(window=>{
+    try{return !window.isDestroyed()&&window.webContents.getURL().startsWith(prefix);}catch{return false;}
+  }),urlPrefix);}
+  catch(error){if(/destroyed/i.test(String(error?.message||error)))return false;throw error;}
 }
 
 async function installDialogFixture(app,chromeRoot){
@@ -222,6 +225,7 @@ async function chooseSource(shell){
   await shell.locator('#choose-chrome-source').click();
   await shell.locator('#chrome-source-profile').selectOption('Default');
   await shell.locator('#chrome-import-preview').getByText(/找到 1 个书签、1 条历史记录/).waitFor();
+  await shell.waitForFunction(()=>!document.querySelector('#chrome-import-categories').disabled);
   if(process.platform==='darwin')await shell.waitForFunction(()=>{
     const cookies=document.querySelector('input[name="chrome-category"][value="cookies"]');
     return cookies&&!cookies.disabled;
@@ -317,6 +321,56 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     const discoveredExtensions=require('../desktop/chrome-extensions.cjs').discover(path.join(chromeRoot,'Default'));
     assert.equal(discoveredExtensions.length,2,'invalid extension manifests must be excluded');
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
+
+    const unreadableHistoryRoot=path.join(tempRoot,'unreadable-history-chrome-user-data');
+    fs.cpSync(chromeRoot,unreadableHistoryRoot,{recursive:true});
+    fs.writeFileSync(path.join(unreadableHistoryRoot,'Default','History'),'not a SQLite database');
+    const categoryIsolationData=path.join(tempRoot,'category-isolation-corvid-data');
+    ({app,shell,call}=await boot(categoryIsolationData));
+    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,unreadableHistoryRoot);
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('#chrome-history-error').getByText('无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。').waitFor();
+    assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'an unreadable category should be excluded before import');
+    assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'a readable category should remain selectable');
+    const categoryScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryScreenshotDir,{recursive:true});
+    await shell.screenshot({path:path.join(categoryScreenshotDir,'issue-18-category-isolation-zh-CN.png')});
+    await shell.locator('#confirm-chrome-import').click();
+    await shell.locator('#chrome-import-error').getByText(/书签新增 1 项/).waitFor();
+    assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://fixture.example/0/bookmark'],'selected readable bookmarks should import despite an unreadable unselected History database');
+    assert.deepEqual((await call('/history')).history,[],'unselected unreadable History must remain untouched');
+    const localeValues=await shell.evaluate(()=>({zh:window.corvidI18n.catalogs['zh-CN'].categoryReadUnavailable,en:window.corvidI18n.catalogs.en.categoryReadUnavailable}));
+    assert.equal(localeValues.zh,'无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。');
+    assert.equal(localeValues.en,'This data type could not be read and is excluded from this import. Check the Chrome data and try again.');
+    await shell.locator('#cancel-chrome-import').click();
+    await app.close();app=undefined;
+
+    const categoryIsolationEnData=path.join(tempRoot,'category-isolation-en-corvid-data');fs.mkdirSync(categoryIsolationEnData);
+    fs.writeFileSync(path.join(categoryIsolationEnData,'ui-preferences.json'),JSON.stringify({schemaVersion:1,uiLocale:'en'}),{mode:0o600});
+    ({app,shell}=await boot(categoryIsolationEnData));
+    await shell.getByRole('heading',{name:'Start using Corvid with Chrome?'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,unreadableHistoryRoot);
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('#chrome-history-error').getByText('This data type could not be read and is excluded from this import. Check the Chrome data and try again.').waitFor();
+    assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'English UI should exclude the unreadable category');
+    assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'English UI should keep the readable category selectable');
+    const categoryEnScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryEnScreenshotDir,{recursive:true});
+    await shell.screenshot({path:path.join(categoryEnScreenshotDir,'issue-18-category-isolation-en.png')});
+    await shell.locator('#cancel-chrome-import').click();
+    await app.close();app=undefined;
+
+    if(process.env.CORVID_TEST_CATEGORY_ISOLATION_ONLY==='1'){
+      console.log('PASS Chrome category-isolated preview/import in zh-CN and en');
+      return;
+    }
 
     const appData=path.join(tempRoot,'fresh-corvid-data');
     const testEnv={CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE:'1'};
