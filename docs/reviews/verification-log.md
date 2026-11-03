@@ -1152,3 +1152,11 @@
 - 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
 - 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
 - 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。
+
+## 2026-11-04 Chrome 导入类别隔离重放与完整 E2E 边界（Issue #18）
+
+- 主线与分支：将 PR #176 从旧基线重放到 `origin/main` `c111f356`（包含 PR #187/#188），当前重放提交 `4f6005b`。重放无冲突。
+- 合同与静态检查：`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check` 和 `git diff --check origin/main...HEAD` 通过。
+- 隔离真实 Electron：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 通过，覆盖 zh-CN/en 下 History 损坏时仍可选择并导入书签。使用合成 Chrome Profile 与隔离 `CORVID_DATA_DIR`，未读取本机 Chrome、系统钥匙串、OAuth 或模型。
+- 完整导入 E2E：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 在扩展弹窗关闭流程中等待“原生父窗口激活后关闭弹窗”超时，尚未进入 Chrome 导入步骤。干净 `c111f35` 基线运行同一命令，在相同原生激活断言超时；当前 CUA 报告 Mac 锁屏。故本次结果不能归因于 PR #176 的导入改动，也不能算作完整导入 E2E 通过。
+- 清理与限制：两次 Electron 进程均退出；测试生成的 Issue #129 与 #18 截图已还原，基线 worktree 已移除。完整导入 E2E 需在已解锁桌面重跑；真实 Chrome、钥匙串授权/拒绝、打包版及全量 `npm test` 仍未覆盖。
