@@ -14,6 +14,7 @@ const project=path.resolve(__dirname,'..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(25);}throw new Error(`Timed out waiting for ${label}`);};
 
+// Opt-in native input is used because CDP clicks cannot exercise the operating-system window focus boundary; this path requires macOS and Swift.
 function clickNativeScreenPoint({x,y}){
   assert.equal(process.platform,'darwin','native pointer verification currently requires macOS');
   const source=`import AppKit

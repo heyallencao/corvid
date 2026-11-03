@@ -7,7 +7,7 @@
 - 代码范围：仅增加 macOS opt-in 测试路径；默认完整套件仍使用父窗口激活路径。页面产品实现未改变。测试自动更新的两张已有截图已还原，没有产生新的视觉差异证据。
 - 事件传递边界：严格 DOM 诊断未在父页面收到 mousemove/mousedown/mouseup/click，因此只证明原生指针输入导致扩展弹窗因 blur 关闭，不证明点击继续传递到 Corvid 地址栏或网页。
 - REA：尝试对测试 Electron PID/窗口调用 observe_native_ui，REA 返回 pid-not-application（LaunchServices 未暴露 Electron helper 为可观察应用），未产生 Evidence ID、截图或 AX 树。此处明确记为未完成 REA 原生观察，不以 CoreGraphics 窗口枚举代替。已有 Kobra dropdown-menu controlled replay 只作此前设计参考，不证明本次运行行为。
-- 限制：只验证当前 macOS 开发机和 Electron 45.2.1；未验证 Windows/Linux、打包应用、其他显示器/缩放配置、连续高频点击或屏幕阅读器。未访问真实浏览器 Profile、账号或模型。
+- 限制：只验证当前 macOS 开发机（使用 Swift toolchain）和 Electron 45.2.1；未验证 Windows/Linux、打包应用、其他显示器/缩放配置、连续高频点击或屏幕阅读器。未访问真实浏览器 Profile、账号或模型。
 
 
 ## 2026-11-03 扩展弹窗失焦关闭的 Electron 验证边界（Issue #129）
