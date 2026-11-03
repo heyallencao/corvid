@@ -16,6 +16,13 @@
 - 隔离与截图：测试使用临时 `CORVID_DATA_DIR` 和本地 fixture；页面为 `about:blank`，未使用 OAuth、真实账号或模型。浅色壳截图为 [issue-16-contrast-after.png](../qa/screenshots/issue-16-contrast-after.png)，2560×1636，SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。测试刷新过的两张 Issue #129 截图已还原。
 - 参考与限制：这是依据 Corvid 实际 computed token 和 WCAG 2.2 对比度阈值修正色值，没有移植参考站点的视觉或交互，因此本切片未调用 REA 扫描 UI 灵感站点。自动化只检查列出的 CSS token/背景组合，不等同于所有组件状态的完整 WCAG 审计；未覆盖屏幕阅读器、Windows/Linux、打包版本及其他显示器配置。
 
+## 2026-11-03 Chrome Cookie 预览与同意前读取边界（Issue #139）
+
+- 缺口：导入预览为显示 Cookie 数量执行 `SELECT * FROM cookies` 并在 JavaScript 中物化整行；真正导入时又在请求 macOS Safe Storage 钥匙串前先读取 Cookie 行。
+- 修正：预览使用 `SELECT COUNT(*) AS count FROM cookies NOT INDEXED`，避免把 `value`、`encrypted_value` 等列带入 JavaScript，并避免损坏的二级索引破坏预览计数。`readCookies` 自身要求显式 Cookie 同意，先成功取得钥匙串密钥，再执行带完整性检查的行查询；取消、缺少同意或密钥读取失败都不会读取 Cookie 行。
+- 验证：macOS、Node.js v24.14.1、Electron 45.2.1；合成 Chrome Profile/Cookies 数据库、临时 Corvid 数据目录。rebase 前（`d4b6c93`）`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE npm test` 均 EXIT 0；全量为 8 项串行 `node:test` 加 48 个独立脚本，共 56 项通过。SQL 捕获断言预览仅查询 `COUNT(*) ... NOT INDEXED`、无同意及合成密钥读取失败不产生行查询、同意且密钥成功后才读取并解密；真实 Electron E2E 同时覆盖现有 Cookie 导入/失败恢复路径。rebase 到 D21 合并提交 `0dc6a38` 后，三项修改 JavaScript 的 `node --check` 与 `git diff --check` 通过；完整 `npm test` 在最前面的 8 项 `node:test` 阶段失败，browser、dialogs、uploads 三项分别报输入焦点未获得、JavaScript 弹窗不可见、文件选择器超时。单独重跑该 `node:test` 组仍复现相同失败，未开始后续脚本；随后当前树的 `chrome-import-e2e.cjs` 也在末段原生父窗口激活后等待扩展弹窗关闭时超时。该 E2E 在失败前已完成 SQL 合同断言和先前 Cookie 导入路径。CUA 当时报告 macOS 已锁屏，故这些合并后窗口交互结果受锁屏限制，不能归因于 #139，也不能宣称合并后整树全量通过；需解锁后重新验证。首轮定向运行还发现损坏的 Cookie 二级索引会被普通 `COUNT(*)` 查询计划选中，导致预览禁用 Cookie 选项；改用 `NOT INDEXED` 后，预览计数和导入时原有只读完整性拒绝均通过。测试刷新过的两张 #129 截图已还原；未访问真实 Chrome Profile、未弹出或批准系统钥匙串、未使用 OAuth/模型。
+- 限制与状态：钥匙串失败顺序由合成无效测试密钥验证，没有触发系统授权/拒绝 UI；COUNT 查询只证明 SQLite 不向 JavaScript 返回行列，不声称 SQLite 不读取底层数据库页。真实 Profile、不同 SQLite 损坏形态和平台差异仍未验证。Issue #139 保持 OPEN；尚未创建 PR，等待用户审阅。
+
 ## 2026-11-03 Chrome 扩展弹窗原生外点验证（Issue #129）
 
 - 缺口：既有 Playwright CDP 点击未命中原生窗口外点合同；BrowserWindow.focus() 只证明 blur 关闭，不证明物理鼠标输入。

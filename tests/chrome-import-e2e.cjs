@@ -125,7 +125,7 @@ function writeCorruptCookieIndex(profileDir){
   try{fs.writeSync(descriptor,Buffer.from([0xff]),0,1,(rootPage-1)*pageSize);}finally{fs.closeSync(descriptor);}
 }
 
-function verifyCookieDecryption(tempRoot){
+async function verifyCookieDecryption(tempRoot){
   const profileDir=path.join(tempRoot,'cookie-decrypt');fs.mkdirSync(profileDir,{recursive:true});
   const key=fixtureCookieKey();
   const cipher=crypto.createCipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));
@@ -138,6 +138,41 @@ function verifyCookieDecryption(tempRoot){
   add.run('example.com','unknown_cipher','',Buffer.from('v20ignored'), '/',1,0,0,0,1,'');
   add.run('example.com','partitioned','plain-partitioned','', '/',1,0,0,0,1,'https://top.example');
   database.close();
+
+  if(process.platform==='darwin'){
+    const originalPrepare=DatabaseSync.prototype.prepare;
+    const originalTestMode=process.env.CORVID_TEST_MODE;
+    const originalCookieKey=process.env.CORVID_TEST_CHROME_COOKIE_KEY;
+    const cookieQueries=[];
+    DatabaseSync.prototype.prepare=function(sql,...args){
+      if(/\bFROM\s+cookies\b/i.test(sql))cookieQueries.push(sql);
+      return Reflect.apply(originalPrepare,this,[sql,...args]);
+    };
+    try{
+      assert.equal(chromeImport.readProfile(tempRoot,'cookie-decrypt').cookieCount,4,'Cookie preview should still report the row count');
+      assert.deepEqual(cookieQueries,['SELECT COUNT(*) AS count FROM cookies NOT INDEXED'],'Cookie preview must count rows without selecting Cookie values or relying on secondary indexes');
+
+      cookieQueries.length=0;
+      process.env.CORVID_TEST_MODE='1';
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY=key.toString('hex');
+      await assert.rejects(chromeImport.readCookies(profileDir),/请先确认 Cookie 导入说明/,'Cookie rows must remain unread until explicit consent');
+      assert.deepEqual(cookieQueries,[],'missing consent must not query Cookie rows');
+
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY='00';
+      await assert.rejects(chromeImport.readCookies(profileDir,{consent:true}),/必须是 16 字节/,'keychain/key failure should happen before reading Cookie rows');
+      assert.deepEqual(cookieQueries,[],'key retrieval failure must not query Cookie rows');
+
+      process.env.CORVID_TEST_CHROME_COOKIE_KEY=key.toString('hex');
+      const consented=await chromeImport.readCookies(profileDir,{consent:true});
+      assert.deepEqual(cookieQueries,['SELECT * FROM cookies'],'Cookie rows are read only after consent and successful key retrieval');
+      assert.equal(consented.cookies.find(cookie=>cookie.name==='host_session')?.value,'fixture-session');
+    }finally{
+      DatabaseSync.prototype.prepare=originalPrepare;
+      if(originalTestMode===undefined)delete process.env.CORVID_TEST_MODE;else process.env.CORVID_TEST_MODE=originalTestMode;
+      if(originalCookieKey===undefined)delete process.env.CORVID_TEST_CHROME_COOKIE_KEY;else process.env.CORVID_TEST_CHROME_COOKIE_KEY=originalCookieKey;
+    }
+  }
+
   const result=chromeImport.readCookiesWithKey(profileDir,key);
   assert.equal(result.cookies.length,2);
   assert.equal(result.unsupported,2);
@@ -221,7 +256,7 @@ async function allowCookieImport(shell){
   server=http.createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/html'});response.end('<title>Extension Fixture</title><html><body>local extension test</body></html>');});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const extensionUrl=`http://127.0.0.1:${server.address().port}/extension-fixture`;
-  verifyCookieDecryption(tempRoot);
+  await verifyCookieDecryption(tempRoot);
   try{
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
     assert.throws(()=>chromeImport.assertCookieConsent(['cookies'],false,'darwin'),/请先确认 Cookie 导入说明/,'Cookie import must reject missing explicit consent before reading source secrets');
