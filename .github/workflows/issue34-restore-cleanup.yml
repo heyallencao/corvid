@@ -79,11 +79,17 @@ jobs:
                       status = child.wait(timeout=180)
                   except subprocess.TimeoutExpired:
                       print(f"第 {attempt} 轮超过 180 秒；终止该轮进程组后继续收集诊断。", flush=True)
-                      os.killpg(child.pid, signal.SIGTERM)
+                      try:
+                          os.killpg(child.pid, signal.SIGTERM)
+                      except ProcessLookupError:
+                          pass
                       try:
                           child.wait(timeout=5)
                       except subprocess.TimeoutExpired:
-                          os.killpg(child.pid, signal.SIGKILL)
+                          try:
+                              os.killpg(child.pid, signal.SIGKILL)
+                          except ProcessLookupError:
+                              pass
                           child.wait()
                       status = 124
 
