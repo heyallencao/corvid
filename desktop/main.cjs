@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
+const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
 let dataDirectoryError = null;
@@ -250,7 +251,9 @@ function saveWindowState() {
   for (const record of windowRecords.values()) {
     if (record.browserWindow.isDestroyed()) continue;
     const bounds = record.browserWindow.getNormalBounds();
-    states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized: record.browserWindow.isMaximized() });
+    const fullscreen = isTransientFullscreen(record);
+    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : record.browserWindow.isMaximized();
+    states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
   if (!states.length) return;
   try {
@@ -261,6 +264,21 @@ function saveWindowState() {
   } catch (error) { console.error('Unable to save window state:', error.message); }
 }
 function scheduleWindowStateSave() { clearTimeout(windowStateTimer); windowStateTimer = setTimeout(saveWindowState, 300); }
+function isTransientFullscreen(record) {
+  return Boolean(record.appFullscreen || record.htmlFullscreen || record.fullscreenTransitionTarget !== null || (!record.browserWindow.isDestroyed() && record.browserWindow.isFullScreen()));
+}
+function requestWindowFullscreen(record, enabled) {
+  const browserWindow = record.browserWindow;
+  if (browserWindow.isDestroyed() || record.closing) return { requested: enabled };
+  if (record.htmlFullscreen) return { requested: Boolean(record.appFullscreen), blockedByPageFullscreen: true };
+  if (enabled && record.fullscreenRestoreMaximized === null) record.fullscreenRestoreMaximized = browserWindow.isMaximized() || record.lastKnownMaximized;
+  record.fullscreenTransitionTarget = enabled;
+  browserWindow.setFullScreen(enabled);
+  return { requested: enabled };
+}
+function isWindowFullscreenRequested(record) {
+  return record.fullscreenTransitionTarget ?? record.appFullscreen;
+}
 const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
@@ -425,6 +443,9 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
   return {
     windowId: record?.id ?? null,
     windowCount: [...windowRecords.values()].filter(item => !item.browserWindow.isDestroyed()).length,
+    fullscreen: Boolean(record?.appFullscreen),
+    pageFullscreen: Boolean(record?.htmlFullscreen),
+    fullscreenShortcut: process.platform === 'darwin' ? '⌃⌘F' : 'F11',
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
@@ -605,7 +626,7 @@ function moveRoomToWindow(room, record) {
 }
 function roomsOfWindow(record) { return rooms.filter(room => room.windowId === record.id); }
 function windowStateSnapshot(record) {
-  return {id:record.id,activeRoomId:record.activeRoomId,activeProfileId:record.activeProfileId,roomIds:roomsOfWindow(record).map(room=>room.id)};
+  return {id:record.id,activeRoomId:record.activeRoomId,activeProfileId:record.activeProfileId,fullscreen:Boolean(record.appFullscreen),pageFullscreen:Boolean(record.htmlFullscreen),roomIds:roomsOfWindow(record).map(room=>room.id)};
 }
 async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {}) {
   const s = findRoom(roomId);
@@ -631,7 +652,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:['留在页面','离开页面'],defaultId:0,cancelId:0,title:'离开此页面？',message:'此页面提示有未保存的更改。',detail:`空间：${s.name}。离开可能导致这些更改丢失。`});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
-  installShortcuts(view.webContents);
+  installShortcuts(view.webContents,()=>{const currentRoom=rooms.find(room=>room.id===s.id);return currentRoom&&windowRecords.get(currentRoom.windowId);});
   const owner=findWindowRecord(s.windowId);
   tabs.set(tabId,tab); s.tabIds.push(tabId); s.activeTabId = tabId; owner.browserWindow.contentView.addChildView(view); owner.frontView=null; view.setVisible(false);
   if(url!=='about:blank'||metadata.notifyInitialState) update(owner);
@@ -740,9 +761,15 @@ async function closeRoom(roomId) {
   } else update();
 }
 function asUrl(value,profileId) { if (typeof value !== 'string' || !value.trim()) throw new Error('URL required'); const input = value.trim(); if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return input; if (/^[^\s.]+(?:\.[^\s.]+)+(?::\d+)?(?:[/?#]|$)/.test(input) || /^localhost(?::\d+)?(?:[/?#]|$)/.test(input)) return `https://${input}`; return profileSettings(profileId).searchTemplate.replaceAll('{query}',encodeURIComponent(input)); }
-function installShortcuts(contents) {
+function installShortcuts(contents, getWindowRecord = activeRecord) {
   contents.on('before-input-event',(event,input)=>{
     if(input.type!=='keyDown') return;
+    if(isFullscreenShortcut(input,process.platform)){
+      event.preventDefault();
+      const record=getWindowRecord();
+      if(record&&!record.browserWindow.isDestroyed()&&!record.htmlFullscreen)requestWindowFullscreen(record,!isWindowFullscreenRequested(record));
+      return;
+    }
     const primary=process.platform==='darwin' ? input.meta : input.control;
     if(input.alt || (process.platform==='darwin' && input.control && primary) || (process.platform!=='darwin' && input.meta)) return;
     const key=input.key.toLowerCase(); const room=rooms.find(s=>s.id===activeRoomId),tab=room && tabs.get(room.activeTabId);
@@ -1014,6 +1041,11 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'removeBookmark': return {removed:library.removeBookmark(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'removeHistory': return {removed:library.removeHistory(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'setPanel': {const record=requireFocusedRecord();record.panelOpen=Boolean(args.open&&args.workspace);panelOpen=record.panelOpen;layout(record);return {ok:true};}
+    case 'toggleFullscreen': {
+      if(fromApi)throw Object.assign(new Error('全屏只能由用户在 Corvid 界面切换'),{code:'CORVID_FORBIDDEN'});
+      const record=requireFocusedRecord();
+      return requestWindowFullscreen(record,!isWindowFullscreenRequested(record));
+    }
     case 'setShellModal': {const record=requireFocusedRecord();record.modalOpen=Boolean(args.open);layout(record);return {ok:true};}
     case 'listWindows': return {windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(windowStateSnapshot),focusedWindowId:activeRecord()?.id ?? null};
     case 'createWindow': {
@@ -1350,15 +1382,46 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null};
+  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   focusWindow(record);
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);scheduleWindowStateSave();layout(record);});
-  browserWindow.on('move',scheduleWindowStateSave);
-  browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();});
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record))scheduleWindowStateSave();layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record))scheduleWindowStateSave();});
+  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=true;});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=false;});
+  // macOS transitions are asynchronous; if the user reverses direction during
+  // the animation, replay the latest target instead of trusting a stale event.
+  browserWindow.on('enter-full-screen',()=>{
+    if(record.closing)return;
+    if(record.fullscreenRestoreMaximized===null)record.fullscreenRestoreMaximized=browserWindow.isMaximized()||record.lastKnownMaximized;
+    record.appFullscreen=true;
+    if(record.fullscreenTransitionTarget===true)record.fullscreenTransitionTarget=null;
+    else if(record.fullscreenTransitionTarget===false&&!browserWindow.isDestroyed())browserWindow.setFullScreen(false);
+    update(record);
+  });
+  browserWindow.on('leave-full-screen',()=>{
+    const transitionTarget=record.fullscreenTransitionTarget;
+    record.appFullscreen=false;
+    if(transitionTarget===false)record.fullscreenTransitionTarget=null;
+    else if(transitionTarget===true&&!record.closing&&!browserWindow.isDestroyed())browserWindow.setFullScreen(true);
+    record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);
+    if(!record.htmlFullscreen&&transitionTarget!==true)record.fullscreenRestoreMaximized=null;
+    update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
+  });
+  browserWindow.on('enter-html-full-screen',()=>{
+    if(record.fullscreenRestoreMaximized===null)record.fullscreenRestoreMaximized=browserWindow.isMaximized()||record.lastKnownMaximized;
+    record.htmlFullscreen=true;
+    if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
+  });
+  browserWindow.on('leave-html-full-screen',()=>{
+    record.htmlFullscreen=false;
+    if(!record.appFullscreen&&record.fullscreenTransitionTarget!==true){record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);record.fullscreenRestoreMaximized=null;scheduleWindowStateSave();}
+    if(!browserWindow.isDestroyed())browserWindow.webContents.send('shell-state',describe(record,true));
+  });
+  browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
   browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
-  installShortcuts(browserWindow.webContents);
+  installShortcuts(browserWindow.webContents,()=>record);
   await browserWindow.loadFile(path.join(__dirname,'index.html'));
   return record;
 }
