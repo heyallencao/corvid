@@ -196,6 +196,14 @@
 - 验证：真实 Electron、macOS、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。本地 HTTP fixture 暂停 Agent A 的 `/slow` 导航响应；A 的导航请求确认仍未结束后，Agent B 对其独立获准 Room 的 `/fast` 导航在 3 秒界限内返回 200，之后释放 A 并确认其也返回 200。既有断言同时确认越权 Room/Tab 读写仍返回 `403/CORVID_FORBIDDEN`。`node --check tests/agent-access-e2e.cjs`、`git diff --check` 和 `env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 均通过。
 - 边界：证明的是同一 Corvid 主进程中按 Room 分开的浏览器操作队列可独立推进，不证明真实 Provider/模型并发、多个操作系统进程之间的运行调度或抵御同一 OS 用户恶意进程。Issue #96 继续开放。
 
+## 2026-11-03 Agent runtime 切换首轮失败时保留 checkpoint（Issue #78）
+
+- 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；若新 session 尚未产出 checkpoint，首条 prompt 失败会先把旧不透明引用清空，失去用户之后切回原 runtime 时可能仍可用的恢复材料。
+- 红测：在 `origin/main` `0dc6a38` 上运行新增的 `node tests/agent-runtime-contract-e2e.cjs` 用例，断言失败：实际 `sessionRef` 为 `null`，原值为 `future-runtime` 的 opaque checkpoint。该脚本仅使用临时目录和确定性 runtime，不启动 Electron。
+- 修复：启动 transcript 替代会话时保留旧引用；新 runtime 首条 prompt 失败且没有新 checkpoint 时继续保留。transcript 重试成功后，若仍没有新 checkpoint，再清除过期引用；Corvid 保存的 transcript 仍允许继续。
+- 验证：修复后 `node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs` 与 `git diff --check` 均通过。全量 `npm test` 尚未运行；另一会话正在执行 #141 的 Electron 全屏回归，本分支没有启动 Electron，避免竞争运行窗口。
+- 边界：只验证确定性替代 runtime 的 session/checkpoint/prompt 生命周期；未运行 Pi SDK、真实 Provider、模型或 OAuth；真实 Electron 工作台恢复提示由既有 `pi-workbench-e2e.cjs` 覆盖，本轮尚未复跑。
+
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
 - 范围：隔离最新主线 `d475c07`，macOS、Electron 45.2.1、临时 `CORVID_DATA_DIR`；仅打开导入向导，未选择或读取真实 Chrome 资料。
