@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 62 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、29 个 `node:test` 用例）和 55 条独立脚本命令，共 84 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 62 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 55 条独立脚本命令，共 86 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -76,7 +76,7 @@
 | 59 | `tests/packaged-app-e2e.cjs` | 从 `dist/mac-arm64/Corvid.app` 内的可执行文件启动真实 Electron，验证 `app.isPackaged`、macOS arm64/Electron 版本、`app.asar` 资源、BrowserWindow、首个 Room、隔离 `CORVID_DATA_DIR`、Room 控制接口，以及 `/shutdown` 后进程退出和 `control.json` 清理。 | 必须先在 Apple Silicon 上运行 `npm run package:mac:dir`；只覆盖未签名开发包和本机 arm64。无真实网站、Profile、OAuth、模型、安装器、签名/公证、macOS x64、Windows 或 Linux。 |
 | 60 | `tests/application-menu-e2e.cjs` | 隔离真实 Electron：Corvid 双语原生应用菜单树；新建标签/窗口、窗口菜单 callback 路由；单窗口下 Agent 所有空间禁用用户浏览菜单动作，并拒绝新建标签、地址栏与缩放快捷键；帮助分别说明 Windows/Linux 用 Alt 显示菜单；语言实时切换和重启保持；无 Electron/runtime 或开发者工具菜单入口。 | 本地临时数据目录；窗口菜单和菜单动作由 Electron 菜单项 callback 驱动，不验证物理鼠标点击像素、VoiceOver 或 Windows/Linux Alt 唤出；macOS 系统菜单双向焦点/勾选另由 System Events 手动检查，见 [UI 视觉检查记录](ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-167)；编辑角色只检查菜单树，剪贴板/输入控件行为另需平台验收。 |
 | 61 | `tests/agent-message-queue-contract.cjs` | 不启动 Electron 的 Workbench 合同：运行中新增消息不触发页面读取或 Runtime prompt；多条消息编辑、重排、移除与队首 revision 校验；完成后不自动派发；发送时读取新页面上下文并只消费队首；停止/重启保留剩余队列；读取权限检查与 v2→v3 空队列迁移。 | 临时数据目录和确定性 Runtime；不验证真实 Electron UI、工具调用网络行为或真实 Provider；双语和真实窗口操作由 `pi-workbench-e2e.cjs` 负责。 |
-| 62 | `tests/chrome-import-categories.test.mjs` | Node 模块合同：书签/历史分别读取；某类失败仅排除该类别；提交只读取用户勾选的类别，未选中且损坏的 History 不阻断书签导入。 | 不启动 Electron；真实 zh-CN/en UI 路径由 `CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 覆盖。 |
+| 62 | `tests/chrome-import-categories.test.mjs` | Node 模块合同：书签/历史分别读取；某类失败仅排除该类别；提交只读取用户勾选的类别，未选中且损坏的 History 不阻断书签导入；macOS 预览中损坏的 Cookies 数据库只标记 Cookie 类别，不阻断可读书签/历史。 | 不启动 Electron；Cookie 计数路径仅在 macOS 验证；真实 zh-CN/en UI 路径由 `CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 覆盖。 |
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |

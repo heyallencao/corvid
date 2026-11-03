@@ -41,3 +41,23 @@ test('仅导入扩展时不会读取损坏的书签或历史数据库',async()=>
   assert.equal(preview.errors.bookmarks,true);
   assert.equal(preview.errors.history,true);
 }));
+
+test('Chrome Cookie 计数损坏只影响 Cookie 类别的预览',async()=>withChromeProfile(({root,profile})=>{
+  fs.writeFileSync(path.join(profile,'Bookmarks'),JSON.stringify({roots:{bookmark_bar:{children:[{type:'url',name:'Fixture',url:'https://example.test/'}]}}}));
+  fs.writeFileSync(path.join(profile,'Cookies'),'not a SQLite database');
+
+  const preview=chromeImport.readProfilePreview(root,'Default');
+  assert.equal(preview.bookmarks.length,1,'an unreadable Cookie database must not hide readable bookmarks');
+  assert.deepEqual(preview.history,[],'a missing History database remains an empty readable category');
+  if(process.platform==='darwin'){
+    assert.equal(preview.cookieCount,null);
+    assert.equal(preview.errors.cookies,true,'macOS Cookie count failure must be isolated to Cookies');
+  }else{
+    assert.equal(preview.cookieCount,null);
+    assert.equal(preview.errors.cookies,undefined,'unsupported platforms must not read Chrome Cookies during preview');
+  }
+
+  const selected=chromeImport.readSelectedProfile(root,'Default',['bookmarks']);
+  assert.equal(selected.bookmarks.length,1,'selecting bookmarks must not open the unreadable Cookie database');
+  assert.deepEqual(selected.history,[]);
+}));
