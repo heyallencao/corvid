@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { createAgentWorkbench } = require('../desktop/agent-workbench.cjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(predicate, label) {
@@ -14,6 +15,18 @@ async function until(predicate, label) {
 }
 
 (async () => {
+  const localeSource = fs.readFileSync(path.join(__dirname, '../desktop/locales.js'), 'utf8');
+  for (const { language, expectedBusy, expectedStarting } of [
+    { language: 'zh-CN', expectedBusy: '此空间已有 Agent 任务正在启动或运行', expectedStarting: '正在启动 Agent 任务' },
+    { language: 'en-US', expectedBusy: 'An Agent task is already starting or running in this space', expectedStarting: 'Starting Agent task' },
+  ]) {
+    const context = { navigator: { language }, window: {}, document: { documentElement: { lang: '' }, querySelectorAll() { return []; } } };
+    vm.runInNewContext(localeSource, context);
+    context.window.corvidI18n.setLocale(language);
+    assert.ok(context.window.corvidI18n.t('agentTaskRoomBusy').startsWith(expectedBusy), `${language} translates same-Room concurrency feedback`);
+    assert.ok(context.window.corvidI18n.t('startingTask').startsWith(expectedStarting), `${language} translates the pending start state`);
+    assert.equal(context.window.corvidI18n.userFacingError('[[corvid-error:agent-task-room-busy]] internal details'), context.window.corvidI18n.t('agentTaskRoomBusy'));
+  }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-agent-continuation-lock-'));
   const context = { label: 'page-1', url: 'http://127.0.0.1/page', title: 'Fixture', snapshot: { role: 'main', text: 'fixture' } };
   const sessions = [];
@@ -75,7 +88,39 @@ async function until(predicate, label) {
 
     gateRelease = {};
     gate = new Promise(resolve => { gateRelease.release = resolve; });
+    const startArgs = { profileId: 'default', roomId: 'room-one', tabId: 'tab-one', prompt: '同一空间只启动一次', includePageContext: true, contextPreview };
+    const firstStart = workbench.start(startArgs);
+    await until(() => contextReads === 1, 'first task context read');
+    await assert.rejects(workbench.start(startArgs), /\[\[corvid-error:agent-task-room-busy\]\]/, 'a duplicate start is rejected while the first context read is pending');
+    assert.equal(contextReads, 1, 'a duplicate start is rejected before reading page context');
+    assert.equal(issued.length, 1, 'a duplicate start is rejected before issuing another scoped credential');
+    gateRelease.release();
+    const firstConcurrentTask = await firstStart;
+    assert.equal(firstConcurrentTask.status, 'running');
+    await assert.rejects(workbench.start(startArgs), /\[\[corvid-error:agent-task-room-busy\]\]/, 'a room cannot start another task while one is running');
+    assert.equal(contextReads, 1, 'a running task blocks another start before reading page context');
+    assert.equal(sessions.length, 2, 'the occupied room has only one additional runtime session');
+
+    const parallelTask = await workbench.start({ ...startArgs, roomId: 'room-two', tabId: 'tab-two', prompt: '另一个空间并行启动' });
+    assert.equal(parallelTask.status, 'running', 'a different Room remains independently startable');
+    assert.equal(workbench.list().filter(item => item.status === 'running').length, 2, 'different Rooms can run tasks concurrently');
+    assert.deepEqual(workbench.list().filter(item => item.status === 'running').map(item => item.roomId).sort(), ['room-one', 'room-two']);
+    for (const session of sessions.slice(1)) session.resolvePrompt();
+    await until(() => workbench.list().filter(item => ['running', 'preparing'].includes(item.status)).length === 0, 'parallel Room tasks completion');
+    gate = null; contextReads = 0;
+
+    const staleStartArgs = { ...startArgs, roomId: 'room-three', tabId: 'tab-three', prompt: '启动校验失败后可重试', contextPreview: { ...contextPreview, snapshot: 'stale' } };
+    await assert.rejects(workbench.start(staleStartArgs), /页面已变化/, 'a stale page preview fails before creating a task');
+    assert.equal(workbench.list().some(item => item.roomId === 'room-three'), false, 'a failed start does not persist a task');
+    const retryTask = await workbench.start({ ...staleStartArgs, prompt: '重新确认后启动', contextPreview });
+    assert.equal(retryTask.status, 'running', 'a failed start releases its claim so the user can retry');
+    sessions.at(-1).resolvePrompt();
+    await until(() => workbench.list().find(item => item.id === retryTask.id)?.status === 'completed', 'task start retry completion');
+
+    gateRelease = {};
+    gate = new Promise(resolve => { gateRelease.release = resolve; });
     const continuation = { taskId: task.id, message: '继续', includePageContext: true, contextPreview };
+    const sessionsBeforeContinuation = sessions.length;
     const first = workbench.continueTask(continuation);
     await until(() => contextReads === 1, 'first continuation context read');
     const second = workbench.continueTask(continuation);
@@ -90,14 +135,14 @@ async function until(predicate, label) {
 
     assert.equal(secondOutcome.status, 'rejected', 'a second continuation must be rejected before reading context');
     assert.equal(contextReads, 1, 'a rejected duplicate must not read page context');
-    assert.equal(sessions.length, 2, 'one completed task should create only one continuation session');
+    assert.equal(sessions.length, sessionsBeforeContinuation + 1, 'one completed task should create only one continuation session');
     assert.equal(workbench.list()[0].conversation.filter(turn => turn.role === 'user').length, 2, 'the repeated submit must not duplicate the user turn');
     assert.deepEqual(revoked.sort(), issued.sort(), 'each continuation must revoke exactly its own scoped credential');
 
     await assert.rejects(workbench.continueTask({ taskId: task.id, message: '过期预览', includePageContext: true, contextPreview: { ...contextPreview, snapshot: 'stale' } }), /页面已变化/);
     assert.equal(workbench.list().find(item => item.id === task.id)?.status, 'completed', 'a stale preview must restore the previous task status');
     const afterStalePreview = workbench.continueTask({ taskId: task.id, message: '重新确认后继续', includePageContext: true, contextPreview });
-    await until(() => sessions.length === 3, 'continuation after stale preview');
+    await until(() => sessions.length === sessionsBeforeContinuation + 2, 'continuation after stale preview');
     sessions.at(-1).resolvePrompt();
     await afterStalePreview;
     await until(() => workbench.list().find(item => item.id === task.id)?.status === 'completed', 'completion after stale preview');

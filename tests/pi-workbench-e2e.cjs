@@ -47,10 +47,10 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'Agent workbench');
     const ownedPiDir=path.join(dataDir,'pi-agent');
-    assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
     const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
     await modelSelect.waitFor();
+    assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
     await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
     await shell.locator('#pi-model-settings[open]').waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
@@ -86,7 +86,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const consentPreview=await shell.locator('.pi-context').innerText();
     assert.match(consentPreview,/Corvid Fixture Page/);
     assert.match(consentPreview,/"items"/);
-    const start = shell.getByRole('button', { name: '发送' });
+    const start = shell.locator('#pi-task-form .pi-primary-action');
     assert.equal(await start.isDisabled(), true, 'page context consent is required');
     await shell.keyboard.press('Space');
     assert.equal(await shell.getByLabel(/我已检查/).isChecked(),true,'Space confirms the explicit page-context consent');
@@ -94,6 +94,9 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.keyboard.press('Tab');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'发送','Tab reaches the enabled send action after consent');
     await shell.keyboard.press('Enter');
+    assert.equal(await start.isDisabled(), true, 'starting a task immediately disables repeat submissions');
+    assert.equal(await start.getAttribute('aria-busy'), 'true', 'the pending start is announced as busy');
+    assert.equal(await start.textContent(), '正在启动 Agent 任务…', 'the send action gives immediate localized progress feedback');
     const firstTaskCard=shell.locator('.pi-task-entry').first();
     await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
     await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor();
