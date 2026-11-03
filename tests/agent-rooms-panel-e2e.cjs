@@ -130,6 +130,64 @@ async function readContrastPalette(shell) {
     await shell.getByRole('button', { name: '新建空间' }).waitFor();
     await shell.getByRole('button', { name: '我的空间 · 用户空间', exact: true }).waitFor();
     assert.equal(await shell.locator('#spaces-heading').textContent(), '空间');
+
+    const profileMenuTrigger=shell.locator('#profile-menu-trigger'),profileMenu=shell.locator('#profile-menu');
+    assert.equal(await profileMenuTrigger.getAttribute('aria-haspopup'),'menu');
+    assert.equal(await profileMenuTrigger.getAttribute('aria-controls'),'profile-menu');
+    assert.equal(await profileMenu.getAttribute('aria-label'),'浏览身份选项');
+    await profileMenuTrigger.press('Enter');
+    await profileMenu.waitFor({state:'visible'});
+    const profileItems=profileMenu.getByRole('menuitem');
+    await shell.waitForFunction(()=>document.activeElement===document.querySelector('#profile-menu [role="menuitem"]'));
+    assert.equal(await profileMenuTrigger.getAttribute('aria-expanded'),'true');
+    await shell.keyboard.press('ArrowDown');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.nth(1).textContent());
+    await shell.keyboard.press('Home');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.first().textContent());
+    await shell.keyboard.press('End');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.last().textContent());
+    await shell.keyboard.press('Escape');
+    await profileMenu.waitFor({state:'hidden'});
+    assert.equal(await profileMenuTrigger.getAttribute('aria-expanded'),'false');
+    assert.equal(await shell.evaluate(()=>document.activeElement.id),'profile-menu-trigger');
+    await profileMenuTrigger.press('Space');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.first().textContent(),'Space opens on the first menu action');
+    await shell.keyboard.press('Escape');
+    await profileMenuTrigger.press('ArrowUp');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.last().textContent(),'ArrowUp opens on the final menu action');
+    await shell.keyboard.press('Escape');
+
+    const roomMenuTrigger=shell.locator('#room-menu-trigger'),roomMenu=shell.locator('#room-menu');
+    assert.equal(await roomMenuTrigger.getAttribute('aria-haspopup'),'menu');
+    assert.equal(await roomMenuTrigger.getAttribute('aria-controls'),'room-menu');
+    assert.equal(await roomMenu.getAttribute('aria-label'),'空间选项');
+    await roomMenuTrigger.press('ArrowDown');
+    await roomMenu.waitFor({state:'visible'});
+    const roomItems=roomMenu.getByRole('menuitem');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.first().textContent());
+    await shell.keyboard.press('End');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.last().textContent());
+    await shell.keyboard.press('ArrowDown');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.first().textContent(),'ArrowDown wraps to the first menu action');
+    for(const [selector,triggerId,menuId] of [['.profile-switcher','profile-menu-trigger','profile-menu'],['#spaces-heading','room-menu-trigger','room-menu'],['#room-strip','room-menu-trigger','room-menu']]){
+      const trigger=shell.locator(`#${triggerId}`),menu=shell.locator(`#${menuId}`);
+      await shell.locator(selector).evaluate(element=>element.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+      await menu.waitFor({state:'visible'});
+      assert.equal(await trigger.getAttribute('aria-expanded'),'true',`${selector} context menu updates expanded state`);
+      await shell.waitForFunction(menuId=>document.activeElement===document.querySelector(`#${menuId} [role="menuitem"]`),menuId);
+      await shell.keyboard.press('ArrowDown');
+      assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await menu.getByRole('menuitem').nth(1).textContent(),`${selector} context menu supports arrow navigation`);
+      await shell.keyboard.press('Escape');
+      await menu.waitFor({state:'hidden'});
+      assert.equal(await trigger.getAttribute('aria-expanded'),'false',`${selector} context menu closes accessibly`);
+      assert.equal(await shell.evaluate(()=>document.activeElement.id),triggerId,`${selector} context menu restores trigger focus`);
+    }
+    if(process.env.CORVID_POPUP_MENU_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_POPUP_MENU_SCREENSHOT_PATH});
+    await shell.keyboard.press('Tab');
+    await roomMenu.waitFor({state:'hidden'});
+    assert.equal(await roomMenuTrigger.getAttribute('aria-expanded'),'false');
+    assert.equal(await shell.evaluate(()=>document.activeElement.closest('#room-menu')===null),true,'Tab moves focus out of the menu');
+
     await shell.emulateMedia({colorScheme:'light'});
     assertPaletteContrast(await readContrastPalette(shell), 'light');
     if (process.env.CORVID_CONTRAST_SCREENSHOT_PATH) await shell.screenshot({path:process.env.CORVID_CONTRAST_SCREENSHOT_PATH});

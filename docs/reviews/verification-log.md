@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
+
+- 基线与候选：独立集成 worktree `/private/tmp/corvid-integrate-pr172-verified`，基线 `origin/main` `9a0068857462117af44b2164ec00300fb4a2bb6b`；从 #178 菜单原始提交重放，保留当前 main 的 SVG 按钮、本地化菜单名称和 Profile/空间标题/空间列表三个 contextmenu 入口。本次候选尚未提交，PR #178 live head `08fadeedfaae8ee1970e0d6b76f6d98af0987048` 不是本候选；只纳入菜单键盘切片，不倒灌后续无关提交。
+- 修复：contextmenu 与触发按钮共用打开逻辑，关闭另一菜单、设置 `aria-expanded` 并聚焦首个 menuitem；菜单项不进入普通 Tab 顺序。方向键/Home/End 导航，Escape 关闭并还焦点，Tab 与点外关闭。trigger 增加 `aria-haspopup` / `aria-controls`，保留 main 当前菜单的本地化 `aria-label`。
+- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1，`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0。真实隔离 Electron 覆盖 Profile/空间按钮键盘打开、方向键/Home/End/Escape/Tab 及三个右键入口的首项焦点、方向键导航、Escape 焦点恢复；测试使用本地确定性 fixture，不调用真实模型或 OAuth。`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check` 通过。
+- 全量门禁：macOS arm64、Node.js v24.22.1、Electron 45.2.1 环境执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 0。串行全套 E2E、合同、Electron UI、MCP 与设置回归全部通过，包含本次 `agent-rooms-panel-e2e.cjs`。使用隔离测试数据目录与本地 fixture；未调用真实 OAuth 或模型。
+- 视觉证据：[隔离 Profile 菜单截图](../qa/screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)，状态为首项焦点、2560×1636 PNG；无网页主体或个人数据。视觉与辅助技术限制见[视觉检查](../qa/ui-visual-check.md#2026-11-05-profile-与空间菜单键盘交互-issue-16)。未验证 VoiceOver 实播、Windows/Linux、打包版。
+- 状态：本地候选已修复并通过定向 E2E；全量门禁与 GitHub PR 更新/合并仍待完成。本 slice 不代表 Issue #16 整体关闭。
+
 ## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
 
 - 变更：基于 PR #172 精确 head `11abfb56dbfda818a4f5b53f08d31392b0a3b1a6` 前向集成 main `f443531b2cc6553b69f1677f1aae3b8431817d04`；解决 `package.json` 与本记录冲突并保留两侧历史。修正两阶段设置保存第二步失败时的部分保存反馈，明确主题立即保存且取消不回滚；设置分类下补齐 Chrome 导入、Agent 访问和本地化窄窗测试所需分类入口。
