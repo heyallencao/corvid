@@ -160,6 +160,10 @@ async function chooseSource(shell){
   await shell.locator('#choose-chrome-source').click();
   await shell.locator('#chrome-source-profile').selectOption('Default');
   await shell.locator('#chrome-import-preview').getByText(/找到 1 个书签、1 条历史记录/).waitFor();
+  if(process.platform==='darwin')await shell.waitForFunction(()=>{
+    const cookies=document.querySelector('input[name="chrome-category"][value="cookies"]');
+    return cookies&&!cookies.disabled;
+  });
 }
 
 async function selectAllExtensions(shell){
