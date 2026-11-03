@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-04 Issue #87 macOS 全量串行回归门槛
+
+- 变更：新增 `.github/workflows/issue87-full-regression.yml`。macOS 14 runner 执行 `npm ci` 后，顺序运行两轮完整 `npm test`；即使第一轮失败也会收集退出状态并继续第二轮。每轮结束后最多等待 10 秒检查进程名中含 Electron/Corvid 的残留，仅记录 PID/父 PID/进程名，不采集命令行；两轮日志作为 Actions artifact 保存。
+- 本地合同：基于 `c111f35` 的 PR #164 worktree 执行 `node --test tests/electron-startup.e2e.mjs`，9/9 通过；`node --check tests/electron-test-startup.cjs`、workflow YAML 解析、抽取的 bash 脚本 `bash -n` 与 `git diff --check` 通过。合同测试只启动受控 Node 子进程，不启动 Electron。
+- 当前边界：本机 Mac 锁屏，尚未运行 Electron 或完整 `npm test`；新增两轮全量 workflow 尚未有 GitHub Actions 结果。历史启动挂起仍未复现、根因未知，因此 Issue #87 保持开放。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。

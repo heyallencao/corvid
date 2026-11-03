@@ -5,6 +5,7 @@
 ## 共同前提与限制
 
 - 环境：本机 macOS、Electron 45.2.1、Node.js v24.14.1；Issue #113 多窗口同步修正后，2026-11-03 连续两轮全量串行回归均退出码 0，每轮 45 条独立脚本命令 + 3 个 `node:test` 用例，共 48 项。
+- Issue #87 重复全量回归门槛：`.github/workflows/issue87-full-regression.yml` 在 macOS 14 runner 上连续串行运行两轮完整 `npm test`，每轮后检查 Electron/Corvid 子进程是否残留并保存运行日志；workflow 在相关启动代码、测试入口或 package 清单变化时触发，也支持手动运行。等待首次 GitHub Actions 结果前，这只是已配置的验收门槛，不代表全量回归已通过或历史根因已定位。
 - 全量回归：历史上的 Electron 启动挂起由 [Issue #87](https://github.com/heyallencao/corvid/issues/87) 跟踪；地址栏草稿在延迟 `shell-state` 刷新后被覆盖的问题由 [Issue #101](https://github.com/heyallencao/corvid/issues/101) 跟踪并在当前主线修复。Issue #113 后的两轮历史基线均通过；Electron 启动与清理诊断用例现已纳入全量 `npm test`，2026-11-03 在 Issue #141 macOS 验收中包含该用例的 70 项回归全部通过。Issue #87 跟踪的早期偶发挂起根因仍未确定，单次全量通过不代表根因已定位，细节见[验证记录](../reviews/verification-log.md)。
 - 隔离：每项自建临时数据目录（`CORVID_DATA_DIR`），使用 `CORVID_PORT=0`、`CORVID_TEST_MODE=1`，下载相关使用 `CORVID_TEST_DOWNLOAD_DIR`；页面来自本地 HTTP 夹具（`127.0.0.1` 随机端口，部分用 `localhost` 制造跨来源）；不读写真实用户数据。
 - 测试替身：权限确认、执行风险复核、Room 认领、关闭 Room、站点数据清理、站点权限撤销、beforeunload/标签关闭确认等系统对话框由 `dialog.showMessageBox` / `showMessageBoxSync` 替换；普通下载用测试目录绕开 `showSaveDialogSync`；下载"打开文件/在文件夹中显示"在测试中替换 `shell.openPath` / `shell.showItemInFolder`，只验证应用转发路径与错误呈现。原生对话框与真实系统应用交互本身未验证。

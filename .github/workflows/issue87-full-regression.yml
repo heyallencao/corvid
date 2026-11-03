@@ -1,0 +1,74 @@
+name: Issue 87 macOS 全量回归稳定性
+
+on:
+  pull_request:
+    paths:
+      - 'desktop/main.cjs'
+      - 'desktop/startup-progress.cjs'
+      - 'tests/electron-*.cjs'
+      - 'tests/electron-startup.e2e.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/issue87-full-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  serial-full-regression:
+    name: macOS 串行全量回归（连续两轮）
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+
+      - name: 安装项目依赖
+        run: npm ci
+
+      - name: 连续运行两轮完整串行回归并检查 Electron 清理
+        shell: bash
+        run: |
+          set -uo pipefail
+          overall_status=0
+          for attempt in 1 2; do
+            echo "开始第 ${attempt}/2 轮完整 npm test"
+            set +e
+            npm test 2>&1 | tee "npm-test-${attempt}.log"
+            test_status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$test_status" -ne 0 ]]; then
+              echo "第 ${attempt} 轮 npm test 失败，退出码 ${test_status}" >&2
+              overall_status=1
+            fi
+
+            leftovers=""
+            for wait_attempt in {1..10}; do
+              leftovers="$(ps -axo pid=,ppid=,comm= | awk 'tolower($0) ~ /(electron|corvid)/ { print }')"
+              [[ -z "$leftovers" ]] && break
+              sleep 1
+            done
+            if [[ -n "$leftovers" ]]; then
+              echo "第 ${attempt} 轮结束后仍存在 Electron/Corvid 进程：" >&2
+              printf '%s\n' "$leftovers" >&2
+              overall_status=1
+            else
+              echo "第 ${attempt}/2 轮结束：未发现残留 Electron/Corvid 进程"
+            fi
+          done
+          exit "$overall_status"
+
+      - name: 保存两轮回归日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue87-macos-full-regression
+          path: npm-test-*.log
+          if-no-files-found: ignore

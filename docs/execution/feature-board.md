@@ -33,6 +33,7 @@
 - 2026-11-03 Issue #87 Electron 启动诊断：加入分阶段 launch/首窗/control 凭据等待错误、脱敏状态与有限时清理；测试模式下另记录主进程最后启动阶段，超时诊断按 Electron 子进程 PID 排除旧进程残留记录、仅接受安全阶段名，达到启动完成后停止更新；启动诊断替身扩至 8 项，覆盖阶段记录关闭/开启、原子更新、0600 权限、完成后冻结、缺失/损坏/旧 PID/恶意阶段文件及阶段信息不泄露凭据。此项仅改善下次挂起的定位证据，不代表根因已找到。Issue #34 历史上的 5 分钟停顿仍未复现、根因未知。合并后 `npm test` 22 项 `node:test` + 50 条独立脚本，共 72 项 EXIT 0；Issue #34 与 #87 均继续开放，分别跟踪清理长停顿与真实 Electron 启动挂起的复现/根因。
 - 2026-11-03 Issue #87 启动失败进程快照：Playwright 启动或首窗失败时，在清理子进程前读取 OS 进程状态；macOS/Linux 只记录 PID、父 PID、状态、CPU 与运行时长，Windows 只记录 tasklist PID 行，不采集命令行。纯 Node 子进程 fixture 验证快照在清理前保留且不含命令行参数。此诊断补充下次失败的现场信息，不证明或修复真实启动挂起根因；Issue #87 继续开放。
 - 2026-11-04 Issue #87 进程快照合同 CI：新增 `.github/workflows/electron-startup-snapshot.yml`，只在 macOS、Ubuntu、Windows 运行进程快照子用例；该合同不启动真实 Electron，不能证明启动挂起根因或其他启动路径跨平台稳定。
+- 2026-11-04 Issue #87 全量串行回归门槛：新增 `.github/workflows/issue87-full-regression.yml`，在 macOS 14 runner 连续执行两轮 `npm test` 并逐轮检查残留 Electron/Corvid 进程；首次 workflow 结果尚待验证，历史挂起根因仍未知。
 - 2026-11-03 PR #155 阶段诊断运行态验证：解锁后全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（24 项 `node:test` + 43 条独立脚本，共 67 项）；真实 Electron `browser.e2e.mjs` 另通过 `startup-complete` 阶段与当前 PID 检查。PR #155 已 squash 合并，提交 `0bf18f8`；全量 suite 本轮成功一轮，Issue #87 历史挂起未复现、根因未知，Issue 保持开放。验证细节见[验证记录](../reviews/verification-log.md)。
 - 2026-11-03 Issue #34 慢恢复清理重复回归：PR #155 合并后的主线中，`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` 连续 5 次均 EXIT 0；此前同代码切片 `npm test` 67 项也通过。每轮均走两次真实 Electron 启动/关闭；测试结束后无 restore-loading 进程或临时目录。历史 5 分钟停顿仍未复现、根因未知，Issue 保持开放。详见[验证记录](../reviews/verification-log.md)。
 
