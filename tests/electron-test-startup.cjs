@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 
 const diagnostics = new WeakMap();
@@ -22,6 +23,24 @@ function processState(app) {
   if (!child) return '进程信息不可用';
   if (child.exitCode !== null || child.signalCode) return `pid=${child.pid} 已退出(code=${child.exitCode}, signal=${child.signalCode}, killed=${child.killed})`;
   return `pid=${child.pid} 仍在运行(killed=${child.killed})`;
+}
+
+function processSnapshot(app) {
+  let child;
+  try { child = app?.process?.(); } catch { return '操作系统快照不可用'; }
+  if (!Number.isInteger(child?.pid) || child.pid <= 0) return '操作系统快照不可用';
+  try {
+    const output = process.platform === 'win32'
+      ? execFileSync('tasklist', ['/FI', `PID eq ${child.pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      : execFileSync('ps', ['-p', String(child.pid), '-o', 'pid=,ppid=,stat=,%cpu=,etime='], { encoding: 'utf8', timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (!output) return `pid=${child.pid} 未找到`;
+    if (process.platform === 'win32') return `pid=${child.pid} tasklist=${output.replace(/\s+/g, ' ')}`;
+    const [pid, parentPid, state, cpu, elapsed] = output.split(/\s+/);
+    if (![pid, parentPid, state, cpu, elapsed].every(Boolean)) return `pid=${child.pid} ps=输出格式不可用`;
+    return `pid=${pid} ppid=${parentPid} state=${state} cpu=${cpu}% elapsed=${elapsed}`;
+  } catch (error) {
+    return `pid=${child.pid} 操作系统快照不可用(${error.code || 'ERROR'})`;
+  }
 }
 
 function appendLog(app, message) {
@@ -68,7 +87,7 @@ function startupStage(dataDir, expectedPid) {
   }
 }
 
-function startupError({ label, stage, app, dataDir, startedAt, cause, cleanupError }) {
+function startupError({ label, stage, app, dataDir, startedAt, cause, cleanupError, processDetails }) {
   let child;
   try { child = app?.process?.(); } catch {}
   return new Error([
@@ -76,6 +95,7 @@ function startupError({ label, stage, app, dataDir, startedAt, cause, cleanupErr
     `阶段=${stage}；耗时=${Date.now() - startedAt}ms；数据目录=${dataDir}`,
     `主进程启动位置=${startupStage(dataDir, child?.pid)}`,
     `control.json=${controlState(dataDir)}；主进程=${processState(app)}`,
+    `操作系统进程快照=${processDetails || processSnapshot(app)}`,
     `窗口=${windowState(app)}；主进程最近日志：${recentLogs(app)}`,
     `原因：${cause?.message || cause}`,
     ...(cleanupError ? [`启动失败后的清理也未正常完成：${cleanupError.message}`] : []),
@@ -117,9 +137,10 @@ async function launchElectron(launcher, options, { label, dataDir, timeoutMs = 2
     const shell = await app.firstWindow({ timeout: timeoutMs });
     return { app, shell, startedAt };
   } catch (cause) {
+    const processDetails = processSnapshot(app);
     let cleanupError;
     if (app) await closeElectron(app).catch(error => { cleanupError = error; });
-    throw startupError({ label, stage, app, dataDir, startedAt, cause, cleanupError });
+    throw startupError({ label, stage, app, dataDir, startedAt, cause, cleanupError, processDetails });
   }
 }
 
@@ -189,4 +210,4 @@ async function closeElectron(app, { gracefulTimeoutMs = 3000, terminateTimeoutMs
   throw new Error(`Electron E2E 清理异常：${reason}；已发送 ${termination} 结束 pid=${child.pid}；关闭前进程=${processBeforeTermination}；窗口=${windowsBeforeTermination}；日志=${logsBeforeTermination}`);
 }
 
-module.exports = { closeElectron, launchElectron, startupStage, waitForControl };
+module.exports = { closeElectron, launchElectron, processSnapshot, startupStage, waitForControl };

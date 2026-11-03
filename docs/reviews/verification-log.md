@@ -49,6 +49,11 @@
 - 原生 macOS 复核：使用隔离临时数据启动 Electron，以 `System Events` 在真实“窗口”菜单中双向选择窗口，分别读取 `AXMenuItemMarkChar` 勾选与 Corvid `/windows` 焦点 ID；两个方向均一致。人工诊断脚本在菜单仍打开时由 `closeElectron` 超时后结束了本轮自启进程，但在退出前已读完证据；随后检查无残留 Electron。REA `observe_native_ui` 仍因 provider 无法读取进程启动时间而 `capability_unavailable`；此处不宣称 REA 原生观察。
 - 全量回归边界：首次 `npm test` 曾在全屏测试的异步最大化断言失败，已由 [Issue #168](https://github.com/heyallencao/corvid/issues/168) 修正为等待原窗口恢复；后续完整运行已通过该测试，继续在 #5 的 `pi-workbench-e2e.cjs:99` 超时，见上方 #168 记录，不计入 #162 菜单 E2E 失败。
 - 未覆盖与限制：全套 `npm test`、VoiceOver、Windows/Linux、打包版、真实鼠标截图/像素与其他系统语言设置尚未完成；网页菜单的 EasyUI REA Evidence 只提供交互分组参考，不是系统菜单验收依据。本次未调用 OAuth 或真实模型。
+## 2026-11-03 Issue #87 启动失败 OS 进程快照诊断
+
+- 改动：Playwright Electron 启动或首个窗口失败时，在清理子进程前采集操作系统进程快照，并在诊断错误中保留。macOS/Linux 通过 `ps` 记录 PID、父 PID、状态、CPU 与运行时长；Windows 通过 `tasklist` 记录匹配 PID 的进程行。没有调用或记录进程命令行。
+- 验证：`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 9/9 通过；包含真实 Node 子进程 fixture，断言清理前快照在失败信息中保留、平台字段存在且命令行哨兵参数未泄漏。`node --check tests/electron-test-startup.cjs`、`node --check tests/electron-startup.e2e.mjs` 与 `git diff --check` 均通过。重放至最新主线 `62da03c` 后，同一启动诊断命令再次 9/9 通过，两个文件语法检查和提交 diff 检查通过。
+- 限制：未启动真实 Electron，未运行全量 `npm test`，没有复现 Issue #87 的历史启动挂起；该改动只增加下一次启动失败的现场诊断，不构成根因修复。当前验证只在 macOS 执行；Windows 的 `tasklist` 字段格式未在本机实测，Windows/Linux 与打包环境仍待 CI 或对应平台验证。Issue #87 保持开放。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 

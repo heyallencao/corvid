@@ -8,7 +8,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { closeElectron, launchElectron, startupStage, waitForControl } = require('./electron-test-startup.cjs');
+const { closeElectron, launchElectron, processSnapshot, startupStage, waitForControl } = require('./electron-test-startup.cjs');
 const { createStartupProgress } = require('../desktop/startup-progress.cjs');
 
 test('主进程启动阶段仅在测试模式原子记录并限制文件权限', async () => {
@@ -79,6 +79,36 @@ test('首个窗口等待失败单独标识并关闭已启动应用', async () =>
     error => error.message.includes('阶段=首个桌面窗口') && error.message.includes('fixture window timeout'),
   );
   assert.equal(closed, true, '首个窗口等待失败后必须关闭应用');
+});
+
+test('启动失败在清理前记录操作系统进程快照且不包含命令行', async () => {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)', 'fixture_process_secret'], { stdio: 'ignore' });
+  await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+  const app = {
+    on() {},
+    process: () => child,
+    windows: () => [],
+    firstWindow: async () => { throw new Error('fixture window failure'); },
+    close: async () => {
+      if (child.exitCode !== null || child.signalCode) return;
+      const exited = new Promise(resolve => child.once('exit', resolve));
+      child.kill();
+      await exited;
+    },
+  };
+  try {
+    await assert.rejects(
+      () => launchElectron({ launch: async () => app }, {}, { label: 'snapshot-fixture', dataDir: os.tmpdir(), timeoutMs: 100 }),
+      error => error.message.includes(`操作系统进程快照=pid=${child.pid}`)
+        && (process.platform === 'win32'
+          ? error.message.includes('tasklist=')
+          : /ppid=\d+ state=\S+ cpu=\S+ elapsed=\S+/.test(error.message))
+        && !error.message.includes('fixture_process_secret')
+        && error.message.includes('fixture window failure'),
+    );
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
 });
 
 test('control.json 超时显示进程状态且不泄露凭据', async () => {
