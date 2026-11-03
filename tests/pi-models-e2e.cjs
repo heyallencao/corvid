@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { createPiModelManager } = require('../desktop/pi-models.cjs');
 const { createAgentWorkbench } = require('../desktop/agent-workbench.cjs');
 const { createAgentCredentialStore } = require('../desktop/agent-credential-store.cjs');
@@ -9,6 +10,21 @@ const { createFakeSafeStorage } = require('./fake-safe-storage.cjs');
 const safeStorage=createFakeSafeStorage();
 
 (async () => {
+  const localeSource=fs.readFileSync(path.join(__dirname,'../desktop/locales.js'),'utf8');
+  const rendererSource=fs.readFileSync(path.join(__dirname,'../desktop/renderer.js'),'utf8');
+  const rendererErrorStart=rendererSource.indexOf('function userFacingAgentError');
+  const rendererErrorEnd=rendererSource.indexOf('\nlet state',rendererErrorStart);
+  assert.ok(rendererErrorStart>=0&&rendererErrorEnd>rendererErrorStart,'renderer error formatter is present for locale contract coverage');
+  for(const {language,expected} of [
+    {language:'zh-CN',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
+    {language:'en-US',expected:'Linux could not confirm that the system password manager protects this credential'},
+  ]){
+    const context={navigator:{language},window:{}};
+    vm.runInNewContext(localeSource,context);
+    context.extensionMessages=context.window.corvidI18n;
+    vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
+    assert.ok(context.userFacingAgentError({message:'[[corvid-error:secure-storage-provider-unverified]] provider tag rejected'}).startsWith(expected),`${language} localizes the secure-storage refusal before it reaches the UI`);
+  }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
   const dataDir = path.join(root, 'corvid');
   const agentDir = path.join(root, 'pi-agent');
@@ -169,7 +185,7 @@ const safeStorage=createFakeSafeStorage();
     const providerLabel=Buffer.isBuffer(providerTag)?'high-bit-v12':providerTag;
     const rejectedWriteDir=path.join(root,`linux-new-rejected-${backend}-${providerLabel}`);
     const rejectedWriteStore=createAgentCredentialStore({dataDir:rejectedWriteDir,safeStorage:createFakeSafeStorage({backend,providerTag}),platform:'linux'});
-    await assert.rejects(rejectedWriteStore.modify('fixture-provider',()=>({type:'api_key',key:'rejected-fallback-fixture'})),/无法确认系统密码管理器已保护/);
+    await assert.rejects(rejectedWriteStore.modify('fixture-provider',()=>({type:'api_key',key:'rejected-fallback-fixture'})),error=>{assert.match(error.message,/无法确认系统密码管理器已保护/);assert.match(error.message,/\[\[corvid-error:secure-storage-provider-unverified\]\]/);return true;});
     assert.equal(fs.existsSync(path.join(rejectedWriteDir,'agent-credentials.json')),false,`${backend}/${providerTag} does not create a credential file`);
 
     const linuxDir=path.join(root,`linux-rejected-${backend}-${providerLabel}`);

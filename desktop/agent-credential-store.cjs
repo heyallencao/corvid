@@ -98,8 +98,9 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     }
   }
 
-  function storageError(message, cause) {
-    return new Error(`${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
+  function storageError(message, cause, code = null) {
+    const marker = code ? `[[corvid-error:${code}]] ` : '';
+    return new Error(`${marker}${message}请检查并解锁系统钥匙串或密码管理器后重试；现有账号授权和旧文件未主动删除。`, { cause });
   }
 
   async function ensureSecureStorage() {
@@ -113,7 +114,7 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     if (platform !== 'linux') return;
     const tag = encrypted.subarray(0, 3).toString('latin1');
     if (!SECURE_LINUX_ASYNC_PROVIDER_TAGS.has(tag)) {
-      throw storageError('Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。');
+      throw storageError('Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。', undefined, 'secure-storage-provider-unverified');
     }
   }
 

@@ -338,6 +338,8 @@
       extensionPopup: '打开扩展：{name}',
       extensionPopupUnavailable: '扩展弹窗当前不可用',
       extensionPopupFailed: '无法打开扩展弹窗，请检查扩展状态后重试。',
+      agentErrorFallback: 'Corvid Agent 暂时无法完成此操作，请重试。',
+      credentialStorageProviderUnavailable: 'Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。请设置并解锁受支持的系统密码管理器后重试；现有账号授权和文件已保留。',
       plural: {
         tabs: { one: '{count} 个标签页', other: '{count} 个标签页' },
       },
@@ -680,6 +682,8 @@
       extensionPopup: 'Open extension: {name}',
       extensionPopupUnavailable: 'This extension popup is unavailable.',
       extensionPopupFailed: 'Could not open the extension popup. Check the extension and try again.',
+      agentErrorFallback: 'Corvid Agent cannot complete this action right now. Please try again.',
+      credentialStorageProviderUnavailable: 'Linux could not confirm that the system password manager protects this credential, so saving or reading it was refused. Set up and unlock a supported system password manager, then retry. Existing credentials and files were preserved.',
       plural: {
         tabs: { one: '{count} tab', other: '{count} tabs' },
       },
@@ -730,5 +734,11 @@
     formatNumber(value, options) { return new Intl.NumberFormat(locale, options).format(value); },
     formatDate(value, options) { return new Intl.DateTimeFormat(locale, options).format(value instanceof Date ? value : new Date(value)); },
       formatList(values, options) { return new Intl.ListFormat(locale, options).format(values); },
+    userFacingError(message) {
+      const match = String(message || '').match(/^\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
+      if (!match) return null;
+      const key = { 'secure-storage-provider-unverified': 'credentialStorageProviderUnavailable' }[match[1].toLowerCase()];
+      return this.t(key || 'agentErrorFallback');
+    },
   });
 })();

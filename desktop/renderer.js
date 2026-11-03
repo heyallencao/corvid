@@ -1,6 +1,8 @@
 const api = window.browserShell;
 function userFacingAgentError(error, fallback=null) {
   const message=String(error?.message||error||'').trim();
+  const localizedMessage=extensionMessages?.userFacingError?.(message);
+  if(localizedMessage)return localizedMessage;
   const implementationName=/\bpi(?:[\s_-]+(?:coding[\s_-]*agent|runtime|sdk|session|agent))?\b|@earendil-works\/pi-[a-z0-9-]+/i;
   const safeFallback=fallback||extensionMessages.t('agentErrorFallback');
   return implementationName.test(message) ? safeFallback : (message||safeFallback);
