@@ -35,7 +35,7 @@
 - 2026-11-03 Issue #34 慢恢复清理重复回归：PR #155 合并后的主线中，`env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` 连续 5 次均 EXIT 0；此前同代码切片 `npm test` 67 项也通过。每轮均走两次真实 Electron 启动/关闭；测试结束后无 restore-loading 进程或临时目录。历史 5 分钟停顿仍未复现、根因未知，Issue 保持开放。详见[验证记录](../reviews/verification-log.md)。
 - 2026-11-03 Issue #34 PASS 后清理现场诊断：慢恢复用例在 PASS 后若仍无法退出满 10 秒，以未引用 watchdog 记录关闭阶段、Node/Electron PID 与退出状态、HTTP server 监听状态及活动资源类型；观察器不延迟正常退出。真实 Electron 定向用例通过；另用临时 13 秒 Node timer 验证观察器在 10 秒采样并最终正常退出。未运行全量回归，历史 5 分钟挂起根因仍未定位，Issue 保持开放。详见[验证记录](../reviews/verification-log.md)。
 - 2026-11-04 PR #166 重放主线复验：基线更新到 `b933030` 后，真实 Electron 慢恢复定向回归通过；仅 Node 测试进程的 13 秒 timer 让 watchdog 在 10 秒采样并记录最终清理状态。未运行全量回归，未复现历史 5 分钟挂起。
-- 2026-11-04 Issue #34 重复清理验收：新增 macOS GitHub Actions 工作流，定向慢恢复 E2E 连续执行五轮、每轮限时 180 秒；每轮后比较 Electron/Corvid 进程和隔离目录快照，并上传原始输出。工作流尚未由 GitHub 运行，不能据此声称五轮 CI 通过；Issue 继续开放，历史 5 分钟停顿根因未知。
+- 2026-11-04 Issue #34 重复清理验收：GitHub Actions run `41711775108` 的 macOS 14 定向慢恢复 E2E 连续五轮均 PASS/EXIT 0，逐轮未见新增 Electron/Corvid 进程或隔离目录；没有复现历史 5 分钟停顿，全量 `npm test` 未运行，根因未知，Issue 继续开放。详见[验证记录](../reviews/verification-log.md)。
 
 - 2026-11-03 Issue #16 标签/空间控件辅助技术语义：Chromium Electron AX 树显示原 `tablist` 混入普通新建按钮、空间 `list` 直接包含按钮；现以具名分组和 `aria-current` 表达实际交互，并将含空态的扩展、模型端点、外部客户端集合改为分组。REA 本地 DOM 与 Kobra Composer 参考、CDP AX 证据和未覆盖 VoiceOver/Narrator/Orca 边界见[QA 记录](../qa/ui-visual-check.md#2026-11-03-浏览器标签与空间控件的辅助技术语义-issue-16)与[验证记录](../reviews/verification-log.md#2026-11-03-浏览器标签与空间控件辅助技术语义-issue-16)。
 - 本切片全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；45 条独立脚本与 8 项串行 `node:test`，共 53 项。首次运行发现本轮标签可访问名回归并修复；一次截图失败时清理本轮遗留的诊断 Electron 进程后，干净进程状态复跑通过。无模型/OAuth 请求。
