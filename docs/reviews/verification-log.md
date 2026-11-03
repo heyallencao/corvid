@@ -1,12 +1,19 @@
 # 验证记录
 
+## 2026-11-03 macOS 全屏 E2E 异步最大化恢复竞态（Issue #168）
+
+- 根因证据：隔离 Electron 45.2.1 中，关闭 HTML 全屏标签后原生 `BrowserWindow.isFullScreen()` 先变为 `false`，当时 `isMaximized()` 仍为 `false`，而 `window-state.json` 已保留原最大化状态；约 100ms 后原窗口恢复最大化，Corvid `/rooms` 全屏字段稍后才归零。产品状态最终恢复，失败源于测试仅等待原生全屏标志。
+- 修复：`tests/fullscreen-e2e.cjs` 通过 `app.browserWindow(shell)` 固定跟踪原窗口，等待该窗口恢复最大化，并同时等待所有窗口的 Corvid `fullscreen`/`pageFullscreen` 状态清零后再断言重启前状态。
+- 验收：`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 通过。随后 `env -u ELECTRON_RUN_AS_NODE npm test` 通过 `fullscreen-e2e.cjs`，继续在 `tests/pi-workbench-e2e.cjs:99` 因 `#pi-task-form .pi-primary-action` 超时；这属于开放 Issue #5，另一个会话在独立 worktree 修改相同工作台测试，本轮没有触碰。全量回归仍未完成。
+- 环境与边界：macOS、Electron 45.2.1、临时 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；未访问真实网站或个人数据，未调用 OAuth/模型。未验证 Windows/Linux、打包版与屏幕阅读器。
+
 ## 2026-11-03 原生菜单切片定向合同与 macOS 复核（Issue #162）
 
 - 静态/模块检查：`node --test tests/application-menu.test.mjs` 与 `node --test tests/window-shortcuts.test.mjs` 各 3/3 通过；`node --check desktop/main.cjs`、`node --check desktop/application-menu.cjs`、`node --check tests/application-menu-e2e.cjs` 和 `git diff --check` 通过。
 - 菜单 E2E 与修正：首轮真实 Electron E2E 在窗口菜单勾选状态断言失败。macOS 隔离原生菜单实操（System Events 选择“窗口 1”）及 Corvid `/windows` 状态复核确认焦点 API 已切至 `legacy-window`，但原生菜单仍勾选“窗口 2”（[Issue #167](https://github.com/heyallencao/corvid/issues/167)）。修正 radio 组同步为只勾选当前窗口；对应模块测试 3/3 通过，重跑后窗口菜单勾选断言通过。REA `observe_native_ui` 因 provider 无法读取目标进程启动时间而返回 `capability_unavailable`；实际截图与证据边界见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-corvid-原生窗口菜单焦点勾选-issue-167)。
 - 定向回归：修正 `POST /rooms` 测试夹具响应读取，并把 Agent Room 权限验证放在单窗口阶段；Playwright 菜单 callback 不会可靠地改变 macOS 多窗口原生焦点，不能用它模拟 OS 窗口切换。之后 `env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs` 通过，覆盖菜单树、动作、双窗口 callback 路由、Agent Room 权限状态、语言切换和重启保持；`env -u ELECTRON_RUN_AS_NODE node tests/browser-shortcuts-e2e.cjs` 通过。
 - 原生 macOS 复核：使用隔离临时数据启动 Electron，以 `System Events` 在真实“窗口”菜单中双向选择窗口，分别读取 `AXMenuItemMarkChar` 勾选与 Corvid `/windows` 焦点 ID；两个方向均一致。人工诊断脚本在菜单仍打开时由 `closeElectron` 超时后结束了本轮自启进程，但在退出前已读完证据；随后检查无残留 Electron。REA `observe_native_ui` 仍因 provider 无法读取进程启动时间而 `capability_unavailable`；此处不宣称 REA 原生观察。
-- 全量回归边界：`env -u ELECTRON_RUN_AS_NODE npm test` 未完成；前置用例继续通过后在 `tests/fullscreen-e2e.cjs:123` 失败。该用例隔离重跑两次仍失败，问题属于全屏窗口最大化状态/测试夹具，已登记中文 [Issue #168](https://github.com/heyallencao/corvid/issues/168)，不计入 #162 菜单 E2E 失败。
+- 全量回归边界：首次 `npm test` 曾在全屏测试的异步最大化断言失败，已由 [Issue #168](https://github.com/heyallencao/corvid/issues/168) 修正为等待原窗口恢复；后续完整运行已通过该测试，继续在 #5 的 `pi-workbench-e2e.cjs:99` 超时，见上方 #168 记录，不计入 #162 菜单 E2E 失败。
 - 未覆盖与限制：全套 `npm test`、VoiceOver、Windows/Linux、打包版、真实鼠标截图/像素与其他系统语言设置尚未完成；网页菜单的 EasyUI REA Evidence 只提供交互分组参考，不是系统菜单验收依据。本次未调用 OAuth 或真实模型。
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
