@@ -5,7 +5,9 @@
 - 变更：新增 `.github/workflows/issue87-full-regression.yml`。macOS 14 runner 执行 `npm ci` 后，顺序运行两轮完整 `npm test`；即使第一轮失败也会收集退出状态并继续第二轮。每轮结束后最多等待 10 秒检查进程名中含 Electron/Corvid 的残留，仅记录 PID/父 PID/进程名，不采集命令行；两轮日志作为 Actions artifact 保存。
 - 本地合同：基于 `c111f35` 的 PR #164 worktree 执行 `node --test tests/electron-startup.e2e.mjs`，9/9 通过；`node --check tests/electron-test-startup.cjs`、workflow YAML 解析、抽取的 bash 脚本 `bash -n` 与 `git diff --check` 通过。合同测试只启动受控 Node 子进程，不启动 Electron。
 - 完整回归：[GitHub Actions 41705755809](https://github.com/heyallencao/corvid/actions/runs/41705755809) 在 macOS 14 连续执行两轮。第一轮通过 `node:test`、RPC、library、SDK、下载、恢复、页面/窗口、全屏、多窗口等后，在 `tests/agent-rooms-panel-e2e.cjs:291` 失败：704px 窗口下 Agent 条目宽 265px，小于 280px 验收线。第二轮通过至 `tests/snapshot-e2e.cjs:108`，点击 fixture 未记录 `s1`。两轮各在第一个失败脚本后停止该轮的 `npm test`，但第二轮仍实际运行；每轮清理检查都报告无残留 Electron/Corvid 进程。三平台进程快照合同 [41705755710](https://github.com/heyallencao/corvid/actions/runs/41705755710) 均通过。
-- 边界：两轮全量回归均未完成，失败点与启动挂起历史不同；当前没有证据证明 #87 根因已定位或解决。Issue #87 保持开放，待先修复/稳定上述全量回归阻断后再复跑。
+- 最新 head 后续回归：[Actions 41706856953](https://github.com/heyallencao/corvid/actions/runs/41706856953) 两轮均未完成。第一轮在 `tests/rpc-e2e.cjs` 以临时目录清理 `fs.rmSync` 的 `ENOTEMPTY` 退出；日志没有显示清理前是否已有另一条测试错误，故原始失败原因未知。第二轮在 `tests/agent-rooms-panel-e2e.cjs:291` 再次因 704px 窗口下 Agent 条目宽 265px（门槛 280px）失败；该布局由独立 PR #189 跟踪。此次 `snapshot-e2e.cjs` 两轮均通过。三平台进程快照合同 [41706856947](https://github.com/heyallencao/corvid/actions/runs/41706856947) 均通过。
+- RPC 直接复验：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1，在 PR #164 当前 head 对 `env -u ELECTRON_RUN_AS_NODE node tests/rpc-e2e.cjs` 连续运行五次，五次 EXIT 0；未复现 CI 的 `ENOTEMPTY`。本机不同于 macOS 14 runner，不能据此解释或排除 runner 上的瞬时清理竞态。
+- 边界：两次 Actions 的连续全量回归均在各自首个失败后短路，未有一轮完整 `npm test` EXIT 0；失败点是回归阻断，未复现历史启动挂起。当前没有证据证明 #87 根因已定位或解决。Issue #87 保持开放。
 
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
