@@ -149,27 +149,38 @@ const safeStorage=createFakeSafeStorage();
   const afterRotation=JSON.parse(fs.readFileSync(rotatingPath,'utf8')).providers.rotating.encryptedCredential;
   assert.notEqual(afterRotation,beforeRotation,'rotated key material rewrites the encrypted credential record');
 
-  const secureLinuxBackends=['gnome_libsecret','kwallet','kwallet5','kwallet6'];
-  for(const backend of secureLinuxBackends){
-    const linuxDir=path.join(root,`linux-${backend}`);
-    const linuxStorage=createFakeSafeStorage({backend});
+  for(const providerTag of ['v11','v12']){
+    const legacyBackend=providerTag==='v12'?'basic_text':'gnome_libsecret';
+    const linuxDir=path.join(root,`linux-async-${providerTag}`);
+    const linuxStorage=createFakeSafeStorage({backend:legacyBackend,providerTag});
     const linuxStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:linuxStorage,platform:'linux'});
-    await linuxStore.modify('fixture-provider',()=>({type:'api_key',key:`secret-${backend}`}));
+    await linuxStore.modify('fixture-provider',()=>({type:'api_key',key:`secret-${providerTag}`}));
     const linuxCredentialBytes=fs.readFileSync(path.join(linuxDir,'agent-credentials.json'),'utf8');
-    assert.equal(linuxCredentialBytes.includes(`secret-${backend}`),false,`${backend} persists only encrypted credential data`);
-    assert.equal((await linuxStore.read('fixture-provider')).key,`secret-${backend}`,`${backend} can encrypt and decrypt a credential`);
+    assert.equal(linuxCredentialBytes.includes(`secret-${providerTag}`),false,`${providerTag} persists only encrypted credential data`);
+    assert.equal((await linuxStore.read('fixture-provider')).key,`secret-${providerTag}`,`${providerTag} can encrypt and decrypt a credential`);
   }
 
-  for(const backend of ['basic_text','unknown','future_secure_or_weak_backend',null]){
-    const linuxDir=path.join(root,`linux-rejected-${backend ?? 'missing'}`);
-    const seedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage,platform:'darwin'});
+  for(const {backend,providerTag} of [
+    {backend:'gnome_libsecret',providerTag:'v10'},
+    {backend:'basic_text',providerTag:'v10'},
+    {backend:'gnome_libsecret',providerTag:'v13'},
+    {backend:'gnome_libsecret',providerTag:Buffer.from([0xf6,0xb1,0xb2])},
+  ]){
+    const providerLabel=Buffer.isBuffer(providerTag)?'high-bit-v12':providerTag;
+    const rejectedWriteDir=path.join(root,`linux-new-rejected-${backend}-${providerLabel}`);
+    const rejectedWriteStore=createAgentCredentialStore({dataDir:rejectedWriteDir,safeStorage:createFakeSafeStorage({backend,providerTag}),platform:'linux'});
+    await assert.rejects(rejectedWriteStore.modify('fixture-provider',()=>({type:'api_key',key:'rejected-fallback-fixture'})),/无法确认系统密码管理器已保护/);
+    assert.equal(fs.existsSync(path.join(rejectedWriteDir,'agent-credentials.json')),false,`${backend}/${providerTag} does not create a credential file`);
+
+    const linuxDir=path.join(root,`linux-rejected-${backend}-${providerLabel}`);
+    const seedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({providerTag}),platform:'darwin'});
     await seedStore.modify('fixture-provider',()=>({type:'api_key',key:'existing-encrypted-fixture'}));
     const credentialPath=path.join(linuxDir,'agent-credentials.json');
     const originalBytes=fs.readFileSync(credentialPath);
-    const unsupportedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({backend}),platform:'linux'});
-    await assert.rejects(unsupportedStore.read('fixture-provider'),/Linux 当前没有可用的安全密码管理器/);
-    await assert.rejects(unsupportedStore.modify('fixture-provider',()=>({type:'api_key',key:'replacement-fixture'})),/Linux 当前没有可用的安全密码管理器/);
-    assert.deepEqual(fs.readFileSync(credentialPath),originalBytes,`${backend ?? 'missing'} leaves existing encrypted credentials byte-for-byte intact`);
+    const unsupportedStore=createAgentCredentialStore({dataDir:linuxDir,safeStorage:createFakeSafeStorage({backend,providerTag}),platform:'linux'});
+    await assert.rejects(unsupportedStore.read('fixture-provider'),/无法确认系统密码管理器已保护/);
+    await assert.rejects(unsupportedStore.modify('fixture-provider',()=>({type:'api_key',key:'replacement-fixture'})),/无法确认系统密码管理器已保护/);
+    assert.deepEqual(fs.readFileSync(credentialPath),originalBytes,`${backend}/${providerTag} leaves existing encrypted credentials byte-for-byte intact`);
   }
 
   const concurrentCredentialStore = createAgentCredentialStore({ dataDir: path.join(root, 'concurrent-credentials'), safeStorage });

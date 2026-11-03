@@ -4,7 +4,9 @@ const crypto = require('node:crypto');
 
 const LEGACY_SCHEMA_VERSION = 1;
 const SCHEMA_VERSION = 2;
-const SECURE_LINUX_BACKENDS = new Set(['gnome_libsecret', 'kwallet', 'kwallet5', 'kwallet6']);
+// Electron 45.2.1 / Chromium 156 async tags: v10 is the fixed-key POSIX fallback;
+// v11 is Secret Service and v12 is the Portal provider. Re-review on Electron upgrades.
+const SECURE_LINUX_ASYNC_PROVIDER_TAGS = new Set(['v11', 'v12']);
 const emptyState = () => ({ schemaVersion: SCHEMA_VERSION, providers: {} });
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 const throwIfAborted = signal => signal?.throwIfAborted?.();
@@ -105,12 +107,13 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { available = await safeStorage.isAsyncEncryptionAvailable(); }
     catch (error) { throw storageError('无法访问系统安全存储。', error); }
     if (!available) throw storageError('系统安全存储当前不可用。');
-    if (platform === 'linux') {
-      let backend;
-      try { backend = safeStorage.getSelectedStorageBackend?.(); }
-      catch (error) { throw storageError('无法确认 Linux 密码管理器状态。', error); }
-      // Electron may add backend identifiers; require a reviewed secure provider instead of trusting an unknown value.
-      if (!SECURE_LINUX_BACKENDS.has(backend)) throw storageError('Linux 当前没有可用的安全密码管理器，已禁止以弱保护方式保存账号授权。');
+  }
+
+  function ensureSecureLinuxCiphertext(encrypted) {
+    if (platform !== 'linux') return;
+    const tag = encrypted.subarray(0, 3).toString('latin1');
+    if (!SECURE_LINUX_ASYNC_PROVIDER_TAGS.has(tag)) {
+      throw storageError('Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。');
     }
   }
 
@@ -121,12 +124,14 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { encrypted = await safeStorage.encryptStringAsync(JSON.stringify(plainRecord)); }
     catch (error) { throw storageError('系统安全存储无法加密账号授权。', error); }
     if (!Buffer.isBuffer(encrypted) || !encrypted.length) throw storageError('系统安全存储没有返回有效的加密结果。');
+    ensureSecureLinuxCiphertext(encrypted);
     return { kind: plainRecord.kind, encryptedCredential: encrypted.toString('base64') };
   }
 
   async function decryptCredential(record) {
     await ensureSecureStorage();
     const encrypted = Buffer.from(record.encryptedCredential, 'base64');
+    ensureSecureLinuxCiphertext(encrypted);
     let result;
     try { result = await safeStorage.decryptStringAsync(encrypted); }
     catch (error) { throw storageError('系统安全存储无法解密已保存的账号授权。', error); }
