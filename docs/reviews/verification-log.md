@@ -5,6 +5,7 @@
 - 复现：迁移中断后，当前 `agent-credentials.json` 可为 schemaVersion 2，而 `.migration-backup` 保留旧 schemaVersion 1。Linux 异步安全存储可用但密文标记为固定口令回退 `v10` 时，provider 拒绝错误文本未匹配旧恢复分支的本地化字符串判断，导致恢复尝试使用旧备份覆盖当前密文；随后加密被再次拒绝，可能使较新的凭据丢失。
 - 修正：安全存储错误现在携带稳定 `error.code`，恢复逻辑按 `secure-storage-*` 错误码传播并保留两个文件，不再根据可翻译文案判断错误类别。非安全存储类格式损坏仍回退到备份，并继续完成加密迁移与回读校验。
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` EXIT 0。确定性假安全存储模拟 schemaVersion 2 的 `v10` 当前凭据和旧 plaintext backup，断言返回 `secure-storage-provider-unverified` 且当前文件、备份逐字节不变；另验证损坏 schemaVersion 2 格式仍可恢复旧备份并迁移成不含明文的 schemaVersion 2。未启动 Electron、未访问真实账号或模型。
+- 跨平台回归：代码提交 `00f0e7b` 对应的 [GitHub Actions 三平台凭据检查全部通过](https://github.com/heyallencao/corvid/actions/runs/41622464087)：macOS Keychain、Windows DPAPI、Ubuntu Secret Service。
 - 边界：provider 恢复路径为 Node 模块合同测试；真实 macOS/Windows/Linux safeStorage 行为继续由独立原生 runner 覆盖。本次没有验证签名打包及断电发生在文件系统各条写入指令时的持久化语义。
 
 
