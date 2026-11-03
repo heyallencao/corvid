@@ -8,6 +8,19 @@
 - 验证：本机 macOS、Node.js v24.14.1、Electron 45.2.1、隔离临时数据。`node tests/tab-ux-e2e.cjs`、`node tests/navigation-error-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/pi-workbench-e2e.cjs` 均 EXIT 0；全量 `env -u ELECTRON_RUN_AS_NODE npm test` 在清理诊断进程后 EXIT 0（45 条独立脚本 + 8 项 `node:test`，共 53 项）。标签 E2E 通过 `Accessibility.getFullAXTree` 断言分组角色与活动项；其余覆盖导航错误、Agent 空态/接管与对话续聊。首次全量运行暴露了临时增加标签名状态前缀导致的精确可访问名回归，已改为保留标题名并用 `aria-current` 另报当前状态；另一次截图错误发生时，本轮诊断 Electron 进程仍在运行，按 PID 清理后全量复验通过。
 - 限制：未运行 VoiceOver/Narrator/Orca；CDP AX 树不等同于真实屏幕阅读器语音/盲文输出。REA 目标发现 Evidence `ev_1f81589c3247e56ea4de1db93f239a52086654699750f538b047bcb5382897ef` 仅证明本地页面归属，不证明平台可访问性。
 
+## 2026-11-03 Chrome SQLite 损坏检测与安全拒绝（Issue #77）
+
+- 红测：在合成 Chrome Profile 的 `Cookies` SQLite 数据库中损坏名称索引页，同时保持 Cookie 主表可读。旧实现仍读出 100 条 Cookie 并显示“导入完成”，证明只 SELECT 主表不足以识别数据库完整性问题。
+- 修复：只读导入前对 History/Cookie 数据库执行 `PRAGMA quick_check`；检测到页/索引异常即拒绝导入。SQLite `BUSY/LOCKED` 提示用户完全退出 Chrome；`CORRUPT/NOTADB` 与完整性检查异常说明数据库可能损坏或格式不兼容，并明确本次未写源文件或所选类别。其他读取错误保持独立诊断。
+- 绿测：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 0（macOS、Node.js v24.14.1、Electron 45.2.1、隔离真实 Electron Profile）。E2E 断言损坏 Cookie 索引拒绝写入、既有 `library.json` 字节不变、目标 Cookie store 为空、损坏 Chrome Cookie 文件字节不变；既有导入/回滚/重启测试同时通过。`node --check desktop/chrome-import.cjs`、`node --check tests/chrome-import-e2e.cjs` 与 `git diff --check` 通过。
+- 远端主线复验：修复基于包含 PR #119 的 `f8cc34f` 重放后，再次运行定向 `chrome-import-e2e` 与完整 `env -u ELECTRON_RUN_AS_NODE npm test`；均 EXIT 0。全量覆盖 45 条独立脚本与 8 个串行 `node:test` 用例，共 53 项。
+- 锁竞争回归加入后，再次运行 `node --check tests/chrome-import-e2e.cjs`、定向 `chrome-import-e2e` 与完整 `env -u ELECTRON_RUN_AS_NODE npm test`；均 EXIT 0。完整套件仍为 53 项，新增测试确认预览后发生 `SQLITE_BUSY` 时导入失败关闭。
+- SQLite 占用回归：在完成 Chrome 来源预览、选中 Cookie 并同意敏感数据提示后，测试连接对合成 `Cookies` 数据库持有 `BEGIN EXCLUSIVE`，再提交导入；Electron 真实运行态收到 `SQLITE_BUSY`，UI 显示“可能仍被 Chrome 占用”，导入不报告成功，`library.json` 与目标 Cookie store 保持原状，Cookie 源文件字节不变。测试结束在 `finally` 回滚锁定连接。该测试证明提交阶段锁竞争的错误分类与失败关闭，不模拟真实 Chrome 进程锁行为。定向 `chrome-import-e2e` EXIT 0，包含损坏索引及锁竞争两条拒绝路径。
+- 本轮独立复验：本机 macOS、Node.js 24.14.1、Electron 45.2.1；修正来源预览测试等待 Cookie 分类启用的条件后，`node --check tests/chrome-import-e2e.cjs`、`git diff --check`、定向 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与完整 `env -u ELECTRON_RUN_AS_NODE npm test` 均 EXIT 0。完整套件通过 45 条独立脚本及 8 项串行 `node:test`，共 53 项。依赖使用隔离 worktree 内的本地硬链接副本；未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth、Provider 或模型。
+- UI/UE 参考：2026-11-03 09:20（Asia/Shanghai）通过 REA 受控 Chromium 156.0.8078.79 直接观察 Kobra Alert（`https://kobra.systems/components/alert`）。直接观察：AX 树中主内容使用命名为 `alert` 的语义区域呈现上下文消息，右侧可选 Error/Warning/Success/Info 四类预览（Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`）。推断：错误状态可明确区分级别并保留上下文说明；Corvid 按自身错误合同显示原因和恢复步骤，没有移植其代码/样式。未知：Kobra alert 的读屏实际播报、持久时间、关闭/键盘交互未验证；Rare UI 与本次错误态无更相关且可观察的切面，未扫描其他参考站点。
+- 限制：损坏由合成 SQLite 索引页注入，不是用户真实 Chrome 文件；未注入真实 Chrome 进程锁库、磁盘满、部分写入、进程崩溃或跨版本 Chrome schema。`quick_check` 不能修复损坏源库；Issue #77 继续开放，真实目标磁盘故障后的持久恢复仍未证明。
+
+
 ## 2026-11-03 Agent 凭据系统安全存储（Issue #110）
 
 - 实现：`agent-credentials.json` 升级到 schemaVersion 2，Provider 类型与 Electron 异步 `safeStorage` 密文分开保存。macOS/Windows 使用 Electron 系统密钥后端；Linux 检查后端，拒绝 `basic_text`、`unknown` 和未识别后端。安全存储未就绪时返回中文恢复提示，不创建明文新凭据。旧 schemaVersion 1、runtime `auth.json` 与自定义端点明文 Key 采用备份、加密、解密回读核验后再清理的迁移顺序；失败恢复旧文件。备份清理失败时保留备份供下次启动验证处理。

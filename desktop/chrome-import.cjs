@@ -65,6 +65,7 @@ function readHistory(directory) {
   let database;
   try {
     database=new DatabaseSync(file,{readOnly:true});
+    assertDatabaseIntegrity(database);
     const statement=database.prepare('SELECT url, title, last_visit_time FROM urls WHERE last_visit_time > 0 ORDER BY last_visit_time DESC');
     statement.setReadBigInts(true);
     const rows=statement.all();
@@ -74,20 +75,39 @@ function readHistory(directory) {
       const visitedAt=new Date(millis).toISOString();
       return {url,title:typeof row.title==='string'&&row.title?row.title:url,visitedAt};
     }).filter(Boolean).sort((a,b)=>a.visitedAt.localeCompare(b.visitedAt));
-  } catch(error) { throw new Error(`无法读取 Chrome 历史数据库（请先关闭 Chrome 后重试）：${error.message}`); }
+  } catch(error) { throw sqliteReadError('Chrome 历史',error); }
   finally { database?.close(); }
 }
 
-function readCookieRows(directory) {
+function assertDatabaseIntegrity(database){
+  const issues=database.prepare('PRAGMA quick_check').all().map(row=>Object.values(row)[0]).filter(result=>result!=='ok');
+  if(!issues.length)return;
+  const error=new Error(issues.slice(0,3).join('; ').slice(0,240));
+  error.corvidSQLiteCorruption=true;
+  throw error;
+}
+
+function sqliteReadError(label,error){
+  if(error.corvidSQLiteCorruption || error.errcode===11 || error.errcode===26){
+    return new Error(`${label}数据库可能已损坏或格式不受支持。Corvid 未修改 Chrome 源文件，也未导入所选类别。请先备份 Chrome 资料，再从健康的 Profile 副本重试。${error.message?`（${error.message}）`:''}`);
+  }
+  if(error.errcode===5 || error.errcode===6 || /database is (?:locked|busy)/i.test(error.message||'')){
+    return new Error(`无法读取${label}数据库（可能仍被 Chrome 占用）。请完全退出 Chrome 后重试。${error.message?`（${error.message}）`:''}`);
+  }
+  return new Error(`无法读取${label}数据库；Corvid 未修改 Chrome 源文件或写入所选类别。${error.message?`（${error.message}）`:''}`);
+}
+
+function readCookieRows(directory,{checkIntegrity=false}={}) {
   const file=sourceFile(directory,'Cookies');
   if(!fs.existsSync(file))return [];
   sourceFile(directory,'Cookies-wal');sourceFile(directory,'Cookies-shm');
   let database;
   try{
     database=new DatabaseSync(file,{readOnly:true});
+    if(checkIntegrity)assertDatabaseIntegrity(database);
     const statement=database.prepare('SELECT * FROM cookies');statement.setReadBigInts(true);
     return statement.all();
-  }catch(error){throw new Error(`无法只读读取 Chrome Cookie 数据库（请先关闭 Chrome 后重试）：${error.message}`);}
+  }catch(error){throw sqliteReadError('Chrome Cookie',error);}
   finally{database?.close();}
 }
 
@@ -140,10 +160,10 @@ function decodeCookieRows(rows,key){
   return {cookies,unsupported};
 }
 
-function readCookiesWithKey(directory,key){return decodeCookieRows(readCookieRows(directory),key);}
+function readCookiesWithKey(directory,key){return decodeCookieRows(readCookieRows(directory,{checkIntegrity:true}),key);}
 
 async function readCookies(directory){
-  const rows=readCookieRows(directory),key=await chromeCookieKey();
+  const rows=readCookieRows(directory,{checkIntegrity:true}),key=await chromeCookieKey();
   return decodeCookieRows(rows,key);
 }
 
