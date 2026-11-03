@@ -8,7 +8,45 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
+const { closeElectron, launchElectron, startupStage, waitForControl } = require('./electron-test-startup.cjs');
+const { createStartupProgress } = require('../desktop/startup-progress.cjs');
+
+test('主进程启动阶段仅在测试模式原子记录并限制文件权限', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-progress-'));
+  const progressPath = path.join(dataDir, 'startup-progress.json');
+  try {
+    createStartupProgress({ dataDir, enabled: false })('must-not-write');
+    assert.equal(fs.existsSync(progressPath), false);
+    const writeProgress = createStartupProgress({ dataDir, enabled: true });
+    writeProgress('main-module-loaded');
+    assert.equal(JSON.parse(fs.readFileSync(progressPath, 'utf8')).stage, 'main-module-loaded');
+    writeProgress('control-file-written');
+    assert.equal(JSON.parse(fs.readFileSync(progressPath, 'utf8')).stage, 'control-file-written');
+    writeProgress('startup-complete');
+    writeProgress('tab-profile-extensions');
+    assert.equal(JSON.parse(fs.readFileSync(progressPath, 'utf8')).stage, 'startup-complete');
+    assert.equal(fs.statSync(progressPath).mode & 0o777, 0o600);
+    assert.deepEqual(fs.readdirSync(dataDir), ['startup-progress.json']);
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('启动超时诊断读取最后阶段且忽略损坏或缺失的阶段文件', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-stage-'));
+  try {
+    assert.equal(startupStage(dataDir), '无阶段记录');
+    fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), JSON.stringify({ stage: 'tab-bootstrap-page-debugger', pid: 4321, token: 'secret' }));
+    assert.equal(startupStage(dataDir), 'tab-bootstrap-page-debugger');
+    assert.equal(startupStage(dataDir, 4322), '没有当前主进程的阶段记录');
+    fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), JSON.stringify({ stage: 'leak-secret\n', pid: 4321 }));
+    assert.equal(startupStage(dataDir, 4321), '阶段不可用');
+    fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), '{');
+    assert.equal(startupStage(dataDir), '阶段记录不可读取');
+  } finally {
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
 
 test('Electron 启动失败报告阶段和隔离数据诊断', async () => {
   await assert.rejects(
@@ -47,10 +85,12 @@ test('control.json 超时显示进程状态且不泄露凭据', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-diagnostic-'));
   try {
     fs.writeFileSync(path.join(dataDir, 'control.json'), JSON.stringify({ token: 'stale-secret' }));
+    fs.writeFileSync(path.join(dataDir, 'startup-progress.json'), JSON.stringify({ stage: 'restore-session-tab', pid: 4321, token: 'stage-secret' }));
     const app = { process: () => ({ exitCode: null, signalCode: null, pid: 4321, killed: false }) };
     await assert.rejects(
       () => waitForControl(app, dataDir, { label: 'control-fixture', previousToken: 'stale-secret', timeoutMs: 30 }),
       error => error.message.includes('阶段=等待 control.json')
+        && error.message.includes('主进程启动位置=restore-session-tab')
         && error.message.includes('pid=4321 仍在运行')
         && !error.message.includes('stale-secret'),
     );

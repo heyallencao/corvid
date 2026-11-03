@@ -1065,3 +1065,38 @@
 - 修正：会话 dispose 统一等待并捕获同步/异步错误，每个 session 最多尝试一次 dispose；完成/失败回调有终端错误处理，清理异常通过现有任务事件以 zh-CN/en 提示。已生成回复仍保留，但标记 `stopUnconfirmed` 并禁止续聊。只有凭据撤销成功才移除内存凭据映射；任务删除在撤销失败时保留记录并返回失败，工作台重新渲染本地化错误事件，用户可再次重试。
 - 验证：`node tests/agent-runtime-contract-e2e.cjs` EXIT 0；合同断言覆盖回复保留、续聊禁用、异步 dispose/revoke reject 不触发 `unhandledRejection`、撤销重试失败后任务和凭据句柄仍保留、再次成功撤销后才删除记录，以及 zh-CN/en 资源。`node --check desktop/agent-workbench.cjs`、`desktop/renderer.js`、`desktop/locales.js`、测试脚本与 `git diff --check` 均通过。未运行 Electron UI 或全量回归；本轮未连接真实模型或 OAuth。
 - 界面参考与限制：复用本记录中 2026-11-03 Kobra Alert 页面直接观察（`https://kobra.systems/components/alert`，REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`）：AX 树显示命名为 `alert` 的上下文消息区域，并列出 Error/Warning/Success/Info 预览。直接观察仅限该页面 AX 区域和预览；本次参考用于核对错误信息沿用 Corvid 现有 alert 语义，不复制代码或样式。未知项仍包括实际屏幕阅读器播报与不同窄窗下的显示；本轮没有运行真实 Electron、截图或读屏检查。
+## 2026-11-03 最新主线全量回归与桌面锁屏干扰（Issue #87）
+
+- 基线：隔离 worktree 基于 `origin/main` `56b3089`（包含 PR #152 与 #153）；通过临时 `node_modules` 链接复用项目依赖，测试后自动移除。执行 `env -u ELECTRON_RUN_AS_NODE npm test`，在串行 `node:test` 阶段约 32 秒后 EXIT 1，19/22 项通过、3 项失败，因此尚未运行后续 46 条独立 E2E 脚本。
+- 失败：`tests/browser.e2e.mjs` 报 `Input focus was not acquired`；`tests/dialogs.e2e.mjs` 的页面 alert 未触发；`tests/uploads.e2e.mjs` 的文件选择器等待超时。该批用例均依赖桌面焦点/原生窗口交互。
+- 环境观察：测试结束后 Electron、Node 测试进程均已退出，临时依赖链接已清理。随后的 CUA 桌面状态查询明确返回“Mac is locked and automatic unlock could not unlock it”；这一状态与三项焦点失败一致，但不能证明每项失败都只由锁屏导致，也不能解释 Issue #87 历史上的启动挂起。
+- 启动诊断合同：同一轮中 `tests/electron-startup.e2e.mjs` 的 6 项合成启动/清理测试全部通过；真实 Library 与慢恢复 E2E 因 node:test 阶段失败而未运行。本轮不计为全量回归通过，也未复现 Issue #87 的 Electron 启动挂起。真实 Electron 复验等待桌面解锁后重新执行。
+- 解锁后续跑核验：用户回复已解锁、其他会话确认 Electron 桌面空闲后，再次以同一 worktree 和临时依赖链接运行 `env -u ELECTRON_RUN_AS_NODE npm test`；测试后依赖链接自动移除。实际仅 19/22 项通过，仍是 browser 输入焦点、dialogs alert 和 uploads 文件选择器三项失败，6 项 `electron-startup.e2e.mjs` 合成诊断继续通过，后续 46 条独立脚本仍未开始。CUA 随后核验却明确报告 Mac 仍锁屏且自动解锁失败，因此这次交互失败仍不能作为产品缺陷证据；测试中有 Electron 成功写出 `control.json`，未复现启动挂起。下一步需由用户在本机实际解锁后再做 UI/Electron 回归；启动挂起根因仍未定位。
+
+## 2026-11-03 启动挂起阶段现场记录补充（Issue #87）
+
+- 改动：主进程仅在 `CORVID_TEST_MODE=1` 时用原子 rename 在隔离数据目录更新 `startup-progress.json`，权限设为 0600；覆盖主模块加载、app ready、会话读取、窗口 `loadFile`、恢复标签页的扩展加载与 debugger/bootstrap、初始 Room、服务监听和 `control.json` 写入，启动完成后冻结阶段值。启动超时错误新增最后阶段字段，并按 Electron 子进程 PID 忽略旧进程记录；阶段记录解析只打印阶段名，不打印记录其他字段或凭据。正常用户运行不启用阶段文件。
+- 验证：`node --check desktop/main.cjs`、`node --check desktop/startup-progress.cjs`、`node --check tests/electron-test-startup.cjs` 均通过；`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 8/8 通过，覆盖阶段记录禁用/启用、原子更新、0600 权限、临时文件清理、缺失/损坏/旧 PID/非法阶段记录、超时阶段显示及凭据不泄露；`git diff --check` 通过。
+- 限制：本机 CUA 仍报告 macOS 锁屏。本轮没有启动真实 Electron，也没有运行完整 `npm test`；阶段写入通过独立模块的合成测试核验，尚未用真实 Electron 证明所有启动阶段均按预期更新。Issue #87 的历史挂起仍未复现，根因未确定。
+
+## 2026-11-03 解锁后全量回归与真实启动阶段校验（Issue #87）
+
+- 环境：macOS；CUA 状态查询不再报告锁屏；Node.js v24.22.1、Electron 45.2.1；隔离 worktree `/private/tmp/corvid-issue87-current-main`、隔离临时 Corvid 数据目录；测试通过临时 `node_modules` 链接复用仓库依赖，退出时自动移除。
+- 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，24 项串行 `node:test` 与 43 条独立脚本共 67 项通过；覆盖慢恢复、Library、Agent、MCP、Chrome 导入和本地模型 fixture 等路径。本轮没有触发模型 OAuth。
+- 真实启动证据：之后单独运行 `env -u ELECTRON_RUN_AS_NODE node --test tests/browser.e2e.mjs`，1/1 通过；该真实 Electron 用例现在等待并检查隔离目录中的 `startup-progress.json`，确认记录到 `startup-complete`，PID 与 Electron 主进程一致且记录不含凭据。`tests/electron-startup.e2e.mjs` 另有 8/8 合成诊断测试通过，覆盖原子写入、权限、旧 PID 与非法阶段处理。
+- 清理与限制：临时依赖链接已移除，工作区最初被 Chrome 导入 E2E 重生成的两张 Issue #129 截图已按已提交版本还原；本次测试进程退出。完整回归连续成功一次，但没有复现 Issue #87 历史启动挂起，也未证明根因；持续间歇挂起仍由该 Issue 跟踪。
+- 交付：PR #155《补充 Electron 启动阶段现场诊断》已于 2026-11-03 squash 合并，合并提交 `0bf18f8a34513f3db07d2e8189c7c6cb9fafb31f`；Issue #87 保持开放。
+
+## 2026-11-03 慢恢复后的 Electron 清理重复验证（Issue #34）
+
+- 基线：最新主线 `c82e7e5`（含 PR #155 启动阶段记录）；隔离 worktree、隔离 Corvid 临时数据目录与本地 HTTP gate。
+- 验证：通过临时 `node_modules` 符号链接复用依赖，连续执行 `env -u ELECTRON_RUN_AS_NODE node tests/restore-loading-e2e.cjs` 五次；每次启动两次真实 Electron、释放慢页面 gate、验证会话恢复和关闭，均输出 PASS 且命令退出码为 0。此前同一代码切片的完整 `npm test` 另有 EXIT 0（24 项 `node:test` + 43 条独立脚本，共 67 项，见本文件上方 Issue #87 记录）。
+- 清理与限制：循环后无 `restore-loading-e2e` / `corvid-restore-loading` 测试进程、临时数据目录或依赖链接。未复现历史上 PASS 后继续挂起的现象；五次定向运行不能解释历史根因，Issue #34 保持开放，不做根因已解决的结论。
+
+## 2026-11-03 解锁后最新主线完整串行回归（Issue #87）
+
+- 环境：基于最新 `origin/main` `c30e167`（PR #160）的独立 worktree；macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；按锁文件执行 `npm ci`，测试使用隔离临时数据目录与本地 fixture。
+- 全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；24 项串行 `node:test` 与 50 条独立 E2E 脚本，共 74 项通过。包含此前锁屏期间未通过的浏览器输入焦点、页面 alert 与文件选择器路径，也覆盖慢恢复、全屏/多窗口、Chrome 导入、Agent、MCP、模型偏好与本地化。
+- 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
+- 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
+- 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。

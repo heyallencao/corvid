@@ -7,8 +7,10 @@ const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
+const { createStartupProgress } = require('./startup-progress.cjs');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
+const startupProgress = createStartupProgress({ dataDir, enabled: process.env.CORVID_TEST_MODE === '1', onError: error => console.error(`Corvid test startup progress could not be saved: ${error.message}`) });
 let dataDirectoryError = null;
 try {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -27,6 +29,7 @@ try {
   dataDirectoryError = new Error(`Corvid 无法使用数据目录：${dataDir}\n请检查当前用户是否有读取、写入和执行权限，然后重试。\n系统错误：${error.message}`);
 }
 
+if (!dataDirectoryError) startupProgress('main-module-loaded');
 if (dataDirectoryError) {
   console.error(dataDirectoryError.message);
   void app.whenReady().then(() => {
@@ -386,6 +389,7 @@ if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Er
 const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
 async function loadProfileExtensions(profileId){
+  startupProgress('tab-profile-extensions');
   const browserSession=session.fromPartition(partitionFor(profileId));
   for(const extension of managedExtensions.list(profileId).filter(item=>item.enabled)){
     if(browserSession.extensions.getExtension(extension.id))continue;
@@ -687,8 +691,11 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   tab.bootstrap=(async()=>{
   // A newly created WebContents does not answer Page.enable until its first
   // document exists. Bind the debugger before navigating to the requested URL.
+  startupProgress('tab-bootstrap-first-document');
   await view.webContents.loadURL('about:blank');
+  startupProgress('tab-bootstrap-page-debugger');
   await pageDebugger.ensure(view.webContents,changed);
+  startupProgress('tab-bootstrap-start-page');
   await installHomeSurface();
   view.webContents.on('page-title-updated',(_event,title) => { if (tab.visitId) library.title(tab.visitId,title); changed(); });
   view.webContents.on('page-favicon-updated',(_event,favicons) => { if (!Array.isArray(favicons) || !favicons.length) return; tab.faviconUrl=favicons[0]; changed(); });
@@ -1357,6 +1364,7 @@ function errorCode(message) {
   return 'CORVID_DESKTOP_ERROR';
 }
 async function startServer() {
+  startupProgress('control-server-listen');
   server=http.createServer(async (req,res) => {
     res.setHeader('Content-Type','application/json');
     try {
@@ -1395,6 +1403,7 @@ async function startServer() {
   await new Promise((resolve,reject) => {server.once('error',reject);server.listen(Number(process.env.CORVID_PORT || 0),'127.0.0.1',resolve);});
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};
   fs.writeFileSync(connectionPath,JSON.stringify(connection),{mode:0o600}); fs.chmodSync(connectionPath,0o600);
+  startupProgress('control-file-written');
 }
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
@@ -1435,7 +1444,9 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
   browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents,()=>record);
+  startupProgress('shell-window-load-file');
   await browserWindow.loadFile(path.join(__dirname,'index.html'));
+  startupProgress('shell-window-ready');
   return record;
 }
 async function closeWindowRecord(record) {
@@ -1453,6 +1464,7 @@ async function closeWindowRecord(record) {
   saveWindowState();
 }
 app.whenReady().then(async () => {
+  startupProgress('app-ready-handler');
   fs.mkdirSync(dataDir,{recursive:true});
   ipcMain.handle('shell-action',(event,method,args) => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
@@ -1478,6 +1490,7 @@ app.whenReady().then(async () => {
     if(!tab || typeof message!=='string' || typeof defaultPrompt!=='string') {event.returnValue=null;return;}
     try {pageDebugger.openPrompt(event.sender,message,defaultPrompt,value=>{event.returnValue=value;});} catch {event.returnValue=null;}
   });
+  startupProgress('read-session-state');
   const saved=readSavedRooms();
   const savedStates=readWindowStates();
   const savedWindows=Array.isArray(saved?.windows) ? saved.windows : null;
@@ -1489,6 +1502,7 @@ app.whenReady().then(async () => {
     const savedState=savedStates.find(entry=>entry.id===plan.id) || savedStates[index];
     const stateBounds=savedState?.bounds;
     const bounds=stateBounds ? (stateBounds.x!==undefined?{x:stateBounds.x,y:stateBounds.y,width:stateBounds.width,height:stateBounds.height}:{width:stateBounds.width,height:stateBounds.height}) : {width:1280,height:850};
+    startupProgress('restore-shell-window');
     const record=await createWindowRecord(bounds,plan.id);
     if(stateBounds?.maximized) record.browserWindow.maximize();
     record.plan=plan;
@@ -1509,7 +1523,10 @@ app.whenReady().then(async () => {
       focusWindow(ownerRecord);
       const s={id:old.id,name:old.name,profileId,windowId:ownerRecord.id,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null};
       rooms.push(s);
-      for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true});
+      for (const t of old.tabs || []) {
+        startupProgress('restore-session-tab');
+        await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true});
+      }
       s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null;
     }
     for (const record of windowRecords.values()) {
@@ -1527,11 +1544,13 @@ app.whenReady().then(async () => {
   // least one user room in the focused window.
   const primary=activeRecord();
   focusWindow(primary);
-  if (!rooms.length) await createRoom('我的空间','user');
+  if (!rooms.length) { startupProgress('create-initial-room'); await createRoom('我的空间','user'); }
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
   restoring = false;
   for (const record of windowRecords.values()) update(record);
+  startupProgress('restoration-complete');
   await startServer();
+  startupProgress('startup-complete');
   console.log(`Corvid control: ${connectionPath}`);
 }).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox('Corvid 启动失败',error.message);app.exit(1);});
 app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});

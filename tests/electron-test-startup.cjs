@@ -58,10 +58,23 @@ function controlState(dataDir) {
   }
 }
 
+function startupStage(dataDir, expectedPid) {
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(dataDir, 'startup-progress.json'), 'utf8'));
+    if (Number.isInteger(expectedPid) && value.pid !== expectedPid) return '没有当前主进程的阶段记录';
+    return typeof value.stage === 'string' && /^[a-z0-9-]{1,80}$/.test(value.stage) ? value.stage : '阶段不可用';
+  } catch (error) {
+    return error.code === 'ENOENT' ? '无阶段记录' : '阶段记录不可读取';
+  }
+}
+
 function startupError({ label, stage, app, dataDir, startedAt, cause, cleanupError }) {
+  let child;
+  try { child = app?.process?.(); } catch {}
   return new Error([
     `Electron E2E 启动失败：${label}`,
     `阶段=${stage}；耗时=${Date.now() - startedAt}ms；数据目录=${dataDir}`,
+    `主进程启动位置=${startupStage(dataDir, child?.pid)}`,
     `control.json=${controlState(dataDir)}；主进程=${processState(app)}`,
     `窗口=${windowState(app)}；主进程最近日志：${recentLogs(app)}`,
     `原因：${cause?.message || cause}`,
@@ -176,4 +189,4 @@ async function closeElectron(app, { gracefulTimeoutMs = 3000, terminateTimeoutMs
   throw new Error(`Electron E2E 清理异常：${reason}；已发送 ${termination} 结束 pid=${child.pid}；关闭前进程=${processBeforeTermination}；窗口=${windowsBeforeTermination}；日志=${logsBeforeTermination}`);
 }
 
-module.exports = { closeElectron, launchElectron, waitForControl };
+module.exports = { closeElectron, launchElectron, startupStage, waitForControl };
