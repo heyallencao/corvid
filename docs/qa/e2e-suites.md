@@ -15,7 +15,7 @@
 
 | # | 测试入口 | 验证内容 | 关键限制 |
 | --- | --- | --- | --- |
-| 1 | `tests/browser.e2e.mjs` | 真实 Electron + 本地夹具：未认证请求返回 401、`control.json` 权限 0600、创建两个 Room、同 Profile 跨 Room Cookie 共享、Snapshot/fill/click、后台 Room 不影响前台、`yieldControl` 等待进行中动作、接管后拒绝新动作、`resumeControl`、`evaluate` 超时字段、风险态阻止动作、晚到结果、已交还 Room 不被 Agent 删除、`/shutdown` 清理。 | 只用本地夹具；单进程；无崩溃/强杀；不涉及系统对话框；macOS。 |
+| 1 | `tests/browser.e2e.mjs` | 真实 Electron + 本地夹具：未认证请求返回 401、`control.json` 权限 0600、隔离目录写入当前主进程 PID 匹配的 `startup-complete` 记录且不含凭据、创建两个 Room、同 Profile 跨 Room Cookie 共享、Snapshot/fill/click、后台 Room 不影响前台、`yieldControl` 等待进行中动作、接管后拒绝新动作、`resumeControl`、`evaluate` 超时字段、风险态阻止动作、晚到结果、已交还 Room 不被 Agent 删除、`/shutdown` 清理。 | 只用本地夹具；单进程；无崩溃/强杀；不涉及系统对话框；macOS。 |
 | 2 | `tests/dialogs.e2e.mjs` | 页面 alert/confirm/prompt 与触发动作同时挂起时的观察与应答；prompt 默认值与取消返回 `null`；连续两个对话框；HTTP 请求中断后新连接可继续应答。 | 仅顶层文档；Electron 的 `prompt` 由 preload 同步桥提供；跨 frame、应用重启、调试器被外部工具分离未验证。 |
 | 3 | `tests/electron-startup.e2e.mjs` | 启动与清理诊断：Playwright launch/首个窗口失败分阶段、读取隔离数据目录中的当前主进程最后启动阶段、control.json 新凭据超时、旧 token 不被误认、主进程提前退出、清理超时后结束挂起子进程，以及正常关闭后取消未使用的回退 timer；错误不得暴露凭据。 | 合成 launcher、阶段记录模块与 Node 子进程 fixture；本文件的合成用例不启动真实 Electron，也不声称复现真实启动挂起。 |
 | 4 | `tests/uploads.e2e.mjs` | `setInputFiles` 多文件/单文件/空数组清空、相对路径/缺失路径/`multiple` 约束；同源 iframe 与开放 Shadow DOM；frame 文档替换后引用失效；`waitForFileChooser` 的 arm/click/setFiles/cancel、动态 input、节点移除、交还与超时。 | 无目录上传、跨源 frame、原生选择器 UI；清空文件输入使用非 `isTrusted` 合成事件；本地夹具。 |
