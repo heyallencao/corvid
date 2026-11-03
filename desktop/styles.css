@@ -190,15 +190,15 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #browser-shell { min-width: 0; margin-left: var(--sidebar-width); background: var(--surface); }
 #tabs { height: 40px; display: flex; align-items: stretch; gap: 3px; overflow: auto; padding: 4px 10px 0; background: var(--surface-soft); white-space: nowrap; scrollbar-width: thin; }
 .tab { height: 36px; min-width: 68px; max-width: 230px; display: flex; align-items: center; border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0; color: var(--text-secondary); }
-.tab[aria-selected="true"] { border-color: var(--line); background: var(--surface); color: var(--text); }
+.tab[data-active="true"] { border-color: var(--line); background: var(--surface); color: var(--text); }
 .tab:hover { background: var(--tab-hover); }
-.tab[aria-selected="true"]:hover { background: var(--surface); }
+.tab[data-active="true"]:hover { background: var(--surface); }
 .tab-main { height: 100%; min-width: 0; flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 3px 0 10px; overflow: hidden; }
 .tab-main:hover { background: transparent; }
 .tab .favicon, .tab .pin-icon { width: 15px; height: 15px; flex: none; object-fit: contain; }
 .tab-title { overflow: hidden; color: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .tab-close { width: 24px; height: 24px; flex: none; margin-right: 4px; padding: 0; color: var(--text-muted); opacity: 0; }
-.tab:hover .tab-close, .tab[aria-selected="true"] .tab-close { opacity: 1; }
+.tab:hover .tab-close, .tab[data-active="true"] .tab-close { opacity: 1; }
 .tab-close:hover { background: var(--tab-close-hover); color: var(--text); }
 .tab.pinned { min-width: 40px; width: 42px; }
 .tab.dragging { opacity: .55; }

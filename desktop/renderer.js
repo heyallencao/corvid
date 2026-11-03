@@ -321,7 +321,7 @@ async function renderPiCustomEndpoints(){
     const catalog=await api.invoke('piModels');
     if(!catalog.endpoints.length){const empty=document.createElement('p');empty.className='pi-endpoint-empty';empty.textContent='还没有自定义端点。添加后，模型会出现在 Corvid Agent 模型选择器中。';list.append(empty);return;}
     for(const endpoint of catalog.endpoints){
-      const row=document.createElement('div');row.className='pi-endpoint-row';row.setAttribute('role','listitem');
+      const row=document.createElement('div');row.className='pi-endpoint-row';
       const info=document.createElement('div'),name=document.createElement('strong'),details=document.createElement('span');name.textContent=endpoint.name;details.textContent=`${endpoint.baseUrl} · ${endpoint.modelIds.join(', ')}${endpoint.configuredKey?' · API Key 已保存':''}`;info.append(name,details);
       const edit=button('编辑',()=>{document.querySelector('#pi-endpoint-id').value=endpoint.id;document.querySelector('#pi-endpoint-name').value=endpoint.name;document.querySelector('#pi-endpoint-url').value=endpoint.baseUrl;document.querySelector('#pi-endpoint-key').value='';document.querySelector('#pi-endpoint-model-ids').value=endpoint.modelIds.join('\n');document.querySelector('#pi-endpoint-clear-key').checked=false;document.querySelector('#pi-endpoint-form-title').textContent='编辑自定义端点';document.querySelector('#pi-endpoint-error').textContent='';document.querySelector('#pi-endpoint-name').focus();});edit.type='button';
       const remove=button('移除',async()=>{if(!window.confirm(`移除“${endpoint.name}”端点？已有对话记录不会删除。`))return;remove.disabled=true;try{await api.invoke('removePiEndpoint',{id:endpoint.id});await renderPiCustomEndpoints();await renderPiModelControls(document.querySelector('.pi-model-controls'));}catch(error){remove.disabled=false;document.querySelector('#pi-endpoint-error').textContent=userFacingAgentError(error);}});remove.type='button';
@@ -440,7 +440,7 @@ async function renderProfileExtensions(){
   const {extensions}=await api.invoke('listProfileExtensions',{profileId:settingsProfileId});
   if(!extensions.length){const empty=document.createElement('p');empty.className='empty-extension-list';empty.textContent='尚未导入扩展。';list.append(empty);return;}
   for(const extension of extensions){
-    const row=document.createElement('article');row.className='profile-extension';row.setAttribute('role','listitem');
+    const row=document.createElement('article');row.className='profile-extension';
     const heading=document.createElement('div');heading.className='profile-extension-heading';
     const title=document.createElement('strong');title.textContent=extension.name;heading.append(title);
     const version=document.createElement('span');version.textContent=`v${extension.version} · MV${extension.manifestVersion}`;heading.append(version);row.append(heading);
@@ -665,9 +665,10 @@ const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.
 let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
 function tabElement(tab, room){
   const el=document.createElement('div');
-  el.className=tab.pinned?'tab pinned':'tab'; el.setAttribute('role','tab'); el.setAttribute('aria-selected',tab.active?'true':'false'); el.dataset.tabId=tab.id;
+  el.className=tab.pinned?'tab pinned':'tab'; el.dataset.active=String(tab.active); el.dataset.tabId=tab.id;
   if(tab.pinned) el.dataset.pinned='true';
   const main=document.createElement('button'); main.type='button'; main.className='tab-main'; main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');
+  if(tab.active)main.setAttribute('aria-current','page');
   if(tab.pinned){ const pin=document.createElement('img'); pin.className='pin-icon'; pin.alt='已固定'; pin.title='已固定'; pin.draggable=false; pin.src=PIN_ICON; main.append(pin); }
   const icon=document.createElement('img'); icon.className='favicon'; icon.alt=''; icon.draggable=false; icon.src=tab.faviconUrl || FALLBACK_FAVICON;
   icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};
@@ -727,7 +728,7 @@ function openTabMenu(event,tab,trigger){
   for(const item of items){
     if(item.separator){const rule=document.createElement('div');rule.className='menu-separator';menu.append(rule);continue;}
     const entry=document.createElement('button');entry.type='button';entry.className='menu-item';entry.textContent=item.label;entry.setAttribute('role','menuitem');
-    entry.onclick=async()=>{closeTabMenu({restoreFocus:true});controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}finally{const focusTarget=document.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"] .tab-main`)||document.querySelector('.tab[aria-selected="true"] .tab-main')||document.querySelector('#new-tab');focusTarget?.focus();}};
+    entry.onclick=async()=>{closeTabMenu({restoreFocus:true});controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}finally{const focusTarget=document.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"] .tab-main`)||document.querySelector('.tab[data-active="true"] .tab-main')||document.querySelector('#new-tab');focusTarget?.focus();}};
     menu.append(entry);
   }
   menu.hidden=false;

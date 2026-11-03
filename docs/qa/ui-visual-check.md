@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 浏览器标签与空间控件的辅助技术语义（Issue #16）
+
+- Corvid 运行态：隔离 Electron 45.2.1 / Chrome 156.0.8078.75，`desktop/index.html`，REA 目标 Evidence `ev_1f81589c3247e56ea4de1db93f239a52086654699750f538b047bcb5382897ef`；被动 DOM Evidence `ev_8c9f4ce02b8bd6f50d425c60b49e3ce5a68d873048ae156cee4b4db2236b4893`（2026-11-03 01:22:13 UTC）。REA 仅观察本地 `file://` shell 的 DOM 树，脚本/资源受到策略过滤，不执行点击，也不提供可访问性树或 VoiceOver 语音。
+- 参考：Kobra `/components/composer`，REA controlled replay Evidence `ev_668bf2245d384ec9265daab73179d0986212ea9968e2b05000bd13234459f8f9`（2026-11-03；REA 未返回精确观察时刻）。直接可访问性树显示两个有名称的文本框（Subject、Message）及命名操作按钮；页面加载后未操作表单。仅借鉴其控件名称清楚、语义与用途相符；该组件是邮件撰写示例，不作为 Corvid 交互需求。
+- 发现与修正：Corvid 原把包含普通“新建标签”按钮的容器标成 `tablist`，标签项还有独立的切换与关闭按钮；空间栏则把空间按钮放进 `list`。现改为具名 `group`，活动标签与空间用 `aria-current="page"` 标示；扩展、模型端点与外部客户端的动态集合也统一使用具名分组，避免空态段落或非 listitem 子项落入 `list`。现有逐项 Tab、切换、关闭与快捷菜单行为保留。
+- 验证：`tests/tab-ux-e2e.cjs` 通过 Chromium `Accessibility.getFullAXTree` 断言“标签页”“空间”均为具名 `group`，不存在 `tablist`/`tab` 角色，并检查活动标签/空间的 `aria-current`；另外 `navigation-error-e2e.cjs`、`agent-rooms-panel-e2e.cjs`、`pi-workbench-e2e.cjs` 定向真实 Electron 回归通过。
+- 限制：REA 被动检查不证明辅助技术播报；Kobra 只观察页面加载后的静态交互树。尚未在 macOS VoiceOver、Windows Narrator 或 Linux Orca 下人工走查，也未覆盖真实屏幕阅读器里的浏览器网页画布焦点。
+
 ## 2026-11-03 系统深色主题适配
 
 - 环境：本机 macOS、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；真实 Electron E2E 通过 Playwright 将 `prefers-color-scheme` 分别设为 light/dark 检查。页面保持 `about:blank`，不连接 Provider，不调用模型或 OAuth。

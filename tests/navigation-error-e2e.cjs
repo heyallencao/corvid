@@ -53,7 +53,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     const failedTabId=(await room.tabs())[0].id;
     await shell.locator('#new-tab').click();
     const newTab=await until(async()=>(await room.tabs()).find(tab=>tab.id!==failedTabId),'second tab');
-    await shell.locator(`#tabs [data-tab-id="${newTab.id}"][aria-selected="true"]`).waitFor();
+    await shell.locator(`#tabs .tab[data-tab-id="${newTab.id}"][data-active="true"]`).waitFor();
     await shell.locator('#address').fill(`${base}/home`);await shell.locator('#address').press('Enter');
     await until(async()=>{const tab=(await room.tabs()).find(item=>item.id===newTab.id);return tab?.url===`${base}/home`&&tab.loadComplete;},'second tab navigation');
     assert.equal(await shell.locator('#status .navigation-error').count(),0,'navigation failure must not leak across tabs');
