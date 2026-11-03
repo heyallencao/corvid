@@ -245,6 +245,45 @@ async function allowCookieImport(shell){
   await shell.locator('#chrome-cookie-consent-check').check();
 }
 
+async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
+  const chromeRoot=path.join(tempRoot,'host-only-chrome-user-data');fs.mkdirSync(chromeRoot);
+  makeChromeFixture(chromeRoot);
+  writeChromeCookies(path.join(chromeRoot,'Default'),cookieKey);
+  addChromeCookie(path.join(chromeRoot,'Default'),'host_only_same_path','fixture-domain-value',{host:'.example.test',cookiePath:'/app'});
+  const dataDir=path.join(tempRoot,'cookie-host-only-collision-data');
+  let app;
+  try{
+    let shell;
+    ({app,shell}=await boot(dataDir,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
+    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,chromeRoot);
+    await chooseSource(shell);
+    await app.evaluate(async({session})=>{
+      const destination=session.fromPartition('persist:corvid');
+      await destination.cookies.set({url:'http://example.test/app',name:'host_only_same_path',value:'preserve-host-only-value',path:'/app',expirationDate:1893456000});
+      await destination.cookies.flushStore();
+    });
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
+    await shell.locator('input[name="chrome-category"][value="cookies"]').check();
+    await allowCookieImport(shell);
+    await shell.locator('#confirm-chrome-import').click();
+    const status=shell.locator('#chrome-import-error');
+    await status.waitFor({state:'visible',timeout:5000});
+    const statusText=await status.textContent();
+    const cookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'host_only_same_path'}));
+    assert.match(statusText,/Cookie 新增 3 项.*跳过 1 项、不支持 2 项/,'same-name same-path HostOnly/Domain collision must be reported as skipped');
+    assert.equal(await status.getAttribute('data-success'),'true','a same-path host-only collision should be a successful skip');
+    assert.equal(cookies.length,1,'Electron must not be asked to add a same-name same-path domain Cookie over a host-only Cookie');
+    assert.equal(cookies[0].value,'preserve-host-only-value','the host-only destination Cookie must keep its original value');
+  }finally{
+    if(app)await app.close().catch(()=>{});
+  }
+}
+
 (async()=>{
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
@@ -258,6 +297,13 @@ async function allowCookieImport(shell){
   const extensionUrl=`http://127.0.0.1:${server.address().port}/extension-fixture`;
   await verifyCookieDecryption(tempRoot);
   try{
+    if(supportsCookieImport){
+      await verifyHostOnlyCookieCollision(tempRoot,cookieKey);
+      if(process.env.CORVID_TEST_HOSTONLY_COOKIE_ONLY==='1'){
+        console.log('PASS HostOnly/Domain same-path Cookie import collision');
+        return;
+      }
+    }
     assert.deepEqual(chromeImport.profiles(chromeRoot).map(item=>item.id),['Default','Profile 1']);
     assert.throws(()=>chromeImport.assertCookieConsent(['cookies'],false,'darwin'),/请先确认 Cookie 导入说明/,'Cookie import must reject missing explicit consent before reading source secrets');
     assert.doesNotThrow(()=>chromeImport.assertCookieConsent(['cookies'],true,'darwin'),'explicit Cookie consent should be accepted on macOS');

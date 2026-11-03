@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 Chrome Cookie HostOnly/Domain 同名同路径冲突（Issue #149）
+
+- 基线复现：在最新主线 `c753c55` 加入合成 HostOnly/Domain 冲突场景，隔离真实 Electron 显示 `Cookie 新增 4 项`，目标查询返回两份同名、同路径 Cookie，domain 分别为 `example.test` 和 `.example.test`；原 HostOnly 值仍在，但请求可能同时携带重复名称，导入结果也未提示冲突。完整 Cookie 用例在稍后既有扩展弹窗激活等待处超时，故通过 `CORVID_TEST_HOSTONLY_COOKIE_ONLY=1` 隔离目标场景复现。
+- 修正：对 Chrome 来源与 Electron 目标 Cookie domain 去除 HostOnly/Domain 表示中的前导点，统一小写并去除尾随点；在相同 URL/name 查询结果内比较规范化 domain 和 path，保留目标 Cookie 并把来源项计为跳过。
+- 验证：macOS 26.5.1、arm64、Node.js v24.14.1、Electron 45.2.1；`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/private/tmp/corvid-issue141-browser-fullscreen/node_modules CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs` 在基线按预期失败（错误报告新增 4 项并返回两个同名 Cookie），修正后通过，断言只保留目标 HostOnly 值且结果报告跳过。`node --check desktop/main.cjs`、`node --check tests/chrome-import-e2e.cjs` 与 `git diff --check` 通过。
+- 边界：使用合成 Chrome Cookies 数据库与临时 Corvid Profile；未读取真实 Chrome Profile、未调用系统钥匙串、OAuth 或模型。仅运行独立 HostOnly 冲突场景，完整 `chrome-import-e2e.cjs` 与全量 `npm test` 未在本分支运行；异步扩展弹窗父窗口激活路径仍需单独复核。
+
 ## 2026-11-03 macOS arm64 应用包与隔离启动验收（Issue #146）
 
 - 实现：固定 `electron-builder` 26.18.1、Electron 45.2.1、`playwright-core` 1.64.1、bundle identifier `com.heyallencao.corvid` 与 `Corvid` 产品名；`electron` 与 `playwright-core` 移为开发依赖。`npm run package:mac:dir` 只为 macOS arm64 生成 `.app`；打包选取 desktop/CLI/MCP/SDK 与生产依赖，不带 `docs/`、`tests/`。构建前清除旧 `.app`，构建失败时清除不完整包。
