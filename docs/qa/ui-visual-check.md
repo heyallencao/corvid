@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 Profile 扩展权限双语分隔符
+
+- 检查：`tests/chrome-import-e2e.cjs` 在真实 Electron 中使用合成 Chrome 扩展导入夹具，验证 Profile 扩展列表展示必需与可选权限；中文界面使用 `、` 分隔同组权限，英文界面使用 `, `。同时更新 Chrome 导入结果断言，兼容中文/ASCII 括号、英文冒号与中英文状态标点。
+- 结果：定向 `node tests/chrome-import-e2e.cjs` 通过，覆盖 Cookie 解密/写入/Profile 隔离、失败回滚与重试、扩展导入及管理。未使用 ChatGPT OAuth 或模型请求；截图由测试自动刷新后已还原，未改变已有 Issue #129 证据图。
+- 限制：本轮仅定向验证 Chrome 导入与 Profile 扩展路径；全量测试结果另记验证日志。
+
+
 ## 2026-11-03 Chrome 扩展工具栏弹窗（Issue #129）
 
 - 环境：macOS、Electron 45.2.1、Chromium 156、真实 Corvid Electron 窗口；隔离 `CORVID_DATA_DIR`，使用合成 Chrome Profile 与本地 HTTP 页面。没有读取真实浏览器资料，没有 ChatGPT OAuth 或模型请求。
