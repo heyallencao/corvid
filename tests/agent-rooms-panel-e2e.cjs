@@ -289,6 +289,7 @@ async function readContrastPalette(shell) {
       shell.locator('#library').evaluate(panel=>panel.querySelector('.agent-room-entry')?.getBoundingClientRect().width||0),
     ]);
     assert.ok(minimumViewportLayout[0].width>=719&&minimumViewportLayout[0].pageWidths.every(width=>width>=320)&&minimumViewportLayout[1]>=280,JSON.stringify({taskViewport,minimumViewportLayout}));
+    if(process.env.CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH});
 
     const otherProfile = await call('/profiles', 'POST', { name: 'Work profile' });
     const otherRoom = await call('/rooms', 'POST', { name: 'Work agent room', profileId: otherProfile.id });

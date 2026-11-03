@@ -27,3 +27,12 @@ jobs:
       - run: npm ci
       - name: 运行 Agent 空间面板真实 Electron 回归
         run: env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs
+        env:
+          CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH: ${{ runner.temp }}/issue16-agent-panel-719px.png
+      - name: 上传隔离窄窗截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue16-agent-panel-719px
+          path: ${{ runner.temp }}/issue16-agent-panel-719px.png
+          if-no-files-found: ignore
