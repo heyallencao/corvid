@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-04 Issue #34 重复清理验收工作流
+
+- 新增 `.github/workflows/issue34-restore-cleanup.yml`：GitHub macOS 14、Node.js 24.22.2、Electron 45.2.1，连续运行五轮真实 Electron `restore-loading-e2e.cjs`；单轮 180 秒超时，超时会终止该轮进程组并继续剩余轮次。每轮结束后比较 Electron/Corvid 进程 PID/PPID/进程名及测试隔离目录快照，并上传各轮完整输出。
+- 本地检查：`node --check tests/restore-loading-e2e.cjs`、Ruby YAML 语法解析、`git diff --check`。当前 Mac 锁屏，未在本地启动 Electron；GitHub Actions 尚未运行，本记录不代表重复回归通过。
+- 验收边界：CI 可确认本分支在 macOS 上的五轮退出结果与残留现场，但重复通过不能解释历史串行全量回归中的 5 分钟停顿。全量 `npm test` 未运行，Issue #34 保持开放。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。

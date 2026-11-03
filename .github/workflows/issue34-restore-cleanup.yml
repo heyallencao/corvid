@@ -1,0 +1,115 @@
+name: Issue 34 慢恢复清理重复回归
+
+on:
+  pull_request:
+    paths:
+      - 'tests/restore-loading-e2e.cjs'
+      - 'tests/electron-test-startup.cjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/issue34-restore-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repeated-restore-cleanup:
+    name: macOS 真实 Electron 连续 5 次与进程清理审计
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+
+      - name: 安装项目依赖
+        run: npm ci
+
+      - name: 连续运行五轮并逐轮审计 Electron 与隔离目录
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import pathlib
+          import signal
+          import subprocess
+          import sys
+          import tempfile
+          import time
+
+          root = pathlib.Path.cwd()
+          log_dir = pathlib.Path(os.environ.get("RUNNER_TEMP", tempfile.gettempdir())) / "corvid-issue34-logs"
+          log_dir.mkdir(exist_ok=True)
+
+          def processes():
+              output = subprocess.check_output(["ps", "-axo", "pid=,ppid=,comm="], text=True)
+              found = {}
+              for line in output.splitlines():
+                  parts = line.strip().split(None, 2)
+                  if len(parts) == 3 and any(name in parts[2].lower() for name in ("electron", "corvid")):
+                      found[int(parts[0])] = (parts[1], parts[2])
+              return found
+
+          def temp_dirs():
+              return set(glob.glob(os.path.join(tempfile.gettempdir(), "corvid-restore-loading-*")))
+
+          baseline_processes = processes()
+          baseline_dirs = temp_dirs()
+          failures = []
+
+          for attempt in range(1, 6):
+              log_path = log_dir / f"attempt-{attempt}.log"
+              print(f"::group::第 {attempt}/5 轮慢恢复 E2E", flush=True)
+              with log_path.open("w") as log:
+                  child = subprocess.Popen(
+                      ["env", "-u", "ELECTRON_RUN_AS_NODE", "node", "tests/restore-loading-e2e.cjs"],
+                      cwd=root,
+                      stdout=log,
+                      stderr=subprocess.STDOUT,
+                      start_new_session=True,
+                  )
+                  try:
+                      status = child.wait(timeout=180)
+                  except subprocess.TimeoutExpired:
+                      print(f"第 {attempt} 轮超过 180 秒；终止该轮进程组后继续收集诊断。", flush=True)
+                      os.killpg(child.pid, signal.SIGTERM)
+                      try:
+                          child.wait(timeout=5)
+                      except subprocess.TimeoutExpired:
+                          os.killpg(child.pid, signal.SIGKILL)
+                          child.wait()
+                      status = 124
+
+              time.sleep(2)
+              print(log_path.read_text(errors="replace"), flush=True)
+              current_processes = processes()
+              leaked_processes = {pid: current_processes[pid] for pid in current_processes.keys() - baseline_processes.keys()}
+              current_dirs = temp_dirs()
+              leaked_dirs = sorted(current_dirs - baseline_dirs)
+              print(f"第 {attempt} 轮退出码：{status}")
+              print(f"第 {attempt} 轮新增残留进程（PID/PPID/进程名）：{leaked_processes or '无'}")
+              print(f"第 {attempt} 轮新增残留隔离目录：{leaked_dirs or '无'}")
+              if status != 0 or leaked_processes or leaked_dirs:
+                  failures.append(attempt)
+              print("::endgroup::", flush=True)
+
+          if failures:
+              print(f"失败轮次：{failures}", file=sys.stderr)
+              sys.exit(1)
+          print("五轮均 EXIT 0，且每轮之后没有新增 Electron/Corvid 进程或隔离数据目录。")
+          PY
+
+      - name: 上传五轮运行日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue34-restore-cleanup-logs
+          path: ${{ runner.temp }}/corvid-issue34-logs/
+          if-no-files-found: warn

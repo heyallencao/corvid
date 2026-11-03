@@ -40,7 +40,7 @@
 | 23 | `tests/cli-e2e.cjs` | `node cli/corvid.mjs run`：按名称/ID 创建与恢复 Room；`p1`/`p2`/`p3` label 与并发同名只创建一个 Room；用户 Room、歧义名称、不存在 ID 报错；用户标签与未知来源标签保护；重启后 label 不重用；旧记录缺 label/openedBy 视为 unknown。 | 脚本为 `AsyncFunction`，无静态 `import`/`export`；单凭据；本地夹具；未覆盖自动安装/skill 集成。 |
 | 24 | `tests/page-lifecycle-e2e.cjs` | adopt 未管理页（用户/未知来源）、Room 归属校验、初始化中不可 adopt、关闭加载中标签不退出应用；release 与旧句柄失效；`finish` 的 keep 空/指定/all 与收据、保留用户页面、保留 Room 与关闭空 Room；重启保持 finished 状态；label 不复用。 | 未覆盖崩溃/失败中途退出清理；依赖桌面 UI 点击标签；本地夹具。 |
 | 25 | `tests/claim-e2e.cjs` | 用户 Room 认领：`openRoom` 拒绝；确认框含私人数据提示；拒绝；确认期间 Room 改变则作废；批准后归 Agent；用户页不可关；`adopt` 后可操作；`finish` 归还用户；`claimRoom` 的 CLI 入口。 | 系统确认框为替身；本地夹具。 |
-| 26 | `tests/restore-loading-e2e.cjs` | 预置含慢请求的 `rooms.json`：慢标签未 ready 时其他 Room 与控制接口可用；保存 URL 不被空白页覆盖；用户/Agent 可改导航；历史不重复；重启保持替换后的 URL。 | 未覆盖强杀、不可写会话文件、大量标签资源消耗；本地夹具。 |
+| 26 | `tests/restore-loading-e2e.cjs` | 预置含慢请求的 `rooms.json`：慢标签未 ready 时其他 Room 与控制接口可用；保存 URL 不被空白页覆盖；用户/Agent 可改导航；历史不重复；重启保持替换后的 URL。Issue #34 macOS CI 连续执行五轮，并在每轮后核对新增 Electron/Corvid 进程与隔离数据目录。 | 未覆盖强杀、不可写会话文件、大量标签资源消耗；本地夹具；CI 重复回归不等于复现历史挂起根因。 |
 | 27 | `tests/library-search-e2e.cjs` | UI 搜索历史/书签（标题/URL、大小写不敏感）、空结果、筛选后删除、切换面板清空搜索、Profile 切换隔离、重启保持。 | 本地子串筛选，无模糊/分词；未测大数据性能；本地夹具。 |
 | 28 | `tests/room-close-e2e.cjs` | UI 关闭空间：取消保留；确认文案含标签数与书签；确认期间新增标签则拒绝；Agent 控制空间的提示；关闭后书签/历史保留；重启后 Room 不存在。 | 系统确认框为替身；未覆盖原生界面与异常关闭。 |
 | 29 | `tests/beforeunload-e2e.cjs` | 页面 `beforeunload` 取消导航保留草稿并转交用户；确认后导航；多标签关闭的部分完成提示；标签关闭确认与调试器重连；Room 关闭/`finish` 遇到阻止关闭时报部分完成。 | beforeunload 与关闭确认对话框为替身；未覆盖调试器重连失败与崩溃。 |
