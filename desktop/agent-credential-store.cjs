@@ -105,6 +105,14 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     return error;
   }
 
+  function migrationBackupCleanupError(cause) {
+    const code = 'credential-migration-backup-cleanup-failed';
+    const marker = `[[corvid-error:${code}]] `;
+    const error = new Error(`${marker}已验证新凭据，但无法删除旧迁移备份；当前密文与备份均已保留。请检查数据目录权限后重试。`, { cause });
+    error.code = code;
+    return error;
+  }
+
   async function ensureSecureStorage() {
     let available;
     try { available = await safeStorage.isAsyncEncryptionAvailable(); }
@@ -198,12 +206,17 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     let current;
     try { current = readStateFile(); } catch { current = null; }
     if (current?.schemaVersion === SCHEMA_VERSION) {
+      let verified = false;
       try {
         await verifyState(validateEncryptedState(current));
-        fs.unlinkSync(migrationBackup);
-        return;
+        verified = true;
       } catch (error) {
         if (typeof error?.code === 'string' && error.code.startsWith('secure-storage-')) throw error;
+      }
+      if (verified) {
+        try { fs.unlinkSync(migrationBackup); }
+        catch (error) { throw migrationBackupCleanupError(error); }
+        return;
       }
     } else if (current?.schemaVersion === LEGACY_SCHEMA_VERSION) {
       fs.unlinkSync(migrationBackup);

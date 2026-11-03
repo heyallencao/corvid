@@ -353,6 +353,7 @@
       extensionPopupFailed: '无法打开扩展弹窗，请检查扩展状态后重试。',
       secureStorageUnavailable: '系统安全存储当前不可用，现有账号授权和文件已保留。请检查并解锁系统钥匙串或密码管理器后重试。',
       credentialStorageResponseInvalid: '系统安全存储返回了无效响应。现有账号授权和文件已保留；请检查系统钥匙串或密码管理器后重试。',
+      credentialMigrationBackupCleanupFailed: '已验证新凭据，但无法删除旧迁移备份。当前密文与备份均已保留；请检查数据目录权限后重试。',
       credentialStorageProviderUnavailable: 'Linux 当前无法确认系统密码管理器已保护账号授权，已拒绝保存或读取该凭据。请设置并解锁受支持的系统密码管理器后重试；现有账号授权和文件已保留。',
       plural: {
         tabs: { one: '{count} 个标签页', other: '{count} 个标签页' },
@@ -711,6 +712,7 @@
       extensionPopupFailed: 'Could not open the extension popup. Check the extension and try again.',
       secureStorageUnavailable: 'Secure system storage is unavailable. Existing credentials and files were preserved. Check and unlock the system keychain or password manager, then retry.',
       credentialStorageResponseInvalid: 'System secure storage returned an invalid response. Existing credentials and files were preserved. Check the system keychain or password manager, then retry.',
+      credentialMigrationBackupCleanupFailed: 'The new credential was verified, but the old migration backup could not be removed. The current ciphertext and backup were preserved. Check the data directory permissions, then retry.',
       credentialStorageProviderUnavailable: 'Linux could not confirm that the system password manager protects this credential, so saving or reading it was refused. Set up and unlock a supported system password manager, then retry. Existing credentials and files were preserved.',
       plural: {
         tabs: { one: '{count} tab', other: '{count} tabs' },
@@ -769,6 +771,7 @@
         'secure-storage-unavailable': 'secureStorageUnavailable',
         'secure-storage-provider-unverified': 'credentialStorageProviderUnavailable',
         'secure-storage-response-invalid': 'credentialStorageResponseInvalid',
+        'credential-migration-backup-cleanup-failed': 'credentialMigrationBackupCleanupFailed',
       }[match[1].toLowerCase()];
       return this.t(key || 'agentErrorFallback');
     },

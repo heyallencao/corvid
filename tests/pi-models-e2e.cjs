@@ -22,6 +22,8 @@ const safeStorage=createFakeSafeStorage();
     {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
     {language:'zh-CN',marker:'secure-storage-response-invalid',expected:'系统安全存储返回了无效响应'},
     {language:'en-US',marker:'secure-storage-response-invalid',expected:'System secure storage returned an invalid response'},
+    {language:'zh-CN',marker:'credential-migration-backup-cleanup-failed',expected:'已验证新凭据，但无法删除旧迁移备份'},
+    {language:'en-US',marker:'credential-migration-backup-cleanup-failed',expected:'The new credential was verified, but the old migration backup could not be removed'},
   ]){
     const context={navigator:{language},window:{},document:{documentElement:{lang:''},querySelectorAll(){return[];}}};
     vm.runInNewContext(localeSource,context);
@@ -212,6 +214,37 @@ const safeStorage=createFakeSafeStorage();
   assert.deepEqual(fs.readFileSync(invalidResponseRecoveryPath),invalidResponseCurrentBytes,'invalid safeStorage response preserves current encrypted credentials byte-for-byte');
   assert.deepEqual(fs.readFileSync(invalidResponseBackupPath),invalidResponseBackupBytes,'invalid safeStorage response preserves the older backup byte-for-byte');
   assert.equal(JSON.parse(fs.readFileSync(invalidResponseRecoveryPath,'utf8')).schemaVersion,2,'invalid safeStorage response does not downgrade the current schema');
+
+  const cleanupFailureDir=path.join(root,'backup-cleanup-failure');fs.mkdirSync(cleanupFailureDir,{recursive:true});
+  const cleanupFailurePath=path.join(cleanupFailureDir,'agent-credentials.json');
+  const cleanupFailureBackupPath=`${cleanupFailurePath}.migration-backup`;
+  fs.writeFileSync(cleanupFailurePath,JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-current-newer-credential'}}}),{mode:0o600});
+  const cleanupFailureSeed=createAgentCredentialStore({dataDir:cleanupFailureDir,safeStorage});
+  await cleanupFailureSeed.list();
+  const cleanupFailureCurrentBytes=fs.readFileSync(cleanupFailurePath);
+  const cleanupFailureBackupBytes=Buffer.from(JSON.stringify({schemaVersion:1,providers:{anthropic:{kind:'api_key',secret:'sk-older-backup-credential'}}}));
+  fs.writeFileSync(cleanupFailureBackupPath,cleanupFailureBackupBytes,{mode:0o600});
+  const originalUnlinkSync=fs.unlinkSync;
+  let blockBackupCleanup=true;
+  fs.unlinkSync=function(target){
+    if(blockBackupCleanup&&path.resolve(target)===path.resolve(cleanupFailureBackupPath)){
+      blockBackupCleanup=false;
+      const error=new Error('fixture backup cleanup permission failure');error.code='EACCES';throw error;
+    }
+    return originalUnlinkSync.call(this,target);
+  };
+  try{
+    const cleanupFailureStore=createAgentCredentialStore({dataDir:cleanupFailureDir,safeStorage});
+    await assert.rejects(cleanupFailureStore.list(),error=>{
+      assert.equal(error.code,'credential-migration-backup-cleanup-failed');
+      assert.match(error.message,/\[\[corvid-error:credential-migration-backup-cleanup-failed\]\]/);
+      assert.match(error.cause?.message||'',/fixture backup cleanup permission failure/);
+      return true;
+    });
+  }finally{fs.unlinkSync=originalUnlinkSync;}
+  assert.deepEqual(fs.readFileSync(cleanupFailurePath),cleanupFailureCurrentBytes,'backup cleanup failure preserves the already verified current credential bytes');
+  assert.deepEqual(fs.readFileSync(cleanupFailureBackupPath),cleanupFailureBackupBytes,'backup cleanup failure leaves the legacy backup for a later retry');
+  assert.equal(JSON.parse(fs.readFileSync(cleanupFailurePath,'utf8')).schemaVersion,2,'backup cleanup failure never downgrades verified credentials');
 
   const rotatedDir=path.join(root,'rotated-data');
   const rotatingStore=createAgentCredentialStore({dataDir:rotatedDir,safeStorage});

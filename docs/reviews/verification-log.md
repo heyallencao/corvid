@@ -2,9 +2,9 @@
 
 ## 2026-11-03 凭据迁移备份恢复期间的安全存储拒绝保护（Issue #110）
 
-- 复现：迁移中断后，当前 `agent-credentials.json` 可为 schemaVersion 2，而 `.migration-backup` 保留旧 schemaVersion 1。Linux 异步安全存储可用但密文标记为固定口令回退 `v10` 时，provider 拒绝错误文本未匹配旧恢复分支的本地化字符串判断；另外，`decryptStringAsync()` 返回非字符串 `result` 时产生的普通错误也被当作可回退的数据损坏。这两种情况都会使用旧备份覆盖当前密文，随后迁移失败可能导致较新的凭据丢失。
-- 修正：安全存储错误现在携带稳定 `error.code`，provider 未验证与解密返回值不符合 Electron 合同均按 `secure-storage-*` 错误码传播并保留两个文件，不再根据可翻译文案判断错误类别。无效返回使用独立 `secure-storage-response-invalid` 标识，并映射到 zh-CN/en。非安全存储类格式损坏仍回退到备份，并继续完成加密迁移与回读校验。
-- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` EXIT 0。确定性假安全存储分别模拟 schemaVersion 2 的 `v10` 当前凭据与非字符串解密返回，断言稳定错误码且当前文件、备份逐字节不变；另验证损坏 schemaVersion 2 格式仍可恢复旧备份并迁移成不含明文的 schemaVersion 2，以及新错误标识在 zh-CN/en 的映射。未启动 Electron、未访问真实账号或模型。
+- 复现：迁移中断后，当前 `agent-credentials.json` 可为 schemaVersion 2，而 `.migration-backup` 保留旧 schemaVersion 1。Linux 异步安全存储可用但密文标记为固定口令回退 `v10` 时，provider 拒绝错误文本未匹配旧恢复分支的本地化字符串判断；`decryptStringAsync()` 返回非字符串 `result` 时的普通错误也会被当作可回退的数据损坏；此外，schemaVersion 2 已成功解密校验后若删除 `.migration-backup` 遇到文件系统错误，原 `try/catch` 会把清理失败误判为验证失败。这些路径都会回退到旧备份，可能覆盖较新的凭据。
+- 修正：安全存储错误携带稳定 `error.code`，provider 未验证与解密返回值不符合 Electron 合同均按 `secure-storage-*` 错误码传播。旧备份清理与 schemaVersion 2 解密校验拆开；校验成功但备份删除失败时以 `credential-migration-backup-cleanup-failed` 传播本地化提示并保留当前密文和备份。非安全存储类格式损坏仍回退到备份，之后加密迁移并回读校验。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-models-e2e.cjs` EXIT 0。确定性假安全存储分别模拟 Linux `v10` 当前密文、非字符串解密返回，并一次性注入备份删除 `EACCES`；断言稳定错误码且安全场景中当前文件和备份逐字节不变。另验证非安全格式损坏仍可恢复旧备份并迁移成不含明文的 schemaVersion 2，以及安全存储/备份清理错误的 zh-CN/en 映射。未启动 Electron、未访问真实账号或模型。
 - 跨平台回归：代码提交 `00f0e7b` 对应的 [GitHub Actions 三平台凭据检查全部通过](https://github.com/heyallencao/corvid/actions/runs/41622464087)：macOS Keychain、Windows DPAPI、Ubuntu Secret Service。
 - 边界：provider 恢复路径为 Node 模块合同测试；真实 macOS/Windows/Linux safeStorage 行为继续由独立原生 runner 覆盖。本次没有验证签名打包及断电发生在文件系统各条写入指令时的持久化语义。
 
