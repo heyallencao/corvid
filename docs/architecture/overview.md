@@ -4,7 +4,7 @@ Corvid 是面向用户的本地优先浏览器，也是用户与 Agent 协作的
 
 当前实现包括桌面日常浏览器、Profile/Room、用户控制权交接、外部 Agent SDK/CLI，以及 Corvid Agent 工作台：用户可从当前网页创建独立 Agent Room，预览并确认页面上下文后开始任务，查看运行状态，并在保存的对话记录上继续多轮交流。Agent 的运行时、SDK 类型、认证流程和会话文件格式均为内部实现，不构成用户可见的产品概念；Corvid 拥有任务与对话记录、模型设置、OAuth/API Key 配置、浏览器工具授权、Profile/Room/Page 绑定、用户接管和恢复语义。更换或升级运行时必须由 Corvid 适配层承接，并维持用户界面、持久化数据和控制权合同；需要迁移时由 Corvid 负责兼容或明确迁移，不要求用户安装、配置或了解某个运行时。当前使用的 SDK 实现细节仅记录在内部验证材料中。模型选择和自定义 OpenAI 兼容端点由 [Issue #55](https://github.com/heyallencao/corvid/issues/55) 交付；对话工作台由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 迭代。接管后仍需用户显式确认上下文再续聊，自动续跑和更完整的中断恢复尚未实现。详见 [执行任务板](../execution/feature-board.md) 的 D19。
 
-Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 1 管理，并通过运行时适配层提供给当前执行引擎；内置引擎不再拥有账号凭据文件。首次读取时兼容迁移旧版引擎凭据与自定义端点 API Key，写入并校验 Corvid 凭据记录后才清理旧明文副本。模型目录只保留无凭据的端点配置引用；OAuth/API Key、令牌刷新与登出继续经 Provider 的授权合同执行。迁移实现和未覆盖的真实 OAuth 故障/跨平台持久性边界见 D19 与验证记录。
+Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 2 管理；OAuth/API Key 凭据正文由 Electron 异步 `safeStorage` 加密，JSON 只保留 Provider 类型与密文，并通过运行时适配层提供给当前执行引擎。启动迁移 schemaVersion 1、旧版引擎授权和自定义端点 API Key；只有在密文写入、解密回读校验后才清理旧明文副本。macOS 使用 Keychain、Windows 使用 DPAPI；Linux 必须检测到系统密码管理器，`basic_text` 等弱后端会拒绝读写，且不会回退保存明文。安全存储不可用时界面给出中文恢复提示并保留旧文件。文件/目录权限仍为 0600/0700 的纵深保护，不替代系统密钥保护；同一 OS 用户下的其他进程可能仍有能力访问解密接口。打包签名、钥匙串升级提示和 Windows/Linux 运行态仍须分别验证。模型目录只保留无凭据的端点配置引用；OAuth/API Key、令牌刷新与登出继续经 Provider 的授权合同执行。迁移边界见 D19、Issue #110 与验证记录。
 
 ## 系统边界
 

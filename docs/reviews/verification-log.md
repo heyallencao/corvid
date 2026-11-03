@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 Agent 凭据系统安全存储（Issue #110）
+
+- 实现：`agent-credentials.json` 升级到 schemaVersion 2，Provider 类型与 Electron 异步 `safeStorage` 密文分开保存。macOS/Windows 使用 Electron 系统密钥后端；Linux 检查后端，拒绝 `basic_text`、`unknown` 和未识别后端。安全存储未就绪时返回中文恢复提示，不创建明文新凭据。旧 schemaVersion 1、runtime `auth.json` 与自定义端点明文 Key 采用备份、加密、解密回读核验后再清理的迁移顺序；失败恢复旧文件。备份清理失败时保留备份供下次启动验证处理。
+- 定向验证：`node --check desktop/agent-credential-store.cjs`、`desktop/pi-models.cjs`、`desktop/main.cjs`、`tests/pi-models-e2e.cjs`、`tests/pi-custom-endpoint-e2e.cjs` 与 `git diff --check`；`node tests/pi-models-e2e.cjs` EXIT 0，覆盖 API Key/OAuth 加密、schema v1 与 runtime 授权成功迁移、不可用安全存储/加密失败保持原字节、密钥轮换和并发写入。 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（45 条独立脚本 + 8 个 `node:test` 用例，共 53 项）；全量结果包含加密凭据格式与本地 Electron 自定义端点用例。
+- Electron 集成：`tests/pi-custom-endpoint-e2e.cjs` 仅使用本地 HTTP 模型夹具和合成 Key；验证发现模型与本地 Agent 请求可读取密文凭据、持久化 JSON 不出现明文 Key。未连接真实 Provider、未运行 OAuth 或 GPT-6 Luna 请求。
+- 限制：macOS 开发环境 `safeStorage` 的集成结果不代表签名发布版、Windows/Linux、OS 用户切换、崩溃/断电每个指令点的恢复或真实钥匙串升级体验。同一 OS 用户下的其他进程可能访问应用解密能力；文件权限不提供进程隔离。Electron 官方说明 Linux 可能使用弱 `basic_text`，本实现选择拒绝该后端；macOS Keychain 行为依赖打包签名一致性。
+
 ## 2026-11-03 网站权限提示中文名称（Issue #115）
 
 - 红测：真实 Electron + 隔离数据目录中捕获 `dialog.showMessageBox` 选项，原提示为 `http://127.0.0.1:<port> 请求 notifications 权限`；将站点权限审查的 `notifications` 文案设为中文后，旧实现也按预期失败。

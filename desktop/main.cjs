@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -48,7 +48,7 @@ const { createPiModelManager } = require('./pi-models.cjs');
 const usePiFixture=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PI_REAL_MODEL!=='1';
 const pendingPiAuthPrompts = new Map();
 let nextPiAuthPromptId = 0;
-const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDir,'pi-agent'), openExternal: url => shell.openExternal(url), promptAuth: (providerId, prompt) => new Promise((resolve, reject) => {
+const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDir,'pi-agent'), safeStorage, openExternal: url => shell.openExternal(url), promptAuth: (providerId, prompt) => new Promise((resolve, reject) => {
   const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.isFocused()) || [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed());
   if (!record) { reject(new Error('找不到可完成账号授权的 Corvid 窗口')); return; }
   const id = `pi-auth-${++nextPiAuthPromptId}`;

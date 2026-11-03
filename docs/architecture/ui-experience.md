@@ -11,7 +11,7 @@ Corvid 是可作为日常浏览器使用的完整桌面产品。产品主线按�
 
 Corvid 持有任务 ID、对话与消息、模型偏好、Profile/Room/Page 绑定、授权边界、控制权和状态呈现。适配器专属的会话检查点属于内部实现元数据，必须封装为可迁移数据；更换或升级执行引擎时，由 Corvid 负责兼容迁移、重新授权或清楚说明恢复限制，用户继续从 Corvid 对话中工作。不得把运行库命名或专属会话格式提升为公开产品合同。
 
-Provider 凭据也由 Corvid 管理：账号授权写入版本化的 Corvid 凭据记录，由当前 Agent 适配器提供给模型调用；运行时自有凭据文件仅作为升级迁移来源，不作为后续的用户数据合同。当前本地文件权限限制为 owner-only（0600），尚未接入操作系统钥匙串加密。
+Provider 凭据也由 Corvid 管理：`agent-credentials.json` schemaVersion 2 只保存 Provider 类型和由 Electron 异步 `safeStorage` 生成的密文，当前 Agent 适配器在调用模型时解密使用。schemaVersion 1 与运行时自有凭据文件仅作为一次性迁移来源，旧明文只在新密文写入并解密校验后清理。macOS Keychain、Windows DPAPI 和 Linux 系统密码管理器提供平台密钥保护；Linux 的 `basic_text` 弱后端会被拒绝，安全存储不可用时保留已有数据并显示中文恢复说明。0600/0700 文件权限继续作为纵深保护；同一 OS 用户下的其他进程仍可能调用当前应用的解密能力。打包签名、钥匙串提示与 Windows/Linux 运行态尚待验证。
 
 ## 当前基线
 
