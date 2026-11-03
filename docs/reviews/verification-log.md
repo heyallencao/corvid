@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-04 浏览身份删除用户流程（Issue #174）
+
+- 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。
+- 验证：`node --check desktop/renderer.js`、`desktop/main.cjs`、`tests/profile-deletion-e2e.cjs`；`node tests/profile-deletion-services.cjs` EXIT 0；`CORVID_PROFILE_DELETE_QA_DIR=/tmp/corvid-profile-deletion-qa node tests/profile-deletion-e2e.cjs` EXIT 0。模块合同逐类覆盖窗口、Room、进行中下载、Agent 对话和默认身份阻断；真实 Electron UI 覆盖窗口/空间阻断、取消无副作用、清理中的进度/禁用取消/Escape 阻断、首次 Session 清理失败的 `deletionPending` 与可见重试、Cookie/localStorage/书签/历史/下载记录清理、磁盘下载文件保留、重启不复活、同名新 ID 与干净站点存储。
+- 双语与视觉：真实 Electron 中切换英文检查删除菜单/标题/阻断状态，并于 700×420 断言保留数据说明和重试/删除动作可见；常规中文和英文窄窗截图见 [UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-浏览身份删除确认与窄窗布局-issue-174)。首次窄窗观察发现保留说明被操作区挤出，修改间距和 sticky 操作区后复验通过。
+- 发现并修复：首次 E2E 发现主进程预筛窗口/Room 引用后未把 Profile ID 一同传进纯合同校验器，导致真实占用被错误判为空；现修复映射并增加逐类模块合同断言。首次清理失败的用户端错误也映射到明确的重试说明，不透出测试或内部错误名。
+- 全量回归情况：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，27 个 `node:test` 用例和前置 43 条脚本（包含本切片 E2E）通过后，在现有 `tests/pi-workbench-e2e.cjs` 因 `#pi-task-form .pi-primary-action` 超时中止。为判断是否回归，在独立临时 worktree 的未改基线 `2286159` 上单独运行同一用例，也 EXIT 1（按钮定位超时）；该工作台覆盖由已有 [Issue #5](https://github.com/heyallencao/corvid/issues/5) 跟踪。本次随后单独运行其后 10 条脚本（Pi 工作台短窗、Agent 停止/端点、Chrome 导入、授权、导航、本地化和应用菜单），均通过。因此未把全量套件记为通过；此缺口在本切片之前已可复现。
+- 限制：没有获得完整全量 `npm test` 通过结果；未使用真实 Agent Provider 或 OAuth；扩展和 Agent 运行时目录清理失败由模块注入合同覆盖，未在 UI E2E 逐项故障注入；未检查 SQLite/Chromium 文件层的每一类可恢复字节，也未覆盖其他操作系统或打包应用。Issue #174 尚待独立 review、主线集成和中文 PR。
+
 ## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
 
 - 问题：真实 Electron 在 704×420 窗口（shell 视口 704×388 CSS px）中，较长的欢迎说明被输入卡片遮挡；英文段落比中文占用更多行，单语截图不足以发现边界问题。

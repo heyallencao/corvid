@@ -36,6 +36,48 @@ async function openShellDialog(selector, focusSelector) {
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{void api.invoke('setShellModal',{open:false});});
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function profileDisplayName(profile) { return profile.isDefault && profile.name === '默认' ? extensionMessages.t('defaultProfile') : profile.name; }
+let profileDeletionPreviewVersion=0;
+function profileDeletionErrorText(error) {
+  const message=String(error?.message||'');
+  if(/CORVID_PROFILE_DELETE_FAILED|浏览身份清理未完成/.test(message))return extensionMessages.t('profileDeleteFailed');
+  if(/CORVID_PROFILE_IN_USE|仍被窗口、空间|正在运行或可继续/.test(message))return extensionMessages.t('profileDeleteUnavailable');
+  if(/CORVID_PROFILE_NOT_FOUND|浏览身份不存在/.test(message))return extensionMessages.t('profileNotFound');
+  return extensionMessages.t('profileDeletionErrorFallback');
+}
+function profileDeletionBlockerText(blocker) {
+  if(blocker.kind==='window')return extensionMessages.t('profileDeleteWindowItem');
+  if(blocker.kind==='room')return extensionMessages.t('profileDeleteSpaceItem',{name:blocker.name||blocker.id});
+  if(blocker.kind==='download')return extensionMessages.t('profileDeleteDownloadItem');
+  if(blocker.kind==='agent-task')return extensionMessages.t('profileDeleteAgentTaskItem');
+  if(blocker.kind==='default')return extensionMessages.t('profileDeleteDefaultItem');
+  return extensionMessages.t('profileDeleteUnavailable');
+}
+function renderProfileDeletionPreview(preview) {
+  const impact=document.querySelector('#profile-deletion-impact'),button=document.querySelector('#confirm-profile-deletion'),select=document.querySelector('#profile-deletion-select');
+  impact.replaceChildren();impact.dataset.blocked=String(Boolean(preview.blockers.length));
+  if(preview.deletionPending){const pending=document.createElement('p');pending.textContent=extensionMessages.t('profileDeletePending');impact.append(pending);}
+  if(preview.blockers.length){const list=document.createElement('ul');const blockerLabels=new Set(preview.blockers.map(profileDeletionBlockerText));for(const label of blockerLabels){const item=document.createElement('li');item.textContent=label;list.append(item);}impact.append(list);}
+  else {const scope=document.createElement('p');scope.textContent=extensionMessages.t('profileDeleteScope');impact.append(scope);}
+  button.disabled=Boolean(preview.blockers.length);button.textContent=extensionMessages.t(preview.deletionPending?'profileDeleteRetry':'profileDeleteConfirm');
+  select.disabled=false;
+}
+async function refreshProfileDeletionPreview() {
+  const version=++profileDeletionPreviewVersion,id=document.querySelector('#profile-deletion-select').value;
+  const impact=document.querySelector('#profile-deletion-impact'),button=document.querySelector('#confirm-profile-deletion');
+  document.querySelector('#profile-deletion-error').hidden=true;button.disabled=true;
+  if(!id){impact.replaceChildren();impact.dataset.blocked='true';const empty=document.createElement('p');empty.textContent=extensionMessages.t('profileDeleteNoProfiles');impact.append(empty);return;}
+  try{const preview=await api.invoke('previewProfileDeletion',{id});if(version===profileDeletionPreviewVersion&&document.querySelector('#profile-deletion').open)renderProfileDeletionPreview(preview);}
+  catch(error){if(version!==profileDeletionPreviewVersion)return;impact.replaceChildren();impact.dataset.blocked='true';const message=document.createElement('p');message.textContent=profileDeletionErrorText(error);impact.append(message);}
+}
+async function openProfileDeletionDialog() {
+  const select=document.querySelector('#profile-deletion-select');select.replaceChildren();
+  const submit=document.querySelector('#confirm-profile-deletion');submit.textContent=extensionMessages.t('profileDeleteConfirm');submit.disabled=true;
+  const candidates=(state?.profiles||[]).filter(profile=>!profile.isDefault&&profile.id!=='default');
+  for(const profile of candidates){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.deletionPending?extensionMessages.t('profileDeletePendingOption',{name:profileDisplayName(profile)}):profileDisplayName(profile);select.append(option);}
+  document.querySelector('#profile-deletion-error').hidden=true;
+  await openShellDialog('#profile-deletion','#profile-deletion-select');
+  await refreshProfileDeletionPreview();
+}
 function roomDisplayName(room) { return room.name === '我的空间' ? extensionMessages.t('mySpace') : room.name === '新窗口的空间' ? extensionMessages.t('newWindowSpace') : room.name; }
 function updateNewTabSurface(active) {
   const isNewTab=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
@@ -58,7 +100,7 @@ function draw(value) {
   for(const kind of ['bookmarks','history','downloads','agent-rooms','pi-workbench'])document.querySelector(`#show-${kind}`).setAttribute('aria-expanded',String(libraryKind===kind));
   void renderBookmarksBar();
   const profileSelect=document.querySelector('#profile-select');profileSelect.replaceChildren();
-  for(const profile of state.profiles){const option=document.createElement('option');option.value=profile.id;option.textContent=profileDisplayName(profile);option.selected=profile.id===state.activeProfileId;profileSelect.append(option);}
+  for(const profile of state.profiles){const option=document.createElement('option');option.value=profile.id;option.textContent=profile.deletionPending?extensionMessages.t('profileDeletePendingOption',{name:profileDisplayName(profile)}):profileDisplayName(profile);option.selected=profile.id===state.activeProfileId;option.disabled=Boolean(profile.deletionPending);profileSelect.append(option);}
   const activeProfile=state.profiles.find(profile=>profile.id===state.activeProfileId);
   document.querySelector('.profile-avatar').textContent=(activeProfile?profileDisplayName(activeProfile):'A').trim().charAt(0).toLocaleUpperCase()||'A';
   profileSelect.onchange=()=>api.invoke('activateProfile',{id:profileSelect.value});
@@ -76,6 +118,7 @@ function draw(value) {
   const profileAction=(label,fn)=>{const item=button(label,()=>{profileMenu.hidden=true;fn();});item.setAttribute('role','menuitem');profileMenu.append(item);};
   profileAction(extensionMessages.t('newProfile'),async()=>{await openShellDialog('#new-profile','#profile-name');});
   profileAction(extensionMessages.t('renameCurrentProfile'),async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profileDisplayName(profile);document.querySelector('#rename-profile-error').textContent='';await openShellDialog('#rename-profile','#renamed-profile-name');document.querySelector('#renamed-profile-name').select();});
+  profileAction(extensionMessages.t('manageProfileDeletion'),openProfileDeletionDialog);
   const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
   const roomAction=(label,fn)=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');roomMenu.append(item);};
   roomAction(extensionMessages.t('createSpace'),async()=>{await openShellDialog('#new-room','#room-name');});
@@ -499,6 +542,17 @@ let renameProfileId;
 document.querySelector('#rename-profile-form').onsubmit=async event=>{event.preventDefault();try{const profile=state.profiles.find(item=>item.id===renameProfileId),entered=document.querySelector('#renamed-profile-name').value,name=profile&&entered===profileDisplayName(profile)?profile.name:entered;await api.invoke('renameProfile',{id:renameProfileId,name});document.querySelector('#rename-profile').close();}catch(error){document.querySelector('#rename-profile-error').textContent=error.message;}};
 document.querySelector('#cancel-rename-profile').onclick=()=>document.querySelector('#rename-profile').close();
 document.querySelector('#rename-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
+document.querySelector('#profile-deletion-select').onchange=()=>void refreshProfileDeletionPreview();
+document.querySelector('#profile-deletion-form').onsubmit=async event=>{
+  event.preventDefault();const id=document.querySelector('#profile-deletion-select').value;if(!id)return;
+  const form=event.currentTarget,submit=document.querySelector('#confirm-profile-deletion'),select=document.querySelector('#profile-deletion-select'),cancel=document.querySelector('#cancel-profile-deletion'),errorNode=document.querySelector('#profile-deletion-error');
+  submit.disabled=true;submit.textContent=extensionMessages.t('profileDeleteWorking');select.disabled=true;cancel.disabled=true;form.setAttribute('aria-busy','true');errorNode.hidden=true;
+  try{await api.invoke('deleteProfile',{id});document.querySelector('#profile-deletion').close();}
+  catch(error){select.disabled=false;cancel.disabled=false;form.removeAttribute('aria-busy');await refreshProfileDeletionPreview();errorNode.textContent=profileDeletionErrorText(error);errorNode.hidden=false;}
+};
+document.querySelector('#cancel-profile-deletion').onclick=()=>document.querySelector('#profile-deletion').close();
+document.querySelector('#profile-deletion').addEventListener('cancel',event=>{if(document.querySelector('#profile-deletion-form').getAttribute('aria-busy')==='true')event.preventDefault();});
+document.querySelector('#profile-deletion').onclose=()=>{profileDeletionPreviewVersion++;return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 let settingsProfileId;
 async function renderProfileExtensions(){
   const list=document.querySelector('#profile-extension-list');list.replaceChildren();

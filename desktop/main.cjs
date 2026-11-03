@@ -360,6 +360,7 @@ const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
+const { createProfileDeletion, extensionProfileRoot } = require('./profile-deletion.cjs');
 const extensionIconCache = new Map();
 function closeExtensionPopup(record,{restoreFocus=false,focusTrigger=false}={}) {
   const popup=record?.extensionPopup;
@@ -444,14 +445,49 @@ const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
 const activeDownloadRetries = new Map();
 const pendingDownloadRetries = new Map();
+let failProfileDeleteStorageClearOnce=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PROFILE_DELETE_STORAGE_FAIL_ONCE==='1';
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
 let profiles;
 try { profiles=JSON.parse(fs.readFileSync(profilesPath,'utf8')); }
 catch(error) { if(error.code!=='ENOENT') throw error; profiles=[{id:'default',name:'默认',isDefault:true}]; }
 if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Error('Invalid profile data');
-const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
+function saveProfiles(next){
+  const temporary=`${profilesPath}.tmp`;
+  fs.writeFileSync(temporary,JSON.stringify(next),{mode:0o600});fs.chmodSync(temporary,0o600);fs.renameSync(temporary,profilesPath);profiles=next;
+  for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+}
+const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');if(profile.deletionPending)throw Object.assign(new Error('该浏览身份正在清理，完成前不能使用'),{code:'CORVID_PROFILE_DELETING'});return profile; };
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
+const profileDeletion = createProfileDeletion({
+  getProfiles:()=>profiles,
+  saveProfiles,
+  getReferences:profileId=>({
+    windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()&&record.activeProfileId===profileId).map(record=>({id:record.id,activeProfileId:record.activeProfileId})),
+    rooms:rooms.filter(room=>room.profileId===profileId).map(room=>({id:room.id,name:room.name,profileId:room.profileId})),
+    downloads:[
+      ...[...activeDownloads.entries()].filter(([,item])=>item.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'progressing'})),
+      ...[...pendingDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'starting'})),
+      ...[...activeDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'retrying'})),
+    ],
+  }),
+  agentWorkbench,
+  getSession:partition=>{
+    const browserSession=session.fromPartition(partition);
+    if(!failProfileDeleteStorageClearOnce)return browserSession;
+    failProfileDeleteStorageClearOnce=false;
+    return new Proxy(browserSession,{get(target,key){if(key==='clearStorageData')return async()=>{await new Promise(resolve=>setTimeout(resolve,4000));throw new Error('测试注入：Session 存储清理首次失败');};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+  },
+  partitionFor,
+  library,
+  managedExtensions,
+  extensionRoot:extensionProfileRoot,
+  dataDir,
+  onDeleted:profileId=>{
+    const partition=partitionFor(profileId);permissionGrants.delete(partition);downloadPartitions.delete(partition);
+    for(const key of [...extensionLoadErrors.keys()])if(key.startsWith(`${profileId}:`))extensionLoadErrors.delete(key);
+  },
+});
 async function loadProfileExtensions(profileId){
   startupProgress('tab-profile-extensions');
   const browserSession=session.fromPartition(partitionFor(profileId));
@@ -928,6 +964,16 @@ async function dispatch(method, args = {}, fromApi = false) {
       catch(error) { await closeRoom(room.id).catch(()=>{}); throw error; }
     }
     case 'profiles': return {profiles};
+    case 'previewProfileDeletion': {
+      if(fromApi)throw new Error('浏览身份删除预览必须由用户在桌面查看');
+      return profileDeletion.preview(args.id);
+    }
+    case 'deleteProfile': {
+      if(fromApi)throw new Error('浏览身份删除必须由用户在桌面确认');
+      const result=await profileDeletion.remove(args.id);
+      for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+      return result;
+    }
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
@@ -1084,7 +1130,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       for(const record of windowRecords.values()) update(record);
       return {uiLocale};
     }
-    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
+    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const name=args.name.trim();if(profiles.some(profile=>profile.deletionPending&&profile.name===name))throw Object.assign(new Error('同名浏览身份仍在清理中，请先重试清理'),{code:'CORVID_PROFILE_DELETING'});const profile={id:id(),name,isDefault:false};saveProfiles([...profiles,profile]);update();return profile;}
     case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');

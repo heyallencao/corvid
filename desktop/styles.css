@@ -467,6 +467,29 @@ dialog label { display: grid; flex: 1 1 100%; gap: 6px; color: var(--text-second
 dialog input, dialog select { min-height: 36px; padding: 7px 9px; }
 dialog form > button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }
 dialog form > button[type="submit"] { background: var(--accent-solid); color: white; }
+.profile-deletion-form { display: grid; align-items: stretch; gap: 13px; }
+.profile-deletion-heading h2 { margin: 3px 0 0; font-size: 20px; line-height: 1.25; }
+#profile-deletion { width: min(520px, calc(100vw - 32px)); max-height: min(86vh, 720px); overflow: auto; }
+#profile-deletion-impact { display: grid; gap: 8px; min-height: 54px; max-height: 26vh; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.profile-deletion-impact p { margin: 0; }
+.profile-deletion-impact ul { display: grid; gap: 5px; margin: 0; padding-left: 20px; }
+.profile-deletion-impact li { overflow-wrap: anywhere; }
+.profile-deletion-impact[data-blocked="true"] { border-color: var(--line-error); background: var(--surface-error); color: var(--danger); }
+.profile-deletion-preserved { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.profile-deletion-error { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.5; }
+.profile-deletion-actions { position: sticky; bottom: -22px; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 0 -1px -1px; padding: 10px 1px 1px; background: var(--surface); }
+.profile-deletion-actions .danger-button { border-color: transparent; background: var(--danger); color: white; }
+#profile-deletion .profile-deletion-actions .danger-button:disabled { opacity: 1; border-color: var(--line); background: var(--surface-neutral); color: var(--text-muted); cursor: not-allowed; }
+@media (max-height: 520px) {
+  #profile-deletion { padding: 14px; max-height: 94vh; }
+  .profile-deletion-form { gap: 8px; }
+  .profile-deletion-heading h2 { font-size: 18px; }
+  #profile-deletion-description { margin: 0; font-size: 11px; line-height: 1.35; }
+  #profile-deletion-select { min-height: 32px; }
+  #profile-deletion-impact { min-height: 42px; max-height: 20vh; gap: 5px; padding: 8px; font-size: 11px; }
+  .profile-deletion-preserved { font-size: 10.5px; line-height: 1.35; }
+  .profile-deletion-actions { bottom: -14px; padding-top: 6px; }
+}
 .settings-import { flex: 1 1 100%; padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
 .settings-import h2 { margin: 0 0 4px; font-size: 13px; }
 .settings-import p, .import-intro, .import-limitation { margin: 0 0 10px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }

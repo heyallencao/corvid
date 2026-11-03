@@ -33,6 +33,16 @@ module.exports = function createLibrary(directory) {
     history: profileId => data.history.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
     bookmarks: profileId => data.bookmarks.filter(item=>(item.profileId ?? 'default')===profileId),
     downloads: profileId => data.downloads.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
+    removeProfile(profileId) {
+      if(profileId==='default')throw new Error('Cannot remove the default profile library');
+      const next={...data,
+        history:data.history.filter(item=>(item.profileId ?? 'default')!==profileId),
+        bookmarks:data.bookmarks.filter(item=>(item.profileId ?? 'default')!==profileId),
+        downloads:data.downloads.filter(item=>(item.profileId ?? 'default')!==profileId),
+      };
+      save(next);
+      data=next;
+    },
     addDownload(item) { data.downloads.push(item); save(); return item; },
     updateDownload(id, fields, persist = true) { const item=data.downloads.find(x=>x.id===id); if(!item) throw new Error('Download not found'); Object.assign(item,fields); if(persist) save(); return item; },
     visit(url, title, profileId) { if (!validUrl(url)) return null; const item={id:randomUUID(),profileId,url,title:title || url,visitedAt:new Date().toISOString()}; data.history.push(item); save(); return item; },

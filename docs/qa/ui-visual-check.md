@@ -281,3 +281,10 @@
 
 - 本次改动没有调整视觉样式；真实 Electron 定向 E2E 使用 Enter 从 Agent 工作区侧栏打开空态及 Corvid Agent 工作台，核对焦点进入任务输入框并在关闭后恢复到入口。全量回归结果和 REA 参考证据见[验证记录](../reviews/verification-log.md#2026-11-03-agent-空态到工作台的键盘路径-issue-16)。
 - REA 直接观察 Kobra Chat Input 文档页的可访问树：消息框及附加按钮均有独立名称；这是公开组件页的 DOM/AX 观察，只作交互命名参考。没有在本轮对 Corvid 工作台截图作人工目视复核，也没有验证实际读屏播报、完整 Tab 顺序或 Kobra 控件行为；相关未覆盖项仍保持开放。
+# 2026-11-04 浏览身份删除确认与窄窗布局（Issue #174）
+
+- Corvid 运行态：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture。真实 Electron UI 中打开浏览身份菜单与删除确认框；窗口/空间仍引用目标身份时显示阻断项并禁用删除；取消不产生数据变更。另在 700×420 视口检查英文文案、保留数据说明和底部操作区完整可见。截图仅包含本地合成身份/网页：[`profile-deletion-blocked-zh-CN-2560x1636.png`](screenshots/profile-deletion-blocked-zh-CN-2560x1636.png)，SHA-256 `17147d7a743f3d473ff85706fc28a4819899585c8e54a66be6c19782ac407243`；[`profile-deletion-blocked-en-700x420.png`](screenshots/profile-deletion-blocked-en-700x420.png)，SHA-256 `dd4bd38fcfbea9dc5737cd47af40d1e1bac81c55270454d651edb9546a66805b`。
+- 视觉判断：确认框沿用 Corvid 现有表面、圆角、边框和阴影；标题与影响说明先于身份选择；阻断原因和下载文件保留说明分区呈现；窄窗将操作区固定在滚动视口底部。首次 700×420 截图显示保留说明被操作区遮住，已调小垂直间距并加上动作/说明矩形断言，复验截图现可完整看到两者。禁用操作采用中性背景与可读文字，并与可操作的危险按钮区分。
+- UI 参考及 REA：Chrome 官方“管理 Chrome 个人资料”帮助页 `https://support.google.com/chrome/answer/2364824?hl=en`，Evidence `ev_030a3fa846bf1e55eb2d59ebda668384a07c40fac4ae003df523927da1747a99`，直接证据限官方帮助页 DOM/AX 描述：从身份管理选择删除并给出删除后果，未观察原生 Chrome 确认框。Safari 官方用户指南 `https://support.apple.com/guide/safari/ibrwf3a9e7d6/mac`，Evidence `ev_97475b45ef50f6216275a5e422ca3577d94f6bc9c09ffe0158cb93f185022e73`，静态说明其保留默认身份并列出清理/保留数据边界，未观察原生 Safari 删除交互。Kobra Alert `https://kobra.systems/components/alert`，REA controlled replay Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`；直接观察到具名 alert 区域和多种状态预览，页面没有执行组件交互。本实现只采用清楚标明阻断状态的可访问 `status` 区域这一点；浏览身份/数据范围以 Corvid 自身合同为准。以上参考不作为产品验收标准，也未复制代码、样式或素材。
+- 证据分层：截图、Playwright DOM 矩形和 E2E 操作是 Corvid 本机真实 Electron 运行观察；语言键、`aria-live`、阻断映射与响应式 CSS 是仓库静态证据；将影响范围先于破坏性操作呈现、并在短窗保持主操作可见，是结合 Corvid 安全合同与上述有限参考作出的设计推断。
+- 未知与限制：REA 没有观察 Chrome/Safari 原生窗口、删除失败恢复或窄窗行为；本次产品运行未测试 VoiceOver、Windows/Linux、打包版、暗色模式或扩展专属外部数据；没有将截图解释为 Chromium 所有磁盘残留均已抹除的证明。
