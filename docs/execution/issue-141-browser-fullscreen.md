@@ -1,6 +1,6 @@
 # D06 窗口全屏切片（Issue #141）
 
-**状态：实现中，真实 Electron 验收未完成。** 本文是执行板 D06「标签、窗口与导航」的切片记录；D06 仍是长期能力台账的事实来源。
+**状态：实现与 macOS 隔离 Electron 主路径已通过；人工 UI、截图和其他平台验收未完成。** 本文是执行板 D06「标签、窗口与导航」的切片记录；D06 仍是长期能力台账的事实来源。
 
 ## 产品行为
 
@@ -31,7 +31,9 @@
 - 2026-11-03 16:43（Asia/Shanghai）通过 CUA `getState()` 复核：`apps` 为空，原生应用枚举返回“Mac is locked and automatic unlock could not unlock it”。本轮没有启动 Corvid/Electron；该结果证明当前无法进行桌面验收，不证明功能通过或失败。
 - 2026-11-03 17:00（Asia/Shanghai）全屏 E2E 增加关闭并重启应用后的窗口恢复检查：校验退出时持久化的正常尺寸/最大化状态与重启恢复结果一致，且不恢复临时全屏；另等待网页全屏关闭触发的原生窗口退出完成。`node --check tests/fullscreen-e2e.cjs`、13 项纯逻辑测试与 `git diff --check` 通过；真实 E2E 尚未运行。
 - 2026-11-03 17:02（Asia/Shanghai）复核全部 `tests/*.test.mjs`：13 项通过；`node --check` 覆盖全屏相关实现与脚本，`git diff --check` 通过。仓库目前只有两个纯 Node 测试文件，这不替代 Electron 运行态验收。
-- 2026-11-03 17:07（Asia/Shanghai）全屏 E2E 接入 `tests/electron-test-startup.cjs` 的有界启动、全新控制凭据等待和异常退出清理；应用重启后要求控制 token 与关闭前不同，避免把旧 `control.json` 误认成新应用已就绪。测试索引同步登记为 54 个入口、49 条独立脚本和 57 项自动化检查，并按 `package.json` 顺序重排。`node --check tests/fullscreen-e2e.cjs tests/electron-test-startup.cjs`、13 项纯逻辑测试和 `git diff --check` 通过。真实 Electron 未启动：CUA 明确返回 Mac 锁屏，应用/网页全屏、窗口重启恢复和截图仍未验收。
+- 2026-11-03 17:07（Asia/Shanghai）全屏 E2E 接入 `tests/electron-test-startup.cjs` 的有界启动、全新控制凭据等待和异常退出清理；应用重启后要求控制 token 与关闭前不同，避免把旧 `control.json` 误认成新应用已就绪。测试索引同步登记为 54 个入口、49 条独立脚本和 70 项自动化检查，并按 `package.json` 顺序重排。`node --check`、13 项纯逻辑测试和 `git diff --check` 通过。当时 Mac 锁屏，真实 Electron 尚未运行。
+- 2026-11-03 17:20（Asia/Shanghai）解锁后首次真实 Electron 全屏 E2E 在关闭 HTML 全屏标签时发现 `/rooms` 返回 400：`WebContents` 的 `destroyed` 事件在标签从 `tabs` 与 Room 列表移除前调用 `describe()`，访问已销毁对象的 `getTitle()`。复核确认 `closeTab()` 会在清理完成后发布 shell 状态，因此销毁监听现只清理全屏归属，不序列化失效页面；该竞态由原有全屏 E2E 覆盖并通过。菜单首项排序也通过既有权限键盘 E2E 覆核：保留原首项，在其后插入全屏项，并同步 ArrowDown 断言。
+- 同轮验证：定向 `env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` 均通过；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，21 个 `node:test` 用例与 49 个独立脚本共 70 项通过。测试使用隔离临时数据目录和本地页面 fixture；未使用 OAuth、真实账号或模型。E2E 本身已覆盖真实 Electron 主路径，但未进行人工屏幕阅读、未采集截图，也未验证 Windows/Linux、打包版本或真实网站。
 - `tests/fullscreen-e2e.cjs` 原有快捷键步骤使用 Playwright `keyboard.press`，该输入不会经过 Electron 的 `before-input-event`，已改为 Electron 原生输入事件。网页全屏夹具通过隔离 HTTP 页面、测试期明确自动同意权限请求来运行，不使用真实站点或账号。
 - UI 只在现有“更多浏览工具”菜单加入状态项和快捷键提示，未移植外部组件或视觉素材；本轮未使用 REA 检查 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI。需要进一步调整视觉样式时再按全局 UI 参考约束取证。
 

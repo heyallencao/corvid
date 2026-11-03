@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 54 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test tests/*.e2e.mjs`（4 个文件、8 个 `node:test` 用例）和 49 条独立脚本命令，共 57 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 54 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（6 个文件、21 个 `node:test` 用例）和 49 条独立脚本命令，共 70 项自动化检查。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -93,7 +93,7 @@
 
 ## 单独运行
 
-- 4 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs`。其中 browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，避免窗口焦点竞争导致点击未派发；启动诊断用合成 launcher 和子进程 fixture，共 8 个用例。
+- 6 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs`，共 21 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件使用纯 Node 合同测试。
 - 49 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。

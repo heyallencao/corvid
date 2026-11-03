@@ -1,10 +1,10 @@
 # 验证记录
 
-## 2026-11-03 浏览器窗口全屏 E2E 启动与清理边界（Issue #141）
+## 2026-11-03 浏览器窗口全屏 E2E 与标签销毁竞态（Issue #141）
 
-- 调整：`tests/fullscreen-e2e.cjs` 统一调用 `tests/electron-test-startup.cjs` 的 Electron 启动、首窗口与控制凭据等待、限时关闭/进程诊断；重启阶段要求新 token，避免旧 `control.json` 让恢复断言连到已关闭应用。
-- 验证：`node --check tests/fullscreen-e2e.cjs`、`node --check tests/electron-test-startup.cjs`、`node --test tests/*.test.mjs`（13 项通过）及 `git diff --check` 均通过。QA 索引同步新增全屏入口并对齐 `package.json` 的顺序和计数。
-- 限制：本轮 CUA 返回“Mac is locked”，没有启动真实 Electron；因此未验证全屏菜单/快捷键、网页全屏退出、多窗口隔离、Agent 工作区可见、退出与重启窗口恢复，也未采集截图。纯 Node 测试不是这些运行态行为的验收。
+- 调整：`tests/fullscreen-e2e.cjs` 统一调用 `tests/electron-test-startup.cjs` 的 Electron 启动、首窗口与控制凭据等待、限时关闭/进程诊断；重启阶段要求新 token，避免旧 `control.json` 让恢复断言连到已关闭应用。真实运行首轮发现 `WebContents` 销毁监听在标签状态清除前序列化 shell state，导致已销毁页面访问 `getTitle()` 并使 `/rooms` 返回 400。销毁监听现只清理全屏归属，随后由 `closeTab()` 在移除标签后统一发布状态。
+- 回归：将全屏菜单项放在原有首项之后，保持站点工具菜单初始焦点，权限 E2E 同步验证 ArrowDown 落到新增全屏项。`env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs` 均 EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，21 个 `node:test` 用例和 49 个独立脚本，共 70 项通过。`node --check` 和 `git diff --check` 通过。
+- 环境与边界：macOS、Node.js v24.14.1、Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture。未使用 OAuth、真实账号或模型，npm test 不含真实模型 smoke test。未做人工屏幕阅读或截图；Windows/Linux、打包版本和真实网站未覆盖。
 
 ## 2026-11-03 主题色对比度修复（Issue #16）
 

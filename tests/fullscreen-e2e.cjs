@@ -115,7 +115,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       return contents&&contents.executeJavaScript('Boolean(document.fullscreenElement)');
     },fixtureUrl),true,'the app action must not exit page HTML Fullscreen');
     assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().some(window=>window.isFullScreen())),nativeFullscreenBefore,'the app action must not change native page fullscreen state');
-    await shell.locator('.tab[data-active="true"] .tab-close').click({force:true});
+    await shell.locator('.tab[data-active="true"] .tab-close').click({force:true,noWaitAfter:true});
     await until(()=>app.evaluate(({webContents},url)=>!webContents.getAllWebContents().some(contents=>contents.getURL()===url),fixtureUrl),'fullscreen page closes');
     await until(async()=>{const state=await api('/rooms');return state.windows.every(item=>!item.pageFullscreen);},'page full-screen state clears');
     await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().every(window=>!window.isFullScreen())),'native full-screen state exits after page close');

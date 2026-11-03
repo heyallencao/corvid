@@ -654,7 +654,8 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     markPageFullscreen(owner,tabId,describe);
   });
   view.webContents.on('leave-html-full-screen',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
-  view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
+  // A destroyed WebContents cannot provide getTitle(); closeTab publishes the shell state after removing this tab.
+  view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId));
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
   view.webContents.on('will-prevent-unload',event=>{

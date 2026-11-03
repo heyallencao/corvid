@@ -37,7 +37,7 @@ await siteToolsTrigger.press('ArrowDown');
 assert.equal(await siteToolsTrigger.getAttribute('aria-expanded'),'true');
 assert.equal(await shell.evaluate(()=>document.activeElement.id),'clear-site','opening the menu moves focus to its first action');
 await shell.screenshot({path:path.join(os.tmpdir(),'corvid-site-tools-menu.png')});
-await shell.keyboard.press('ArrowDown');assert.equal(await shell.evaluate(()=>document.activeElement.id),'site-permissions');
+await shell.keyboard.press('ArrowDown');assert.equal(await shell.evaluate(()=>document.activeElement.id),'toggle-fullscreen');
 await shell.keyboard.press('Home');assert.equal(await shell.evaluate(()=>document.activeElement.id),'clear-site');
 await shell.keyboard.press('End');assert.equal(await shell.evaluate(()=>document.activeElement.id),'print-page');
 await shell.keyboard.press('ArrowUp');assert.equal(await shell.evaluate(()=>document.activeElement.id),'site-permissions');
