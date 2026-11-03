@@ -108,6 +108,14 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.doesNotMatch(await firstTaskCard.innerText(),/corvid_page_snapshot/,'user-visible tool activity does not expose an internal API name');
     await shell.locator('.pi-task-title').getByText('总结当前页面内容').waitFor();
     assert.equal(await shell.locator('.pi-task-state').textContent(),'已完成','task state is shown separately from its target page and runtime');
+    const completedElapsed=firstTaskCard.locator('.pi-task-elapsed');
+    await completedElapsed.waitFor();
+    const completedElapsedText=await completedElapsed.textContent();
+    assert.match(completedElapsedText,/本轮已用时/,'the finished turn shows a stable, localized elapsed duration');
+    assert.equal(await completedElapsed.getAttribute('aria-live'),'off','per-second duration updates do not create repeated screen-reader announcements');
+    assert.ok(Date.parse(readSavedTasks(dataDir)[0].conversation.at(-1).finishedAt)>=Date.parse(readSavedTasks(dataDir)[0].conversation.at(-1).at),'turn end time is persisted with Corvid conversation data');
+    await delay(1_100);
+    assert.equal(await completedElapsed.textContent(),completedElapsedText,'a completed turn duration remains frozen');
     assert.match(await shell.locator('.pi-task-context').textContent(),/Corvid Agent · Corvid Fixture Page/);
     assert.doesNotMatch(await shell.locator('.pi-task-context').textContent(),/\bPi\b/i,'task context describes the Corvid product, not its runtime');
 
@@ -150,6 +158,14 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByRole('button',{name:'发送',exact:true}).click();
     const queuedTask=shell.locator('.pi-task-entry').filter({hasText:queuedPrompt}).first();
     await queuedTask.locator('.pi-task-state[data-status="running"]').waitFor();
+    const runningElapsed=queuedTask.locator('.pi-task-elapsed');
+    const elapsedBefore=await runningElapsed.textContent();
+    let elapsedAfter=elapsedBefore;
+    for(let attempt=0;attempt<12&&elapsedAfter===elapsedBefore;attempt++){await delay(250);elapsedAfter=await runningElapsed.textContent();}
+    const elapsedState=await runningElapsed.evaluate(element=>({startedAt:element.dataset.startedAt,finishedAt:element.dataset.finishedAt,live:element.dataset.live,now:new Date().toISOString()}));
+    assert.notEqual(elapsedAfter,elapsedBefore,`the running turn elapsed duration updates while the task runs: ${JSON.stringify(elapsedState)}`);
+    assert.match(elapsedAfter,/本轮已用时/);
+    await shell.screenshot({path:path.join(project,'docs/qa/screenshots/issue-186-agent-task-duration-1280x850.png')});
     const queueForm=queuedTask.locator('.pi-message-queue-form');
     const queueInput=queueForm.getByRole('textbox',{name:'添加后续消息'});
     await queueInput.fill('检查来源');
@@ -173,8 +189,12 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'editing, reordering, and removing queue entries leaves the intended order');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await queuedTask.locator('.pi-task-state[data-status="interrupted"]').waitFor();
+    const stoppedElapsedText=await runningElapsed.textContent();
+    await delay(1_100);
+    assert.equal(await runningElapsed.textContent(),stoppedElapsedText,'stopping a turn freezes its displayed duration');
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'stopping freezes dispatch and preserves queued messages');
     await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await queuedTask.locator('.pi-task-elapsed').getByText(/^Turn elapsed/).waitFor();
     await queuedTask.getByText('Follow-up queue',{exact:false}).waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell,'English follow-up queue');
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
@@ -250,13 +270,14 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.screenshot({path:path.join(os.tmpdir(),'corvid-pi-workbench-narrow.png')});
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280,850));
     await app.close(); app=null;
-    afterFollowup.status='running';afterFollowup.conversation[3].status='running';afterFollowup.events.push({type:'tool',text:'正在使用浏览器工具：corvid_page_snapshot',at:new Date().toISOString()});fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify([afterFollowup]),{mode:0o600});
+    afterFollowup.status='running';afterFollowup.conversation[3].status='running';delete afterFollowup.conversation[3].finishedAt;afterFollowup.events.push({type:'tool',text:'正在使用浏览器工具：corvid_page_snapshot',at:new Date().toISOString()});fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify([afterFollowup]),{mode:0o600});
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     let restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart');})();
     await restoredShell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await restoredShell.locator('.pi-task-state').getByText('等待检查',{exact:true}).waitFor();
     const restoredTaskCard=restoredShell.locator('.pi-task-entry').first();
+    assert.equal(await restoredTaskCard.locator('.pi-task-elapsed').textContent(),'本轮用时未知','a restart with no confirmed end time does not count the application-offline interval');
     await restoredTaskCard.getByText('正在执行浏览器操作',{exact:true}).waitFor();
     assert.doesNotMatch(await restoredTaskCard.innerText(),/corvid_page_snapshot/,'legacy task events do not expose persisted internal tool names');
     await restoredShell.evaluate(()=>window.corvidI18n.setLocale('en'));
