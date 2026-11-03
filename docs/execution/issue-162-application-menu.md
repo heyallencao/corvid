@@ -1,7 +1,7 @@
 # Issue #162：Corvid 原生浏览器菜单
 
 状态：实现与当前 macOS 定向验收完成，等待 PR review/合并；跨平台与辅助技术验收未完成
-对应执行板：[`feature-board.md` D16](feature-board.md)  
+对应执行板：[`feature-board.md` D16](feature-board.md)
 GitHub Issue：[将 Electron 默认菜单替换为 Corvid 双语浏览器菜单](https://github.com/heyallencao/corvid/issues/162)
 
 ## 基线证据
