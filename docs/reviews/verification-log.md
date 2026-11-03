@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-04 Agent 运行中消息队列（Issue #180）
+
+- 环境：macOS；独立 worktree `/private/tmp/corvid-issue180-impl`；Node.js v24.14.1、Electron 45.2.1；真实 Electron E2E 使用隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。没有加载用户浏览器资料。
+- 合同与静态检查：`node --check` 覆盖 `desktop/agent-task-store.cjs`、`desktop/agent-workbench.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`desktop/locales.js`；`node tests/agent-message-queue-contract.cjs`、`node tests/agent-task-continuation-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均 EXIT 0；`git diff --check` 通过。
+- 真实 Electron 与双语 UI：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0。覆盖队列新增、查看、编辑、重排、移除、停止冻结、键盘操作、队首发送前重新预览并同意、队列余项保留及短高窗口滚动可达；中文、英文资源键完整。页面为本地 fixture。
+- 产品与模型边界：UI 测试选择 GPT-6 Luna 仅为了验证模型选择界面状态；未发起 OAuth 或真实模型请求，没有消耗模型额度。真实模型 smoke 未运行。
+- REA 与设计记录：EGO、Kaze、Kobra 的可用证据和直接观察/推断/未知、重采集失败及覆盖边界，记录于[浏览器参考分析](../research/browser-reference-analysis.md#2026-11-04-agent-后续消息队列设计复核)与[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-agent-运行中消息队列issue-180)。两张截图来自本地合成页面，不含个人数据。
+- 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)，D25 在合并后关闭。
+
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
 - 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。
