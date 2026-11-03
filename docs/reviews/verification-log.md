@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 扩展弹窗失焦关闭的 Electron 验证边界（Issue #129）
+
+- 复核：现有测试在扩展子窗口打开时使用 Playwright CDP 点击 Corvid 页面。CDP 点击没有切换原生窗口焦点，因此超时并不能证明产品关闭逻辑失效；此前记录将其写成“点击弹窗外关闭”证据过强。
+- 修正：回归改为通过原生 `BrowserWindow.focus()` 激活 Corvid 父窗口，检查弹窗因 blur 关闭。此用例验证失焦关闭路径，不声称验证真实鼠标物理点击。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 0；确认失焦关闭路径、Escape 焦点恢复、Profile 切换关闭和弹窗安全边界。更新后的工具栏/弹窗截图已复核，尺寸分别为 2560×1636、640×440，内容为隔离的合成扩展。
+- 限制：外点手势的原生鼠标输入尚未覆盖；后续需要可向系统窗口发送真实指针输入的端到端夹具。
+
 ## 2026-11-03 下载失败与中断后的安全重试（Issue #126）
 
 - 基线与环境：基于 `ff9d046` 的隔离 worktree；macOS、Node.js v24.14.1、Electron 45.2.1。E2E 使用临时 `CORVID_DATA_DIR`、临时下载目录及本地 HTTP fixture。
