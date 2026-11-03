@@ -7,6 +7,11 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，8 项 `node:test` 与 46 个独立脚本共 54 项自动化检查通过；其中重试主流程、边界、Profile 与 Agent 下载测试均单独 EXIT 0。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check tests/download-e2e.cjs`、`node --check tests/download-retry-boundaries-e2e.cjs` 与 `git diff --check` 均通过。用例覆盖同名文件失败且原文件不变、手动重试成功、原记录保留、进行中禁用重复重试、取消子尝试、错误文案呈现、跨 Profile 来源拒绝、并发 IPC 只启动一个尝试、使用来源 Profile Session、危险协议拒绝、外部 API 不暴露重试入口、Agent 下载原有行为，以及模拟重启时把持久的 `progressing` 记录恢复为 `interrupted` 后重试成功。
 - UI/UE 参考：复用本日 REA 直接观察的 Kobra Alert `/components/alert`，Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（09:20 Asia/Shanghai）；仅参考命名状态区与错误状态表达的清晰度，未移植实现。Rare UI 在此前检查中仅显示 Vercel Security Checkpoint，Evidence `ev_f2ea0fa5cdeca7d8b14710c80abd66a5e367a3cabc0eff9faa49a22dc8df806e`，不提供可用切面。交互和覆盖限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-下载失败记录的手动重试-issue-126)。
 - 限制：下载目录和原生保存对话框由测试模式替换；重启测试以持久化 `progressing` 记录模拟启动恢复，没有强杀正在下载的 Electron 进程；未验证真实断网恢复、Windows/Linux、真实 Agent/MCP 客户端或打包版。已从来源 Profile 发起隔离重试；未在真实桌面保存对话框中切换 Profile。中文 PR [#127](https://github.com/heyallencao/corvid/pull/127) 已于 2026-11-03 合并，合并提交 `17f9f160cec32126473bd6c8ba12bdb2967ff235`；关联 Issue #126 已关闭。
+## 2026-11-03 Agent 跨 Room 慢操作不互相阻塞（Issue #96）
+
+- 缺口：两个 scoped Agent 客户端的并发 HTTP 请求和跨 Room 拒绝已有 E2E，但此前没有证明一个获准 Room 的长时间页面操作不会阻塞另一个 Room 的操作。
+- 验证：真实 Electron、macOS、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。本地 HTTP fixture 暂停 Agent A 的 `/slow` 导航响应；A 的导航请求确认仍未结束后，Agent B 对其独立获准 Room 的 `/fast` 导航在 3 秒界限内返回 200，之后释放 A 并确认其也返回 200。既有断言同时确认越权 Room/Tab 读写仍返回 `403/CORVID_FORBIDDEN`。`node --check tests/agent-access-e2e.cjs`、`git diff --check` 和 `env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 均通过。
+- 边界：证明的是同一 Corvid 主进程中按 Room 分开的浏览器操作队列可独立推进，不证明真实 Provider/模型并发、多个操作系统进程之间的运行调度或抵御同一 OS 用户恶意进程。Issue #96 继续开放。
 
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 

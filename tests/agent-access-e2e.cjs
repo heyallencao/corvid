@@ -2,6 +2,7 @@ const { _electron } = require('playwright-core');
 const electronPath = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -10,6 +11,20 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-agent-access-'));
+  let releaseSlowNavigation;
+  let slowNavigationStarted;
+  const slowNavigationGate = new Promise(resolve => { releaseSlowNavigation = resolve; });
+  const slowNavigationSignal = new Promise(resolve => { slowNavigationStarted = resolve; });
+  const fixture = http.createServer(async (request, response) => {
+    if (request.url === '/slow') {
+      slowNavigationStarted();
+      await slowNavigationGate;
+    }
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(`<title>${request.url}</title><p>Agent Room fixture</p>`);
+  });
+  await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
+  const fixtureOrigin = `http://127.0.0.1:${fixture.address().port}`;
   let app;
   try {
     app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
@@ -57,6 +72,26 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(roomBDetails.status, 200);
     const tabAId = roomADetails.payload.tabs[0].id;
     const tabBId = roomBDetails.payload.tabs[0].id;
+
+    let slowNavigationSettled = false;
+    const slowNavigation = request(grantA.token, `/tabs/${tabAId}/navigate`, 'POST', { url: `${fixtureOrigin}/slow` }).then(result => {
+      slowNavigationSettled = true;
+      return result;
+    }, error => {
+      slowNavigationSettled = true;
+      return { error };
+    });
+    await Promise.race([slowNavigationSignal, delay(5_000).then(() => { throw new Error('Room A navigation did not reach the gated local page'); })]);
+    assert.equal(slowNavigationSettled, false, 'Room A navigation remains pending while the fixture holds its response');
+    const fastNavigation = await Promise.race([
+      request(grantB.token, `/tabs/${tabBId}/navigate`, 'POST', { url: `${fixtureOrigin}/fast` }),
+      delay(3_000).then(() => { throw new Error('Room A navigation blocked the independent Room B operation'); }),
+    ]);
+    assert.equal(fastNavigation.status, 200, 'Room B navigation completes while the authorized Room A request remains blocked');
+    assert.equal(slowNavigationSettled, false, 'Room B completion does not depend on releasing Room A navigation');
+    releaseSlowNavigation();
+    const slowNavigationResult = await slowNavigation;
+    assert.equal(slowNavigationResult.status, 200, 'Room A navigation completes when its own response is released');
 
     const [createTabA, createTabB] = await Promise.all([
       request(grantA.token, `/rooms/${roomA.id}/tabs`, 'POST', { url: 'about:blank' }),
@@ -135,7 +170,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal((await request(grantA.token, '/rooms')).status, 401, 'a revoked credential stays invalid after restart');
     console.log('Agent access authorization E2E passed');
   } finally {
+    releaseSlowNavigation();
     if (app) await app.close().catch(() => {});
+    fixture.closeAllConnections();
+    await new Promise(resolve => fixture.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
