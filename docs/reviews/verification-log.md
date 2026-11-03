@@ -1187,3 +1187,9 @@
 - 变更：快捷键 E2E 改为向唯一隔离 Electron 窗口发送输入，不再依赖 `BrowserWindow.getFocusedWindow()`；纯 Node 菜单合同增加断言，确认 Window 菜单项回调将选中窗口 ID 交给焦点处理器。
 - 验证：`node --check tests/application-menu-e2e.cjs` 通过；`application-menu-e2e.cjs` 在改用明确窗口输入后通过 Agent Room 快捷键门禁，继续到双窗口原生前台切换处超时。随后尝试显式激活应用，仍未取得 `BrowserWindow.getFocusedWindow()`；CUA 状态查询报告 Mac 锁屏。此 E2E 未通过，也未到达本次菜单语言切换与重启持久化断言。真实桌面焦点行为仍待解锁状态下复验。
 - 单元合同：本轮 `node --test tests/application-menu.test.mjs` 3/3 通过，包含新增的 Window 菜单焦点回调断言；E2E 尚未到达语言切换及重启持久化断言。没有将锁屏/焦点受限下的超时记为产品缺陷或功能通过；相关 Electron 进程已退出。本轮未运行完整 `npm test`。
+
+## 2026-11-04 锁屏下菜单本地化运行态隔离验收（Issue #130）
+
+- 变更：新增显式测试变量 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1`，只跳过双窗口原生焦点和路由步骤；默认模式仍完整执行该步骤。它用于在桌面锁屏时继续验收本 PR 的菜单语言切换与重启持久化，不替代原生焦点验收。
+- 验证：CUA 本轮报告 macOS 锁屏；`node --check tests/application-menu-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1 node tests/application-menu-e2e.cjs` EXIT 0，真实隔离 Electron 下 Agent Room 快捷键门禁、中文/英文原生菜单切换、语言偏好重启恢复与无 Electron/runtime/开发者工具菜单项断言通过。输出明确标记“SKIP native Window menu focus and routing”。`node --test tests/application-menu.test.mjs` 3/3、`git diff --check` 通过。
+- 边界：双窗口原生焦点与菜单动作路由仍依赖默认模式；该行为此前在已合并 PR #169 / Issue #167 的 macOS 解锁桌面现场 E2E 与 System Events 复核通过。本轮没有重跑全量 `npm test`，也没有重新执行默认原生焦点路径。
