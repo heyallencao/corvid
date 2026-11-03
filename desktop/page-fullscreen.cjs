@@ -23,7 +23,9 @@ function clearPageFullscreen(record, tabId, describe) {
     record.lastKnownMaximized = Boolean(browserWindow.isMaximized() || record.fullscreenRestoreMaximized);
     record.fullscreenRestoreMaximized = null;
   }
-  if (!record.closing && !browserWindow.isDestroyed()) browserWindow.webContents.send('shell-state', describe(record, true));
+  if (!record.closing && !browserWindow.isDestroyed() && typeof describe === 'function') {
+    browserWindow.webContents.send('shell-state', describe(record, true));
+  }
   return true;
 }
 

@@ -97,6 +97,15 @@ test('is safe to repeat after state has already been cleared', () => {
   assert.equal(calls.sent.length, 1);
 });
 
+test('clears page state safely when teardown has no shell serializer', () => {
+  const { record, calls } = createRecord();
+  assert.equal(clearPageFullscreen(record, 'tab-a'), true);
+  assert.equal(record.htmlFullscreen, false);
+  assert.equal(record.htmlFullscreenTabId, null);
+  assert.deepEqual(calls.setFullScreen, [false]);
+  assert.deepEqual(calls.sent, []);
+});
+
 test('clears state without calling a destroyed BrowserWindow', () => {
   const { record, calls } = createRecord({ destroyed: true });
   assert.equal(clearPageFullscreen(record, 'tab-a', describe), true);

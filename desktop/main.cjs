@@ -646,7 +646,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   };
   view.webContents.on('did-navigate',()=>{
     tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;
-    clearPageFullscreen(windowRecords.get(s.windowId),tabId);
+    clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe);
   });
   // Keep HTML fullscreen ownership scoped to this tab; BrowserWindow events lack a tab identity.
   view.webContents.on('enter-html-full-screen',()=>{
@@ -654,7 +654,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     markPageFullscreen(owner,tabId,describe);
   });
   view.webContents.on('leave-html-full-screen',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
-  view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId));
+  view.webContents.once('destroyed',()=>clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe));
   view.webContents.on('dom-ready',()=>{tab.domReady=true;});
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
   view.webContents.on('will-prevent-unload',event=>{
@@ -740,7 +740,7 @@ async function closeTab(tabId) {
   } catch(error) {if(!contents.isDestroyed())await pageDebugger.ensure(contents);throw error;}
   if(!closed){await pageDebugger.ensure(contents);throw new Error('页面取消关闭，未保存的内容仍保留');}
   const owner=windowRecords.get(s.windowId);
-  clearPageFullscreen(owner,tabId);
+  clearPageFullscreen(owner,tabId,describe);
   if(owner && !owner.browserWindow.isDestroyed()){owner.browserWindow.contentView.removeChildView(t.view);if(owner.frontView===t.view)owner.frontView=null;}
   tabs.delete(tabId);s.tabIds=s.tabIds.filter(x=>x!==tabId);
   if(s.activeTabId===tabId)s.activeTabId=s.tabIds[0] || null;update();
