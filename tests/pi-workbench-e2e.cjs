@@ -93,10 +93,10 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(await start.isDisabled(), false);
     await shell.keyboard.press('Tab');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'发送','Tab reaches the enabled send action after consent');
+    await shell.evaluate(()=>{window.__corvidStartFeedback=new Promise(resolve=>document.addEventListener('click',event=>{const button=event.target instanceof Element?event.target.closest('#pi-task-form .pi-primary-action'):null;if(button)setTimeout(()=>resolve({text:button.textContent,disabled:button.disabled,busy:button.getAttribute('aria-busy')}),0);},{capture:true,once:true}));});
     await shell.keyboard.press('Enter');
-    assert.equal(await start.isDisabled(), true, 'starting a task immediately disables repeat submissions');
-    assert.equal(await start.getAttribute('aria-busy'), 'true', 'the pending start is announced as busy');
-    assert.equal(await start.textContent(), '正在启动 Agent 任务…', 'the send action gives immediate localized progress feedback');
+    const startFeedback=await shell.evaluate(async()=>window.__corvidStartFeedback);
+    assert.deepEqual(startFeedback,{text:'正在启动 Agent 任务…',disabled:true,busy:'true'},'the send action immediately disables repeat submissions and announces localized progress');
     const firstTaskCard=shell.locator('.pi-task-entry').first();
     await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
     await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor();
@@ -219,7 +219,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const transcriptTask={...savedTasks[0],status:'completed',prompt:'总结当前页面内容',output:'这是之前保存的摘要。',conversation:[{role:'user',text:'总结当前页面内容'},{role:'assistant',text:'这是之前保存的摘要。',status:'completed'}],sessionRef:{runtimeId:'retired-runtime',runtimeVersion:'9.0.0',data:{handle:'opaque-retired-session'}}};
     await app.close();app=null;
     fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:2,tasks:[transcriptTask]}),{mode:0o600});
-    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_DISPOSE_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     const migrationShell=await app.firstWindow();
     restoredShell=migrationShell;
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for transcript continuation');})();
@@ -279,28 +279,27 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await runtimeErrorCard.getByRole('button',{name:'移除记录'}).click();
     assert.deepEqual(readSavedTasks(dataDir),[]);
 
-    const cleanupFailureTask={
-      id:'fixture-session-cleanup-failure',profileId:activeRoom.profileId,roomId:activeRoom.id,tabId:activeRoom.activeTabId,
-      prompt:'清理失败后保留的回复',page:{title:'Corvid Fixture Page',url:sourceUrl},status:'completed',output:'这是已生成且保留的回复。',
-      conversation:[{role:'user',text:'清理失败后保留的回复'},{role:'assistant',text:'这是已生成且保留的回复。',status:'completed'}],
-      events:[{type:'error',messageKey:'agentSessionCleanupFailed',at:new Date().toISOString()}],hasSession:true,stopUnconfirmed:true,canContinue:false,continuationMode:null
-    };
-    const sendCleanupFailureTask=()=>app.evaluate(({BrowserWindow},task)=>BrowserWindow.getAllWindows()[0].webContents.send('pi-task-state',[task]),cleanupFailureTask);
-    await sendCleanupFailureTask();
-    const cleanupFailureCard=shell.locator('.pi-task-entry').filter({hasText:'清理失败后保留的回复'});
-    await cleanupFailureCard.waitFor();
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
+    await restoredShell.getByRole('button',{name:/新建对话/}).click();
+    await restoredShell.getByRole('button',{name:'连接当前页面'}).click();
+    await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:dispose-failure] 清理失败后保留的回复');
+    await restoredShell.getByRole('button',{name:'检查并预览页面上下文'}).click();
+    await restoredShell.getByText(/将分享给 Agent：/).waitFor();
+    await restoredShell.getByLabel(/我已检查/).check();
+    await restoredShell.getByRole('button',{name:'发送'}).click();
+    const cleanupFailureCard=restoredShell.locator('.pi-task-entry').filter({hasText:'[fixture:dispose-failure] 清理失败后保留的回复'});
+    await cleanupFailureCard.locator('.pi-task-state[data-status="completed"]').waitFor();
     const cleanupFailureAlert=cleanupFailureCard.locator('.pi-task-event[role="alert"]');
     await cleanupFailureAlert.waitFor();
     await cleanupFailureCard.getByText('这是已生成且保留的回复。',{exact:true}).waitFor();
     assert.equal(await cleanupFailureAlert.innerText(),'Agent 会话清理失败。本轮回复已保留，请检查页面状态后再启动新任务；此任务暂不可继续。');
     assert.equal(await cleanupFailureCard.getByRole('button',{name:'继续对话'}).count(),0,'an unconfirmed cleanup state cannot continue the completed session');
-    await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
-    await sendCleanupFailureTask();
+    assert.equal(readSavedTasks(dataDir).find(task=>task.prompt.includes('[fixture:dispose-failure]'))?.stopUnconfirmed,true);
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('en'));
     await cleanupFailureAlert.getByText('The Agent session could not be cleaned up. This response was kept; check the page state before starting another task. This task cannot continue.').waitFor();
-    await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
-    await sendCleanupFailureTask();
 
     await app.close();app=null;
+    fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:2,tasks:[]}),{mode:0o600});
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_INIT_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for the no-transcript fixture');})();
