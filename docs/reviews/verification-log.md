@@ -39,6 +39,17 @@
 - 隔离与截图：测试使用临时 `CORVID_DATA_DIR` 和本地 fixture；页面为 `about:blank`，未使用 OAuth、真实账号或模型。浅色壳截图为 [issue-16-contrast-after.png](../qa/screenshots/issue-16-contrast-after.png)，2560×1636，SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。测试刷新过的两张 Issue #129 截图已还原。
 - 参考与限制：这是依据 Corvid 实际 computed token 和 WCAG 2.2 对比度阈值修正色值，没有移植参考站点的视觉或交互，因此本切片未调用 REA 扫描 UI 灵感站点。自动化只检查列出的 CSS token/背景组合，不等同于所有组件状态的完整 WCAG 审计；未覆盖屏幕阅读器、Windows/Linux、打包版本及其他显示器配置。
 
+## 2026-11-03 Chrome Cookie 预览与同意前读取边界（Issue #139）
+
+- 2026-11-03 17:45（Asia/Shanghai）将 #139 worktree rebase 到包含 #141 的最新主线 `e83627b` 后复跑：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与完整 `env -u ELECTRON_RUN_AS_NODE npm test` 均 EXIT 0；21 个 `node:test` 用例 + 49 个独立脚本共 70 项通过。全量包含全屏和双语回归。临时 `node_modules` 依赖链接及测试刷新过的 #129 两张截图已清理/还原；未读取真实 Chrome Profile、系统钥匙串、OAuth 或模型。
+
+- 缺口：导入预览为显示 Cookie 数量执行 `SELECT * FROM cookies` 并在 JavaScript 中物化整行；真正导入时又在请求 macOS Safe Storage 钥匙串前先读取 Cookie 行。
+- 修正：预览使用 `SELECT COUNT(*) AS count FROM cookies NOT INDEXED`，避免把 `value`、`encrypted_value` 等列带入 JavaScript，并避免损坏的二级索引破坏预览计数。`readCookies` 自身要求显式 Cookie 同意，先成功取得钥匙串密钥，再执行带完整性检查的行查询；取消、缺少同意或密钥读取失败都不会读取 Cookie 行。
+- 验证：macOS、Node.js v24.14.1、Electron 45.2.1；合成 Chrome Profile/Cookies 数据库、临时 Corvid 数据目录。rebase 前（`d4b6c93`）`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE npm test` 均 EXIT 0；全量为 8 项串行 `node:test` 加 48 个独立脚本，共 56 项通过。SQL 捕获断言预览仅查询 `COUNT(*) ... NOT INDEXED`、无同意及合成密钥读取失败不产生行查询、同意且密钥成功后才读取并解密；真实 Electron E2E 同时覆盖现有 Cookie 导入/失败恢复路径。rebase 到 D21 合并提交 `0dc6a38` 后，三项修改 JavaScript 的 `node --check` 与 `git diff --check` 通过；完整 `npm test` 在最前面的 8 项 `node:test` 阶段失败，browser、dialogs、uploads 三项分别报输入焦点未获得、JavaScript 弹窗不可见、文件选择器超时。单独重跑该 `node:test` 组仍复现相同失败，未开始后续脚本；随后当前树的 `chrome-import-e2e.cjs` 也在末段原生父窗口激活后等待扩展弹窗关闭时超时。该 E2E 在失败前已完成 SQL 合同断言和先前 Cookie 导入路径。CUA 当时报告 macOS 已锁屏，故这些合并后窗口交互结果受锁屏限制，不能归因于 #139，也不能宣称合并后整树全量通过；需解锁后重新验证。首轮定向运行还发现损坏的 Cookie 二级索引会被普通 `COUNT(*)` 查询计划选中，导致预览禁用 Cookie 选项；改用 `NOT INDEXED` 后，预览计数和导入时原有只读完整性拒绝均通过。测试刷新过的两张 #129 截图已还原；未访问真实 Chrome Profile、未弹出或批准系统钥匙串、未使用 OAuth/模型。
+- 本轮补充验证：macOS 锁屏期间使用 Node.js v24.22.1 直接加载 `desktop/chrome-import.cjs`，以临时合成 SQLite Profile 和 `DatabaseSync.prototype.prepare` SQL 捕获器执行隔离 harness；预览只产生 `SELECT COUNT(*) AS count FROM cookies NOT INDEXED`，未同意及无效合成密钥均不查询 Cookie 行，同意并提供有效合成密钥后才执行 `SELECT * FROM cookies` 并解码合成值。另构造 100 行数据并损坏 `cookies_name_idx` 根页，普通 `COUNT(*)` 控制查询失败，而 `readProfile` 的预览计数仍返回 100。此项没有启动 Electron，不覆盖窗口、IPC 到主进程的端到端集成或钥匙串系统提示。
+- 解锁后复验：macOS 26.5.1、Node.js v24.22.1、Electron 45.2.1，针对当前 #139 分支运行 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs`，EXIT 0；随后运行 `env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 0，8 项串行 `node:test` 与 48 个独立脚本全部通过，共 56 项。全量中再次通过 Chrome 导入、Cookie 解密/写入/隔离/持久化、失败重试和恢复路径。测试结束后删除临时 `node_modules` 符号链接，恢复被测试刷新过的两张 #129 截图；未读取真实 Chrome Profile、未调用系统钥匙串、未使用 OAuth/真实模型。全量测试与 Electron 进程已退出，worktree 清洁。
+- 限制与状态：钥匙串失败顺序由合成无效测试密钥验证，没有触发系统授权/拒绝 UI；COUNT 查询只证明 SQLite 不向 JavaScript 返回行列，不声称 SQLite 不读取底层数据库页。真实 Profile、不同 SQLite 损坏形态和平台差异仍未验证。Issue #139 保持 OPEN；尚未创建 PR，等待用户审阅。
+
 ## 2026-11-03 Chrome 扩展弹窗原生外点验证（Issue #129）
 
 - 缺口：既有 Playwright CDP 点击未命中原生窗口外点合同；BrowserWindow.focus() 只证明 blur 关闭，不证明物理鼠标输入。

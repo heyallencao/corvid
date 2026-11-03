@@ -919,7 +919,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       };
       try{
         if(args.categories.includes('cookies')){
-          const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId));
+          const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId),{consent:args.cookieConsent});
           cookieResult.unsupported=sourceCookies.unsupported;
           for(const cookie of sourceCookies.cookies){
             const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
