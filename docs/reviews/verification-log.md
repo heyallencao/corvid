@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 主题色对比度修复（Issue #16）
+
+- 范围：浅/深主题的次要文本、warning/success 状态文字与焦点指示 token。浅色 `--text-muted` 从 `#858c98` 调整为 `#5f6878`，warning 从 `#a56a13` 调整为 `#8f5e16`，success 从 `#268461` 调整为 `#1d7352`，`--focus-ring` 改为复用 `--accent`；深色 `--text-muted` 调整为 `#a4afbf`。
+- 对比度：真实 Electron 获取 computed CSS token，并对主题下全部 `--surface*` 背景断言 muted 文本至少 4.5:1、焦点指示至少 3:1；warning/success 在一般、柔和及对应状态背景上的文字对比至少 4.5:1。最弱实测值：浅色 muted 4.72:1、深色 muted 4.76:1、焦点指示 4.11:1、warning/success 状态文字 5.14:1；深色最弱状态文字为 6.86:1。
+- 验证环境与结果：macOS、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`CORVID_CONTRAST_SCREENSHOT_PATH=docs/qa/screenshots/issue-16-contrast-after.png env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，8 项串行 `node:test` 与 48 个独立 E2E 脚本，共 56 项通过。`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check` 通过。
+- 隔离与截图：测试使用临时 `CORVID_DATA_DIR` 和本地 fixture；页面为 `about:blank`，未使用 OAuth、真实账号或模型。浅色壳截图为 [issue-16-contrast-after.png](../qa/screenshots/issue-16-contrast-after.png)，2560×1636，SHA-256 `b9ab049878325922e8b6178ebc032e5fafd9f3c398738e5fdcd9a46e3ff125`。测试刷新过的两张 Issue #129 截图已还原。
+- 参考与限制：这是依据 Corvid 实际 computed token 和 WCAG 2.2 对比度阈值修正色值，没有移植参考站点的视觉或交互，因此本切片未调用 REA 扫描 UI 灵感站点。自动化只检查列出的 CSS token/背景组合，不等同于所有组件状态的完整 WCAG 审计；未覆盖屏幕阅读器、Windows/Linux、打包版本及其他显示器配置。
+
 ## 2026-11-03 Chrome 扩展弹窗原生外点验证（Issue #129）
 
 - 缺口：既有 Playwright CDP 点击未命中原生窗口外点合同；BrowserWindow.focus() 只证明 blur 关闭，不证明物理鼠标输入。
