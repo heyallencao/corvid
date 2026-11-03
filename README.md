@@ -13,14 +13,14 @@ Corvid 是一个本地优先的桌面浏览器，也是用户与 Agent 协作的
 
 ## 本地运行
 
-需要 Node.js 22.12 或更新版本。
+需要 Node.js 22.19.0 或更新版本（与 `package.json` 的 `engines` 要求一致）。
 
 ```bash
 npm ci
 npm start
 ```
 
-默认数据目录是 `~/.corvid`；设置 `CORVID_DATA_DIR` 可以使用独立目录。`npm test` 会使用临时数据目录和本地网页 fixture 启动真实 Electron 进程，逐项验证桌面和 Agent 接口行为（测试索引见 [QA 目录](docs/qa/e2e-suites.md)）。
+默认数据目录是 `~/.corvid`；设置 `CORVID_DATA_DIR` 可以使用独立目录。`npm test` 会使用临时数据目录和本地网页 fixture 启动真实 Electron 进程，逐项验证桌面和 Agent 接口行为（测试索引见 [QA 目录](docs/qa/e2e-suites.md)）。在 Apple Silicon 上可用 `npm run package:mac:dir` 构建未签名的 Corvid `.app` 开发包，再运行 `npm run test:packaged:mac` 验证打包后启动；这不代表已完成签名、公证或公众安装分发，边界见[桌面打包说明](docs/architecture/distribution.md)。
 
 ## 日常使用
 

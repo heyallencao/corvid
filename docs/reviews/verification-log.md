@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-03 macOS arm64 应用包与隔离启动验收（Issue #146）
+
+- 实现：固定 `electron-builder` 26.18.1、Electron 45.2.1、`playwright-core` 1.64.1、bundle identifier `com.heyallencao.corvid` 与 `Corvid` 产品名；`electron` 与 `playwright-core` 移为开发依赖。`npm run package:mac:dir` 只为 macOS arm64 生成 `.app`；打包选取 desktop/CLI/MCP/SDK 与生产依赖，不带 `docs/`、`tests/`。构建前清除旧 `.app`，构建失败时清除不完整包。
+- 构建与检查：macOS 26.5.1、arm64、Node.js v24.14.1。`npm run package:mac:dir` 成功；包内 `app.asar` 共 13,189 条路径，未包含 `docs/` 或 `tests/`；`lipo` 确认主可执行文件仅含 arm64。`Info.plist` 中 bundle ID 为 `com.heyallencao.corvid`、名称为 `Corvid`。主可执行文件 SHA-256：`e1e6fcf02e1263644308692375784cf67507c3bbc7a408acae15d92a8fd4850c`；`app.asar` SHA-256：`67266036e9455a55bb75de1f7f4e76d4d664e860d485645f615c023608513884`。构造旧包哨兵并模拟 `electron-builder` 不可用，验证失败时旧/残留 `.app` 被清除。
+- 打包后 E2E：最终 `npm run test:packaged:mac` 通过。真实 Electron 从 `.app` 内启动，断言 `app.isPackaged`、arm64、`app.asar`、浏览器窗口、首个 Room、隔离 `CORVID_DATA_DIR`、控制 API 与正常退出后的 `control.json` 清理。`npm audit --audit-level=high` 报告 0 vulnerabilities；`node --check scripts/package-mac-dir.cjs`、`node --check tests/packaged-app-e2e.cjs` 与 `git diff --check` 通过。
+- 边界：本产物 365 MB，使用 Electron 默认图标，未签名且未公证；只能作为本机开发包，不视为公众可安装发行版。未验证 DMG/PKG、安装/卸载、升级/回滚/自动更新、macOS x64、Windows 或 Linux；未运行完整 `npm test`。测试使用临时数据目录，无真实网站、用户 Profile、OAuth 或模型。
+
 ## 2026-11-03 浏览器窗口全屏 E2E 与标签销毁竞态（Issue #141）
 
 - 2026-11-03 17:32（Asia/Shanghai）用户解锁后再次独立复跑定向 `fullscreen-e2e.cjs`、`permissions-e2e.cjs` 与完整 `npm test`，三者均 EXIT 0；全量仍为 21 个 `node:test` 用例 + 49 个脚本，共 70 项通过。测试进程结束后检查生成物，仅还原了测试刷新过的 Issue #129 截图，没有留下意外二进制改动。
