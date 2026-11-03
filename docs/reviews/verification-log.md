@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-03 Developer ID 签名包验收入口（Issue #110）
+
+- 修正：增加 `npm run package:mac:signed:dir`，通过 `CORVID_MAC_SIGNING_IDENTITY` 显式指定 Developer ID 证书名称主体；缺少身份或误带证书类型前缀时，在清理旧产物/启动打包前失败。该模式强制签名并启用 Hardened Runtime，不改变现有未签名开发包入口。新增 `npm run test:packaged:signed:mac`，组合检查签名、打包启动，以及打包应用内的 safeStorage 密钥写入、重启读取与登出删除。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1、electron-builder 26.18.1。隔离工作树执行 `npm ci` 成功，375 个包、0 vulnerabilities。签名打包命令成功并显示 Developer ID distribution 签名；`assertDeveloperIdSignature()` 使用 `codesign --verify --deep --strict` 验证成功，并断言 Developer ID Application authority、TeamIdentifier 与 Hardened Runtime 标志。`app.asar` 清单包含 Corvid desktop/SDK 文件，不含 `docs/` 或 `tests/`。脚本缺失身份/错误前缀门禁、相关 JS `node --check`、`package.json` 解析及 `git diff --check` 通过。
+- 签名包实测：`npm run test:packaged:signed:mac` 的签名与打包启动阶段通过（macOS arm64、Electron 45.2.1）；凭据阶段卡在 `safeStorage.isAsyncEncryptionAvailable()`。首次运行等待超过 4 分钟后终止；随后为该原生调用增加 15 秒超时及进程清理，再运行 `CORVID_PACKAGED_APP_PATH=dist/mac-arm64/Corvid.app CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/pi-credential-os-store-e2e.cjs`，按预期在 15 秒后以 `CORVID_SAFE_STORAGE_TIMEOUT` 失败并退出，没有留下 Electron 测试进程。本次未写入凭据，未覆盖重启读取和登出删除。
+- 运行态边界：本地 Electron 进程采样在超时期间观察到 Security.framework `SecItemCopyMatching`/Keychain 调用栈；REA 被动 Inspector 证据 `ev_693c0ff1285bbf5ad6722a6561c268d7b3fd9c23dc483f71439e774df54161bb` 只列出两个页面渲染目标，不含 Electron 主进程，不能确定原生调用未返回的原因。无证据判定是首次授权弹窗、钥匙串权限、系统状态或其他因素。GitHub 三平台凭据检查仍是开发版 Electron，不替代签名包验收。
+- 跨平台回归：本次 PR 推送后的 [GitHub Actions 三平台凭据检查全部通过](https://github.com/heyallencao/corvid/actions/runs/41636369337)：macOS Keychain、Windows DPAPI、Ubuntu Secret Service。该矩阵仍运行开发版 Electron，不覆盖本机 Developer ID 签名包。
+- 未覆盖：签名包凭据加密写入、重启读取和登出删除仍未通过；需在能让本机签名应用完成 Keychain 调用的环境再次运行。electron-builder 明确跳过公证，故 Developer ID 签名有效不代表已公证或可在全新设备直接安装。签名凭据与产物留在隔离本机工作树，未上传。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。
