@@ -1,5 +1,11 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-03 下载失败记录的手动重试（Issue #126）
+
+- 检查：真实 Electron + Playwright `_electron` 全窗口截图显示下载面板中成功记录、失败记录与“重试”操作的行内对齐；失败原因“目标文件已存在，未覆盖”可读，按钮位于对应行右侧。截图 SHA-256 `cd68e7c1dbbdf3fa66ab1eda5ee580da1e593cd9d8997be9325dc42238b93c6e`，2560×1636，仅留在本机 `/tmp/corvid-download-retry.png`。`tests/download-e2e.cjs` 还验证新尝试为独立记录、进行中按钮显示“重试中…”且禁用、取消子尝试不改变原记录。
+- UI/UE 参考：复用本日 REA 直接观察的 Kobra Alert `/components/alert`，Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（2026-11-03 09:20 Asia/Shanghai）。直接观察限于 AX 树中的命名 alert 区域和四类状态预览；本次只沿用“状态文字说明清楚”的细节，不推断重试控件行为，也未移植代码、样式或素材。Rare UI（`https://rareui.com/`）同一轮仅观察到 Vercel Security Checkpoint（Evidence `ev_f2ea0fa5cdeca7d8b14710c80abd66a5e367a3cabc0eff9faa49a22dc8df806e`；2026-11-03 09:20 Asia/Shanghai），无可用交互参考；未扫描其他参考站点。
+- 限制：未检查真实保存对话框的重试路径、窄窗焦点顺序、系统屏幕阅读器播报或 Windows/Linux 表现；Kobra/ Rare UI 证据不构成 Corvid 验收标准。
+
 ## 2026-11-03 Chrome 导入向导空白问题复核（Issue #124）
 
 - 环境：macOS、隔离 worktree（主线提交 `d475c07`）、Electron 45.2.1；使用临时 `CORVID_DATA_DIR`，未读取真实 Chrome 资料。

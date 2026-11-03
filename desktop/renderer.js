@@ -115,6 +115,10 @@ async function renderLibrary() {
       details.textContent=`${item.filename} — ${labels[item.status] || item.status}${item.status==='progressing' ? progress : ''}${item.error ? `：${item.error}` : ''}`;
       details.title=item.path || item.url; row.append(details);
       if(item.status==='progressing') row.append(button('取消',async()=>{await api.invoke('cancelDownload',{id:item.id});}));
+      if(['failed','cancelled','interrupted'].includes(item.status)) {
+        const retry=button(item.retrying?'重试中…':'重试',async()=>{controlError='';try{await api.invoke('retryDownload',{id:item.id});await renderLibrary();}catch(error){controlError=error.message;draw(state);}});
+        retry.disabled=Boolean(item.retrying);row.append(retry);
+      }
       if(item.status==='completed' && item.path){
         row.append(button('打开',async()=>{controlError='';try{await api.invoke('openDownload',{id:item.id});}catch(error){controlError=error.message;draw(state);}}));
         row.append(button('在文件夹中显示',async()=>{controlError='';try{await api.invoke('revealDownload',{id:item.id});}catch(error){controlError=error.message;draw(state);}}));

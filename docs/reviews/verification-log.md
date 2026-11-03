@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-03 下载失败与中断后的安全重试（Issue #126）
+
+- 基线与环境：基于 `ff9d046` 的隔离 worktree；macOS、Node.js v24.14.1、Electron 45.2.1。E2E 使用临时 `CORVID_DATA_DIR`、临时下载目录及本地 HTTP fixture。
+- 实现：下载列表为失败、取消和中断记录提供桌面手动重试；每次请求创建独立记录并通过 `retryOf` 关联原记录。重试使用原下载所属浏览身份的 Electron Session，复用 `will-download`、保存位置选择和目标已存在拒绝逻辑；只接受 HTTP(S)，阻止同一来源重复并行重试，外部 API 调用拒绝重试。
+- 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，8 项 `node:test` 与 46 个独立脚本共 54 项自动化检查通过；其中重试主流程、边界、Profile 与 Agent 下载测试均单独 EXIT 0。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check tests/download-e2e.cjs`、`node --check tests/download-retry-boundaries-e2e.cjs` 与 `git diff --check` 均通过。用例覆盖同名文件失败且原文件不变、手动重试成功、原记录保留、进行中禁用重复重试、取消子尝试、错误文案呈现、跨 Profile 来源拒绝、并发 IPC 只启动一个尝试、使用来源 Profile Session、危险协议拒绝、外部 API 不暴露重试入口、Agent 下载原有行为，以及模拟重启时把持久的 `progressing` 记录恢复为 `interrupted` 后重试成功。
+- UI/UE 参考：复用本日 REA 直接观察的 Kobra Alert `/components/alert`，Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（09:20 Asia/Shanghai）；仅参考命名状态区与错误状态表达的清晰度，未移植实现。Rare UI 在此前检查中仅显示 Vercel Security Checkpoint，Evidence `ev_f2ea0fa5cdeca7d8b14710c80abd66a5e367a3cabc0eff9faa49a22dc8df806e`，不提供可用切面。交互和覆盖限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-下载失败记录的手动重试-issue-126)。
+- 限制：下载目录和原生保存对话框由测试模式替换；重启测试以持久化 `progressing` 记录模拟启动恢复，没有强杀正在下载的 Electron 进程；未验证真实断网恢复、Windows/Linux、真实 Agent/MCP 客户端或打包版。已从来源 Profile 发起隔离重试；未在真实桌面保存对话框中切换 Profile。中文 PR [#127](https://github.com/heyallencao/corvid/pull/127) 已创建并关联 Issue #126；合并后再关闭 Issue。
+
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
 - 范围：隔离最新主线 `d475c07`，macOS、Electron 45.2.1、临时 `CORVID_DATA_DIR`；仅打开导入向导，未选择或读取真实 Chrome 资料。

@@ -253,6 +253,8 @@ const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
 const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
+const activeDownloadRetries = new Map();
+const pendingDownloadRetries = new Map();
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
 let profiles;
@@ -418,20 +420,28 @@ function installDownloads(partition,profileId) {
       .then(({response})=>{const allowed=response===1 && !contents.isDestroyed() && contents.getURL()===requestedUrl;if(allowed && rememberable.has(permission))grants.add(grantKey(origin,permission));callback(allowed);},()=>callback(false));
   });
   browserSession.on('will-download',(event,item,contents) => {
+    const retryContext = !contents ? [...pendingDownloadRetries.values()].find(context => context.profileId===profileId && context.url===item.getURL()) : null;
+    if (retryContext) {
+      clearTimeout(retryContext.timer);
+      pendingDownloadRetries.delete(retryContext.attemptId);
+      retryContext.item=item;
+    }
     const source=[...tabs.values()].find(tab=>tab.view.webContents===contents);
     if(source){const owner=findRoom(source.roomId);if(owner.ownership==='agent' && !owner.userResumePending && !owner.executionRisk){try{if(agentDownloads.capture(source.id,item))return;}catch(error){event.preventDefault();console.error('Agent download failed:',error.message);return;}}}
-    const downloadId=id(); const filename=path.basename(item.getFilename()) || 'download';
-    const record={id:downloadId,profileId,url:item.getURL(),filename,path:null,status:'progressing',receivedBytes:0,totalBytes:item.getTotalBytes(),createdAt:new Date().toISOString()};
-    library.addDownload(record);
+    const downloadId=retryContext?.attemptId || id(); const filename=path.basename(item.getFilename()) || 'download';
+    if(retryContext) library.updateDownload(downloadId,{url:item.getURL(),filename,totalBytes:item.getTotalBytes()});
+    else library.addDownload({id:downloadId,profileId,url:item.getURL(),filename,path:null,status:'progressing',receivedBytes:0,totalBytes:item.getTotalBytes(),createdAt:new Date().toISOString()});
+    if(retryContext?.cancelRequested){event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
     let destination;
     try {
       if (process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR) destination=path.join(process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
       else destination=dialog.showSaveDialogSync(window,{title:'保存下载',defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
-      if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled'});notifyDownloads();return;}
+      if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       let exists=false;try {fs.lstatSync(destination);exists=true;} catch(error) {if(error.code!=='ENOENT') throw error;}
-      if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖'});notifyDownloads();return;}
+      if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       item.setSavePath(destination);library.updateDownload(downloadId,{path:destination});activeDownloads.set(downloadId,{item,profileId});
-    } catch(error) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',error:error.message});notifyDownloads();return;}
+      if(retryContext?.cancelRequested) item.cancel();
+    } catch(error) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',error:error.message,finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
     let lastUpdate=0;
     item.on('updated',(_event,state)=>{
       const now=Date.now(); if(now-lastUpdate<250 && state==='progressing') return;lastUpdate=now;
@@ -440,6 +450,7 @@ function installDownloads(partition,profileId) {
     item.once('done',(_event,state)=>{
       activeDownloads.delete(downloadId);
       library.updateDownload(downloadId,{status:state,receivedBytes:item.getReceivedBytes(),totalBytes:item.getTotalBytes(),finishedAt:new Date().toISOString()});notifyDownloads();
+      if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);
     });
     notifyDownloads();
   });
@@ -854,8 +865,42 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
     case 'history': return {history:library.history(findProfile(args.profileId ?? activeProfileId).id)};
     case 'bookmarks': return {bookmarks:library.bookmarks(findProfile(args.profileId ?? activeProfileId).id)};
-    case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id)};
-    case 'cancelDownload': {const download=activeDownloads.get(target);if(!download || download.profileId!==activeProfileId) throw new Error('Download is not active');download.item.cancel();return {ok:true};}
+    case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id).map(item=>({...item,retrying:activeDownloadRetries.has(item.id)}))};
+    case 'retryDownload': {
+      if(fromApi)throw new Error('下载重试必须由用户在桌面操作');
+      const source=library.downloads(activeProfileId).find(item=>item.id===target);
+      if(!source)throw new Error('下载记录不属于当前浏览身份');
+      if(!['failed','cancelled','interrupted'].includes(source.status))throw new Error('只有失败、已取消或已中断的下载可以重试');
+      if(activeDownloadRetries.has(source.id))throw new Error('此下载已有重试正在进行');
+      let url;try{url=new URL(source.url);}catch{throw new Error('下载地址无效，无法重试');}
+      if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('仅允许重试安全的 HTTP 或 HTTPS 下载地址');
+      const sameUrlPending=[...pendingDownloadRetries.values()].some(context=>context.profileId===activeProfileId&&context.url===source.url);
+      if(sameUrlPending)throw new Error('相同下载地址的重试正在启动');
+      const retryId=id(),browserSession=session.fromPartition(partitionFor(activeProfileId));
+      installDownloads(partitionFor(activeProfileId),activeProfileId);
+      const retry={id:retryId,profileId:activeProfileId,url:source.url,filename:source.filename,path:null,status:'progressing',receivedBytes:0,totalBytes:0,createdAt:new Date().toISOString(),retryOf:source.id};
+      library.addDownload(retry);
+      const context={attemptId:retryId,sourceId:source.id,profileId:activeProfileId,url:source.url,cancelRequested:false,timer:null};
+      activeDownloadRetries.set(source.id,context);
+      pendingDownloadRetries.set(retryId,context);
+      context.timer=setTimeout(()=>{
+        if(pendingDownloadRetries.get(retryId)!==context)return;
+        pendingDownloadRetries.delete(retryId);activeDownloadRetries.delete(source.id);
+        library.updateDownload(retryId,{status:context.cancelRequested?'cancelled':'failed',...(context.cancelRequested?{}:{error:'下载未能启动，请重试'}),finishedAt:new Date().toISOString()});notifyDownloads();
+      },15000);
+      context.timer.unref();
+      try{browserSession.downloadURL(source.url);}
+      catch(error){clearTimeout(context.timer);pendingDownloadRetries.delete(retryId);activeDownloadRetries.delete(source.id);library.updateDownload(retryId,{status:'failed',error:error.message,finishedAt:new Date().toISOString()});notifyDownloads();throw new Error(`无法启动下载重试：${error.message}`);}
+      notifyDownloads();return {ok:true,id:retryId};
+    }
+    case 'cancelDownload': {
+      if(fromApi)throw new Error('下载取消必须由用户在桌面操作');
+      const download=activeDownloads.get(target);
+      if(download&&download.profileId===activeProfileId){download.item.cancel();return {ok:true};}
+      const pending=[...activeDownloadRetries.values()].find(context=>context.attemptId===target&&context.profileId===activeProfileId);
+      if(!pending)throw new Error('下载不在进行中');
+      pending.cancelRequested=true;return {ok:true};
+    }
     case 'addBookmark': return library.addBookmark(args.url,args.title,findProfile(args.profileId ?? activeProfileId).id);
     case 'removeBookmark': return {removed:library.removeBookmark(target,findProfile(args.profileId ?? activeProfileId).id)};
     case 'removeHistory': return {removed:library.removeHistory(target,findProfile(args.profileId ?? activeProfileId).id)};
