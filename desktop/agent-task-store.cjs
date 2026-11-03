@@ -2,7 +2,20 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PI_RUNTIME_ID, PI_RUNTIME_VERSION } = require('./agent-runtime.cjs');
 
-const TASKS_SCHEMA_VERSION = 2;
+const TASKS_SCHEMA_VERSION = 3;
+const MAX_QUEUED_MESSAGES = 20;
+const MAX_QUEUED_MESSAGE_LENGTH = 8_000;
+
+function normalizeQueue(queue) {
+  if (queue === undefined) return [];
+  if (!Array.isArray(queue) || queue.length > MAX_QUEUED_MESSAGES) throw new Error('Cannot read Agent task state: Agent message queue is invalid');
+  const ids = new Set();
+  for (const item of queue) {
+    if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id) || typeof item.text !== 'string' || !item.text.trim() || item.text.trim().length > MAX_QUEUED_MESSAGE_LENGTH || typeof item.createdAt !== 'string' || typeof item.updatedAt !== 'string' || !Number.isSafeInteger(item.revision) || item.revision < 1) throw new Error('Cannot read Agent task state: Agent message queue is invalid');
+    ids.add(item.id);
+  }
+  return queue;
+}
 
 function migrateLegacyTask(task) {
   const migrated = { ...task };
@@ -23,11 +36,13 @@ function createAgentTaskStore(dataDir) {
     let legacy = Array.isArray(saved), records;
     if (legacy) records = saved;
     else if (saved && saved.schemaVersion === TASKS_SCHEMA_VERSION && Array.isArray(saved.tasks)) records = saved.tasks;
-    else if (saved && saved.schemaVersion === 1 && Array.isArray(saved.tasks)) { records = saved.tasks; legacy = true; }
+    else if (saved && [1, 2].includes(saved.schemaVersion) && Array.isArray(saved.tasks)) { records = saved.tasks; legacy = true; }
     else throw new Error(`Cannot read Agent task state: Agent task data schema is unsupported; expected ${TASKS_SCHEMA_VERSION}`);
     if (records.some(item => !item || typeof item.id !== 'string' || typeof item.profileId !== 'string' || typeof item.roomId !== 'string' || typeof item.tabId !== 'string' || typeof item.status !== 'string')) throw new Error('Cannot read Agent task state: Agent task data structure is invalid');
     if (new Set(records.map(item => item.id)).size !== records.length) throw new Error('Cannot read Agent task state: Agent task data contains duplicate IDs');
-    return legacy ? records.map(migrateLegacyTask) : records;
+    const migrated = legacy ? records.map(migrateLegacyTask) : records;
+    for (const task of migrated) task.messageQueue = normalizeQueue(task.messageQueue);
+    return migrated;
   }
   function save(tasks) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -40,4 +55,4 @@ function createAgentTaskStore(dataDir) {
   return Object.freeze({ load, save });
 }
 
-module.exports = { TASKS_SCHEMA_VERSION, createAgentTaskStore };
+module.exports = { TASKS_SCHEMA_VERSION, MAX_QUEUED_MESSAGES, MAX_QUEUED_MESSAGE_LENGTH, createAgentTaskStore };

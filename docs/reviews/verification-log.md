@@ -2,10 +2,20 @@
 
 ## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
 
-- 基线：最新 `origin/main` `2ae872c`；隔离 worktree 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1。
+- 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
 - 定向验收：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` 通过；覆盖 30 秒 Cookie 操作上限（测试中缩至 1 秒）、未确定状态和同源重试/重启，以及隔离 APFS 实际写至 `ENOSPC`（245 MiB），满盘时旧 Cookie 可读，释放空间后 SQLite `quick_check` 为 `ok`，同源 513 条持久 Cookie 重试并再次重启后仍保留。
-- 回归：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。三个相关 JavaScript 文件 `node --check`、`package.json` 解析与 `git diff --check` 通过。
-- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；本轮未运行完整 `chrome-import-e2e.cjs` 或 `npm test`。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。Issue #77 保持开放。
+- 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
+- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
+
+## 2026-11-04 Agent 运行中消息队列（Issue #180）
+
+- 环境：macOS；独立 worktree `/private/tmp/corvid-issue180-impl`；Node.js v24.14.1、Electron 45.2.1；真实 Electron E2E 使用隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。没有加载用户浏览器资料。
+- 合同与静态检查：`node --check` 覆盖 `desktop/agent-task-store.cjs`、`desktop/agent-workbench.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`desktop/locales.js`；`node tests/agent-message-queue-contract.cjs`、`node tests/agent-task-continuation-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均 EXIT 0；`git diff --check` 通过。
+- 真实 Electron 与双语 UI：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0。覆盖队列新增、查看、编辑、重排、移除、停止冻结、键盘操作、队首发送前重新预览并同意、队列余项保留及短高窗口滚动可达；中文、英文资源键完整。页面为本地 fixture。
+- 产品与模型边界：UI 测试选择 GPT-6 Luna 仅为了验证模型选择界面状态；未发起 OAuth 或真实模型请求，没有消耗模型额度。真实模型 smoke 未运行。
+- REA 与设计记录：EGO、Kaze、Kobra 的可用证据和直接观察/推断/未知、重采集失败及覆盖边界，记录于[浏览器参考分析](../research/browser-reference-analysis.md#2026-11-04-agent-后续消息队列设计复核)与[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-agent-运行中消息队列issue-180)。两张截图来自本地合成页面，不含个人数据。
+- 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)，D25 在合并后关闭。
+
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
 - 环境：macOS；隔离 worktree `/private/tmp/corvid-issue174-profile-delete`；Electron 45.2.1；每次真实 Electron E2E 使用临时 `CORVID_DATA_DIR`、下载目录和本地 HTTP fixture；没有使用真实网站、模型、OAuth 或用户浏览器资料。
@@ -1133,11 +1143,3 @@
 - 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
 - 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
 - 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。
-
-## 2026-11-03 Chrome Cookie 磁盘满与超时恢复（Issue #77）
-
-- 修正：对 Cookie `set`、`remove` 与 `flushStore()` 加入 30 秒有界等待；测试环境可缩短等待。超时使用稳定错误码，阻止继续导入并显示“最终状态暂时无法确认”，标记部分结果；保留同一导入来源和目标，便于释放空间后重试。中文和英文文案同步更新。
-- 真实磁盘验收：在 macOS 26.5.1、arm64、Node.js v24.14.1、Electron 45.2.1 上，用一次性 256 MiB APFS sparse image 作为隔离 Corvid `userData`，向填充文件持续写入直至操作系统返回 `ENOSPC`（本次消耗 245 MiB）。真实 Electron 导入未显示成功；满盘时既有持久 Cookie 仍可读取。释放空间后强杀并重启，原 Cookie 保留，目标 Chromium SQLite `quick_check` 为 `ok`；同一来源重试 513 条持久 Cookie 后再次重启，抽查导入 Cookie 与原 Cookie 均保留，Chrome 来源数据库 SHA-256 未变化。
-- 超时验收：仅测试环境将首次 Cookie flush 替换为永不完成的 Promise，并把超时设为 1 秒；真实 Electron UI 显示未确定状态、`data-partial=true` 且不报成功。原目标 Cookie 保留，同一来源重试成功，再次重启后 Cookie 持久化。状态截图见[测试截图](../qa/screenshots/issue-77-cookie-timeout.png)。截图来自隔离 Profile 与合成 Chrome 数据，窗口为 2560×1636；未包含真实账号或浏览数据。
-- 命令：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` EXIT 0；打印 `PASS bounded Cookie flush timeout...` 与 `PASS real APFS ENOSPC Cookie import recovery`。`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs`、三个 `node --check` 与 `git diff --check` 也通过。使用合成 Chrome 数据库和测试密钥，不读取真实 Chrome Profile/系统钥匙串，不使用 OAuth 或模型。
-- 未完成边界：本测试仅覆盖 macOS APFS 稀疏镜像与导入提交阶段 ENOSPC，不证明其他文件系统/平台、生产盘、SQLite 任意部分写入、核验前断电或 Chromium 数据库格式迁移。普通完整 `chrome-import-e2e.cjs` 本轮在扩展弹窗父窗口激活关闭等待处超时，故不记为全套通过；HostOnly 独立用例和本次磁盘/超时专用用例通过。Issue #77 保持开放，继续跟踪 SQLite 写入中断/损坏、真实 Chrome 锁和核验前断电。

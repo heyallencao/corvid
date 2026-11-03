@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 Agent 运行中消息队列（Issue #180）
+
+- 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP 页面 fixture；窗口逻辑尺寸分别为 1280×850 与 704×420，截图图像分别为 2560×1636 与 1408×776。截图：[常规窗口队列](screenshots/issue-180-agent-message-queue-1280x850.png)，SHA-256 `9dd12ce539fc6f1954b1886ae37369df8d0495d6fc9c7ff3ffbbe18464f13d87`；[短高窗口队列](screenshots/issue-180-agent-message-queue-700x420.png)，SHA-256 `a20db46a4d13e419f8786f2f0adf9ee3fd401a9481620669307d5e43ba9e828e`。页面主体为合成的本地 fixture，没有用户浏览数据、账号或凭据。
+- 直接观察：常规窗口里队列顺序、消息编辑/删除/移动、添加入口和当前任务对话分区清楚；逐条发送动作要求先复核新页面并勾选同意。短高窗口队列列表可独立滚动，页面来源复核和主输入仍可通过工作台滚动到达；控件不会全部同时挤在首屏。真实 Electron E2E 通过 Tab/Enter 操作添加与修改消息，停止后队列冻结；确认页面后只发送队首，后续消息保留。
+- 视觉判断与设计依据：消息队列属于已有 Agent 对话的连续交互，放在任务卡片而非网页画布或独立控制台，符合 Corvid 浏览器主画布优先的产品方向。EGO 的标签/地址/书签/网页画布运行态及 Kaze 的 Space/标签组织和 Agent 面板来自已有 REA Evidence；Kobra Chat History 仅是组件展示页，提供消息与 composer 层级参考。列表密度、双语短窗折叠和队列发送流程是 Corvid 自身设计；没有将竞品行为误写成已观察的队列方案。
+- REA 覆盖与未知：EGO Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`；Kaze Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`、`ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`；Kobra 两个视口 Evidence `ev_f0bdd424946decdaac56fa07cc3d4d8b4ac6c817e744a955fea8f6f08574e882`、`ev_e5e809415d68356fb436392675b4d3034c6860e68446a5c22e0df174c3d49a22`。本轮重新捕获 Kobra 失败于初始导航，未获得新证据；REA doctor 显示 Codex 注册与 Skill 一致，但本机分析引擎环境不完整。上述竞品 Evidence 未观察运行中消息队列、权限边界或真实模型行为。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描；未移植任何素材或代码。
+- 验证及限制：`node tests/agent-message-queue-contract.cjs`、`node tests/agent-task-continuation-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 和 `git diff --check` 均通过。队列合同使用确定性 Runtime；真实 Electron 使用本地 fixture，UI 中所选 GPT-6 Luna 仅为模型选择界面 fixture，没有 OAuth 或真实模型请求，也没有消耗模型额度。未运行完整 `npm test`；未覆盖打包版、Windows/Linux、VoiceOver、真实 Provider 时序或真实网页。
+
 ## 2026-11-03 Corvid Agent 欢迎态短高窗口可读性（Issue #16）
 
 - 环境与截图：macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`、本地 HTTP fixture；窗口 704×420，实际 shell 视口 704×388 CSS px。截图[短高窗口欢迎态](screenshots/issue-16-agent-short-height-704x420.png)，SHA-256 `dfbd257e684cf76331e066e153aa4f7dc0c3365079d7ad93f0915cd8b5d50a4c`；页面主体是明确标注的 Corvid 本地 fixture，不含个人网页、账号或凭据。

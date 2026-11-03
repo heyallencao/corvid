@@ -117,6 +117,10 @@ const windowRecords = new Map();
 let applicationMenu = null;
 const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
 const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
+  canReadPageContext: ({profileId,roomId,tabId}) => {
+    const room=rooms.find(item=>item.id===roomId),tab=tabs.get(tabId);
+    return Boolean(room&&tab&&room.profileId===profileId&&room.tabIds.includes(tabId)&&tab.roomId===roomId&&room.ownership==='agent'&&!room.userResumePending&&!room.executionRisk&&!tab.view.webContents.isDestroyed());
+  },
   issueAgentCredential: ({taskId,roomId}) => {
     const room=rooms.find(item=>item.id===roomId);
     if(typeof taskId!=='string'||!taskId||!room||room.ownership!=='agent'||room.userResumePending||room.executionRisk)throw Object.assign(new Error('Corvid Agent 只能获得仍由 Agent 控制且没有待处理风险的任务空间授权'),{code:'CORVID_CONTROL_LOST'});
@@ -966,6 +970,10 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'preparePiTask': return agentWorkbench.prepare(args);
     case 'startPiTask': return agentWorkbench.start(args);
     case 'continuePiTask': return agentWorkbench.continueTask(args);
+    case 'queuePiTaskMessage': return agentWorkbench.queueMessage(args);
+    case 'updatePiTaskMessage': return agentWorkbench.updateQueuedMessage(args);
+    case 'movePiTaskMessage': return agentWorkbench.moveQueuedMessage(args);
+    case 'removePiTaskMessage': return agentWorkbench.removeQueuedMessage(args);
     case 'stopPiTask': return agentWorkbench.stop(args.taskId);
     case 'clearPiTask': return agentWorkbench.clear(args.taskId);
     case 'createPiRoom': {

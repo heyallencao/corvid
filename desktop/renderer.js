@@ -17,7 +17,8 @@ function agentEventText(event) {
   if(event.type==='retry'&&retry)return extensionMessages.t('agentRetrying',{attempt:retry[1],maxAttempts:retry[2]});
   return event.type==='error'?userFacingAgentError(value):value;
 }
-let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
+let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, piShowNewChat = false, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null;
+let piQueueEdit = null, piQueueDraft = '', piQueueDrafts = new Map(), piQueueSend = null;
 const extensionPopupOpenIds=new Set();
 let extensionToolbarSignature='';
 const extensionMessages=window.corvidI18n;
@@ -37,6 +38,7 @@ for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener(
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function profileDisplayName(profile) { return profile.isDefault && profile.name === '默认' ? extensionMessages.t('defaultProfile') : profile.name; }
 let profileDeletionPreviewVersion=0;
+document.addEventListener('corvid-locale-changed',()=>{if(libraryKind==='pi-workbench')renderPiWorkbench();});
 function profileDeletionErrorText(error) {
   const message=String(error?.message||'');
   if(/CORVID_PROFILE_DELETE_FAILED|浏览身份清理未完成/.test(message))return extensionMessages.t('profileDeleteFailed');
@@ -321,11 +323,11 @@ async function renderPiTasks(){
   list.replaceChildren();
   const toolbar=document.createElement('div');toolbar.className='pi-chat-toolbar';
   const historyButton=button(`${extensionMessages.t('conversationHistory')} · ${extensionMessages.formatNumber(piTasks.length)}`,()=>{piHistoryOpen=!piHistoryOpen;renderPiTasks();});historyButton.setAttribute('aria-expanded',String(piHistoryOpen));historyButton.setAttribute('aria-label',extensionMessages.t('conversationHistory'));
-  const newChat=button(extensionMessages.t('newConversation'),()=>{piSelectedTaskId=null;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding=null;piContextPreview=null;piPromptDraft='';renderPiWorkbench();});newChat.className='pi-new-chat';
+  const newChat=button(extensionMessages.t('newConversation'),()=>{piSelectedTaskId=null;piShowNewChat=true;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding=null;piContextPreview=null;piPromptDraft='';renderPiWorkbench();});newChat.className='pi-new-chat';
   toolbar.append(historyButton,newChat);list.append(toolbar);
   const labels={preparing:extensionMessages.t('preparing'),running:extensionMessages.t('taskRunning'),waiting_for_user:extensionMessages.t('waitingForTakeover'),completed:extensionMessages.t('taskCompleted'),failed:extensionMessages.t('needsAttention'),interrupted:extensionMessages.t('waitingForReview')};
   if(piSelectedTaskId&&!piTasks.some(task=>task.id===piSelectedTaskId))piSelectedTaskId=null;
-  const visibleTasks=piTasks.filter(task=>task.id===(piSelectedTaskId||piTasks.at(-1)?.id));
+  const visibleTasks=piShowNewChat?[]:piTasks.filter(task=>task.id===(piSelectedTaskId||piTasks.at(-1)?.id));
   const announcement=document.querySelector('#pi-task-announcer'),activeTask=visibleTasks[0];
   if(announcement){
     if(activeTask){
@@ -337,7 +339,7 @@ async function renderPiTasks(){
   if(piHistoryOpen){
     const history=document.createElement('div');history.id='pi-chat-history';history.className='pi-chat-history';
     for(const task of [...piTasks].reverse()){
-      const item=button('',()=>{piSelectedTaskId=task.id;piContinueTaskId=task.canContinue&&!['running','preparing'].includes(task.status)?task.id:null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piHistoryOpen=false;renderPiTasks();});item.className='pi-history-item';item.setAttribute('aria-current',String(task.id===piSelectedTaskId));
+      const item=button('',()=>{piSelectedTaskId=task.id;piShowNewChat=false;piContinueTaskId=task.canContinue&&!['running','preparing'].includes(task.status)?task.id:null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piHistoryOpen=false;renderPiTasks();});item.className='pi-history-item';item.setAttribute('aria-current',String(task.id===piSelectedTaskId));
       const title=document.createElement('span');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask');
       const subtitle=document.createElement('small');subtitle.textContent=`${labels[task.status]||task.status} · ${task.page?.title||task.page?.url||extensionMessages.t('page')}`;item.append(title,subtitle);history.append(item);
     }
@@ -368,6 +370,7 @@ async function renderPiTasks(){
     } else if(task.error){const error=document.createElement('div');error.className='pi-task-error';error.setAttribute('role','alert');error.textContent=userFacingAgentError(task.error);row.append(error);}
     if(task.stopUnconfirmed){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent=extensionMessages.t('previousTurnStopUnknown');row.append(recovery);}
     else if(task.hasSession&&!task.canContinue){const recovery=document.createElement('div');recovery.className='pi-task-recovery-note';recovery.setAttribute('role','status');recovery.textContent=extensionMessages.t('cannotContinueHere');row.append(recovery);}
+    if(task.canContinue||['preparing','running'].includes(task.status)||task.messageQueue?.length)row.append(buildMessageQueuePanel(task,roomState));
     list.append(row);
   }
   if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';const mark=document.createElement('span');mark.className='pi-welcome-mark';mark.textContent='✳';const heading=document.createElement('h3');heading.textContent=extensionMessages.t('welcomeAgentHeading');const description=document.createElement('p');description.textContent=extensionMessages.t('welcomeAgentDescription');empty.append(mark,heading,description);list.append(empty);}
@@ -376,6 +379,55 @@ async function renderPiTasks(){
   const currentComposer=document.querySelector('#pi-task-form'),continuingTask=piTasks.find(task=>task.id===piContinueTaskId);
   if(continuingTask&&currentComposer)currentComposer.replaceWith(buildContinuationComposer(continuingTask));
   else if(currentComposer?.classList.contains('pi-continuation-form'))renderPiWorkbench();
+}
+function buildMessageQueuePanel(task, roomState) {
+  const queue=task.messageQueue||[], panel=document.createElement('section');panel.className='pi-message-queue';panel.setAttribute('aria-label',extensionMessages.t('followUpQueue'));
+  const heading=document.createElement('div');heading.className='pi-message-queue-heading';
+  const title=document.createElement('strong');title.textContent=`${extensionMessages.t('followUpQueue')} · ${extensionMessages.formatNumber(queue.length)}`;
+  const help=document.createElement('span');help.textContent=extensionMessages.t('followUpQueueHelp');heading.append(title,help);panel.append(heading);
+  const frozen=!roomState||roomState.ownership!=='agent'||Boolean(roomState.userResumePending||roomState.executionRisk);
+  if(frozen&&queue.length){const notice=document.createElement('p');notice.className='pi-message-queue-notice';notice.setAttribute('role','status');notice.textContent=extensionMessages.t('queueFrozenNotice');panel.append(notice);}
+  if(['preparing','running'].includes(task.status)){const notice=document.createElement('p');notice.className='pi-message-queue-notice';notice.setAttribute('role','status');notice.textContent=extensionMessages.t('queueBusyNotice');panel.append(notice);}
+  const entries=document.createElement('ol');entries.className='pi-message-queue-list';
+  for(const [index,item] of queue.entries()){
+    const entry=document.createElement('li');entry.className='pi-message-queue-item';
+    const label=document.createElement('span');label.className='pi-message-queue-position';label.textContent=extensionMessages.t('queuedMessagePosition',{position:extensionMessages.formatNumber(index+1)});entry.append(label);
+    if(piQueueEdit?.taskId===task.id&&piQueueEdit.itemId===item.id){
+      const editor=document.createElement('textarea');editor.className='pi-message-queue-editor';editor.value=piQueueDraft;editor.setAttribute('aria-label',extensionMessages.t('editQueuedMessage'));entry.append(editor);
+      const save=button(extensionMessages.t('saveQueuedMessage'),async()=>{try{await api.invoke('updatePiTaskMessage',{taskId:task.id,itemId:item.id,text:editor.value});piQueueEdit=null;piQueueDraft='';await renderPiTasks();}catch(error){errorText.setAttribute('role','alert');errorText.textContent=userFacingAgentError(error);}});entry.append(save);
+      const cancel=button(extensionMessages.t('cancelContinue'),()=>{piQueueEdit=null;piQueueDraft='';renderPiTasks();});entry.append(cancel);
+      const errorText=document.createElement('span');entry.append(errorText);
+    }else{
+      const content=document.createElement('p');content.className='pi-message-queue-text';content.textContent=item.text;entry.append(content);
+      const actions=document.createElement('div');actions.className='pi-message-queue-actions';
+      const earlier=button(extensionMessages.t('moveEarlier'),async()=>{await api.invoke('movePiTaskMessage',{taskId:task.id,itemId:item.id,offset:-1});await renderPiTasks();});earlier.disabled=index===0;actions.append(earlier);
+      const later=button(extensionMessages.t('moveLater'),async()=>{await api.invoke('movePiTaskMessage',{taskId:task.id,itemId:item.id,offset:1});await renderPiTasks();});later.disabled=index===queue.length-1;actions.append(later);
+      const edit=button(extensionMessages.t('editQueuedMessage'),()=>{piQueueEdit={taskId:task.id,itemId:item.id};piQueueDraft=item.text;renderPiTasks();});actions.append(edit);
+      const remove=button(extensionMessages.t('removeQueuedMessage'),async()=>{await api.invoke('removePiTaskMessage',{taskId:task.id,itemId:item.id});if(piQueueSend?.itemId===item.id)piQueueSend=null;await renderPiTasks();});actions.append(remove);
+      const canSend=task.canContinue&&['completed','interrupted','failed','waiting_for_user'].includes(task.status)&&index===0;
+      if(canSend){const sendNext=button(extensionMessages.t('sendNextQueuedMessage'),()=>{piQueueSend={taskId:task.id,itemId:item.id,preview:null,consent:false};renderPiTasks();});sendNext.className='pi-message-queue-send';sendNext.disabled=Boolean(frozen);sendNext.title=sendNext.disabled?extensionMessages.t('returnControlBeforeContinue'):'';actions.append(sendNext);}
+      entry.append(actions);
+      if(piQueueSend?.taskId===task.id&&piQueueSend.itemId===item.id){
+        const review=button(extensionMessages.t('reviewPageContent'),async()=>{try{const preview=await api.invoke('preparePiTask',{profileId:task.profileId,roomId:task.roomId,tabId:task.tabId});piQueueSend={...piQueueSend,preview,consent:false};renderPiTasks();}catch(error){sendError.setAttribute('role','alert');sendError.textContent=userFacingAgentError(error);}});entry.append(review);
+        if(piQueueSend.preview){const details=document.createElement('div');details.className='pi-context';details.textContent=`${extensionMessages.t('shareWithAgent')}\n${piQueueSend.preview.title}\n${piQueueSend.preview.url}${piQueueSend.preview.snapshotTruncated?`\n${extensionMessages.t('truncatedPagePreview')}`:''}\n\n${piQueueSend.preview.snapshot}`;entry.append(details);
+          const consentLabel=document.createElement('label'),consent=document.createElement('input');consent.type='checkbox';consent.checked=piQueueSend.consent;consentLabel.append(consent,document.createTextNode(extensionMessages.t('consentPageAndInstruction')));consent.onchange=()=>{piQueueSend={...piQueueSend,consent:consent.checked};dispatch.disabled=!consent.checked;};entry.append(consentLabel);
+          const dispatch=button(extensionMessages.t('send'),async()=>{dispatch.disabled=true;try{await api.invoke('continuePiTask',{taskId:task.id,queueItemId:item.id,queueItemRevision:item.revision,includePageContext:consent.checked,contextPreview:piQueueSend.preview});piQueueSend=null;await renderPiTasks();}catch(error){sendError.setAttribute('role','alert');sendError.textContent=extensionMessages.t('messageNotSent',{message:userFacingAgentError(error)});dispatch.disabled=!consent.checked;}});dispatch.className='pi-primary-action';dispatch.disabled=!piQueueSend.consent;entry.append(dispatch);
+        }
+        const cancel=button(extensionMessages.t('cancelContinue'),()=>{piQueueSend=null;renderPiTasks();});cancel.className='pi-secondary-action';entry.append(cancel);
+        const sendError=document.createElement('span');entry.append(sendError);
+      }
+    }
+    entries.append(entry);
+  }
+  if(queue.length)panel.append(entries);else{const empty=document.createElement('p');empty.className='pi-message-queue-empty';empty.textContent=extensionMessages.t('followUpQueueEmpty');panel.append(empty);}
+  if(task.canContinue||['preparing','running'].includes(task.status)){
+    const form=document.createElement('form');form.className='pi-message-queue-form';
+    const input=document.createElement('textarea');input.value=piQueueDrafts.get(task.id)||'';input.placeholder=extensionMessages.t('followUpQueuePlaceholder');input.setAttribute('aria-label',extensionMessages.t('followUpQueueLabel'));input.maxLength=8_000;let add;input.oninput=()=>{piQueueDrafts.set(task.id,input.value);if(add)add.disabled=!input.value.trim()||queue.length>=20;};form.append(input);
+    add=button(extensionMessages.t('addToQueue'),async()=>{add.disabled=true;try{await api.invoke('queuePiTaskMessage',{taskId:task.id,text:input.value});piQueueDrafts.delete(task.id);await renderPiTasks();}catch(error){errorText.setAttribute('role','alert');errorText.textContent=userFacingAgentError(error);add.disabled=false;}});add.type='submit';add.disabled=!input.value.trim()||queue.length>=20;form.append(add);
+    const errorText=document.createElement('span');form.append(errorText);
+    form.onsubmit=event=>{event.preventDefault();if(!add.disabled)add.click();};panel.append(form);
+  }
+  return panel;
 }
 function buildContinuationComposer(task){
   const form=document.createElement('section');form.id='pi-task-form';form.className='pi-continuation-form';form.setAttribute('aria-label',extensionMessages.t('continueConversation'));
@@ -461,9 +513,9 @@ function renderPiWorkbench(){
     const details=document.createElement('div');details.className='pi-context';details.textContent=`${extensionMessages.t('shareWithAgent')}\n${piContextPreview.title}\n${piContextPreview.url}${piContextPreview.snapshotTruncated?`\n${extensionMessages.t('truncatedPagePreview')}`:''}\n\n${piContextPreview.snapshot}`;form.append(details);
     const consent=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.id='pi-context-consent';consent.className='pi-consent';consent.append(check,document.createTextNode(extensionMessages.t('pageShareConsent')));form.append(consent);
     let starting=false;
-    const start=button(extensionMessages.t('send'),async()=>{if(starting)return;starting=true;start.disabled=true;start.textContent=extensionMessages.t('startingTask');start.setAttribute('aria-busy','true');try{const task=await api.invoke('startPiTask',{...piBinding,prompt:prompt.value,includePageContext:check.checked,contextPreview:piContextPreview});piSelectedTaskId=task?.id||null;piContextPreview=null;piPromptDraft='';renderPiWorkbench();}catch(error){page.textContent=extensionMessages.t('messageNotSent',{message:userFacingAgentError(error)});starting=false;start.removeAttribute('aria-busy');start.textContent=extensionMessages.t('send');start.disabled=!bound||!check.checked||!prompt.value.trim();}});start.className='pi-primary-action';start.disabled=!bound||!check.checked||!prompt.value.trim();check.onchange=()=>{start.disabled=starting||!bound||!check.checked||!prompt.value.trim();};prompt.oninput=()=>{piPromptDraft=prompt.value;start.disabled=starting||!bound||!check.checked||!prompt.value.trim();};form.append(start);
+    const start=button(extensionMessages.t('send'),async()=>{if(starting)return;starting=true;start.disabled=true;start.textContent=extensionMessages.t('startingTask');start.setAttribute('aria-busy','true');try{const task=await api.invoke('startPiTask',{...piBinding,prompt:prompt.value,includePageContext:check.checked,contextPreview:piContextPreview});piSelectedTaskId=task?.id||null;piShowNewChat=false;piContextPreview=null;piPromptDraft='';renderPiWorkbench();}catch(error){page.textContent=extensionMessages.t('messageNotSent',{message:userFacingAgentError(error)});starting=false;start.removeAttribute('aria-busy');start.textContent=extensionMessages.t('send');start.disabled=!bound||!check.checked||!prompt.value.trim();}});start.className='pi-primary-action';start.disabled=!bound||!check.checked||!prompt.value.trim();check.onchange=()=>{start.disabled=starting||!bound||!check.checked||!prompt.value.trim();};prompt.oninput=()=>{piPromptDraft=prompt.value;start.disabled=starting||!bound||!check.checked||!prompt.value.trim();};form.append(start);
   }
-  const workspace=document.createElement('div');workspace.id='pi-workbench-content';
+  const workspace=document.createElement('div');workspace.id='pi-workbench-content';workspace.dataset.newChat=String(piShowNewChat);
   const list=document.createElement('div');list.id='pi-task-list';
   const announcement=document.createElement('div');announcement.id='pi-task-announcer';announcement.className='visually-hidden';announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');announcement.setAttribute('aria-atomic','true');
   workspace.append(list,form,announcement);panel.append(workspace);void renderPiTasks();
