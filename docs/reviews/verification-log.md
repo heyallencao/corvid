@@ -175,7 +175,7 @@
 - 基线处理：将设置中心分支重放到最新 `origin/main`，保留主线 Agent 消息队列合同，并把设置偏好/当前网站两项 E2E 追加至 `npm test` 和索引；索引现含 63 项入口、7 个 `node:test` 文件（28 项）及 57 条独立脚本命令。
 - 定向验证：使用隔离临时数据目录与 macOS Electron，`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 与 `... node tests/settings-site-e2e.cjs` 均通过；覆盖设置迁移/保存/启动与下载合同、站点来源及权限/数据取消与确认，生成双语常规、窄窗截图。`node --check desktop/main.cjs`、`node --check desktop/renderer.js`、`node --check desktop/locales.js` 与 `git diff --check` 通过。
 - PR GitHub Actions [运行 41699879990](https://github.com/heyallencao/corvid/actions/runs/41699879990) 的 macOS Keychain、Ubuntu Secret Service、Windows DPAPI 三个平台任务均通过；该工作流只验证凭据安全存储，不覆盖本设置中心功能。
-- 非设置路径限制：同一轮 `tests/localization-e2e.cjs` 在 `.pi-model-manage` 定位处 30 秒超时，尚未执行到设置合同；该入口属于另一个 Agent 工作台变化，本 PR 不修改其实现。全量 `npm test` 未执行，不能宣称全量通过。
+- 组合复验：随后由另一会话在临时 worktree 对 #172 head `08aee4ac3514d2c086125d9ceb519181cad0e5be` + #187 head `a49c6cf245c7e56925edbba0102100afa60f44ec` 运行 `tests/localization-e2e.cjs`、设置偏好/站点 E2E、`pi-workbench-e2e.cjs`、Agent 消息队列与 Runtime 合同，以及相关 `node --check`；全部通过，记录见 [PR #187](https://github.com/heyallencao/corvid/pull/187)“PR #172 联调复核”。该组合运行没有提交截图变更，且其截图未在该会话中目视检查；本 PR 自己生成的设置截图已分别目视检查。全量 `npm test` 未执行，不能宣称全量通过。
 - 视觉参考：REA controlled replay 观察 Aceternity UI Grouped Sidebar，Evidence `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb`；直接观察到可访问树中的分组/子项及页面尺寸说明，但没有操作控件。它只用于设置分类命名与选中状态的参考评估；Corvid 未复制代码/样式。运行时与未知范围见[视觉检查记录](../qa/ui-visual-check.md#2026-11-03-设置中心首个切片-issue-165)。
 
 ## 2026-11-03 浏览器设置中心首个切片（Issue #165）

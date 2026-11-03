@@ -20,7 +20,7 @@
 
 ## 验收
 
-- 首个设置切片的 `tests/localization-e2e.cjs` 曾检查 zh-CN/en 资源、分类选择与焦点、无当前网页时站点操作禁用、主题即时应用、0600 持久化和重启恢复。重放至当前主线后复跑该脚本，在 Agent 模型管理入口 `.pi-model-manage` 等待超时，尚未到达设置断言；这是前置工作台路径回归，不能记作本次设置验收通过。
+- 首个设置切片的 `tests/localization-e2e.cjs` 曾检查 zh-CN/en 资源、分类选择与焦点、无当前网页时站点操作禁用、主题即时应用、0600 持久化和重启恢复。单独重放到当时主线后复跑时，在 Agent 模型管理入口 `.pi-model-manage` 等待超时，尚未到达设置断言；随后在 #172 head `08aee4a` 与 #187 head `a49c6cf` 的隔离组合 worktree 中重跑，本地化与两项设置 E2E 均通过。组合结果和边界见 [PR #187 联调记录](https://github.com/heyallencao/corvid/pull/187)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 已通过，覆盖 schemaVersion 1 迁移、设置保存/重启、空白页注入开关、启动新标签复用、下载取消与自动保存、失效目录中英文错误，以及 700×420 设置布局；更新的中英文截图见[视觉检查记录](../qa/ui-visual-check.md)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-site-e2e.cjs` 已通过：空白页禁用站点操作；活动 HTTP(S) 来源显示与操作启用；合成通知权限获准后可在设置中取消审查并保留授权、确认撤销；取消站点数据清理保持 fixture localStorage，确认后清除且不改变独立权限；确认默认选择为非破坏项；语言切换后动态来源仍正确。Electron 权限/清理确认框用替身控制结果。测试截图在 700×420 需滚动内容区，并验证范围说明、当前来源、两个操作按钮及固定底部动作可完整显示。
 - 系统文件夹/保存对话框由测试替身覆盖；真实桌面对话框还需单独验收。
