@@ -35,6 +35,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   const sessionCredentialIds = new Map();
   const continuationClaims = new Set();
   const taskStartClaims = new Set();
+  const startingProfiles = new Map();
+  const profileDeletionClaims = new Set();
   let persistTimer;
   tasks = taskStore.load();
   for (const task of tasks) if (['preparing', 'running'].includes(task.status)) {
@@ -102,10 +104,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   async function start({ profileId, roomId, tabId, prompt, includePageContext, contextPreview }) {
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 8_000) throw new Error('任务内容必须为 1 至 8000 个字符');
+    if(profileDeletionClaims.has(profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能启动 Agent'),{code:'CORVID_PROFILE_DELETING'});
     if (taskStartClaims.has(roomId) || tasks.some(task => task.roomId === roomId && ['preparing', 'running'].includes(task.status))) {
       throw new Error('[[corvid-error:agent-task-room-busy]] 此空间已有 Agent 任务正在启动或运行。请等待完成，或在其他空间并行开始。');
     }
     taskStartClaims.add(roomId);
+    startingProfiles.set(roomId,profileId);
     try {
       const context = await runtime.readPageContext({ dataDir, profileId, roomId, tabId });
       const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
@@ -118,10 +122,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       return copy(present(task));
     } finally {
       taskStartClaims.delete(roomId);
+      startingProfiles.delete(roomId);
     }
   }
   async function continueTask({ taskId, message, includePageContext, contextPreview }) {
     const task = taskById(taskId);
+    if(profileDeletionClaims.has(task.profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能继续 Agent 对话'),{code:'CORVID_PROFILE_DELETING'});
     if (continuationClaims.has(taskId)) throw new Error('当前任务仍在运行或不能继续');
     if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
     if (task.stopUnconfirmed) throw new Error('上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
@@ -263,7 +269,35 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     runtime.removeTaskData(task.id.replaceAll('-', '_'), task.sessionRef);
     tasks = tasks.filter(item => item.id !== taskId); changed(); return { ok: true };
   }
-  return { list, prepare, start, continueTask, pauseRoom, stop, clear };
+  function profileDeletionBlockers(profileId) {
+    const starting=[...startingProfiles].filter(([,owner])=>owner===profileId).map(([roomId])=>({id:roomId,status:'preparing'}));
+    return tasks.filter(task=>task.profileId===profileId).filter(task=>{
+      if(['preparing','running','waiting_for_user','interrupted'].includes(task.status)||task.stopUnconfirmed)return true;
+      try{return present(task).canContinue;}catch{return true;}
+    }).map(task=>({id:task.id,status:task.status})).concat(starting);
+  }
+  function beginProfileDeletion(profileId) {
+    if(profileId==='default')throw new Error('Cannot delete the default profile');
+    const blockers=profileDeletionBlockers(profileId);
+    if(blockers.length){const error=new Error('该浏览身份仍有正在运行或可继续的 Agent 对话');error.code='CORVID_PROFILE_IN_USE';error.blockers=blockers;throw error;}
+    profileDeletionClaims.add(profileId);
+  }
+  async function removeProfileData(profileId) {
+    if(profileId==='default')throw new Error('Cannot remove Agent data from the default profile');
+    if(!profileDeletionClaims.has(profileId))beginProfileDeletion(profileId);
+    const blockers=profileDeletionBlockers(profileId);
+    if(blockers.length){const error=new Error('该浏览身份仍有正在运行或可继续的 Agent 对话');error.code='CORVID_PROFILE_IN_USE';error.blockers=blockers;throw error;}
+    const removed=tasks.filter(task=>task.profileId===profileId);
+    for(const task of removed){
+      runtime.removeTaskData(task.id.replaceAll('-', '_'),task.sessionRef);
+      await revokeSessionCredential(task.id);
+    }
+    tasks=tasks.filter(task=>task.profileId!==profileId);
+    changed();
+    profileDeletionClaims.delete(profileId);
+    return removed.length;
+  }
+  return { list, prepare, start, continueTask, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, removeProfileData };
 }
 
 module.exports = { createAgentWorkbench, savedConversationContext };

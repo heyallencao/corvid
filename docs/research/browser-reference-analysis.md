@@ -65,3 +65,18 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 **REA 参考与限制：** PR #131 复用 Kobra 下拉菜单页面 `https://kobra.systems/components/dropdown-menu` 的 REA Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`。直接记录仅证明该路由可访问；没有完成菜单交互，焦点、关闭与状态行为未知，因此只作为细节灵感来源，不作为扩展弹窗行为证据或验收标准。未复制代码、图标或素材。Rare UI、EasyUI、Pin UI、Aceternity 本次未观察；EGO/Kaze 当前窗口 UI 也未重新采集，不能据此推断其当前扩展行为。
 
 **双语合同与取舍：** 已有开放中文 Issue [#130](https://github.com/heyallencao/corvid/issues/130) 覆盖首发 `zh-CN`/`en`、locale 资源、语言选择、日期/数字格式化、窄窗与无障碍验收，本轮只将该范围同步到架构文档及执行板 D24，不重复开单。UI 灵感站点不决定 Corvid 功能需求；仅在能安全核实且与切面相关时参考细节。未运行测试；本次文档检查不声称验证代码行为。
+
+## 2026-11-03 浏览身份删除范围参考
+
+观察时间：2026-11-03 约 22:50（Asia/Shanghai）。使用 REA `capture_browser_scenario` 启动隔离的 Chromium 156.0.8078.79 临时配置，读取厂商公开帮助页的 DOM 与可访问性树；未连接当前用户的 EGO、Kaze、Chrome 或 Safari 窗口，也没有登录或改动用户数据。以下“直接观察”指在隔离 Chromium 中实际加载到的官方帮助页内容，不等于对 Chrome/Safari 原生界面的交互验证。
+
+| 产品/页面 | 直接观察 | 证据与限制 |
+| --- | --- | --- |
+| Google Chrome，“Manage Chrome with multiple profiles” | 官方流程先进入 Profile 菜单下的“Manage Chrome profiles”，选中身份后从 More 菜单选择 Delete，再二次确认。帮助页明确列出被删除的书签、历史、密码和其他设置。身份管理集中在 Profile 管理流程内，最终确认前说明数据影响。 | REA controlled replay Evidence `ev_030a3fa846bf1e55eb2d59ebda668384a07c40fac4ae003df523927da1747a99`，Chromium 156.0.8078.79；页面地址最终落在 `https://support.google.com/chrome/answer/2364824?hl=en&open_embed_dialog=1&start_dialog_maximized=1&ai1hc=1`。直接证据是官方文档 DOM/AX，不是 Chrome 原生 Profile picker 的实测。页面表述的删除范围不能证明浏览器缓存、扩展文件或系统下载目录的内部清理实现。 |
+| Apple Safari，“Create distinct browsing profiles in Safari on Mac” | 官方指南说明始终存在 Personal (Default)；删除身份会清除该身份的 tabs、history、website data，并关闭其打开的所有网站；收藏夹目录会保留（除非为空）。指南还说明 iCloud Keychain 保存的密码在不同身份中可用，因此 Safari Profile 不等于密码凭据完全隔离。 | REA controlled replay Evidence `ev_97475b45ef50f6216275e5a422ca3577d94f6bc9c09ffe0158cb93f185022e73`，页面从请求地址重定向到 `https://support.apple.com/guide/safari/create-profiles-ibrwf3a9e7d6/mac`。直接证据是官方文档 DOM/AX；未操作 macOS Safari 设置或实际删除 Profile。 |
+
+**设计推断：** Corvid 的删除确认应在最后一步用短清单说清即将移除的浏览资料库、站点存储、身份设置、管理扩展与 Agent 对话/恢复数据，并单独说明已下载到磁盘的文件会保留；不能将“Profile 隔离”表述成第三方密码管理器或系统 Keychain 的隔离保证。Chrome/Safari 会直接删除身份，Safari 会关闭其窗口；Corvid 的 Room、任务与跨窗口状态会形成额外引用，不能直接沿用“点 Delete 后自动关窗”的简化流程。为避免悄悄丢失用户/Agent 工作，删除时应列出仍引用此身份的窗口、空间和可恢复 Agent 任务并阻止操作，先由用户处理这些引用。
+
+**静态证据：** Corvid 当前 Profile 由 `profiles.json` 和 `persist:corvid-profile-${profileId}` session partition 标识；History/Bookmarks/Downloads 与 managed extension records 由独立数据文件持有；Agent task/conversation 和 runtime checkpoint 还分布在 `agent-tasks.json` 与 `agent-sessions/`。这些事实来自 Corvid 当前源代码，不是竞品证据。
+
+**未观察/未知：** 本轮未通过 REA 操作 Chrome/Safari 原生 Profile 管理界面；未检查 EGO/Kaze Profile 删除交互；也没有测量窄窗状态、确认对话框视觉层级、键盘操作或删除失败后的恢复行为。由此不对这些行为作竞品结论。视觉交互实现还需按 UI QA 流程在隔离 Corvid 数据目录及小/常规窗口检查。
