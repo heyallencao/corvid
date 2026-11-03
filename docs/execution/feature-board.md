@@ -31,6 +31,7 @@
 
 - 2026-11-03 Issue #113 多窗口 E2E 持久化门槛：诊断确认原失败由测试过早重启和静态侧栏选择器造成；修正后独立 `tests/multi-window-e2e.cjs` 连续 10 次通过，完整串行 `env -u ELECTRON_RUN_AS_NODE npm test` 连续两轮 EXIT 0（每轮 45 条独立脚本 + 3 项 `node:test`，共 48 项）。这是测试同步修正，不代表未持久化的创建中状态具有崩溃恢复保证。
 - 2026-11-03 Issue #87 Electron 启动诊断：加入分阶段 launch/首窗/control 凭据等待错误、脱敏状态与有限时清理；启动诊断替身测试 5 项，首窗失败和异常关闭会清理子进程。该改动改进失败证据和测试清理，不证明间歇启动挂起根因已解决。完整 `npm test` 在重基到 #114 后连续两轮 EXIT 0，每轮 45 条独立脚本 + 8 个 `node:test` 用例，共 53 项；Issue #87 继续开放以跟踪真实 Electron 启动挂起的复现与根因。
+- 2026-11-03 Issue #110 跨平台原生存储验收：扩展 `tests/pi-credential-os-store-e2e.cjs` 覆盖 macOS、Windows、Linux，并新增 `.github/workflows/credential-os-store.yml` 原生 runner 矩阵；Ubuntu job 配置 GNOME Keyring，Linux 用例核对运行时密文标签。GitHub Actions 尚待运行，现阶段仍只记录本机 macOS 原生集成通过；不得将工作流配置本身记作 Windows/Linux 验收。完整 `npm test` 另因 #96 的 Agent handoff 合同用例失败而未通过，见[验证记录](../reviews/verification-log.md)。
 
 - 2026-11-03 Issue #16 标签/空间控件辅助技术语义：Chromium Electron AX 树显示原 `tablist` 混入普通新建按钮、空间 `list` 直接包含按钮；现以具名分组和 `aria-current` 表达实际交互，并将含空态的扩展、模型端点、外部客户端集合改为分组。REA 本地 DOM 与 Kobra Composer 参考、CDP AX 证据和未覆盖 VoiceOver/Narrator/Orca 边界见[QA 记录](../qa/ui-visual-check.md#2026-11-03-浏览器标签与空间控件的辅助技术语义-issue-16)与[验证记录](../reviews/verification-log.md#2026-11-03-浏览器标签与空间控件辅助技术语义-issue-16)。
 - 本切片全量回归：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；45 条独立脚本与 8 项串行 `node:test`，共 53 项。首次运行发现本轮标签可访问名回归并修复；一次截图失败时清理本轮遗留的诊断 Electron 进程后，干净进程状态复跑通过。无模型/OAuth 请求。
