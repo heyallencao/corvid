@@ -21,8 +21,9 @@ const safeStorage=createFakeSafeStorage();
     {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
     {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
   ]){
-    const context={navigator:{language},window:{}};
+    const context={navigator:{language},window:{},document:{documentElement:{lang:''},querySelectorAll(){return[];}}};
     vm.runInNewContext(localeSource,context);
+    context.window.corvidI18n.setLocale(language);
     context.extensionMessages=context.window.corvidI18n;
     vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
     assert.ok(context.userFacingAgentError({message:`[[corvid-error:${marker}]] provider tag rejected`}).startsWith(expected),`${language} localizes ${marker} before it reaches the UI`);
