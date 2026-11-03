@@ -1,5 +1,11 @@
 # 验证记录
 
+## 2026-11-03 浏览器窗口全屏 E2E 启动与清理边界（Issue #141）
+
+- 调整：`tests/fullscreen-e2e.cjs` 统一调用 `tests/electron-test-startup.cjs` 的 Electron 启动、首窗口与控制凭据等待、限时关闭/进程诊断；重启阶段要求新 token，避免旧 `control.json` 让恢复断言连到已关闭应用。
+- 验证：`node --check tests/fullscreen-e2e.cjs`、`node --check tests/electron-test-startup.cjs`、`node --test tests/*.test.mjs`（13 项通过）及 `git diff --check` 均通过。QA 索引同步新增全屏入口并对齐 `package.json` 的顺序和计数。
+- 限制：本轮 CUA 返回“Mac is locked”，没有启动真实 Electron；因此未验证全屏菜单/快捷键、网页全屏退出、多窗口隔离、Agent 工作区可见、退出与重启窗口恢复，也未采集截图。纯 Node 测试不是这些运行态行为的验收。
+
 ## 2026-11-03 主题色对比度修复（Issue #16）
 
 - 范围：浅/深主题的次要文本、warning/success 状态文字与焦点指示 token。浅色 `--text-muted` 从 `#858c98` 调整为 `#5f6878`，warning 从 `#a56a13` 调整为 `#8f5e16`，success 从 `#268461` 调整为 `#1d7352`，`--focus-ring` 改为复用 `--accent`；深色 `--text-muted` 调整为 `#a4afbf`。
