@@ -64,6 +64,7 @@
         <input id="address" aria-label="地址或搜索" placeholder="搜索或输入网址" autocomplete="off" spellcheck="false">
         <button id="bookmark-current" class="address-action" type="button" title="将此页加入书签" aria-label="将此页加入书签">☆</button>
       </form>
+      <div id="extension-toolbar" role="group" aria-label="扩展工具栏"></div>
       <button id="more-tools" class="icon-button" title="更多浏览工具" aria-label="更多浏览工具" aria-haspopup="menu" aria-expanded="false" aria-controls="site-tools"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/></svg></button>
     </div>
     <div id="bookmarks-bar" aria-label="书签栏"></div>
@@ -99,6 +100,7 @@
   <dialog id="chrome-import-onboarding" aria-labelledby="chrome-import-onboarding-title" aria-describedby="chrome-import-onboarding-description"><form id="chrome-import-onboarding-form"><span class="panel-eyebrow">WELCOME TO CORVID</span><h2 id="chrome-import-onboarding-title">从 Chrome 开始使用 Corvid？</h2><p id="chrome-import-onboarding-description">你可以选择迁移书签、历史记录、Cookie 登录状态和兼容的扩展。开始前会让你选择 Chrome 资料与导入内容。</p><p class="import-limitation">扩展只支持 Electron 可运行的部分 Chrome API；已保存密码不会导入。你也可以稍后在设置中再导入。</p><span id="chrome-import-onboarding-error" role="alert"></span><div class="onboarding-actions"><button type="button" id="skip-chrome-import">稍后</button><button type="button" id="begin-chrome-import">选择要导入的资料</button></div></form></dialog>
   <dialog id="page-dialog"><form id="page-dialog-form"><span id="page-dialog-message"></span><label id="page-dialog-prompt-label">回复 <input id="page-dialog-prompt"></label><button type="submit">确定</button><button type="button" id="page-dialog-dismiss">取消</button></form></dialog>
   <dialog id="pi-auth-dialog" aria-labelledby="pi-auth-title"><form id="pi-auth-form"><span class="panel-eyebrow">MODEL SIGN IN</span><h2 id="pi-auth-title">完成模型账号授权</h2><p id="pi-auth-message"></p><a id="pi-auth-open-url" hidden>打开 ChatGPT 授权页</a><label id="pi-auth-input-label">授权信息 <input id="pi-auth-input" autocomplete="off"></label><button type="submit">继续授权</button><button type="button" id="pi-auth-cancel">取消</button></form></dialog>
+  <script src="locales.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

@@ -251,6 +251,86 @@ const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
+const extensionIconCache = new Map();
+function closeExtensionPopup(record,{restoreFocus=false,focusTrigger=false}={}) {
+  const popup=record?.extensionPopup;
+  if(!popup)return;
+  record.extensionPopup=null;
+  if(!record.browserWindow.isDestroyed())record.browserWindow.webContents.send('shell-extension-popup-state',{id:popup.extensionId,open:false,focusTrigger});
+  if(!popup.window.isDestroyed())popup.window.close();
+  if(restoreFocus&&!record.browserWindow.isDestroyed())record.browserWindow.focus();
+}
+function closeExtensionPopupFor(profileId,extensionId) {
+  for(const record of windowRecords.values())if(record.activeProfileId===profileId&&record.extensionPopup?.extensionId===extensionId)closeExtensionPopup(record);
+}
+function extensionIconData(profileId,item,manifest) {
+  const declared=manifest?.action?.default_icon||manifest?.browser_action?.default_icon||manifest?.icons;
+  const choices=typeof declared==='string'?[[32,declared]]:declared&&typeof declared==='object'?Object.entries(declared).map(([size,file])=>[Number(size)||32,file]):[];
+  const selected=choices.filter(([,file])=>typeof file==='string').sort((a,b)=>Math.abs(a[0]-32)-Math.abs(b[0]-32))[0];
+  if(!selected)return null;
+  const relative=selected[1].replaceAll('\\','/');
+  if(relative.startsWith('/')||relative.split('/').some(part=>!part||part==='..'))return null;
+  const root=chromeExtensions.managedPath(dataDir,profileId,item.id,item.version),file=path.resolve(root,relative);
+  if(!file.startsWith(`${root}${path.sep}`))return null;
+  try{
+    const stat=fs.lstatSync(file),actual=fs.realpathSync(file);
+    if(!stat.isFile()||stat.isSymbolicLink()||!actual.startsWith(`${fs.realpathSync(root)}${path.sep}`)||stat.size<=0||stat.size>128*1024)return null;
+    const cached=extensionIconCache.get(file);
+    if(cached?.mtimeMs===stat.mtimeMs&&cached.size===stat.size)return cached.data;
+    const data=`data:image/png;base64,${fs.readFileSync(file).toString('base64')}`;
+    extensionIconCache.set(file,{mtimeMs:stat.mtimeMs,size:stat.size,data});return data;
+  }catch{return null;}
+}
+function extensionToolbarItems(profileId) {
+  const browserSession=session.fromPartition(partitionFor(profileId));
+  return managedExtensions.list(profileId).filter(item=>item.enabled).flatMap(item=>{
+    const extension=browserSession.extensions.getExtension(item.id);
+    const popup=extension?.manifest?.action?.default_popup || extension?.manifest?.browser_action?.default_popup;
+    return typeof popup==='string'&&popup.length? [{id:item.id,name:item.name,icon:extensionIconData(profileId,item,extension.manifest)}]:[];
+  });
+}
+async function openExtensionPopup(record,args) {
+  if(record.activeProfileId!==args.profileId)throw Object.assign(new Error('Active browser identity changed'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  const item=managedExtensions.find(record.activeProfileId,args.extensionId);
+  if(!item?.enabled)throw Object.assign(new Error('Extension is not enabled'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  const browserSession=session.fromPartition(partitionFor(record.activeProfileId));
+  const extension=browserSession.extensions.getExtension(item.id);
+  const popupPath=extension?.manifest?.action?.default_popup || extension?.manifest?.browser_action?.default_popup;
+  if(!extension||typeof popupPath!=='string'||!popupPath.trim())throw Object.assign(new Error('Extension popup is unavailable'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  const cleanPath=popupPath.replaceAll('\\','/');
+  if(cleanPath.startsWith('/')||cleanPath.split('/').some(part=>part==='..'))throw Object.assign(new Error('Extension popup path is invalid'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  const popupUrl=new URL(cleanPath,extension.url).toString();
+  const extensionUrl=new URL(extension.url),targetUrl=new URL(popupUrl);
+  const extensionOrigin=`${extensionUrl.protocol}//${extensionUrl.host}`;
+  if(`${targetUrl.protocol}//${targetUrl.host}`!==extensionOrigin)throw Object.assign(new Error('Extension popup path is invalid'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  if(record.extensionPopup?.extensionId===item.id){closeExtensionPopup(record,{restoreFocus:true,focusTrigger:true});return {open:false};}
+  closeExtensionPopup(record);
+  const anchor=args.anchor;
+  if(!anchor||![anchor.left,anchor.right,anchor.top,anchor.bottom].every(Number.isFinite))throw Object.assign(new Error('Extension popup position is invalid'),{code:'EXTENSION_POPUP_UNAVAILABLE'});
+  // A separate owned window dismisses on outside focus and remains isolated to the owning Profile session.
+  const popup=new BrowserWindow({parent:record.browserWindow,title:item.name,show:false,frame:false,resizable:false,skipTaskbar:true,autoHideMenuBar:true,backgroundColor:'#ffffff',webPreferences:{partition:partitionFor(record.activeProfileId),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  const owner={window:popup,extensionId:item.id};record.extensionPopup=owner;
+  popup.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+  popup.webContents.on('will-navigate',(event,url)=>{try{const target=new URL(url);if(`${target.protocol}//${target.host}`!==extensionOrigin)event.preventDefault();}catch{event.preventDefault();}});
+  popup.webContents.on('before-input-event',(event,input)=>{if(input.type==='keyDown'&&input.key==='Escape'){event.preventDefault();closeExtensionPopup(record,{restoreFocus:true,focusTrigger:true});}});
+  popup.on('closed',()=>{if(record.extensionPopup===owner){record.extensionPopup=null;if(!record.browserWindow.isDestroyed())record.browserWindow.webContents.send('shell-extension-popup-state',{id:item.id,open:false,focusTrigger:false});}});
+  try{
+    await popup.loadURL(popupUrl);
+    if(popup.isDestroyed()||record.extensionPopup!==owner)return {open:false};
+    if(popup.webContents.getURL()!==popupUrl)throw new Error('The extension popup page could not be loaded');
+    const measured=await popup.webContents.executeJavaScript(`(()=>{const body=document.body;const width=Math.ceil(body?.scrollWidth||0),height=Math.ceil(body?.scrollHeight||0);return {width:width>0&&width<innerWidth*.9?width:360,height:height>0&&height<innerHeight*.9?height:420}})()`);
+    const content=record.browserWindow.getContentBounds(),area=screen.getDisplayMatching(record.browserWindow.getBounds()).workArea;
+    const width=Math.max(Math.min(240,area.width),Math.min(560,area.width,Number(measured?.width)||360));
+    const height=Math.max(Math.min(160,area.height),Math.min(720,area.height,Number(measured?.height)||420));
+    let x=content.x+anchor.right-width,y=content.y+anchor.bottom+4;
+    x=Math.min(Math.max(area.x,x),area.x+area.width-width);
+    if(y+height>area.y+area.height)y=Math.max(area.y,content.y+anchor.top-height-4);
+    popup.setBounds({x,y,width,height});popup.show();popup.focus();
+    record.browserWindow.webContents.send('shell-extension-popup-state',{id:item.id,open:true});
+    popup.once('blur',()=>{if(record.extensionPopup===owner)setTimeout(()=>{if(record.extensionPopup===owner&&!popup.isDestroyed()&&!popup.isFocused())closeExtensionPopup(record);},80);});
+    return {open:true,id:item.id};
+  }catch(error){closeExtensionPopup(record);throw Object.assign(new Error(String(error?.message||error).slice(0,300)),{code:'EXTENSION_POPUP_LOAD_FAILED'});}
+}
 const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
 const activeDownloadRetries = new Map();
@@ -326,7 +406,7 @@ const findTab = tabId => { const tab = tabs.get(tabId); if (!tab) throw new Erro
 // Pinned tabs form a prefix of tabIds: pinned first, then the rest in user order.
 const tabPartition = room => ({pinned:room.tabIds.filter(id=>tabs.get(id)?.pinned),unpinned:room.tabIds.filter(id=>!tabs.get(id)?.pinned)});
 const normalizeTabOrder = room => { const {pinned,unpinned}=tabPartition(room); room.tabIds=[...pinned,...unpinned]; };
-const describe = (record = activeRecord()) => {
+const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
   const scoped = record ? rooms.filter(s => s.windowId === record.id) : rooms;
   return {
     windowId: record?.id ?? null,
@@ -335,6 +415,7 @@ const describe = (record = activeRecord()) => {
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
     profiles,
+    extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
     rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
   };
 };
@@ -381,13 +462,13 @@ function update(record = activeRecord()) {
       tab.view.webContents.send('browser-home-state', {bookmarks});
     }
   }
-  record.browserWindow.webContents.send('shell-state', describe(record));
+  record.browserWindow.webContents.send('shell-state', describe(record,true));
   if (!restoring) persist();
 }
 function notifyDownloads() {
   for (const record of windowRecords.values()) {
     if (record.browserWindow.isDestroyed()) continue;
-    record.browserWindow.webContents.send('shell-state', describe(record));
+    record.browserWindow.webContents.send('shell-state', describe(record,true));
   }
   if (!restoring) persist();
 }
@@ -823,6 +904,10 @@ async function dispatch(method, args = {}, fromApi = false) {
       const profileId=findProfile(args.profileId??activeProfileId).id;
       return {extensions:managedExtensions.list(profileId).map(item=>({...item,loadError:extensionLoadErrors.get(`${profileId}:${item.id}`)||null}))};
     }
+    case 'openExtensionPopup': {
+      if(fromApi)throw new Error('Extension popups can only be opened from Corvid UI');
+      const record=requireFocusedRecord();return openExtensionPopup(record,args);
+    }
     case 'setProfileExtensionEnabled': {
       if(fromApi)throw new Error('扩展管理必须由用户在桌面操作');
       const profileId=findProfile(args.profileId??activeProfileId).id,extension=managedExtensions.find(profileId,args.extensionId);
@@ -834,6 +919,7 @@ async function dispatch(method, args = {}, fromApi = false) {
         const loadError=extensionLoadErrors.get(`${profileId}:${extension.id}`);
         if(loadError){managedExtensions.setEnabled(profileId,extension.id,false);throw new Error(`扩展无法加载：${loadError}`);}
       }else if(args.enabled===false){
+        closeExtensionPopupFor(profileId,extension.id);
         if(browserSession.extensions.getExtension(extension.id))browserSession.extensions.removeExtension(extension.id);
         managedExtensions.setEnabled(profileId,extension.id,false);
         extensionLoadErrors.delete(`${profileId}:${extension.id}`);
@@ -845,6 +931,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const profileId=findProfile(args.profileId??activeProfileId).id,extension=managedExtensions.find(profileId,args.extensionId);
       if(!extension)throw new Error('Corvid 扩展不存在');
       const browserSession=session.fromPartition(partitionFor(profileId));
+      closeExtensionPopupFor(profileId,extension.id);
       if(browserSession.extensions.getExtension(extension.id))browserSession.extensions.removeExtension(extension.id);
       managedExtensions.remove(profileId,extension.id);
       fs.rmSync(chromeExtensions.managedPath(dataDir,profileId,extension.id,extension.version),{recursive:true,force:true});
@@ -862,7 +949,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间空间已改变，请重新操作');
       await dispatch('closeRoom',{id:room.id},false);return {closed:true};
     }
-    case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
+    case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();closeExtensionPopup(record);record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
     case 'history': return {history:library.history(findProfile(args.profileId ?? activeProfileId).id)};
     case 'bookmarks': return {bookmarks:library.bookmarks(findProfile(args.profileId ?? activeProfileId).id)};
     case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id).map(item=>({...item,retrying:activeDownloadRetries.has(item.id)}))};
@@ -1241,12 +1328,12 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default'};
+  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null};
   windowRecords.set(recordId,record);
   focusWindow(record);
-  browserWindow.on('resize',()=>{scheduleWindowStateSave();layout(record);});
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);scheduleWindowStateSave();layout(record);});
   browserWindow.on('move',scheduleWindowStateSave);
-  browserWindow.on('close',()=>saveWindowState());
+  browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
   browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents);
