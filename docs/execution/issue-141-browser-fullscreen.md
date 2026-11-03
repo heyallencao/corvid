@@ -37,6 +37,12 @@
 - `tests/fullscreen-e2e.cjs` 原有快捷键步骤使用 Playwright `keyboard.press`，该输入不会经过 Electron 的 `before-input-event`，已改为 Electron 原生输入事件。网页全屏夹具通过隔离 HTTP 页面、测试期明确自动同意权限请求来运行，不使用真实站点或账号。
 - UI 只在现有“更多浏览工具”菜单加入状态项和快捷键提示，未移植外部组件或视觉素材；本轮未使用 REA 检查 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI。需要进一步调整视觉样式时再按全局 UI 参考约束取证。
 
+## PR 收口 UI 参考复核
+
+- 观察时间：2026-11-03 17:37（Asia/Shanghai）。尝试用 REA controlled browser scenario 观察 Kobra `/components/dropdown-menu`，但当前调用适配层拒绝参数（`invalid_input`：环境与 capture 字段和实际 schema 不一致）；本次没有产生 Evidence，也没有成功操作或观察组件行为。
+- 可复用的既有证据仅限 Kobra 页面可达，REA 请求了 DOM、可访问树和截图：Evidence `ev_3edcac9a9d467a934c1bdadc8ef6aa20155315eb1f93278088e0a98d4ac5a54c`。记录明确本次用例未操作下拉菜单，因此它不能支持开合、焦点、Escape、外点或窄窗行为的结论。此次 Corvid 改动沿用现有“更多浏览工具”菜单合同；未复制参考代码、样式或素材。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描。
+- 结论边界：全屏状态与运行行为由 Corvid 隔离真实 Electron E2E 验收；Kobra 证据只作有限界面参考，REA 的本轮交互取样未完成，不作为验收依据。
+
 ## 已安装参考产品的 REA 静态证据
 
 观察时间：2026-11-03 16:02（Asia/Shanghai）。本轮因共享桌面仍由 #139 验证流程占用，未启动或交互 EGO Lite/Kaze；以下只说明安装包身份和静态分析范围，不把它们当作运行态全屏行为。
