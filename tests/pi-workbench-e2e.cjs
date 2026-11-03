@@ -279,6 +279,27 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await runtimeErrorCard.getByRole('button',{name:'移除记录'}).click();
     assert.deepEqual(readSavedTasks(dataDir),[]);
 
+    const cleanupFailureTask={
+      id:'fixture-session-cleanup-failure',profileId:activeRoom.profileId,roomId:activeRoom.id,tabId:activeRoom.activeTabId,
+      prompt:'清理失败后保留的回复',page:{title:'Corvid Fixture Page',url:sourceUrl},status:'completed',output:'这是已生成且保留的回复。',
+      conversation:[{role:'user',text:'清理失败后保留的回复'},{role:'assistant',text:'这是已生成且保留的回复。',status:'completed'}],
+      events:[{type:'error',messageKey:'agentSessionCleanupFailed',at:new Date().toISOString()}],hasSession:true,stopUnconfirmed:true,canContinue:false,continuationMode:null
+    };
+    const sendCleanupFailureTask=()=>app.evaluate(({BrowserWindow},task)=>BrowserWindow.getAllWindows()[0].webContents.send('pi-task-state',[task]),cleanupFailureTask);
+    await sendCleanupFailureTask();
+    const cleanupFailureCard=shell.locator('.pi-task-entry').filter({hasText:'清理失败后保留的回复'});
+    await cleanupFailureCard.waitFor();
+    const cleanupFailureAlert=cleanupFailureCard.locator('.pi-task-event[role="alert"]');
+    await cleanupFailureAlert.waitFor();
+    await cleanupFailureCard.getByText('这是已生成且保留的回复。',{exact:true}).waitFor();
+    assert.equal(await cleanupFailureAlert.innerText(),'Agent 会话清理失败。本轮回复已保留，请检查页面状态后再启动新任务；此任务暂不可继续。');
+    assert.equal(await cleanupFailureCard.getByRole('button',{name:'继续对话'}).count(),0,'an unconfirmed cleanup state cannot continue the completed session');
+    await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await sendCleanupFailureTask();
+    await cleanupFailureAlert.getByText('The Agent session could not be cleaned up. This response was kept; check the page state before starting another task. This task cannot continue.').waitFor();
+    await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
+    await sendCleanupFailureTask();
+
     await app.close();app=null;
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_INIT_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
