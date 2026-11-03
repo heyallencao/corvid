@@ -93,8 +93,14 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch (error) {
       if (error.code === 'ENOENT') return null;
-      if (error instanceof SyntaxError) throw new Error(`Corvid Agent credentials are unreadable; the original file was preserved: ${error.message}`);
-      throw error;
+      if (error instanceof SyntaxError) {
+        const corrupt = new Error('[[corvid-error:credential-file-corrupt]] Corvid 凭据文件格式已损坏。原文件已保留；如果存在迁移备份，Corvid 将尝试恢复。');
+        corrupt.code = 'credential-file-corrupt';
+        throw corrupt;
+      }
+      const inaccessible = new Error('[[corvid-error:credential-file-access-failed]] 无法读取 Corvid 凭据文件。现有凭据与迁移备份均已保留。请检查数据目录权限及存储状态后重试。', { cause: error });
+      inaccessible.code = 'credential-file-access-failed';
+      throw inaccessible;
     }
   }
 
@@ -212,7 +218,11 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   async function recoverMigrationBackup() {
     if (!fs.existsSync(migrationBackup)) return;
     let current;
-    try { current = readStateFile(); } catch { current = null; }
+    try { current = readStateFile(); }
+    catch (error) {
+      if (error?.code === 'credential-file-corrupt') current = null;
+      else throw error;
+    }
     if (current?.schemaVersion === SCHEMA_VERSION) {
       let verified = false;
       try {
