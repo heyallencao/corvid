@@ -87,6 +87,14 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
       };});
       if(message.includes('[fixture:hold-stop-fails]'))return new Promise(()=>{abortActive=async()=>{throw new Error('本地 fixture 无法确认停止');};});
       if(message.includes('[fixture:hold]'))return new Promise(resolve=>{abortActive=()=>{abortActive=null;resolve({stopReason:'aborted'});};});
+      if(message.includes('[fixture:stream-and-tool-events]')){
+        for(const listener of listeners)listener({type:'tool_execution_start',toolName:'corvid_page_snapshot'});
+        for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'正在读取页面；'}});
+        await new Promise(resolve=>setTimeout(resolve,400));
+        for(const listener of listeners)listener({type:'tool_execution_end',toolName:'corvid_page_snapshot',isError:false});
+        for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'页面要点已整理。'}});
+        return {stopReason:'stop'};
+      }
       for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});
       return {stopReason:'stop'};
     },
