@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 历史面板信息层级与窄窗布局（Issue #196）
+
+- 环境与截图：macOS arm64，隔离真实 Electron 与 `CORVID_DATA_DIR`，页面来自本地 HTTP fixture，历史记录为合成数据。常规窗口逻辑尺寸 1024×700、截图 2048×1336：[历史面板](screenshots/issue-196-history-zh-CN-1024x700.png)，SHA-256 `9a9e9a9b93b65b4a716efa5ac6d7365de8cc89fb01550667944464ad1522c427`。短高窗口逻辑尺寸 700×420、截图 1408×776：[历史面板窄窗](screenshots/issue-196-history-zh-CN-700x420.png)，SHA-256 `8c65db9b902f25c443e090e7536ae7870c1fd95dfd14b432b2d1fa5629c0573a`。
+- 直接观察：面板按今天、昨天和更早日期分组；每行依次呈现页面标题、去掉查询参数与片段的主机/路径、本地化时间和删除动作。宽窗中分组、条目和次级信息层级清楚，沿用现有 Library 面板表面，没有引入卡片套卡片或额外导航。700×420 下长 URL 被省略，时间与删除动作仍可见，历史列表可独立滚动；检查未发现横向溢出。
+- 视觉判断：历史列表是浏览器资料库中的次级浏览任务，应让页面标题先于来源与时间被扫读。较低对比度的 11px 元信息和简洁日期标题补足识别信息，同时保持 Corvid 现有面板密度；短窗优先保留时间和删除操作，把来源路径作为可截断字段。没有复制外部代码、图标或素材。
+- REA 参考、证据类型与限制：项目研究记录中的 EGO `observe_native_ui` Evidence `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02，1450×833）直接显示常规浏览器 chrome、标签/地址栏/书签栏与 Space 入口；Kaze `observe_native_ui` Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403128bf9ee16d740bbdb9067`（2026-11-02，1440×851）直接显示 Browser/Skills/Scheduled/Activity 导航、Space/标签与网页画布。本轮 REA 查询这两个旧 ID 均返回 0 条保留记录，故以上是项目既有研究文档所记的观察，本轮没有重新捕获或静态分析它们。**推断：**两项参考只用于浏览器 chrome 与内容画布的层级背景，不能证明其历史面板设计。**未知：**EGO 与 Kaze 的历史列表、日期分组、时间格式及行操作均未观察。Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 的相关页面本轮未采集，未以搜索摘要或单张图片替代交互证据。
+- 未覆盖：未检查深色主题、跨时区变化、Windows/Linux 布局、VoiceOver/Narrator/Orca 实播、真实用户历史内容或竞品历史交互。截图仅代表当前浅色 macOS 本地夹具状态。
+
 ## 2026-11-04 标签页加载反馈（Issue #197）
 
 - 环境与截图：隔离真实 Electron、macOS arm64，2560×1636；页面由本地 900ms HTTP fixture 提供，无个人浏览内容。加载中：[截图](screenshots/issue-197-loading.png)（SHA-256 `b1841a3162bd0bed29627da6c960b9d495f44ae2c1fd66553a4017eb43b97317`）；加载完成：[截图](screenshots/issue-197-loaded.png)（SHA-256 `2dc6f06d071afa6a49647350975fb1060595926f2f88cf54118acbe98eb146a5`）。
