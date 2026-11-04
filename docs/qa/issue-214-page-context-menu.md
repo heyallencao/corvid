@@ -11,6 +11,7 @@
 - 环境：本机 macOS arm64；Electron 45.2.1；Node.js v24.22.1。隔离临时 `CORVID_DATA_DIR` 与 `127.0.0.1` 本地 HTTP fixture；不读写用户浏览数据、不访问外网、不使用模型或 OAuth。
 - `node --test tests/page-context-menu.test.mjs`：验证 zh-CN/en 资源键、不可用导航项状态、HTTP(S) URL 规范化与危险 scheme 拒绝、链接/图片动作回调和编辑角色。
 - `node tests/page-context-menu-e2e.cjs`：真实 Electron、本地 fixture；验证网页右键建立原生菜单模板、中文链接操作、链接在同 Room/Profile 新标签打开，以及 Agent 所有权门禁。测试将 `Menu.prototype.popup` 替换成捕获器，避免依赖系统菜单弹出；因此它验证 Electron 收到右键并生成菜单及菜单动作路由，但不验证系统绘制、原生键盘焦点或 VoiceOver。
+- 最新主线复验（`9399642`，隔离分支提交 `dad49d2`）：`node --test tests/page-context-menu.test.mjs` 3/3 通过；`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/page-context-menu-e2e.cjs` EXIT 0，输出 `PASS webpage context menu: localized actions, same-Room link tab, and Agent ownership guard`；相关 `node --check` 与 `git diff --check` 通过。
 - 本轮不运行签名 `.app`、不读取或修改钥匙串、不做公证/打包诊断。测试使用仓库 Electron 开发运行时。
 - 本地 Electron 测试通过不代表 Windows/Linux、打包版或实际系统菜单无障碍已验证；未运行全量 `npm test`。
 

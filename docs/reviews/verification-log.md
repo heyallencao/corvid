@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-04 Issue #214 网页区域上下文菜单最新主线复验
+
+- 范围：在 `origin/main` `9399642` 重放 PR #246 后，于隔离提交 `dad49d2` 验证网页区域右键菜单的最新主线兼容性；功能边界见[Issue #214 QA](../qa/issue-214-page-context-menu.md)。
+- 验证：`node --test tests/page-context-menu.test.mjs` 3/3 通过；`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/page-context-menu-e2e.cjs` EXIT 0；`node --check` 覆盖主进程、双语资源、菜单模块与 E2E，`git diff --check` 通过。
+- 环境与数据：macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。没有访问外网、用户浏览数据、OAuth 或模型。
+- 边界：E2E 以 `Menu.prototype.popup` 捕获菜单并用 `MenuItem.click` 调用动作；验证右键事件接线、链接在同 Room/Profile 打开和 Agent Room 门禁，不证明 macOS 原生菜单绘制/焦点/键盘、VoiceOver、其他平台、图片/编辑目标真实输入或打包版表现。历史 EGO/Kaze REA 仅观察浏览器 chrome/导航，该组件在竞品中的运行态行为仍未知。
+
 ## 2026-11-04 Issue #279 Chrome 导入对话框布局（PR 前验证）
 
 - 问题：Chrome 导入长预览时，整个 dialog 随内容滚动，初始窗口内可能找不到取消与主操作。实现将内容区设为唯一滚动区，标题和底部操作常驻；底部取消复用原 dialog 关闭/来源清理路径，Cookie 同意和类别启用规则不变。
