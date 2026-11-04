@@ -226,6 +226,8 @@ function applicationMenuHandlers() {
     forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
     reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
     find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    findNext:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:false});}),
+    findPrevious:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:true});}),
     print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
     fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
     zoomIn:()=>adjustZoom(0.1),

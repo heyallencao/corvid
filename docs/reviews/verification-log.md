@@ -1453,3 +1453,12 @@
 - 未创建 GitHub Release、tag、安装包或协作者邀请。GitHub main `48cfea6` 的树中没有打包器/安装器配置，因此源码归档不能称为桌面安装器。用户将自行邀请协作者。参考：[版本与 Release 流程](../records/releases/release-policy.md)、[GitHub 图片证据规则](../qa/github-image-evidence.md)。
 
 
+
+## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
+- 审计更正：早前「应用菜单仅 2 个 accelerator」为 grep 伪结果（计数到 helper 定义行）——当前 main 菜单已挂 T/N/W/Shift+W、前进后退、R/F/P、缩放三档、全屏等 accelerator 并有 `syncApplicationMenuState` 动态启用与「键盘快捷键」帮助项。对照 `installShortcuts` 合同的真实缺口为 **Cmd/Ctrl+G 查找下一个、Cmd/Ctrl+Shift+G 查找上一个**（及浏览器惯例不列菜单的 Cmd+1..9、Ctrl+Tab，维持不列）。
+- 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
+- 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
+- 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
+- 未覆盖：Windows/Linux 真机 accelerator 键位、VoiceOver、菜单 accelerator 与 before-input-event 拦截层级的全键位穷举实测（机制分析见 PR；browser-shortcuts-e2e 覆盖键盘路径）。
