@@ -252,8 +252,12 @@ function draw(value) {
   if(!addressDraftDirty && document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
   const status=document.querySelector('#status');status.setAttribute('role','status');status.replaceChildren();
-  if(active?.isLoading){const loading=document.createElement('span');loading.className='navigation-loading';loading.textContent=extensionMessages.t('loading');status.append(loading);}
-  if(active?.navigationError){const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=active.navigationError.kind==='http-status'?active.navigationError.message:extensionMessages.t('pageLoadFailed',{message:active.navigationError.message});status.append(error);if(active.navigationError.code){const details=document.createElement('details');details.className='navigation-error-details';const summary=document.createElement('summary');summary.textContent=extensionMessages.t('navigationErrorCode');const code=document.createElement('code');code.textContent=active.navigationError.code;details.append(summary,code);status.append(details);}if(room.ownership!=='agent'&&!room.userResumePending)status.append(button(extensionMessages.t('retry'),()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));}
+  if(active?.navigationError){
+    const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=active.navigationError.kind==='http-status'?active.navigationError.message:extensionMessages.t('pageLoadFailed',{message:active.navigationError.message});status.append(error);
+    if(active.navigationError.code){const details=document.createElement('details');details.className='navigation-error-details';const summary=document.createElement('summary');summary.textContent=extensionMessages.t('navigationErrorCode');const code=document.createElement('code');code.textContent=active.navigationError.code;details.append(summary,code);status.append(details);}
+    if(room.ownership!=='agent'&&!room.userResumePending)status.append(button(extensionMessages.t('retry'),()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));
+    status.append(button(extensionMessages.t('copyLink'),()=>api.invoke('copyTabUrl',{id:active.id})));
+  }
   if(room.executionRisk) status.append(button(extensionMessages.t('pageExecutionUnknown'),()=>api.invoke('reviewExecutionRisk',{id:room.id})));
   if(active?.dialog) status.append(button(extensionMessages.t('pageDialogReview'),()=>showPageDialog(active)));
   if(room.ownership==='agent') {
@@ -262,6 +266,7 @@ function draw(value) {
   } else if(room.yielded) {const label=document.createElement('span');label.textContent=extensionMessages.t('userInControl');status.append(label);if(!room.executionRisk)status.append(button(extensionMessages.t('returnControl'),async()=>{controlError='';try{await api.invoke('returnUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}}));}
   if(controlError){const note=document.createElement('span');note.setAttribute('role','alert');note.textContent=controlError;status.append(note);}
   if(siteDataNotice?.tabId===active?.id){const note=document.createElement('span');note.setAttribute('role','status');note.textContent=siteDataNotice.message;status.append(note);}
+  status.dataset.tone=active?.navigationError?'danger':controlError?'danger':room.executionRisk?'warning':siteDataNotice?.tabId===active?.id||bookmarkFeedbackKey?'success':'info';
   renderBookmarkFeedback();
 }
 function renderExtensionToolbar(){
@@ -1081,8 +1086,10 @@ function syncTabFavicon(icon,tab){const sourceKey=tab.faviconUrl?`url:${tab.favi
 function createTabFavicon(tab){if(!tab.faviconUrl)return createFallbackFavicon(tab);const icon=document.createElement('img'),sourceKey=`url:${tab.faviconUrl}`;icon.className='favicon';icon.alt='';icon.draggable=false;icon.dataset.source=sourceKey;icon.onerror=()=>{if(icon.dataset.source!==sourceKey)return;icon.onerror=null;icon.replaceWith(createFallbackFavicon(tab,sourceKey));};icon.src=tab.faviconUrl;return icon;}
 function syncTabElement(el,tab,room){
   el.className=tab.pinned?'tab pinned':'tab';el.dataset.active=String(tab.active);el.dataset.tabId=tab.id;
+  el.dataset.loading=String(Boolean(tab.isLoading));
   if(tab.pinned)el.dataset.pinned='true';else delete el.dataset.pinned;
-  const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close'),titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close');let titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  if(tab.navigationError){try{titleText=new URL(tab.navigationError.url||tab.url).host||extensionMessages.t('navigationErrorTabTitle');}catch{titleText=extensionMessages.t('navigationErrorTabTitle');}}
   main.title=titleText;main.setAttribute('aria-label',titleText);
   if(tab.active)main.setAttribute('aria-current','page');else main.removeAttribute('aria-current');
   let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('.favicon'),pin=main.querySelector(':scope > .pin-icon');

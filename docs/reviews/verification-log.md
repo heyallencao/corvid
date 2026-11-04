@@ -1,3 +1,11 @@
+## 2026-11-04 导航状态语义与错误恢复（Issue #202）
+
+- 变更：加载时移除状态区横幅、保留标签 spinner；状态区依 `info/warning/danger/success` 使用已有语义表面 token；导航错误增加双语复制链接按钮，重试/复制均面向原导航 URL；失败标签以 host 显示。现有 `copyTabUrl` 改为错误态优先复制原失败 URL，未新增 API。
+- 验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 和本地 HTTP fixture。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_ISSUE202_QA_DIR=docs/qa/screenshots/issue-202 node tests/navigation-error-e2e.cjs` 通过，覆盖 zh-CN/en、HTTP 408/500、拒绝连接、重试/恢复、复制链接（剪贴板替身）、host 标题、加载 spinner/2px 进度线同时出现、进度线不改工具栏高度且遵循 `prefers-reduced-motion`、完成后消失、不显示加载横幅、700×420 无溢出并生成五张截图。没有访问真实网站、模型或 OAuth，也没有启动签名包。
+- 回归边界：`node --check`（`desktop/renderer.js`、`desktop/main.cjs`、`desktop/locales.js`、`tests/navigation-error-e2e.cjs`）与 `git diff --check` 在实现主体修改后通过。`tests/localization-e2e.cjs` 未完整通过：已运行到 Corvid Agent 模型管理步骤，等待 `.pi-model-manage` 30 秒超时（第 117 行）；此路径不属于本次状态区修改，故双语全套回归状态记为未通过/未完成，不以导航定向测试代替。测试源码 locale 唯一键检查已在该脚本开头完成；状态错误原因、复制动作和 fallback tab title 的中文/英文由本次导航 E2E 覆盖。
+- 视觉证据：状态行四种语言/窗口截图与 hash 见[状态区视觉检查](../qa/ui-visual-check.md#2026-11-04-导航状态区与恢复-issue-202)。使用的 Kobra Alert REA 既有 Evidence、观察时间和限制亦见该记录。
+- 未覆盖：暗色主题实机截图、完整定位/键盘遍历、读屏播报、跨平台、签名分发包与真实网络环境；HTTP 408 为 fixture 的 HTTP 响应，不是网络层超时集成验证。
+
 # 验证记录
 
 ## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验

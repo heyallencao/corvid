@@ -1264,7 +1264,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     }
     case 'copyTabUrl': {
       if(fromApi) throw new Error('User action required');
-      const url=findTab(target).view.webContents.getURL();
+      const tab=findTab(target),url=tab.navigationError?.url||tab.view.webContents.getURL();
       if(!url || url==='about:blank') throw new Error('当前标签页没有可复制的地址');
       clipboard.writeText(url);
       return {url};
