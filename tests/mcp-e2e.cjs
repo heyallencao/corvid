@@ -76,9 +76,13 @@ class McpProcess {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-'));
   let app, mcp, fixture;
   try {
-    fixture = http.createServer((_request, response) => {
+    const fixtureRequestCounts = new Map();
+    fixture = http.createServer((request, response) => {
+      const pathname = new URL(request.url, 'http://fixture.local').pathname;
+      const requestCount = (fixtureRequestCounts.get(pathname) || 0) + 1;
+      fixtureRequestCounts.set(pathname, requestCount);
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end('<!doctype html><title>MCP fixture</title><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>');
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -136,9 +140,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_click', 'page_fill', 'page_info', 'page_navigate', 'page_press', 'page_snapshot']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_press', 'page_reload', 'page_snapshot']);
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
-    assert.ok(listed.tools.filter(tool => ['page_click', 'page_fill', 'page_navigate', 'page_press'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_fill', 'page_forward', 'page_navigate', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -157,6 +161,12 @@ class McpProcess {
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
 
+    const emptyBack = await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
+    const emptyForward = await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
+    assert.equal(emptyBack.result.isError, undefined);
+    assert.equal(emptyForward.result.isError, undefined);
+    assert.equal((await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value.url, 'about:blank', 'history actions with no entries leave the managed page unchanged');
+
     const { connect } = await import('../sdk/index.js');
     const scopedSdk = await connect({ dataDir, token: authorization.token });
     try {
@@ -172,6 +182,31 @@ class McpProcess {
     const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
+    const secondUrl = `${fixtureUrl}second`;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: secondUrl });
+    await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
+    let currentInfo;
+    for (let i = 0; i < 100; i++) {
+      currentInfo = (await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value;
+      if (currentInfo.url === fixtureUrl) break;
+      await delay(25);
+    }
+    assert.equal(currentInfo.url, fixtureUrl, 'page_back navigates only the explicitly selected tab to its prior URL');
+    await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
+    for (let i = 0; i < 100; i++) {
+      currentInfo = (await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value;
+      if (currentInfo.url === secondUrl) break;
+      await delay(25);
+    }
+    assert.equal(currentInfo.url, secondUrl, 'page_forward restores the next URL in the same tab history');
+    const priorRequestCount = fixtureRequestCounts.get('/second');
+    const reloaded = await mcp.callTool('page_reload', { roomId: room.id, tabId: tab.id });
+    assert.equal(reloaded.result.isError, undefined);
+    for (let i = 0; i < 100 && fixtureRequestCounts.get('/second') <= priorRequestCount; i++) await delay(25);
+    assert.ok(fixtureRequestCounts.get('/second') > priorRequestCount, 'page_reload requests the selected page again');
+    const reloadSnapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.equal(new URL((await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value.url).pathname, '/second');
+    assert.match(JSON.stringify(reloadSnapshot.value), /Request 2 \/second/);
     const filled = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'textbox', name: 'Query' }, value: 'corvid mcp' });
     assert.equal(filled.result.isError, undefined, JSON.stringify(filled.value));
     const searched = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
@@ -210,6 +245,11 @@ class McpProcess {
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
+    for (const name of ['page_back', 'page_forward', 'page_reload']) {
+      const deniedNavigation = await mcp.callTool(name, { roomId: room.id, tabId: tab.id });
+      assert.equal(deniedNavigation.result.isError, true, `${name} is denied while the user owns the Room`);
+      assert.equal(deniedNavigation.value.code, 'CORVID_CONTROL_LOST');
+    }
     await call(`/rooms/${room.id}/resumeControl`, 'POST', {});
     assert.equal((await call('/rooms')).rooms.length, roomCountBefore);
     console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, post-action verification, user-control denial, bounded responses');
