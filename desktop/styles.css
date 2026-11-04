@@ -66,6 +66,7 @@
   --focus-ring: var(--accent);
   --motion-fast: 120ms;
   --disabled-opacity: .55;
+  --accent-contrast: #fff;
   --motion-standard: 180ms;
   --motion-ease: cubic-bezier(.2, 0, 0, 1);
   --sidebar-width: 232px;
@@ -366,7 +367,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #pi-task-form .pi-model-controls[data-connected="false"] .pi-model-status { color: var(--accent-ink); }
 #pi-task-form .pi-model-action { min-height: 30px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-elevated); color: var(--text-secondary); font: inherit; font-size: var(--font-size-small); white-space: nowrap; }
 #pi-task-form .pi-model-action:hover:not(:disabled) { background: var(--surface-hover); }
-#pi-task-form .pi-model-controls[data-connected="false"] .pi-model-connection > .pi-model-action { border-color: var(--accent-solid); background: var(--accent-solid); color: #fff; font-weight: 600; }
+#pi-task-form .pi-model-controls[data-connected="false"] .pi-model-connection > .pi-model-action { border-color: var(--accent-solid); background: var(--accent-solid); color: var(--accent-contrast); font-weight: 600; }
 #pi-task-form .pi-model-controls[data-connected="false"] .pi-model-connection > .pi-model-action:hover:not(:disabled) { background: var(--accent-solid-hover); }
 #pi-task-form .pi-model-manage { width: 32px; min-width: 32px; padding: 4px; color: var(--text-muted); font-size: 17px; line-height: 1; }
 #pi-task-form .pi-model-key { width: min(100%, 240px); min-width: 120px; min-height: 32px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; }
@@ -477,7 +478,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 @media (max-height: 440px) {
   #pi-task-form { max-height: 48%; }
 }
-.pi-create-room, .pi-primary-action { min-height: 36px; padding: 7px 12px; border: 1px solid transparent; background: var(--accent-solid); color: #fff; font-weight: 600; }
+.pi-create-room, .pi-primary-action { min-height: 36px; padding: 7px 12px; border: 1px solid transparent; background: var(--accent-solid); color: var(--accent-contrast); font-weight: 600; }
 .pi-create-room:hover:not(:disabled), .pi-primary-action:hover:not(:disabled) { background: var(--accent-solid-hover); }
 .pi-secondary-action { border: 1px solid var(--line); background: var(--surface-elevated); color: var(--text-secondary); }
 .pi-secondary-action:hover:not(:disabled) { background: var(--surface-hover); }
@@ -485,7 +486,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-consent input { flex: none; margin: 1px 0 0; accent-color: var(--accent); }
 .pi-context { max-height: 190px; overflow: auto; overflow-wrap: anywhere; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-code); color: var(--text-code); font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 .workspace-empty-state { margin: 0; padding: 16px; border: 1px dashed var(--line-strong); border-radius: var(--radius-md); background: var(--surface-inset); color: var(--text-muted); font-size: 12px; line-height: 1.6; }
-.workspace-empty-action { min-height: 34px; margin-top: 10px; padding: 7px 12px; border: 1px solid transparent; border-radius: 9px; background: var(--accent-solid); color: #fff; font-weight: 600; }
+.workspace-empty-action { min-height: 34px; margin-top: 10px; padding: 7px 12px; border: 1px solid transparent; border-radius: 9px; background: var(--accent-solid); color: var(--accent-contrast); font-weight: 600; }
 .workspace-empty-action:hover { background: var(--accent-solid-hover); }
 .pi-task-entry { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
 .pi-task-title { min-width: 0; overflow: hidden; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -715,7 +716,7 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 #chrome-import-onboarding .import-limitation { color: var(--text-muted); font-size: 12px; }
 .onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; margin-top: 6px; }
 .onboarding-actions button { min-height: 36px; padding: 8px 12px; }
-.onboarding-actions button:last-child { background: var(--accent-solid); color: #fff; }
+.onboarding-actions button:last-child { background: var(--accent-solid); color: var(--accent-contrast); }
 #chrome-import-onboarding-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
 dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: var(--disabled-opacity); }
 
