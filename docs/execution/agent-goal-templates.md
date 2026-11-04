@@ -13,7 +13,7 @@
 职责域 lane:browser：标签页、历史、书签、下载、导入迁移、多窗口、持久化、启动与运行稳定性、性能；兼管 lane:infra 小切片（分支前缀 infra/）。
 
 持续循环，每轮：
-1. 开放 PR >8 → 禁止领新活，本轮结束。
+1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
 2. gh issue list --search "state:open label:lane:browser -label:claimed -label:stale"，按 priority:P0>P1>P2>P3 取一个。
 3. 认领：加 claimed label + 评论 "claimed by browser-<机器名> — 切片: <范围>"；读回校验，被抢则换下一个。
 4. git fetch origin && git worktree add ../corvid-issue-<N> -b browser/issue-<N>-<slug> origin/main。
@@ -34,7 +34,7 @@
 职责域 lane:agent：Agent runtime、SDK/CLI、BrowserMCP、Agent 工作台、授权与 Task Space 隔离、模型连接与凭据。
 
 持续循环，每轮：
-1. 开放 PR >8 → 禁止领新活，本轮结束。
+1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
 2. gh issue list --search "state:open label:lane:agent -label:claimed -label:stale"，按 priority 排序取一个。
 3. 认领三件套 + 读回校验（协议第 3 节）。
 4. git worktree add ../corvid-issue-<N> -b agent/issue-<N>-<slug> origin/main。
@@ -55,7 +55,7 @@
 职责域 lane:ui：设计 token 体系、图标、窗口 chrome、应用菜单与右键菜单、面板/弹层交互模型、可达性、双语、状态反馈语言。目标：视觉一致性从「网站感」提到成熟浏览器水准（对照 Rare UI/Kobra 参照与每日体检结论）。
 
 持续循环，每轮：
-1. 开放 PR >8 → 禁止领新活，本轮结束。
+1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
 2. gh issue list --search "state:open label:lane:ui -label:claimed -label:stale"，按 priority 排序取一个。
 3. 认领三件套 + 读回校验。
 4. git worktree add ../corvid-issue-<N> -b ui/issue-<N>-<slug> origin/main。
