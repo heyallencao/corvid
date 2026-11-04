@@ -1264,3 +1264,11 @@
 - 变更：常规标签以 170px 为优先宽度、空间不足时缩到 120px；窄于 760px 时切换到 44px favicon 模式；标签栏显示有名称的左右滚动控制并在边界禁用，新建标签按钮滚动时保持可达。网页未提供 favicon 或 favicon 加载失败时，使用本地生成的域名首字母；标签按钮提供完整标题 tooltip 和 aria-label。`package.json`、E2E 索引、执行板与截图索引已同步。
 - 验证：`node --check desktop/renderer.js`、`node --check tests/tab-overflow-e2e.cjs`、`git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；设置 `CORVID_TAB_OVERFLOW_QA_DIR=docs/qa/screenshots` 重跑也 EXIT 0。真实隔离 Electron 覆盖常规与窄窗各 1/5/14 标签、滚动和边界、键盘 Enter 切换、无 favicon 回退、zh-CN/en 滚动名称与窄窗无页面横向溢出。截图与 REA 证据边界见 [桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-标签页身份与溢出-issue-201)。Electron 测试进程已清理；全量 `npm test` 未运行。中间一次窄窗回归误点了处于禁用态的左箭头，已修正用例顺序（先验证起点禁用，再向右滚动并返回起点）后重新运行通过。
 - 限制：仅 macOS 开发版 Electron 与合成本地页面；截图来自 shell renderer，不包含原生 `WebContentsView` 网页画布；未覆盖其他平台、打包版、屏幕阅读器实播、暗色主题或真实站点 favicon 异常。
+
+## 2026-11-04 Developer ID 签名凭据验收主线重放（Issue #110）
+
+- 主线与分支：专属工作树将 PR #157 的 7 个提交重放到 `origin/main` `0e90d29`，解决 `package.json` 与验证记录/QA 文档冲突；保留最新主线内容，签名包验收描述同步在 D15 与测试索引中。`git diff --check origin/main...HEAD` 通过，分支 `91e460f` 已推送，PR #157 当前可合并且仍为草稿。
+- CI：新 SHA `91e460f` 触发的凭据存储及 Chrome 导入两个跨平台工作流中，macOS、Windows、Linux 共 6 个任务均未分配 runner、没有执行步骤。GitHub 注解明确显示账号近期付款失败或 Actions 支出上限需要提高；这是未启动，不是测试失败。旧 SHA `c880f1d` 的三平台开发版凭据运行曾通过，但不覆盖本次重放头或签名发行包。
+- 签名包状态：此前 `c880f1d` 的本机 Developer ID 签名包在允许钥匙串访问后重试，模型设置仍显示系统安全存储等待超时；该轮没有写入合成凭据，因此未验证保存、重启读取或登出删除。现有证据仍不能确定 Keychain 调用未返回的原因。重放后尚未重建/重跑签名应用验收。
+- 并发边界：重放后的复验前检查到另一隔离工作树 `/private/tmp/corvid-issue193-conversation-identities` 的 Electron 主进程和 renderer 仍在运行。为避免争用桌面焦点，本轮没有启动、关闭或附加任何 Electron 进程；需在该进程退出后继续签名构建和 `npm run test:packaged:signed:mac`。
+- 未覆盖：当前仍没有签名包凭据往返证据；CI 付款限制期间也没有新的跨平台 runner 结果。Issue #110 与 PR #157 均保持开放/草稿。
