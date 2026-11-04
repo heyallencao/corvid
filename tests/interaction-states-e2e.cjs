@@ -22,10 +22,64 @@ let app;
     const shell = launched.shell;
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 732));
     await shell.waitForFunction(() => window.innerWidth === 1024);
+    await shell.locator('#new-tab').waitFor({ state: 'visible' });
     const viewport = await shell.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
     for (const colorScheme of ['light', 'dark']) {
       await shell.emulateMedia({ colorScheme, reducedMotion: 'no-preference' });
+
+      const designTokens = await shell.evaluate(() => {
+        const styleOf = selector => {
+          const element = document.querySelector(selector);
+          if (!element) throw new Error(`Missing tokenized component: ${selector}`);
+          const style = getComputedStyle(element);
+          return { radius: style.borderRadius, shadow: style.boxShadow };
+        };
+        const root = getComputedStyle(document.documentElement);
+        const shadowFromToken = token => {
+          const probe = document.createElement('span');
+          probe.style.boxShadow = `var(${token})`;
+          document.body.append(probe);
+          const value = getComputedStyle(probe).boxShadow;
+          probe.remove();
+          return value;
+        };
+        return {
+          radius: Object.fromEntries(['xs', 'sm', 'md', 'lg', 'xl', 'circle'].map(key => [key, root.getPropertyValue(`--radius-${key}`).trim()])),
+          elevation: Object.fromEntries(['card', 'raised', 'popover', 'panel', 'menu', 'dialog'].map(key => [key, shadowFromToken(`--elevation-${key}`)])),
+          profile: styleOf('.profile-switcher'),
+          address: styleOf('#address-form'),
+          newTab: styleOf('#tabs > #new-tab'),
+          profileMenu: styleOf('#profile-menu'),
+          siteTools: styleOf('#site-tools'),
+          findbar: styleOf('#findbar'),
+          library: styleOf('#library'),
+        };
+      });
+      assert.deepEqual(designTokens.radius, { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '20px', circle: '50%' }, `${colorScheme}: radius scale is shared and increments by 4px`);
+      for (const [key, geometry] of Object.entries({
+        card: '0px 1px 2px 0px',
+        raised: '0px 3px 12px 0px',
+        popover: '0px 12px 32px 0px',
+        panel: '0px 12px 36px 0px',
+        menu: '0px 14px 38px 0px',
+        dialog: '0px 24px 80px 0px',
+      })) {
+        assert.match(designTokens.elevation[key], /^rgba?\(.+\) /, `${colorScheme}: ${key} elevation resolves to a theme color`);
+        assert.ok(designTokens.elevation[key].endsWith(geometry), `${colorScheme}: ${key} elevation keeps its semantic geometry`);
+      }
+      assert.equal(designTokens.profile.radius, '12px');
+      assert.equal(designTokens.address.radius, '20px');
+      assert.equal(designTokens.newTab.radius, '8px');
+      assert.equal(designTokens.profileMenu.radius, '12px');
+      assert.equal(designTokens.siteTools.radius, '12px');
+      assert.equal(designTokens.findbar.radius, '12px');
+      assert.equal(designTokens.library.radius, '16px');
+      assert.match(designTokens.profile.shadow, /^rgba?\(.+\) 0px 1px 2px 0px$/);
+      assert.match(designTokens.profileMenu.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
+      assert.match(designTokens.siteTools.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
+      assert.match(designTokens.findbar.shadow, /^rgba?\(.+\) 0px 12px 32px 0px$/);
+      assert.match(designTokens.library.shadow, /^rgba?\(.+\) 0px 12px 36px 0px$/);
 
       const surfaces = await shell.evaluate(() => {
         const nav = document.querySelector('#show-bookmarks');
@@ -78,6 +132,9 @@ let app;
       assert.match(selected.boxShadow, /2px 0px.*inset/, `${colorScheme}: selected navigation keeps its accent marker`);
 
       await shell.locator('#create-room-trigger').click();
+      const dialogTokens = await shell.locator('#new-room').evaluate(element => ({ radius: getComputedStyle(element).borderRadius, shadow: getComputedStyle(element).boxShadow }));
+      assert.equal(dialogTokens.radius, '16px', `${colorScheme}: dialogs use the large radius token`);
+      assert.match(dialogTokens.shadow, /^rgba?\(.+\) 0px 24px 80px 0px$/);
       const createRoom = shell.locator('#new-room-form button[type="submit"]');
       await createRoom.waitFor({ state: 'visible' });
       const submitBeforeHover = await createRoom.evaluate(element => getComputedStyle(element).backgroundColor);

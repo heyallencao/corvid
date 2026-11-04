@@ -39,6 +39,10 @@ Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英
 11. **字体尊重操作系统并覆盖中文阅读。** 浏览器壳和 Agent 工作区使用系统 UI sans-serif 与平台 CJK fallback，不依赖用户额外安装 Inter；`zh-CN` 下小型可见 UI 文本至少 12px，英文可保留 10/11px 紧凑层级。浏览数据标题直接表达当前列表，不加与页面内容无关的品牌眉题。
 12. **交互状态彼此可辨。** hover 反馈不能覆盖当前选中状态；可按下按钮提供轻微触点反馈；主题化滚动条和文字选区沿用 Corvid 色板；状态过渡统一使用短时长 token，并遵守 `prefers-reduced-motion`。标签栏与扩展工具栏等专门隐藏的滚动条保持原行为。
 
+## 样式 token 合同
+
+`desktop/styles.css` 是桌面壳层的共享样式 token 边界。圆角采用 4px 步进的 `--radius-xs`（4px）、`--radius-sm`（8px）、`--radius-md`（12px）、`--radius-lg`（16px）和 `--radius-xl`（20px），另以 `--radius-circle` 表达圆形指示器；上下两角圆弧等组合形状可由这些 token 与 0 组合。浮层投影以 `--elevation-card`、`--elevation-raised`、`--elevation-popover`、`--elevation-panel`、`--elevation-menu` 和 `--elevation-dialog` 描述语义层级，投影颜色继续引用浅/深主题下既有的 shadow 色值。焦点 halo 和选中指示等零偏移/内阴影是交互状态，不属于浮层 elevation。Issue #210 本轮只收敛圆角与投影结构；色板、近似灰、状态色和对比度债务继续跟踪，完整状态见[执行任务板 D26](../execution/feature-board.md)。
+
 ## 目标信息架构
 
 - **左侧导航：** Corvid 品牌；Profile 切换；Spaces/Rooms 列表与新建；Agent 区（Corvid Agent 对话入口与 Agent Room 列表）；底部书签、历史、下载、设置。
