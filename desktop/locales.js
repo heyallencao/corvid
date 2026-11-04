@@ -951,7 +951,7 @@
     formatDate(value, options) { return new Intl.DateTimeFormat(locale, options).format(value instanceof Date ? value : new Date(value)); },
       formatList(values, options) { return new Intl.ListFormat(locale, options).format(values); },
     userFacingError(message) {
-      const match = String(message || '').match(/^\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
+      const match = String(message || '').match(/\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
       if (!match) return null;
       const key = {
         'secure-storage-unavailable': 'secureStorageUnavailable',
