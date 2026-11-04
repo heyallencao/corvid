@@ -33,6 +33,15 @@
 - 环境：独立 worktree `/private/tmp/corvid-issue211-submit-hover`，基于 `origin/main` `7244a88`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR`，窗口为 1024×700。截图见[QA 记录](../qa/issue-211-submit-hover.md)。未访问外网、用户网页或 Profile；未使用模型与 OAuth。测试后 Electron 进程退出，临时 `node_modules` 软链接已移除。
 - Impeccable：运行 `impeccable detect --json desktop/index.html`。检测器报告现有 HTML 内联样式中的侧边强调线、面板边框/阴影和排版层级提示；本切片只改通用 button hover 级联，没有修改这些不同区域。未运行全量 `npm test`。
 - 限制：不覆盖打包版、Windows/Linux、系统原生主题、辅助技术播报或完整的其他 dialog 流程。该验证只覆盖本地开发 Electron 中主按钮的悬停背景。
+
+## 2026-11-04 页面上下文同意标签级联（Issue #211 子项）
+
+- 实现：将通用 `.pi-consent` 覆盖改为 `#pi-task-form label.pi-consent` 组件作用域样式，移除 `display`、`align-items`、`gap` 三个 `!important`；维持原生 checkbox、8px 间距、键盘同意和发送前权限门槛。Issue #211 其他级联债务仍开放。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0；`node --check tests/pi-workbench-e2e.cjs` 与 `git diff --check` 通过。新增断言覆盖预览重绘后的键盘焦点、计算样式、checkbox 与文案的几何间距/容器边界，以及 Space 同意后发送操作解锁。
+- 环境：独立 worktree `/private/tmp/corvid-issue211-consent-specificity`，起始基于 `origin/main` `3ef4651`，重放到 `92f0615` 后再次通过；macOS arm64、Node.js v24.22.1、Electron 45.2.1；本地 HTTP fixture、隔离临时 `CORVID_DATA_DIR` 和确定性 Agent fixture。为满足 Node ESM 包解析，临时软链接根工作区锁定 `node_modules`，测试后已移除。未读取真实网页/Profile，未访问外网、模型或 OAuth；没有构建签名包或执行钥匙串诊断。
+- 截图与 REA：最新主线复验保存的[同意预览状态截图](../qa/screenshots/issue-211-consent-label-1280x850.png)为 2560×1636 PNG，SHA-256 `be9fc8f495bcad03add35ca3884433da1b529198fa454992a5a9e74139f56d27`。Kobra Checkbox 参考页 REA Evidence `ev_6f65512faf49a2a401f5e07926ddf2755239dec36eb4ba55072ae37f354bc1c4` 只作为控件语义与可识别性的有限参考，不证明 Corvid 间距或键盘行为。完整观察边界与视觉判断见[QA 记录](../qa/issue-211-consent-label.md)。
+- Impeccable `detect --json desktop/styles.css` 返回退出码 2，报告原有侧边色条 warning 两条（原文件行 442、581）；不在本切片范围，本次 selector 未被该扫描报告。全量 `npm test`、深色、窄窗、屏幕阅读器、打包版及其他平台均未覆盖。
+
 ## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验
 
 - 背景：PR #148 因 macOS 锁屏时未能完成 Electron 原生焦点验收而保留了该限制；本次在解锁桌面后对 PR 合并版本与当前主线分别重跑默认模式，未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`。

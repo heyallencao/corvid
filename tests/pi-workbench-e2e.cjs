@@ -106,6 +106,20 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.keyboard.press('Enter');
     await shell.getByText(/将分享给 Agent：/).waitFor();
     assert.equal(await shell.evaluate(()=>document.activeElement.id),'pi-context-consent','preview rerender moves keyboard focus to the required consent checkbox');
+    const consentLayout=await shell.locator('#pi-task-form label.pi-consent').evaluate(label=>{
+      const checkbox=label.querySelector('input');
+      const range=document.createRange();
+      range.selectNodeContents(label);
+      range.setStartAfter(checkbox);
+      const textBounds=range.getBoundingClientRect();
+      const labelBounds=label.getBoundingClientRect();
+      const checkboxBounds=checkbox.getBoundingClientRect();
+      const style=getComputedStyle(label);
+      return {display:style.display,alignItems:style.alignItems,gap:style.columnGap,labelRight:labelBounds.right,textLeft:textBounds.left,textRight:textBounds.right,checkboxRight:checkboxBounds.right};
+    });
+    assert.deepEqual({display:consentLayout.display,alignItems:consentLayout.alignItems,gap:consentLayout.gap},{display:'flex',alignItems:'flex-start',gap:'8px'},'the explicit consent label uses its scoped layout rule without cascade overrides');
+    assert.ok(consentLayout.textLeft>=consentLayout.checkboxRight+7&&consentLayout.textRight<=consentLayout.labelRight+1,`consent copy stays beside the checkbox and inside the form: ${JSON.stringify(consentLayout)}`);
+    await saveScreenshot(shell,'issue-211-consent-label-1280x850.png');
     const consentPreview=await shell.locator('.pi-context').innerText();
     assert.match(consentPreview,/Corvid Fixture Page/);
     assert.match(consentPreview,/"items"/);

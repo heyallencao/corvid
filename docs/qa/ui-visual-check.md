@@ -7,6 +7,13 @@
 - 市场参考的边界：REA 已观察的 Kobra Chat Input 直接证据仅支持输入与发送操作的清晰组合；没有观察按钮悬停。Rare UI 被安全页拦截，Aceternity Sidebar 的 hover 说明未执行，EasyUI/Pin UI 未检查。以上均不作为本次状态行为依据。
 - 视觉比较：Corvid 的主次操作在正常态与 hover 态保持一致，避免确认目标在点击前失去主色提示；截图和完整限制见[Issue #211 hover 验收](issue-211-submit-hover.md)。
 
+## 2026-11-04 页面上下文同意标签级联（Issue #211 子项）
+
+- 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；隔离临时 `CORVID_DATA_DIR`，窗口逻辑尺寸 1280×850。页面为本地合成 fixture，没有真实网页、账号或浏览数据。[同意预览状态截图](screenshots/issue-211-consent-label-1280x850.png)，SHA-256 `be9fc8f495bcad03add35ca3884433da1b529198fa454992a5a9e74139f56d27`；PNG 像素 2560×1636。
+- Corvid 直接观察：预览刷新后键盘焦点落在原生 checkbox；复选框与说明文字保持一行内相邻，说明可换行且未越过表单右边界，发送按钮在勾选前禁用。真实 Electron 断言 computed `display:flex`、`align-items:flex-start`、`column-gap:8px` 和文字矩形边界；Space 勾选后发送按钮解锁。视觉判断是保留现有紧凑表单层级，仅把同意项布局限定到 Agent 表单，避免全局 label 规则与组件覆盖互相争夺。
+- 参考比较：REA Kobra Checkbox 组件页直接呈现语义明确的 Checkbox 和独立形态选择项；Evidence `ev_6f65512faf49a2a401f5e07926ddf2755239dec36eb4ba55072ae37f354bc1c4`，Chromium 156 受控回放，2026-11-04。该页没有证明 Corvid 的具体文字间距或键盘流程；本次仅借鉴让复选框及其说明容易识别的组件语义，不复制样式、行为或素材。详情和 REA 限制见[Issue #211 同意标签 QA](issue-211-consent-label.md)。
+- 未覆盖：截图只代表 zh-CN、浅色主题、1280×850 本地 fixture 和当前开发版；未验英文/窄窗、深色主题、屏幕阅读器实播、Windows/Linux、打包版、真实网站或 Provider。此子项不关闭 Issue #211 的其余 CSS 级联债务。
+
 ## 2026-11-04 交互状态与主题浏览器表面（Issue #216）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；隔离临时 `CORVID_DATA_DIR`，shell 视口 1024×700 CSS px（PNG 2048×1400，Retina 2×）。页面为 `about:blank`，书签面板和空间为合成初始数据，没有个人浏览数据或网页内容。浅色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-light-1024x700.png)，SHA-256 `504e97eb5d5149f136d3b0c6159b74ed116f0dd9f6225cf76d365243968b45f0`；深色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-dark-1024x700.png)，SHA-256 `ec9586cee31b05edeb83c9c4bfaf50cf8f3e8273b46e189b6101cc789205c316`。

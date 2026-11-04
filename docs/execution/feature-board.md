@@ -131,3 +131,7 @@
 6. **测试替身与人工验证**：自动化中的系统对话框是测试替身；真实保存对话框、原生权限提示、原生 beforeunload 必须单独做人工验证并写入验证记录。
 7. **CLI**：先启动桌面，并使用相同的 `CORVID_DATA_DIR`，再运行 `node cli/corvid.mjs run < script.mjs`；脚本在 Node 中执行（`AsyncFunction`，无静态 `import`/`export`），拥有本地用户权限。`node cli/corvid.mjs help` 查看入口说明。
 8. **索引与记录**：逐项测试说明见 [端到端测试索引](../qa/e2e-suites.md)；每次全量或新增测试后，按时间倒序追加到 [验证记录](../reviews/verification-log.md)。
+
+## 当前 CSS 级联子切片
+
+- **Issue #211 页面上下文同意标签（已验证子切片）**：已将 `.pi-consent` 的三个 `!important` 改为 `#pi-task-form label.pi-consent` 组件作用域规则；`pi-workbench-e2e.cjs` 断言计算样式、文本边界和 Space 同意后发送解锁。macOS arm64 隔离真实 Electron EXIT 0，截图与覆盖边界见 [QA 记录](../qa/issue-211-consent-label.md)。不扩展到 Issue #211 其余级联债务，该 Issue 仍开放。
