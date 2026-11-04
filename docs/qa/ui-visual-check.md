@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 地址栏建议与键盘选择（Issue #191）
+
+- 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.14.1；隔离 `CORVID_DATA_DIR`、合成历史与本地 HTTP fixture。窗口逻辑尺寸为 1024×700 与 704×420；Retina PNG 分别为 2048×1336、1408×776。常规窗口[中文截图](screenshots/issue-191-suggestions-zh-CN-1024x700.png)，SHA-256 `4fd7963e78b681ac9a744220d78874e1bbb348c359346020f50ea21ce44384ec`；窄窗[中文截图](screenshots/issue-191-suggestions-zh-CN-704x420.png)，SHA-256 `2c8ee0a48b54b07240b7fe067af20706ff201333ed966853de1875a5d44c2c21`。截图仅含本地 fixture 地址和合成页面标题，无个人浏览数据或账号信息。
+- 直接观察（REA controlled replay，2026-11-04，Chromium 156.0.8078.80，隔离浏览会话）：Aceternity UI `/components` 页的 Search 控件打开对话框，输入框以 combobox 呈现并展开 Suggestions listbox；候选按 Installation、Templates、Pages、Interactions 分组。输入 `tailwind` 后按 ArrowDown、Enter 可打开匹配页面。基线 Evidence `ev_03624926237a8c15166f8a3e066fecacb0041f7d616310448135bad5d67c2c4e`；打开搜索界面 `ev_9367e9f54ba0a032a62be6dd7b34e22040be41ae2cd7cc73cfc5fa1270817677`；过滤并键盘选择 `ev_643bb90ebc8795e05341a5e84e970dcbc956fd69e74a58594539b513534f02c5`。只观察页面交互与可访问树，没有检查源代码。该站内搜索不是浏览器地址栏，因此仅把分组、可见候选和键盘反馈作为交互参考。
+- Corvid 截图的视觉判断：候选面板从地址栏下沿展开，和输入框同宽、使用现有浅色表面/边框/圆角与文本层级；历史图标、标题和主机/路径分行，密度适中。短窗中侧栏已折叠，候选仍完整落在窗口内。此状态与 Corvid 简洁的日常浏览 chrome 相符；后续可在多条候选、深色主题与超长标题下复核列表密度和焦点样式。本轮 E2E 断言短窗无横向溢出。
+- 设计推断与限制：仅显示历史 URL 的主机/路径，不显示查询参数或片段；普通文本给出使用已保存搜索模板的动作，只有用户确认后才导航。视觉取舍结合 Issue #191 的本地优先目标与 Corvid 现有 chrome，不复制参考站点代码、样式或素材。Rare UI、Kobra、EasyUI、Pin UI 本轮未扫描；未验证屏幕阅读器实播、其他主题/平台和真实搜索引擎。
+
 ## 2026-11-04 导航错误提示与窄窗布局（Issue #198）
 
 - 环境与截图：macOS arm64，Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture；页面内容是合成数据。常规窗口逻辑尺寸与 PNG 图像均为 1024×700：[中文 HTTP 500](screenshots/issue-198-http-500-zh-CN-1024x700.png)，SHA-256 `474b737a957a6ef3a420779d395ae3d8edbe2d8d6999b9910e20d7a147c049be`。窄窗逻辑尺寸与 PNG 图像均为 700×420：[英文 HTTP 500](screenshots/issue-198-http-500-en-700x420.png)，SHA-256 `9829d563fd384803488c04652e2a887085513e129ec0cbe480d8c885bfce78f2`。

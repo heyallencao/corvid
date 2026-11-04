@@ -1153,6 +1153,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     }
     case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();closeExtensionPopup(record);record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
     case 'history': return {history:library.history(findProfile(args.profileId ?? activeProfileId).id)};
+    case 'historySuggestions': {if(fromApi)throw new Error('地址栏建议只能在 Corvid 界面读取');return {suggestions:library.historySuggestions(findProfile(args.profileId ?? activeProfileId).id,args.query)};}
     case 'bookmarks': return {bookmarks:library.bookmarks(findProfile(args.profileId ?? activeProfileId).id)};
     case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id).map(item=>({...item,retrying:activeDownloadRetries.has(item.id)}))};
     case 'retryDownload': {

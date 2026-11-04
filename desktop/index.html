@@ -61,8 +61,9 @@
       <button class="icon-button" data-action="reload" aria-label="重新加载" title="重新加载" data-i18n-aria-label="reload" data-i18n-title="reload"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 9a6.2 6.2 0 0 0-10.8-3L3.8 8M3.8 8V4.7M3.8 8h3.4M4 11a6.2 6.2 0 0 0 10.8 3l1.4-2M16.2 12v3.3M16.2 12h-3.4"/></svg></button>
       <form id="address-form" role="search">
         <span class="address-lock" aria-hidden="true">⌕</span>
-        <input id="address" aria-label="地址或搜索" placeholder="搜索或输入网址" data-i18n-aria-label="addressSearch" data-i18n-placeholder="addressPlaceholder" autocomplete="off" spellcheck="false">
+        <input id="address" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="address-suggestions" aria-label="地址或搜索" placeholder="搜索或输入网址" data-i18n-aria-label="addressSearch" data-i18n-placeholder="addressPlaceholder" autocomplete="off" spellcheck="false">
         <button id="bookmark-current" class="address-action" type="button" title="将此页加入书签" aria-label="将此页加入书签" data-i18n-title="bookmarkCurrent" data-i18n-aria-label="bookmarkCurrent">☆</button>
+        <div id="address-suggestions" role="listbox" aria-label="地址建议" data-i18n-aria-label="addressSuggestions" hidden></div>
       </form>
       <div id="extension-toolbar" role="group" aria-label="扩展工具栏" data-i18n-aria-label="extensionToolbar"></div>
       <button id="more-tools" class="icon-button" title="更多浏览工具" aria-label="更多浏览工具" data-i18n-title="moreTools" data-i18n-aria-label="moreTools" aria-haspopup="menu" aria-expanded="false" aria-controls="site-tools"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/></svg></button>
