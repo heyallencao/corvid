@@ -241,7 +241,10 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .navigation-loading::before { width: 11px; height: 11px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; content: ''; animation: navigation-spin .8s linear infinite; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.navigation-error { color: var(--danger); }
+.navigation-error { min-width: 0; overflow: hidden; color: var(--danger); text-overflow: ellipsis; white-space: nowrap; }
+.navigation-error-details { flex: none; color: var(--text-secondary); font-size: 12px; }
+.navigation-error-details summary { cursor: pointer; }
+.navigation-error-details code { margin-left: 4px; color: var(--text-secondary); font-size: 12px; }
 @keyframes navigation-spin { to { transform: rotate(360deg); } }
 
 /* Pi workspace and browser library panels. */

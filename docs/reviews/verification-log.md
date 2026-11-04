@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 导航错误原因与 HTTP 状态（Issue #198）
+
+- 实现合同：将 Chromium 网络失败原因映射为双语说明，并只展示经校验的标准错误码；HTTP 4xx/5xx 导航仍保留服务器提供的页面内容，同时在 Corvid 状态区说明 HTTP 状态并允许重试。HTTP 状态读取自 Electron `did-navigate` 的 `httpResponseCode`/`httpStatusText`：[Electron WebContents 文档](https://www.electronjs.org/docs/latest/api/web-contents)。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。`env -u ELECTRON_RUN_AS_NODE CORVID_NAVIGATION_QA_DIR=/tmp/corvid-issue198-qa node tests/navigation-error-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均通过；`node --check` 覆盖所有修改的 JavaScript 文件，`git diff --check` 通过。真实 Electron E2E 覆盖连接拒绝、HTTP 408/500、zh-CN/en 原因、错误代码展开、URL 保留、HTTP 500 重试、连接复原与错误清除、替代挂起导航、700×420 窄窗可见性。未访问真实网站、模型或 OAuth。
+- 超时边界：DNS `-105`、Chromium `ERR_TIMED_OUT` 映射由确定性断言检查；HTTP 408 是本地 fixture 返回的 HTTP 响应，不是网络黑洞。没有声称完成真实网络层 `ERR_TIMED_OUT` 集成测试，也未验证代理/DNS 运行环境下所有 Chromium 错误码。
+- 截图与视觉：常规中文截图 [issue-198-http-500-zh-CN-1024x700.png](../qa/screenshots/issue-198-http-500-zh-CN-1024x700.png)，1024×700，SHA-256 `474b737a957a6ef3a420779d395ae3d8edbe2d8d6999b9910e20d7a147c049be`；窄窗英文截图 [issue-198-http-500-en-700x420.png](../qa/screenshots/issue-198-http-500-en-700x420.png)，700×420，SHA-256 `9829d563fd384803488c04652e2a887085513e129ec0cbe480d8c885bfce78f2`。屏幕状态及布局记录见[导航错误提示视觉检查](../qa/ui-visual-check.md#2026-11-04-导航错误提示与窄窗布局-issue-198)。
+- REA 与限制：Kobra Alert <https://kobra.systems/components/alert>，既有 REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（记录时间 2026-11-03 09:20 Asia/Shanghai）；本轮确认 evidence bundle 仍可读取。直接观察仅包括可访问树中的命名 alert 与 Error/Warning/Success/Info 示例，不包含源码或导航交互。Corvid 将“错误文字清楚可辨”应用在既有状态区属于设计推断。没有复制参考素材。未覆盖原生证书页面、其他 Chromium 错误码的运行态、Linux/Windows、屏幕阅读器、真实网站及真实网络超时集成路径。
+
 ## 2026-11-04 历史面板日期与来源信息（Issue #196）
 
 - 实现范围：历史行改为标题、可见主机/路径、本地化时间与删除动作；按浏览器本地日历分为今天、昨天和按日期标题的较早记录。界面不显示 URL 查询参数或片段，搜索仍使用库中的完整 URL。日期异常时回退到双语“日期未知 / Date unavailable”，不丢弃历史条目。
