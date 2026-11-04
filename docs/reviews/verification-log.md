@@ -1434,3 +1434,11 @@
 - 环境：独立 worktree `/private/tmp/corvid-sdk-keyboard-chord`，基于 `origin/main` `20502ea`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 `CORVID_DATA_DIR`、SDK 测试本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
 - 验证：`node --check desktop/actions.cjs`、`node --check sdk/e2e.js`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` EXIT 0。覆盖文本框与 `contenteditable` 中 Meta+A 的全文/宿主内选区、Meta+Shift+Left 实际扩展选区并替换为期望文本、既有 Control+A 按键路径和 SDK 输入回归。测试使用临时 `node_modules` 链接并在结束后移除；Electron 与 fixture 已退出。
 - 限制：未运行全量 `npm test`、正式打包、Windows/Linux；只覆盖 Chromium 文本框和 contenteditable 上列出的 macOS 命令映射，不证明网页对快捷键的自定义拦截、所有编辑命令或其他 OS 键盘绑定。
+
+
+## 2026-11-04 GitHub 截图证据开放内容复核（Issue #244）
+
+- 范围：通过 `gh issue list` 与 `gh pr list` 获取当前仓库全部开放 Issue/PR 正文，统计 Markdown 图片 URL、截图说明中的本机临时路径；以 `git worktree list` 核对对应活动 PR 分支是否有独立工作树。
+- 结果：27 个开放 Issue、30 个开放 PR；9 个 Issue 正文提及本机截图路径（#244 与另 8 个），当前 6 张 Issue 图片均使用 `main` 固定 URL；13 个开放 PR 共 33 张图片仍依赖 PR 分支或相对路径，分别为 17 个 GitHub `blob` 分支 URL、14 个 `raw.githubusercontent.com` 分支 URL、2 个相对地址。13 个对应 PR head 均有独立 worktree。
+- 处置：本轮只更新 #244 执行计划与任务板快照；不改写活动 PR 正文，不上传来源时效/安全性尚未复核的本机截图。检查器只验证 PR 描述链接形式，不证明图片内容脱敏或页面可见。
+- 限制：未使用已登录浏览器检查私有仓库页面中的图像实际渲染；API/CLI 正文解析不等于页面渲染。此为文档盘点，没有运行代码测试。
