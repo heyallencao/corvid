@@ -1449,3 +1449,10 @@
 - 方法：使用 ego-browser 按项目浏览器技能创建隔离任务空间，打开 `https://github.com/heyallencao/corvid/issues/200`。
 - 直接观察：页面标题为 `Page not found · GitHub · GitHub`，页面提供 GitHub `Sign in` / `Sign up` 入口；私有 Issue 正文和图片没有渲染。
 - 结论：当前没有可用的 GitHub 浏览器登录态，无法完成 Issue/PR 图片页面渲染验收。此前 CLI/API 统计及 `main` 文件 URL 仍只证明正文/资产状态，不证明页面可见性。本轮没有截图或上传图片。
+
+
+## 2026-11-04 Issue #244 稳定图片资产与画面隐私复核
+
+- 方法：从开放 Issue 正文提取 6 个 `main` 图片路径；使用 GitHub Contents API 检查文件存在并读取到本地临时目录，仅用于图像检查，未将其加入仓库或重新上传。
+- 结果：Issue #200 的 3 张、#194 的 2 张及 #192 的 1 张图片均存在。逐张视觉检查中，#200/#194 画面仅见 Corvid 界面与本地合成页面，#192 为 `about:blank`；未见账号、凭据或个人浏览数据。图片分别显示 Issue #200 的旧未连接模型状态、#194 消息队列状态与 #192 地址栏状态。
+- 限制：静态图片只支持画面层面的观察，不能独立证明采集环境；采集隔离信息仅来自对应 QA/历史记录。ego-browser 访问私有 Issue 时处于未登录 GitHub 页面，6 张图片在 GitHub Issue/PR 页面中的实际渲染仍未验证。
