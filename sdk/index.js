@@ -114,6 +114,8 @@ class Page {
   async action(operation, args = {}) { if(this.popupArm)await this.popupArm;if(this.downloadArm)await this.downloadArm;return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/action`, { method: 'POST', body: { operation, args, pageLabel:this.label } }); }
   async navigate(url) { return this.action('navigate', { url }); }
   async goto(url) { return this.navigate(url); }
+  async back() { await this.currentTab(); return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/back`,{method:'POST',body:{pageLabel:this.label}}); }
+  async forward() { await this.currentTab(); return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/forward`,{method:'POST',body:{pageLabel:this.label}}); }
   async currentTab() {
     const id=await this.resolveId(),room=await this.client.room(this.roomId),info=room.info;
     if(info.ownership!=='agent' || info.userResumePending)throw new CorvidError(CODES.CONTROL_LOST,'Room is under user control or resumeControl is pending');
@@ -183,6 +185,12 @@ class Page {
   }
   async click(target) { if(this.chooserArm) await this.chooserArm; return this.action('click', { target }); }
   async hover(target) { return this.action('hover', { target }); }
+  async scroll(deltaX, deltaY, options = {}) {
+    if (typeof deltaX !== 'number' || !Number.isFinite(deltaX) || Math.abs(deltaX) > 2000 || typeof deltaY !== 'number' || !Number.isFinite(deltaY) || Math.abs(deltaY) > 2000 || (deltaX === 0 && deltaY === 0)) throw new RangeError('Scroll deltas must be finite, within -2000..2000, and not both zero');
+    if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).some(key => !['x','y'].includes(key)) || (Object.hasOwn(options,'x') !== Object.hasOwn(options,'y'))) throw new TypeError('scroll options accept x and y together');
+    if (Object.hasOwn(options,'x') && (typeof options.x !== 'number' || !Number.isFinite(options.x) || typeof options.y !== 'number' || !Number.isFinite(options.y))) throw new TypeError('scroll coordinates must be finite numbers');
+    return this.action('scroll', { deltaX, deltaY, ...options });
+  }
   async dragAndDrop(source,target,options={}) { if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).length)throw new Error('dragAndDrop options are not supported');return this.action('dragAndDrop',{source,target}); }
   async fill(target, value) { return this.action('fill', { target, value }); }
   async press(target, key) { return this.action('press', { target, key }); }

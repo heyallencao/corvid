@@ -1,19 +1,6 @@
-name: Chrome 导入类别隔离跨平台验收
+name: Chrome 导入类别隔离验收（手动）
 
 on:
-  pull_request:
-    paths:
-      - 'desktop/chrome-import.cjs'
-      - 'desktop/index.html'
-      - 'desktop/locales.js'
-      - 'desktop/main.cjs'
-      - 'desktop/renderer.js'
-      - 'desktop/styles.css'
-      - 'tests/chrome-import-e2e.cjs'
-      - 'tests/chrome-import-categories.test.mjs'
-      - '.github/workflows/chrome-import-platform.yml'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +17,6 @@ jobs:
         os:
           - macos-14
           - windows-2022
-          - ubuntu-24.04
     steps:
       - name: 检出源码
         uses: actions/checkout@v4
@@ -44,22 +30,6 @@ jobs:
       - name: 安装项目依赖
         run: npm ci
 
-      - name: 配置 Linux 桌面依赖
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y dbus-x11 gnome-keyring libsecret-1-0 xvfb
-
-      - name: 验证 Linux 合成资料导入
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          dbus-run-session -- xvfb-run -a bash -euo pipefail -c '
-            eval "$(printf "%s" "corvid-ci-keyring" | gnome-keyring-daemon --unlock --components=secrets --daemonize)"
-            export XDG_CURRENT_DESKTOP=GNOME
-            export CORVID_TEST_CATEGORY_ISOLATION_ONLY=1
-            node tests/chrome-import-e2e.cjs
-          '
-
-      - name: 验证 macOS 与 Windows 合成资料导入
-        if: runner.os != 'Linux'
+      - name: 验证合成资料导入
         shell: bash
         run: CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs

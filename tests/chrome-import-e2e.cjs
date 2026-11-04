@@ -232,6 +232,38 @@ async function chooseSource(shell){
   });
 }
 
+async function verifyChromeImportDialogLayout(app,shell,locale,width,height,screenshotPath){
+  await app.evaluate(({BrowserWindow},{windowWidth,windowHeight})=>BrowserWindow.getAllWindows()[0].setSize(windowWidth,windowHeight),{windowWidth:width,windowHeight:height});
+  await shell.evaluate(({localeName})=>window.browserShell.invoke('setUiLocale',{locale:localeName}),{localeName:locale});
+  await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=0);
+  const footer=shell.locator('.chrome-import-actions'),cancel=shell.locator('#cancel-chrome-import-footer'),confirm=shell.locator('#confirm-chrome-import');
+  await footer.waitFor({state:'visible'});
+  await assert.doesNotReject(cancel.waitFor({state:'visible'}));
+  await assert.doesNotReject(confirm.waitFor({state:'visible'}));
+  const geometry=await shell.evaluate(()=>{
+    const dialog=document.querySelector('#chrome-import'),content=document.querySelector('.chrome-import-content'),header=dialog.querySelector('.import-heading'),footer=dialog.querySelector('.chrome-import-actions');
+    const rects=element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right};};
+    return {viewport:{width:innerWidth,height:innerHeight},dialog:rects(dialog),header:rects(header),content:rects(content),footer:rects(footer),contentScrollHeight:content.scrollHeight,contentClientHeight:content.clientHeight,cancel:rects(document.querySelector('#cancel-chrome-import-footer')),confirm:rects(document.querySelector('#confirm-chrome-import'))};
+  });
+  for(const action of [geometry.cancel,geometry.confirm]){
+    assert.ok(action.top>=geometry.dialog.top&&action.bottom<=geometry.dialog.bottom,`footer action must remain inside the dialog: ${JSON.stringify(geometry)}`);
+    assert.ok(action.top>=geometry.viewport.height*-0.02&&action.bottom<=geometry.viewport.height,`footer action must remain in the viewport: ${JSON.stringify(geometry)}`);
+    assert.ok(action.left>=0&&action.right<=geometry.viewport.width,`footer action must remain horizontally inside the viewport: ${JSON.stringify(geometry)}`);
+  }
+  assert.ok(geometry.header.top<geometry.content.top&&geometry.content.bottom<=geometry.footer.top,`header, scrolling content, and footer must remain ordered: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.contentScrollHeight>geometry.contentClientHeight,`long import preview must scroll independently: ${JSON.stringify(geometry)}`);
+  await shell.locator('#chrome-extension-choices input').last().focus();
+  await shell.keyboard.press('Tab');
+  assert.equal(await shell.evaluate(()=>document.activeElement.id),'cancel-chrome-import-footer','keyboard focus should continue from preview content to the fixed footer');
+  await shell.keyboard.press('Tab');
+  assert.equal(await shell.evaluate(()=>document.activeElement.id),'confirm-chrome-import','keyboard focus should move from cancel to the primary import action');
+  await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=element.scrollHeight);
+  const afterScroll=await shell.evaluate(()=>({header:document.querySelector('#chrome-import').querySelector('.import-heading').getBoundingClientRect().top,footer:document.querySelector('.chrome-import-actions').getBoundingClientRect().bottom}));
+  assert.equal(afterScroll.header,geometry.header.top,'scrolling the preview must not move the header');
+  assert.equal(afterScroll.footer,geometry.footer.bottom,'scrolling the preview must not move the footer');
+  if(screenshotPath){await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=0);await shell.evaluate(()=>document.activeElement.blur());fs.mkdirSync(path.dirname(screenshotPath),{recursive:true});await shell.screenshot({path:screenshotPath});}
+}
+
 async function selectAllExtensions(shell){
   for(const checkbox of await shell.locator('#chrome-extension-choices input').all())await checkbox.check();
 }
@@ -335,6 +367,17 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     await shell.locator('#choose-chrome-source').click();
     await shell.locator('#chrome-source-profile').selectOption('Default');
     await shell.locator('#chrome-history-error').getByText('无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。').waitFor();
+    assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'a readable checked category should enable the import action while the fixed footer is visible');
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'the import action must remain disabled when no readable category is selected');
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').check();
+    const layoutScreenshotDir=path.join(project,'docs','qa','screenshots','issue-279');
+    await verifyChromeImportDialogLayout(app,shell,'zh-CN',1280,850,path.join(layoutScreenshotDir,'chrome-import-zh-CN-1280x850.png'));
+    await verifyChromeImportDialogLayout(app,shell,'en',704,420,path.join(layoutScreenshotDir,'chrome-import-en-704x420.png'));
+    await verifyChromeImportDialogLayout(app,shell,'zh-CN',704,420,path.join(layoutScreenshotDir,'chrome-import-zh-CN-704x420.png'));
+    await verifyChromeImportDialogLayout(app,shell,'en',1280,850,path.join(layoutScreenshotDir,'chrome-import-en-1280x850.png'));
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
     assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'an unreadable category should be excluded before import');
     assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'a readable category should remain selectable');
     const categoryScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryScreenshotDir,{recursive:true});
@@ -346,7 +389,8 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     const localeValues=await shell.evaluate(()=>({zh:window.corvidI18n.catalogs['zh-CN'].categoryReadUnavailable,en:window.corvidI18n.catalogs.en.categoryReadUnavailable}));
     assert.equal(localeValues.zh,'无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。');
     assert.equal(localeValues.en,'This data type could not be read and is excluded from this import. Check the Chrome data and try again.');
-    await shell.locator('#cancel-chrome-import').click();
+    await shell.locator('#cancel-chrome-import-footer').click();
+    await shell.locator('#chrome-import').waitFor({state:'hidden'});
     await app.close();app=undefined;
 
     const categoryIsolationEnData=path.join(tempRoot,'category-isolation-en-corvid-data');fs.mkdirSync(categoryIsolationEnData);
