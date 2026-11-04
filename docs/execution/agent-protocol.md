@@ -103,9 +103,11 @@ gh pr list --state open --json number,title,author
 #  a. 查重：标题 grep【#NNN】，同 issue 多 PR 则关重（留证据全的）
 #  b. review（COMMENT 型；同账号无法 Approve）：对照验收标准与证据
 #  c. 本地跑全量 env -u ELECTRON_RUN_AS_NODE npm test
-#  d. 合格 merge（唯一 merge 权限），不合格打回并写明原因
+#  d. PR 描述图片链接按 AGENTS.md「Issue/PR 图片」规则 grep 检查（/tmp/、file://、易失分支 URL）
+#  e. 合格 merge（唯一 merge 权限），不合格打回并写明原因
 # 每日附加：
 #  - 扫 claimed 无心跳 → 打 stale
+#  - 审计 .github/workflows：发现任何 PR 触发的 workflow 一律删除（CI 成本约束见 AGENTS.md）
 #  - 审计 merged-by（工人自合 = 违规，纠正并记录）
 #  - 清理已合并/废弃的僵尸分支
 #  - main 被合坏 → 立即 revert 恢复 main，修复另开 priority:P0

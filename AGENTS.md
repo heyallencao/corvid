@@ -25,6 +25,12 @@
 - Release 只基于已合并 main 的版本；说明写清安装要求、验证范围、未覆盖平台。
 - 仓库保持私有，不得改可见性/协作者权限；未验证源码归档不得称安装器。
 
+## CI 成本与平台范围
+
+- 首个大版本只支持 macOS 与 Windows；Linux 延后，不做相关 CI 与验证。
+- 禁止新增 PR 触发的 GitHub Actions 工作流：Actions 分钟消耗极快（macOS 按 10 倍计费、触发条件覆盖 `desktop/**` 等于每 PR 6 job）。PR 验证一律本地全量 E2E；跨平台验收只在发布前手动 workflow_dispatch。
+- PR 描述截图链接按「Issue/PR 图片」节规则人工或脚本检查，不跑 CI。
+
 ## Issue/PR 图片
 
 - 用 `github.com/user-attachments/assets/...` 附件或仓库相对路径；禁 `/tmp/`、本机绝对路径、`file://`、易失分支 URL。

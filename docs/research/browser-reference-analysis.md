@@ -81,6 +81,36 @@ Corvid 以 EGO 的人用日常浏览器为主产品模式：用户拥有正常�
 
 **未观察/未知：** 本轮尝试启动独立 Chrome 临时 Profile 并从 REA 原生 UI 观察 Profile picker，但没有取得有效截图或 AX Evidence：Chrome 加载请求后显示为 New Tab；REA `observe_native_ui` 首次因当前 Mach-O target 不匹配拒绝，选中 Chrome 二进制后又因 provider 无法读取该进程 launch time 返回 `capability_unavailable`。临时 Chrome 进程已退出；这次失败没有具名 Evidence ID。未通过 REA 操作 Chrome/Safari 原生 Profile 管理界面；未检查 EGO/Kaze Profile 删除交互；也没有测量窄窗状态、确认对话框视觉层级、键盘操作或删除失败后的恢复行为。由此不对这些行为作竞品结论。视觉交互实现还需按 UI QA 流程在隔离 Corvid 数据目录及小/常规窗口检查。
 
+## 2026-11-03 REA 安装包摘要复核
+
+本轮只复核了已安装应用包身份与结构，没有操作参考产品窗口；版本仍为 EGO `0.6.2.5`、Kaze `0.26.0`。未观察到新的产品差距，不能据此开功能 issue。
+
+| 产品 | REA 证据 | 覆盖与限制 |
+| --- | --- | --- |
+| EGO lite | `inspect_desktop_application` Evidence `ev_77a743fbacb57f9731216db706bdbdadebfca0fc0bb4e678bd4042d3754ea71a`，摘要 SHA-256 `cdf75393f6f5aa1bf00394ea004d730c75d6ca089c1f3f46520f2fd2f733f696`。 | 本轮上限 500 entries，扫描到上限；检查 11 个文件、读取 726 bytes，目录覆盖为 partial。未发现 Electron candidate 不代表没有运行时或功能。 |
+| Kaze | `inspect_desktop_application` Evidence `ev_d67e52dd51cd9e5efc3821d4e13a0e54025b4ca14cfa7fb01fa1128622db506d`，摘要 SHA-256 `8bddc7b03f48171505be02afc8a009dcd0dc603afad5d5716e70cea4cf8a9303`。 | 检查 270/270 entries、28 个文件和 2,572 bytes；发现 `app.asar`，只支持 Electron 容器推断，不证明代码加载或功能可达。 |
+
+后续比较应优先补足参照窗口的运行态 UI/交互观察，或追踪一个具体 Corvid 用户流程；只有发现影响产品主线、并有可观察证据的差距时才更新任务板并提交 issue。没有 REA 运行态证据时，应记录未完成与原因，不用静态扫描代替。
+
+2026-11-03 02:22（Asia/Shanghai）再次复核时，安装版本仍为 EGO `0.6.2.5`、Kaze `0.26.0`。`open_binary` 可选中两个 app 主程序，但 REA 对当前系统窗口编号仍返回 window-mismatch；本轮没有新的 AX/截图证据，运行态比较仍未完成。GitHub 当前开放的 Issue #96 已覆盖 Agent 客户端身份与 Room 授权边界，任务板 D10 也记录了单凭据风险；没有发现需要另开 issue 的新差距。
+
+2026-11-03 02:52（Asia/Shanghai）本轮聚焦 Agent 工作区状态与运行库品牌边界。REA `open_binary` 确认两个已安装主程序 SHA-256 与前轮相同；当前 `CGWindowList` 前台窗口列表未发现 EGO/Kaze 窗口，故没有新运行态观察。Corvid 源码显示导航及任务状态使用 “Corvid Agent”，错误文案会过滤运行库名；GitHub Issue #70 已关闭并有同一验收边界。该源码检查不是运行态验证，本轮没有发现可据此另开 issue 的新差距。
+
+2026-11-03 03:22（Asia/Shanghai）本轮聚焦日常浏览壳与导航。安装版本仍为 EGO `0.6.2.5`、Kaze `0.26.0`，REA `open_binary` 的主程序 SHA-256 未变；两款应用当前均无可观察的运行进程/前台窗口，未生成新的 `observe_native_ui` Evidence。Corvid 源码有标签栏、地址/搜索栏、书签和侧边导航；历史参照证据可作方向参考，但不能据此判定当前 UI 存在差距。本轮未确认需新开 issue 的问题。
+
+2026-11-03 03:52（Asia/Shanghai）本轮关注空间/标签组织。EGO/Kaze 版本及 REA 主程序 SHA-256 仍未变化；应用进程存在，但没有可见窗口，因此无法取得当前 UI/UE 证据。Corvid 当前源码和 D07/D21 已有空间、标签与导航能力记录；历史截图不足以确认新差距，本轮无 issue。
+
+2026-11-03 04:22（Asia/Shanghai）本轮尝试继续复核空间/标签导航。REA `open_binary` 确认 EGO/Kaze 主程序 SHA-256 未变，版本仍分别为 `0.6.2.5` / `0.26.0`；系统全窗口列表仅显示隐藏窗口记录，前台列表没有两款产品窗口，因此没有新的 `observe_native_ui` Evidence。没有新运行态对比或可验证差距，本轮未开 issue。
+
+2026-11-03 04:52（Asia/Shanghai）本轮尝试复核模型/Agent 面板关系。REA 对 EGO 窗口的 `observe_native_ui` 无障碍结果进入了嵌入的 WebArea，无法隔离浏览器 chrome；该次结果不用于产品比较，网页内容不写入项目记录。随后关闭当前 REA 二进制会话，并更新半小时自动化：除非目标是确认无个人内容的安全页面，或工具能可靠排除 WebArea，否则跳过网页窗口 AX/截图并将 UI 观察标记为未完成。当前没有新差距结论或 issue。
+
+2026-11-03 05:52（Asia/Shanghai）本轮关注 Chrome 导入与站点权限。当前 D13/D03 已列出导入类别、Cookie 同意与站点权限边界，相关缺口有既有任务/issue 跟踪；没有发现新问题。REA `open_binary` 确认 EGO/Kaze 主程序身份未变；EGO 有前台窗口但无法确认其 WebArea 不含个人内容，因此按隐私规则跳过 AX/截图，Kaze 当前无前台窗口。运行态比较未完成，本轮不新增 issue。
+
+2026-11-03 06:22（Asia/Shanghai）本轮关注窄窗/键盘/可访问性。REA `open_binary` 确认 EGO/Kaze 主程序 SHA-256 未变，版本仍为 `0.6.2.5` / `0.26.0`；遵守新隐私边界，没有对参考窗口读取 AX 或截图。Corvid 当前实现有标签菜单的键盘操作与焦点恢复，D07/D21 已列出剩余焦点、键盘/辅助技术验收，Issue #16 仍开放跟踪浏览器/Agent UI 打磨。没有足够的当前参照运行态证据支持新 issue，本轮对比未完成。
+
+2026-11-03 06:52（Asia/Shanghai）本轮聚焦 Agent 任务状态、接管与恢复。REA `open_binary` 复核 EGO/Kaze 主程序 SHA-256 未变（分别为 `04b4df5b6aaae624d43d17f126f467e921917c873934336f78a6644ce56005b6` / `540cc257fb5f0657e22bcc5a9d55887b0e92c7db0d619f02da2053887cddf531`）；遵守隐私边界，没有读取参考浏览器网页窗口。Corvid 当前源码区分任务状态、Room 控制状态和执行结果未知；D12/D19 已跟踪剩余状态一致性与恢复验收，Issue #68/#73 已关闭。缺少新参照运行态证据，未发现需另开 issue 的新差距。
+
+
 ## 2026-11-04 01:03（Asia/Shanghai）AI 浏览器产品线与 Dia 更新页 REA 复核
 
 本轮目标是给“EGO 主产品形态 + Kaze Agent 协作”补充行业参照，不把组件站的视觉风格或竞品宣传直接变成 Corvid 需求。
