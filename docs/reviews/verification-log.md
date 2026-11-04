@@ -1362,3 +1362,11 @@
 - 环境：独立 worktree `/private/tmp/corvid-issue257-page-wait`，基于 PR #256 合并后的 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。真实 Electron + 临时 `CORVID_DATA_DIR` + stdio MCP 子进程 + 本地 HTTP 夹具；延迟页面响应 500ms。未读取用户浏览数据、未访问真实网站、未登录 OAuth/调用模型。
 - 验证通过：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具列表及只读标记、点击链接后精确 URL 等待、延迟页面 `load` 确认、timeout 返回 `CORVID_TIMEOUT`、等待期间用户接管导致 `CORVID_CONTROL_LOST`、接管后两项等待立即拒绝，以及现有后台 Room 不切换前台/授权和协议错误回归。测试依赖通过本地临时 `node_modules` 软链接提供，已移除；Electron 子进程与 fixture server 已退出。
 - 限制：未运行全量 `npm test`、打包版或 Windows/Linux；未连接真实 MCP host 或真实网站。URL 必须事先明确且精确匹配；不支持 pattern、`networkidle`、selector/function 等其他等待条件，也不证明每类 Chromium 重定向和 SPA 行为。
+
+
+## 2026-11-04 Browser MCP Agent 标签生命周期（Issue #259，PR 前验证）
+
+- 实现：MCP 新增 `page_new`，在明确授权且仍由 Agent 控制的 Room 内创建空白 Agent 标签并返回页面信息；新增 `page_close`，先校验 Room 和来源，只允许关闭 Agent 创建且受管的标签。用户或未知来源页面返回 `CORVID_FORBIDDEN`；受管检查仍阻止关闭未接管的标签。同步 SDK/MCP 说明、D20 任务板、E2E 索引与 MCP 研究记录。
+- 环境：隔离 worktree `/private/tmp/corvid-issue259-mcp-page-lifecycle`，基于 `origin/main` 的 `5dc0563`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具清单与 destructive annotations、授权 Room 中建空白页并关闭、真实 `window.open` 弹窗保持 unknown/unmanaged 且拒绝 MCP 关闭、用户接管后拒绝新建/关闭、后台 Agent Room 生命周期不激活前台，以及原有导航/等待/输入/离线与授权边界。E2E 通过临时依赖软链接复用本地锁定依赖，命令结束后已移除；Electron 和 fixture server 已退出。
+- 限制：未运行全量 `npm test`、真实 MCP host、打包应用、Windows/Linux；未触发原生 `beforeunload` 确认框，也未覆盖并行多窗口。该测试证明当前隔离开发版 Electron 的 scoped MCP 行为，不证明所有站点弹窗兼容性。

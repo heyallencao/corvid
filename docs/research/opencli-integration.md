@@ -90,7 +90,7 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - 已安装 BrowserMCP 来源目录固定在本地干净检出 commit `847790e4e57b5d3de137829bf51e20c5fb357d73`。REA 对 `src/mcp/server.ts`、`src/api/commands.ts`、`src/launcher/stdio.ts`、`src/host/doctor.ts` 做精确选择分析：Evidence `ev_97f8675045ebadba960eefa677e358507fa90a6936a813cab03c6e62360f145b`，父图谱 `ev_c8bfe027d960d704b5fc6a16158ce7c7561b0b177436c18276935fb58ff34dbf`。该分析只证明所选源码声明，不证明实际 BrowserMCP runtime 或 Chrome 行为。
 - Corvid MCP 当前包含五个只读工具与四个写工具：`page_navigate`（只允许 HTTP/HTTPS 且禁止 URL 内嵌账号密码）、`page_click`、`page_fill`、`page_press`。每个动作要求显式 `roomId`/`tabId`、managed page 和 Agent 控制；待用户接管或 execution risk 时拒绝。所有动作工具声明 `readOnlyHint:false`、`destructiveHint:true`、`openWorldHint:true`；结果不等于网站操作已成功，Agent 需要再取 Snapshot 验证。
-- `node tests/mcp-e2e.cjs` 使用隔离 Electron 与本地 HTTP 页面验证工具清单、操作副作用、HTTP(S) URL 范围、操作后状态、用户接管拒绝和离线错误。仍未连接真实 MCP host、真实网站或打包应用；仍不提供任意 `evaluate`/CDP、文件上传或 tab 生命周期控制。
+- `node tests/mcp-e2e.cjs` 使用隔离 Electron 与本地 HTTP 页面验证工具清单、操作副作用、HTTP(S) URL 范围、操作后状态、用户接管拒绝和离线错误。仍未连接真实 MCP host、真实网站或打包应用；不提供任意 `evaluate`/CDP、文件上传或 Room 生命周期/控制权转移工具。标签生命周期的有限 MCP 工具见下方 Issue #259 记录。
 
 ## 2026-11-04 页面历史导航实现补充
 
@@ -102,3 +102,9 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #257 为 MCP 补充两个有限观察工具：精确 URL 等待与 `domcontentloaded`/`load` 等待。它们复用 SDK 轮询与控制权检查，不改变页面，也不支持任意表达式或 `networkidle`。
 - 验收使用本地 HTTP 延迟响应，确认点击链接后返回预期 URL、文档完成前等待不提前返回、timeout 有界，并检查后台等待不影响前台浏览空间。真实 MCP host、真实站点及 Chromium 所有加载边界不由该本地证据覆盖。
+
+
+## 2026-11-04 Browser MCP Agent 标签生命周期
+
+- Issue #259 将 SDK 已有的 Room/Page 生命周期收敛为窄 MCP 工具：`page_new` 只创建 Agent-owned 空白标签，`page_close` 只关闭 Agent 创建且受管的页面；不会接管 Room、关闭用户/未知来源页或自动跳转。网页 `beforeunload` 仍由应用交给用户处理。
+- 隔离真实 Electron 将验证 Agent 新建/关闭、未知来源 popup 拒绝关闭、控制权拒绝及后台 Room 不切换前台。此结果不等于真实 MCP host 的用户确认体验或多窗口平台验证。

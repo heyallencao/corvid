@@ -87,7 +87,7 @@ class McpProcess {
         setTimeout(() => response.end('<p>Document finished</p>'), 500);
         return;
       }
-      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -145,9 +145,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_press', 'page_reload', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
-    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_fill', 'page_forward', 'page_navigate', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_navigate', 'page_new', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -240,6 +240,27 @@ class McpProcess {
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     const afterToggle = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterToggle.value), /Clicked/);
+    const popupOpened = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Open popup' } });
+    assert.equal(popupOpened.result.isError, undefined, JSON.stringify(popupOpened.value));
+    let popupTab;
+    for (let i = 0; i < 100; i++) {
+      popupTab = (await mcp.callTool('list_tabs', { roomId: room.id })).value.tabs.find(item => item.openedBy === 'unknown');
+      if (popupTab) break;
+      await delay(25);
+    }
+    assert.ok(popupTab, `the window.open popup is listed with unknown origin; action=${JSON.stringify(popupOpened.value)}`);
+    assert.equal(popupTab.label, null, 'unknown-origin popup remains unmanaged until the user adopts it');
+    const deniedPopupClose = await mcp.callTool('page_close', { roomId: room.id, tabId: popupTab.id });
+    assert.equal(deniedPopupClose.result.isError, true);
+    assert.equal(deniedPopupClose.value.code, 'CORVID_FORBIDDEN');
+    const createdPage = await mcp.callTool('page_new', { roomId: room.id });
+    assert.equal(createdPage.result.isError, undefined);
+    assert.equal(createdPage.value.openedBy, 'agent');
+    assert.equal(createdPage.value.url, 'about:blank');
+    assert.ok(createdPage.value.label && createdPage.value.targetId);
+    const closedPage = await mcp.callTool('page_close', { roomId: room.id, tabId: createdPage.value.targetId });
+    assert.equal(closedPage.result.isError, undefined);
+    assert.equal((await mcp.callTool('list_tabs', { roomId: room.id })).value.tabs.some(item => item.id === createdPage.value.targetId), false, 'closed Agent page disappears from Room tabs');
     assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'background Agent actions never activate or steal the foreground Room');
     home = await currentBrowserHome();
     assert.ok(home?.visible,'the home surface remains visible after background Agent actions');
@@ -269,10 +290,11 @@ class McpProcess {
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_wait_for_url', 'page_wait_for_load']) {
+    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
       const args = { roomId: room.id, tabId: tab.id };
       if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
       if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
+      if (name === 'page_new') delete args.tabId;
       const deniedNavigation = await mcp.callTool(name, args);
       assert.equal(deniedNavigation.result.isError, true, `${name} is denied while the user owns the Room`);
       assert.equal(deniedNavigation.value.code, 'CORVID_CONTROL_LOST');
