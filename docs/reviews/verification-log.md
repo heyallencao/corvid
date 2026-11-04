@@ -1453,3 +1453,13 @@
 - 未创建 GitHub Release、tag、安装包或协作者邀请。GitHub main `48cfea6` 的树中没有打包器/安装器配置，因此源码归档不能称为桌面安装器。用户将自行邀请协作者。参考：[版本与 Release 流程](../records/releases/release-policy.md)、[GitHub 图片证据规则](../qa/github-image-evidence.md)。
 
 
+
+## 2026-11-04 侧栏右键第二入口（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-sidebar-context`（基于 `main` `02244ff`），改动仅 `desktop/renderer.js`（+1 行，零新 IPC、零新 locale key）。
+- 改动：右键 `.profile-switcher` / `.sidebar-section-heading`（空间标题） / `#room-strip` 时，打开既有的 profile-menu / room-menu 并同步触发器 `aria-expanded`——右键作为既有菜单动作的第二入口，菜单动作语义不变（空间菜单仍作用于当前空间）。
+- 行为探针矩阵（真实 Electron）：右键打开（hidden=false + aria-expanded=true）、Escape 关闭并复位、点击外部关闭并复位、标题区右键打开、从右键打开的菜单点「新建浏览身份」对话框正常弹出——7/7 项通过。
+- 截图：`docs/qa/screenshots/issue-214-sidebar-context-menu.png`（SHA-256 前 16 位 `aeff9ca880c16ed3`，隔离数据目录，菜单为「创建空间/关闭当前空间」既有动作）。
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`node --check`、`git diff --check` 通过。
+- 兼容性：新增行为基于 main 现行菜单机制；PR #178（菜单键盘重构，重写同区域触发器行）合并时本切片为新增独立行，预期无冲突。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；键盘等价入口已由既有触发器按钮承担（Tab 可达）。本轮未运行全量 `npm test`。
