@@ -1442,3 +1442,10 @@
 - 结果：27 个开放 Issue、30 个开放 PR；9 个 Issue 正文提及本机截图路径（#244 与另 8 个），当前 6 张 Issue 图片均使用 `main` 固定 URL；13 个开放 PR 共 33 张图片仍依赖 PR 分支或相对路径，分别为 17 个 GitHub `blob` 分支 URL、14 个 `raw.githubusercontent.com` 分支 URL、2 个相对地址。13 个对应 PR head 均有独立 worktree。
 - 处置：本轮只更新 #244 执行计划与任务板快照；不改写活动 PR 正文，不上传来源时效/安全性尚未复核的本机截图。检查器只验证 PR 描述链接形式，不证明图片内容脱敏或页面可见。
 - 限制：未使用已登录浏览器检查私有仓库页面中的图像实际渲染；API/CLI 正文解析不等于页面渲染。此为文档盘点，没有运行代码测试。
+
+
+## 2026-11-04 Issue #244 私有 GitHub 图片页面可见性复核
+
+- 方法：使用 ego-browser 按项目浏览器技能创建隔离任务空间，打开 `https://github.com/heyallencao/corvid/issues/200`。
+- 直接观察：页面标题为 `Page not found · GitHub · GitHub`，页面提供 GitHub `Sign in` / `Sign up` 入口；私有 Issue 正文和图片没有渲染。
+- 结论：当前没有可用的 GitHub 浏览器登录态，无法完成 Issue/PR 图片页面渲染验收。此前 CLI/API 统计及 `main` 文件 URL 仍只证明正文/资产状态，不证明页面可见性。本轮没有截图或上传图片。
