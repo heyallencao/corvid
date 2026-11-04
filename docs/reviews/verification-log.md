@@ -1301,3 +1301,10 @@
 - 修改：超时状态改为“系统安全存储未及时响应、现有凭据与文件已保留、可稍后重试”，移除要求再次解锁的指令。其他明确报告 `secure-storage-unavailable` 的提示仍保留检查/解锁建议。
 - 验证：`node --check desktop/locales.js`、`node --check tests/pi-models-e2e.cjs`、`node tests/pi-models-e2e.cjs` 和 `git diff --check` 全部通过。纯 Node locale 合同验证 zh-CN/en 错误映射，并断言超时文案不含“解锁/unlock”。这不是签名包的 UI 复验；已归档的签名包截图反映本次文案修正前的状态。
 - 限制：Developer ID 签名包内 safeStorage API 仍有 15 秒超时；此修复降低无依据的重复用户指引，不代表签名包凭据读写已通过，也不关闭 Issue #110。
+
+## 2026-11-04 Developer ID 包安全存储启动延迟对照（Issue #110）
+
+- 假设：Electron 上游曾记录 macOS 在 `app.ready` 后立即请求异步安全存储时，初始化状态可能短暂不可用。官方 [Electron #51759](https://github.com/electron/electron/issues/51759) 的复现为 v42，并由 [PR #51924](https://github.com/electron/electron/pull/51924) 回移至 42 分支；该修正已包含于 v43 起的上游版本。Corvid 打包版本为 Electron 45.2.1，因此该已知旧缺陷不是当前根因的直接解释，但启动时序仍值得在实际应用中排除。
+- 对照：在 UI 测试启动签名包后、首次打开模型设置前加入 2 秒等待；对 `/private/tmp/corvid-issue110-signed-package/dist/mac-arm64/Corvid.app` 执行深度签名验证，通过，Identifier 为 `com.heyallencao.corvid`、TeamIdentifier `37HP972H37`。隔离真实 Electron E2E 仍在同一个模型设置阶段报告 `safeStorage` 15 秒超时，未写入合成凭据；随后移除临时等待代码并确认无 Corvid/Electron 遗留进程。
+- 结论：单纯将首次 UI 调用推迟 2 秒不能解决当前签名包超时；这一结果不证明具体根因。前述上游 issue 的 v42 复现与 Corvid v45.2.1 版本不完全相同，也没有证据把当前故障归因到 Electron 上游缺陷。Developer ID 相关 API/Keychain 响应路径仍待独立定位。该轮运行的是旧截图包，画面文案尚未包含本轮已合并的超时提示调整。
+- 边界：本轮未向用户请求钥匙串操作。已完成真实签名包启动和 API 等待观察，但凭据往返仍未通过，Issue #110 保持开放、PR #157 保持草稿。
