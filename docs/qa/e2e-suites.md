@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 63 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 56 条独立脚本命令，共 87 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 64 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 57 条独立脚本命令，共 88 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -78,6 +78,7 @@
 | 61 | `tests/agent-message-queue-contract.cjs` | 不启动 Electron 的 Workbench 合同：运行中新增消息不触发页面读取或 Runtime prompt；多条消息编辑、重排、移除与队首 revision 校验；完成后不自动派发；发送时读取新页面上下文并只消费队首；停止/重启保留剩余队列；读取权限检查与 v2→v3 空队列迁移。 | 临时数据目录和确定性 Runtime；不验证真实 Electron UI、工具调用网络行为或真实 Provider；双语和真实窗口操作由 `pi-workbench-e2e.cjs` 负责。 |
 | 62 | `tests/chrome-import-categories.test.mjs` | Node 模块合同：书签/历史分别读取；某类失败仅排除该类别；提交只读取用户勾选的类别，未选中且损坏的 History 不阻断书签导入；macOS 预览中损坏的 Cookies 数据库只标记 Cookie 类别，不阻断可读书签/历史。 | 不启动 Electron；Cookie 计数路径仅在 macOS 验证；真实 zh-CN/en UI 路径由 `CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 覆盖。 |
 | 63 | `tests/history-panel-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：访问两页后核对历史记录按本地日历分为今天、昨天与较早日期；两种语言的分组标题及 `Intl` 时间格式；显示主机/路径并隐藏 URL 查询与片段；保持完整 URL 搜索、单条删除；700×420 窄窗中时间与删除操作不溢出。 | 使用隔离临时 `CORVID_DATA_DIR`、合成旧历史及本地 fixture；不读取真实浏览记录或访问互联网；系统时区用于日分组，时间显示为本地化小时/分钟；设置 `CORVID_HISTORY_QA_DIR` 时保存[常规窗口截图](screenshots/issue-196-history-zh-CN-1024x700.png)与[短高窗口截图](screenshots/issue-196-history-zh-CN-700x420.png)。 |
+| 64 | `tests/address-suggestions-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：当前 Profile 历史匹配、重复 URL 去重、查询参数/片段不显示、其他 Profile 不泄漏；地址候选与自定义搜索模板候选；方向键/Enter/Esc、清空关闭、zh-CN/en 可访问名称；704×420 窄窗边界。 | 使用隔离临时 `CORVID_DATA_DIR`、合成历史与本地搜索模板，不访问真实网站、搜索服务、模型或 OAuth；`CORVID_ADDRESS_SUGGESTIONS_QA_DIR` 保存[常规截图](screenshots/issue-191-suggestions-zh-CN-1024x700.png)和[短窗截图](screenshots/issue-191-suggestions-zh-CN-704x420.png)。
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
@@ -95,9 +96,9 @@
 | D11 输入与网页能力 | `uploads.e2e`、`sdk-e2e`、`contract-e2e` |
 | D19 内置 Agent / Pi runtime | `pi-runtime-e2e`（session 创建、transcript 路径边界与工具 allowlist；无真实模型）、`pi-models-e2e`（模型目录、选择持久化、无凭据拒绝、临时 API Key 持久化、任务创建与续聊模型保持；无真实请求）、`pi-credential-os-store-e2e`（macOS/Windows/Linux 原生 Electron 安全存储；合成密钥；不调用真实 Provider）、`pi-workbench-e2e`（Corvid Agent 对话/历史/模型 UI、700×420 页面来源/模型/输入及页面同意、多轮续聊、后续消息编辑/重排/发送、重启恢复、用户接管与交还；本地 fixture）、`pi-workbench-short-height-e2e`（704×420 中英欢迎说明布局与短窗输入滚动可达；本地 fixture）、`agent-task-continuation-contract`（同任务重复续聊互斥与 Room 交接期间拒绝迟到续聊；runtime 替身）、`agent-message-queue-contract`（运行中不触发读取/Runtime 的排队、显式上下文复核、停止/重启保留；runtime 替身）、`agent-stop-e2e`（主动停止、迟到 runtime 事件隔离、abort 失败提示）、`pi-custom-endpoint-e2e`（Corvid 端点配置、发现与本地兼容 fixture 请求）、`pi-real-model-smoke`（Corvid ChatGPT OAuth + GPT-6 Luna 单次真实请求） |
 | D12 状态、接管与多 Agent 体验 | `user-control-e2e`、`evaluation-risk-e2e`、`dialogs-ui-e2e`、`permissions-e2e`、`agent-rooms-panel-e2e`、`agent-access-e2e`、`agent-access-ui-e2e` |
-| D21 桌面界面与键盘可达性 | `agent-rooms-panel-e2e`（Agent 空态、工作台和面板关闭的 Enter 键盘路径及焦点恢复）、`pi-workbench-short-height-e2e`（704×420 中英欢迎说明、输入卡片滚动与控件逐项可达）、`permissions-e2e`、`tab-pin-menu-e2e` |
-| D24 本地化 | `localization-e2e`（应用语言选择/拒绝无效 locale、资源键对齐、浏览器壳层与站点工具菜单名称/提示、Intl 格式、窄窗导航与中英文设置对话框滚动/保存动作可达、偏好权限与重启恢复；仅首批静态覆盖） |
-| D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航） |
+| D21 桌面界面与键盘可达性 | `agent-rooms-panel-e2e`（Agent 空态、工作台和面板关闭的 Enter 键盘路径及焦点恢复）、`pi-workbench-short-height-e2e`（704×420 中英欢迎说明、输入卡片滚动与控件逐项可达）、`permissions-e2e`、`tab-pin-menu-e2e`、`address-suggestions-e2e`（地址栏候选方向键选择与焦点保持） |
+| D24 本地化 | `localization-e2e`（应用语言选择/拒绝无效 locale、资源键对齐、浏览器壳层与站点工具菜单名称/提示、Intl 格式、窄窗导航与中英文设置对话框滚动/保存动作可达、偏好权限与重启恢复；仅首批静态覆盖）、`address-suggestions-e2e`（地址建议中文/英文可访问名称） |
+| D07 用户界面与日常导航 | `navigation-error-e2e`（加载状态、主框架失败提示、URL 保留、重试与被替代导航）、`address-suggestions-e2e`（本地历史/搜索候选、键盘选择、双语与短窗） |
 | D13 首次启动与 Chrome 导入 | `chrome-import-e2e`（书签/历史、可选择非活动 Profile 作为目标并在失败重试时锁定目标、合成 v10 Cookie 解密、Cookie 预览仅 `COUNT(*) ... NOT INDEXED` 且不物化行字段；未同意或合成密钥读取失败时不查询 Cookie 行；Cookie 类别单独确认、Profile 隔离、扩展执行与重启恢复、重复导入、Cookie flushStore 故障回滚/重试、只读 Profile 目录下持久 Cookie 落盘核验及重启重试、损坏 Cookie 索引完整性拒绝、预览后 SQLite 占用错误分类与源/目标不变、删除失败告警与同名旧路径 Cookie 保留、不同值 Cookie 冲突保留、library.json 替换失败回滚/重试、引导状态；真实系统钥匙串授权未覆盖） |
 | D16 日常浏览器功能 | `application-menu.test.mjs`（菜单结构、zh-CN/en 文案、快捷键、编辑角色与菜单状态合同；3/3 通过，并断言 Window 菜单将选中窗口 ID 交给焦点处理器）、`application-menu-e2e.cjs`（隔离 Electron 菜单结构/动作、Agent Room 快捷键权限门禁、语言切换及重启持久化；默认模式还检查双窗口原生前台切换；`CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1` 仅跳过该原生焦点/路由段以允许锁屏下验证本地化，不代表完整验收） |
 

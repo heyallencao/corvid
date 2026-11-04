@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-04 地址栏历史与搜索建议（Issue #191）
+
+- 实现：地址栏输入时仅从当前浏览 Profile 的本地历史取最多 6 条候选，先排 URL/标题前缀，再按最近访问排序并按 URL 去重；可见副标题只显示主机和路径。普通文本显示“搜索此内容”动作，沿用用户已保存的搜索模板，确认前不发出网络请求。候选通过 `combobox`/`listbox` 表达，支持方向键、Enter、Esc、鼠标选择和清空关闭；文案覆盖 `zh-CN`/`en`。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_ADDRESS_SUGGESTIONS_QA_DIR=/private/tmp/corvid-issue191-qa node tests/address-suggestions-e2e.cjs` 通过。真实 Electron + 隔离临时数据与本地 HTTP fixture 覆盖重复访问去重、Profile 隔离、URL 查询/片段隐藏、键盘选择与焦点保持、Esc 保留输入、搜索模板只在确认后执行、zh-CN/en 名称、清空关闭，以及 704×420 无横向溢出。截图和 REA/UI 判断见[地址栏建议视觉检查](../qa/ui-visual-check.md#2026-11-04-地址栏建议与键盘选择-issue-191)。
+- 静态检查：`node --check` 覆盖 `desktop/library.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/address-suggestions-e2e.cjs`；本地库合同探针验证过滤、去重、最近排序、空查询与 Profile 隔离；`git diff --check` 通过。没有运行全量 `npm test`。
+- UI/UE 参考与 REA 边界：Aceternity UI `/components` Search 对话框的 REA controlled replay，Evidence `ev_03624926237a8c15166f8a3e066fecacb0041f7d616310448135bad5d67c2c4e`、`ev_9367e9f54ba0a032a62be6dd7b34e22040be41ae2cd7cc73cfc5fa1270817677`、`ev_643bb90ebc8795e05341a5e84e970dcbc956fd69e74a58594539b513534f02c5`；仅直接观察该站点搜索面板分组、过滤和键盘选择。它不证明浏览器 omnibox 行为。Corvid 截图来自合成本地 fixture；没有复制代码或素材。Rare UI、Kobra、EasyUI、Pin UI 未扫描。未访问真实网站、搜索引擎、模型或 OAuth；未覆盖 VoiceOver/Narrator/Orca、暗色主题和其他平台。
+
 ## 2026-11-04 导航错误原因与 HTTP 状态（Issue #198）
 
 - 实现合同：将 Chromium 网络失败原因映射为双语说明，并只展示经校验的标准错误码；HTTP 4xx/5xx 导航仍保留服务器提供的页面内容，同时在 Corvid 状态区说明 HTTP 状态并允许重试。HTTP 状态读取自 Electron `did-navigate` 的 `httpResponseCode`/`httpStatusText`：[Electron WebContents 文档](https://www.electronjs.org/docs/latest/api/web-contents)。

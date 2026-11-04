@@ -212,11 +212,24 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .icon-button { width: 32px; height: 32px; display: inline-grid; place-items: center; flex: none; padding: 0; color: var(--text-icon); }
 .icon-button:hover { color: var(--text); }
 .icon-button svg { width: 18px; height: 18px; }
-#address-form { height: 36px; min-width: 80px; flex: 1; display: flex; align-items: center; gap: 8px; margin: 0 5px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-address); transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
+#address-form { position: relative; height: 36px; min-width: 80px; flex: 1; display: flex; align-items: center; gap: 8px; margin: 0 5px; padding: 0 8px 0 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-address); transition: background .15s ease, border-color .15s ease, box-shadow .15s ease; }
 #address-form:focus-within { border-color: var(--address-focus-line); background: var(--surface); box-shadow: 0 0 0 3px var(--address-focus-glow); }
 .address-lock { flex: none; color: var(--text-address-icon); font-size: 17px; }
 #address { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 13px; }
 #address:focus-visible { outline: 0; }
+#address-suggestions { position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; left: 0; max-height: min(320px, calc(100vh - 150px)); overflow: auto; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-elevated); box-shadow: 0 12px 32px var(--shadow-popover); }
+#address-suggestions[hidden] { display: none; }
+.address-suggestion-group + .address-suggestion-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line-subtle); }
+.address-suggestion-heading { padding: 4px 9px 3px; color: var(--text-muted); font-size: 10px; line-height: 1.35; }
+.address-suggestion { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 8px; color: var(--text); text-align: left; }
+.address-suggestion:hover, .address-suggestion[aria-selected="true"] { background: var(--surface-selected); color: var(--surface-selected-text); }
+.address-suggestion:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.address-suggestion-icon { width: 18px; flex: none; color: var(--text-address-icon); text-align: center; }
+.address-suggestion-icon svg { width: 16px; height: 16px; display: block; }
+.address-suggestion-copy { min-width: 0; display: grid; flex: 1; gap: 1px; }
+.address-suggestion-title, .address-suggestion-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.address-suggestion-title { font-size: 12px; }
+.address-suggestion-url { color: var(--text-muted); font-size: 10px; }
 #extension-toolbar { display: flex; align-items: center; gap: 2px; flex: none; max-width: 136px; overflow-x: auto; scrollbar-width: none; }
 #extension-toolbar::-webkit-scrollbar { display: none; }
 #extension-toolbar:empty { display: none; }
