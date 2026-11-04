@@ -1,5 +1,16 @@
 # 验证记录
 
+## 2026-11-04 Issue #216 交互状态与主题浏览器表面
+
+- 范围：统一按钮状态过渡 token，添加启用按钮按压时的轻位移与色调反馈；修正侧栏已选入口 hover 时文本/底色被通用状态覆盖，并增加品牌色内侧状态标记；为 Corvid shell 的滚动区域和文字选区补主题样式。标签栏、扩展栏明确保留隐藏滚动条。未增加菜单开合动画。
+- 定向命令：`CORVID_INTERACTION_QA_DIR=docs/qa/screenshots/issue-216 env -u ELECTRON_RUN_AS_NODE node tests/interaction-states-e2e.cjs`，最终 EXIT 0。`node --check tests/interaction-states-e2e.cjs` 与 `git diff --check` 通过。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR`、about:blank、1024×700 CSS px shell viewport。浅/深主题都用 Electron renderer media emulation 检查，不代表系统原生主题切换；测试后临时 node_modules 链接与 Electron 进程均清理。未访问外网、真实网页或用户资料；未登录 OAuth、未调用模型。
+- 断言结果：选中导航项在 hover 后保留颜色/底色和指示线；按钮 mouse down 时 computed transform/filter 提供触点反馈；滚动容器 computed scrollbar width 为 thin，标签栏仍为 none；选区颜色取当前主题 token；减少动态效果将过渡设为 ≤0.02ms 且关闭平滑滚动。浅色/深色合成截图及哈希见[视觉检查](../qa/ui-visual-check.md#2026-11-04-交互状态与主题浏览器表面-issue-216)。
+- Impeccable detector：`impeccable detect --json desktop/styles.css` 扫描完成但退出码 2；两个 warning 均为既有 border-left 规则（`.pi-task-event` 与 `.agent-access-boundary` 的既有左边框样式），不属于本次修改。本轮没有运行全量 `npm test`。
+- GitHub Actions：PR #243 的两个跨平台 workflow 启动 6 个矩阵作业，均约 2 秒后失败；`gh run view` 显示所有作业 `steps: []`，没有可读取的作业步骤或失败日志。因此本轮远程 CI 未执行测试，当前无法从这些结果判断实现兼容性或根因。
+- 限制：不覆盖原生滚动条像素、WebContentsView 合成、真机输入设备、Windows/Linux、打包版本、屏幕阅读器及站点页面 CSS；结果只证明本地开发 Electron 下的定向 UI 状态。
+
+
 ## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验
 
 - 背景：PR #148 因 macOS 锁屏时未能完成 Electron 原生焦点验收而保留了该限制；本次在解锁桌面后对 PR 合并版本与当前主线分别重跑默认模式，未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`。
