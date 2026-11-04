@@ -51,6 +51,7 @@
 ## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验
 
 - 背景：PR #148 因 macOS 锁屏时未能完成 Electron 原生焦点验收而保留了该限制；本次在解锁桌面后对 PR 合并版本与当前主线分别重跑默认模式，未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`。
+- 最新主线追加复验：在解锁的 macOS 桌面、隔离 worktree `d195c58`（当时的 `origin/main`）上再次运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/application-menu-e2e.cjs`，EXIT 0，输出 `PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure`。未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`；测试退出后无 Corvid Electron 进程残留。
 - 命令：`env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs`。PR 头提交 `de6b3db`（PR #148）EXIT 0；当前主线 `161ca62` EXIT 0。
 - 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1。两次均由 E2E 创建独立临时 `CORVID_DATA_DIR`，应用监听随机本地端口；测试结束清理数据目录，Electron 进程退出。未读取真实 Profile/网页数据，未使用模型、OAuth 或外网。
 - 覆盖：应用启动并获取 Electron focused window；菜单动作、Agent-owned Room 权限门禁、双窗口 Window 菜单目标选择及动作路由、切换英文和重启后的菜单语言持久化、隐藏内部调试菜单。E2E 输出 `PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure`。
