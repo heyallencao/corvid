@@ -623,10 +623,6 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
 
 @media (max-width: 720px) {
   :root { --workspace-width: min(420px, max(310px, calc(100vw - 394px))); }
-  #library { right: 10px; }
-}
-
-@media (max-width: 600px) {
   #chrome-tools { gap: 1px; padding-inline: 5px; }
   .icon-button { width: 28px; }
   #address-form { margin-inline: 2px; padding-inline: 8px; }

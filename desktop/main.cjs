@@ -292,6 +292,8 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
+const MIN_WINDOW_WIDTH = 704;
+const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
   const roomIds=args.roomIds;
@@ -302,8 +304,9 @@ function createAgentClientGrant(args = {}) {
 function normalizeBounds(saved) {
   if (!saved || typeof saved !== 'object') return null;
   const { x, y, width, height, maximized } = saved;
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 600 || height < 400) return null;
-  const size = { width: Math.round(width), height: Math.round(height), maximized: Boolean(maximized) };
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  // Saved states may predate BrowserWindow's minimum; keep the saved position and clamp its size.
+  const size = { width: Math.max(MIN_WINDOW_WIDTH, Math.round(width)), height: Math.max(MIN_WINDOW_HEIGHT, Math.round(height)), maximized: Boolean(maximized) };
   if (!Number.isFinite(x) || !Number.isFinite(y)) return size;
   const bounds = { x: Math.round(x), y: Math.round(y), ...size };
   // A saved position can belong to a monitor that is no longer attached; fall
@@ -1532,7 +1535,7 @@ async function startServer() {
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
-  const minimumWidth=Math.min(704,area.width),minimumHeight=Math.min(420,area.height);
+  const minimumWidth=Math.min(MIN_WINDOW_WIDTH,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};

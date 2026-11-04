@@ -1243,3 +1243,11 @@
 - 变更：新增显式测试变量 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1`，只跳过双窗口原生焦点和路由步骤；默认模式仍完整执行该步骤。它用于在桌面锁屏时继续验收本 PR 的菜单语言切换与重启持久化，不替代原生焦点验收。
 - 验证：CUA 本轮报告 macOS 锁屏；`node --check tests/application-menu-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1 node tests/application-menu-e2e.cjs` EXIT 0，真实隔离 Electron 下 Agent Room 快捷键门禁、中文/英文原生菜单切换、语言偏好重启恢复与无 Electron/runtime/开发者工具菜单项断言通过。输出明确标记“SKIP native Window menu focus and routing”。`node --test tests/application-menu.test.mjs` 3/3、`git diff --check` 通过。
 - 边界：双窗口原生焦点与菜单动作路由仍依赖默认模式；该行为此前在已合并 PR #169 / Issue #167 的 macOS 解锁桌面现场 E2E 与 System Events 复核通过。本轮没有重跑全量 `npm test`，也没有重新执行默认原生焦点路径。
+
+## 2026-11-04 窗口最小尺寸与可达紧凑断点（Issue #219）
+
+- 环境：独立 `codex/issue219-window-min-size` worktree；macOS arm64、Node.js v24.14.1、Electron 45.2.1；测试创建隔离 `CORVID_DATA_DIR`，无网络页面或个人浏览数据。
+- 验证：`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_WINDOW_MIN_SIZE_QA_DIR=/private/tmp/corvid-issue219-qa node tests/window-state-e2e.cjs` EXIT 0。真实 Electron 检查 600×400 `setBounds` 被限制为 704×420、720px 紧凑断点在 704px 生效、文档无水平溢出、窗口状态持久化及旧 600×400 状态恢复时归一到最小尺寸；既有坏状态回退、脱离显示器坐标裁剪和旧单窗口状态用例也通过。截图为 1408×776 PNG，SHA-256 `04a78147606bb0b9a4ae8fb5d12c1af5d3324227469451cc22463e9170666487`，见[视觉记录](../qa/ui-visual-check.md#2026-11-04-最小窗口与紧凑工具栏-issue-219)。
+- 静态检查：`node --check desktop/main.cjs`、`node --check tests/window-state-e2e.cjs`、`git diff --check` 均通过。
+- REA 参考：Aceternity UI Sidebar 文档页在 704×420 的受控浏览器证据为 `ev_162bfcf637c7995af8504348a1df4b65eb03da2bee0010a657df75c2f1662181`；仅作窄视口排布参考，不据此声称组件交互或 Corvid 行为，限制见[视觉记录](../qa/ui-visual-check.md#2026-11-04-最小窗口与紧凑工具栏-issue-219)。
+- 未覆盖：仅在当前 macOS 桌面验证；未测小于最小尺寸的显示区域、Windows/Linux、深色主题、网页内容场景、辅助技术或其他语言的手动外观。本轮未运行完整 `npm test`。
