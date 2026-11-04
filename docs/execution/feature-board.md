@@ -99,7 +99,8 @@
 
 - 状态：部分。PR #250 已加入中文 PR 模板；当前切片添加 PR 描述图片路径检查，阻止本机/相对图片地址、跨分支图片引用，并在合并事件检查是否迁移到 `main`。`node tests/pr-description-images.test.cjs` 的 10 项规则回归通过。详细范围、当前遗留和处理规则见[Issue #244 执行计划](issue-244-github-screenshot-evidence.md)与[检查说明](../qa/pr-description-images.md)。
 - 2026-11-04 18:56（Asia/Shanghai）复核快照：27 个开放 Issue、30 个开放 PR；9 个 Issue 正文提及本机截图路径（包含 #244，另 8 个），6 张 Issue 图片均指向 `main` 固定路径；13 个开放 PR 共 33 张图片引用 PR 分支或相对路径，相关分支均有独立工作树，待负责人合并后清理。
-- 未完成：已有开放 Issue 的本机路径和其他开放 PR 的分支图片链接仍需逐项清理；ego-browser 打开私有 Issue 时处于 GitHub 未登录页，页面图片渲染尚未验证。当前 6 张稳定 Issue 图片已逐张检查 API 资产存在并做静态画面隐私检查；这不替代页面渲染或运行行为验收。自动检查不替代以上验收，也不自动重写他人 Issue/PR。
+- 2026-11-04 19:12（Asia/Shanghai）补充：13 个开放 PR 的 33 张分支/相对图片链接均由 Contents API 确认目标资产存在，并逐张检查画面；仅见 Corvid 界面、空白页和本地 fixture，未见个人网页内容、账号、凭据或真实浏览数据。#163 展示 Cookie 导入同意界面但不含 Cookie 值。该检查不证明 GitHub PR 页面渲染或截图采集过程隔离。
+- 未完成：已有开放 Issue 的本机路径和其他开放 PR 的分支图片链接仍需逐项清理；ego-browser 打开私有 Issue 时处于 GitHub 未登录页，页面图片渲染尚未验证。6 张稳定 Issue 图片和 33 张开放 PR 图片已检查 API 资产存在并完成静态画面隐私检查；这不替代页面渲染或运行行为验收。自动检查不替代以上验收，也不自动重写他人 Issue/PR。
 
 ## 完成条件
 
