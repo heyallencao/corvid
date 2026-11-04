@@ -8,6 +8,12 @@ const pointers = new WeakMap();
 // current document. Its registry disappears automatically on navigation.
 function pageOperation(operation, args, seed) {
   const registry = globalThis.__corvidRegistry ||= {documentId: seed, next: 1, nodes: new Map(), refs: new WeakMap()};
+  const editingHostFor=node=>{
+    if(!node?.isContentEditable)return null;
+    let host=node;
+    while(host.parentElement?.isContentEditable && !host.hasAttribute('contenteditable'))host=host.parentElement;
+    return host;
+  };
   const refKey = value => {
     const match = /^(?:@(\d+)|ref=(\d+)|ref:[^:]+:(\d+))$/.exec(value);
     return match ? '@'+(match[1] || match[2] || match[3]) : null;
@@ -73,7 +79,7 @@ function pageOperation(operation, args, seed) {
       const normalized=s=>(s||'').replace(/\s+/g,' ').trim();
       const same=(actual,wanted,exact)=>exact ? normalized(actual)===normalized(wanted) : normalized(actual).toLowerCase().includes(normalized(wanted).toLowerCase());
       const name=el=>el.getAttribute('aria-label') || el.getAttribute('title') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || '';
-      const role=el=>el.getAttribute('role') || ({button:'button',a:el.hasAttribute('href')?'link':'',select:'combobox',textarea:'textbox',input:el.type==='checkbox'?'checkbox':el.type==='radio'?'radio':['button','submit','reset'].includes(el.type)?'button':'textbox'})[el.localName] || '';
+      const role=el=>el.getAttribute('role') || (editingHostFor(el)===el?'textbox':({button:'button',a:el.hasAttribute('href')?'link':'',select:'combobox',textarea:'textbox',input:el.type==='checkbox'?'checkbox':el.type==='radio'?'radio':['button','submit','reset'].includes(el.type)?'button':'textbox'})[el.localName] || '');
       for(const root of roots) for(const el of root.querySelectorAll('*')) {
         if (query.by==='href' && el.localName==='a' && el.getAttribute('href')===query.value) matches.push(el);
         if (query.by==='role' && role(el)===query.value && (query.name===undefined || same(name(el),query.name,query.exact!==false))) matches.push(el);
@@ -104,7 +110,7 @@ function pageOperation(operation, args, seed) {
     if (!['page','viewport','subtree'].includes(scope)) throw new Error('Invalid snapshot scope');
     if (scope==='subtree' && (typeof options.root!=='string' || !options.root)) throw new Error('Subtree snapshot requires a root reference');
     const all=[]; let inaccessibleFrames=0;
-    const interactive='a,button,input,textarea,select,[role],[contenteditable="true"]';
+    const interactive='a,button,input,textarea,select,[role],[contenteditable]:not([contenteditable="false"])';
     const frameLabel=el=>{ if(el.id) return '#'+el.id; const name=el.getAttribute('name'); return name ? `${el.localName}[name="${name}"]` : el.localName; };
     const absoluteRect=el=>{
       let rect=el.getBoundingClientRect(), view=el.ownerDocument.defaultView;
@@ -135,7 +141,7 @@ function pageOperation(operation, args, seed) {
         if (root.shadowRoot) collect(root.shadowRoot,null);
       }
     } else collect(document,null);
-    const items=all.slice(0,200).map(({el,frame})=>({ref:refFor(el),role:el.getAttribute('role') || (el.tagName || '').toLowerCase(),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || '',frame:frame ?? null}));
+    const items=all.slice(0,200).map(({el,frame})=>({ref:refFor(el),role:el.getAttribute('role') || (editingHostFor(el)===el?'textbox':(el.tagName || '').toLowerCase()),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || '',frame:frame ?? null}));
     return {url:location.href,title:document.title,scope,items,truncated:all.length>200,total:all.length,limitations:['Accessible names are approximate; closed shadow roots and cross-origin iframe contents are not included.'],inaccessibleFrames};
   }
   if(operation==='viewport')return {width:innerWidth,height:innerHeight,devicePixelRatio:devicePixelRatio};
@@ -217,13 +223,21 @@ function pageOperation(operation, args, seed) {
     if (args.kind==='fill') {
       const win=element.ownerDocument.defaultView;
       const supported=element instanceof win.HTMLTextAreaElement || (element instanceof win.HTMLInputElement && ['text','search','url','tel','password'].includes(element.type));
-      if (!supported || element.readOnly) throw new Error('Fill supports editable text inputs and textareas only');
+      if ((!supported && !editingHostFor(element)) || (supported && element.readOnly)) throw new Error('Fill supports editable text inputs, textareas, and contenteditable hosts only');
     }
     return {x,y};
   }
   if (operation==='select-text') {
+    const host=editingHostFor(element);
+    if(host) {
+      if(element.getRootNode().activeElement!==host)throw new Error('Input focus was not acquired');
+      // Scope selection to the editing host; Meta+A did not reliably select contenteditable in Electron on macOS.
+      const selection=host.ownerDocument.getSelection(),range=host.ownerDocument.createRange();
+      range.selectNodeContents(host);selection.removeAllRanges();selection.addRange(range);
+      return {ok:true,contentEditable:true};
+    }
     if (!(element instanceof element.ownerDocument.defaultView.HTMLInputElement || element instanceof element.ownerDocument.defaultView.HTMLTextAreaElement) || element.getRootNode().activeElement!==element) throw new Error('Input focus was not acquired');
-    element.select(); return {ok:true};
+    element.select(); return {ok:true,contentEditable:false};
   }
   if (operation==='focus-target') {
     if (!element.isConnected || element.disabled) throw new Error('Element is unavailable');
@@ -270,6 +284,18 @@ module.exports = async function runAction(contents, operation, args = {}) {
   if (operation === 'wait') {
     const timeout=Math.min(Math.max(Number(args.options?.timeout ?? 5000),0),10000); const deadline=Date.now()+timeout;
     do { try { return await run('exists',args); } catch(error) { if(!String(error.message).includes('Locator matched 0 elements')) throw error; if(Date.now()>=deadline) throw new Error('Wait timed out'); await new Promise(resolve=>setTimeout(resolve,Math.min(100,deadline-Date.now()))); } } while(true);
+  }
+  if (operation === 'scroll') {
+    const {deltaX,deltaY,x,y}=args;
+    if(!Number.isFinite(deltaX) || !Number.isFinite(deltaY) || Math.abs(deltaX)>2000 || Math.abs(deltaY)>2000 || (deltaX===0 && deltaY===0))throw new Error('Scroll deltas must be finite, within -2000..2000, and not both zero');
+    if((x===undefined)!==(y===undefined) || (x!==undefined && (!Number.isFinite(x) || !Number.isFinite(y))))throw new Error('Scroll coordinates must be finite and supplied together');
+    const viewport=await run('viewport',{});
+    const point=x===undefined?{x:Math.floor(viewport.width/2),y:Math.floor(viewport.height/2)}:{x,y};
+    if(point.x<0 || point.y<0 || point.x>=viewport.width || point.y>=viewport.height)throw new Error('Scroll coordinates are outside the viewport');
+    // CDP mouseWheel is ignored by hidden background WebContentsView targets; use a mouse-source scroll gesture so background Rooms scroll without activation.
+    await pageDebugger.ensure(contents);
+    await contents.debugger.sendCommand('Input.synthesizeScrollGesture',{x:point.x,y:point.y,xDistance:-deltaX,yDistance:-deltaY,gestureSourceType:'mouse',speed:1200,preventFling:true});
+    return {ok:true,point};
   }
   if (operation === 'setInputFiles') {
     await validateFiles(args.files);
@@ -404,11 +430,12 @@ async function trustedInput(contents, operation, args, run) {
       }
       await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
       await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-      if (args.value) await send('Input.insertText',{text:args.value});
+      if(args.value)await send('Input.insertText',{text:args.value});
     }
     const keypress = async event => {
       await send('Input.dispatchKeyEvent',{type:'keyDown',...event});
-      await send('Input.dispatchKeyEvent',{type:'keyUp',...event,text:undefined});
+      const {commands,...keyUpEvent}=event;
+      await send('Input.dispatchKeyEvent',{type:'keyUp',...keyUpEvent,text:undefined});
     };
     if (operation === 'press') {
       await run('verify-focus',{target:args.target});
@@ -416,6 +443,15 @@ async function trustedInput(contents, operation, args, run) {
     }
     return {ok:true};
   }
+}
+
+function editingCommands(key, modifiers) {
+  if (process.platform !== 'darwin' || !(modifiers & 4)) return [];
+  const shift = Boolean(modifiers & 8);
+  if (!shift && key.toLowerCase() === 'a') return ['selectAll'];
+  if (key === 'ArrowLeft') return [shift ? 'moveToLeftEndOfLineAndModifySelection' : 'moveToLeftEndOfLine'];
+  if (key === 'ArrowRight') return [shift ? 'moveToRightEndOfLineAndModifySelection' : 'moveToRightEndOfLine'];
+  return [];
 }
 
 function parseKey(value) {
@@ -431,7 +467,8 @@ function parseKey(value) {
   else if (/^[0-9]$/.test(key)) {code=`Digit${key}`;vk=key.charCodeAt(0);}
   else throw new Error('Unsupported key; use letters, digits, space, or documented named keys');
   const printable=key.length===1 && !(modifiers & (1|2|4));
-  return {key,code,windowsVirtualKeyCode:vk,modifiers,...(printable ? {text:key} : {})};
+  const commands=editingCommands(key,modifiers);
+  return {key,code,windowsVirtualKeyCode:vk,modifiers,...(printable ? {text:key} : {}),...(commands.length ? {commands} : {})};
 }
 
 const keyboardStates = new WeakMap();
@@ -520,7 +557,8 @@ async function keyboardAction(contents, operation, args) {
     return {ok:true};
   }
   const text=spec.text!==undefined && !(base.modifiers & (1|2|4)) ? ((base.modifiers&8) ? spec.text.toUpperCase() : spec.text) : undefined;
-  if (operation!=='keyboardUp') await send('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text===undefined?{}:{text})});
+  const commands=editingCommands(spec.key,base.modifiers);
+  if (operation!=='keyboardUp') await send('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text===undefined?{}:{text}),...(commands.length?{commands}:{})});
   if (operation!=='keyboardDown') await send('Input.dispatchKeyEvent',{type:'keyUp',...base});
   return {ok:true};
 }

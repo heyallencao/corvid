@@ -73,12 +73,31 @@ class McpProcess {
 }
 
 (async () => {
+  const { asPngImageContent, MAX_SCREENSHOT_BYTES } = await import('../mcp/image-content.mjs');
+  assert.throws(() => asPngImageContent(Buffer.alloc(MAX_SCREENSHOT_BYTES + 1)), error => error.code === 'CORVID_OUTPUT_TOO_LARGE');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-'));
   let app, mcp, fixture;
   try {
-    fixture = http.createServer((_request, response) => {
+    const fixtureRequestCounts = new Map();
+    fixture = http.createServer((request, response) => {
+      const pathname = new URL(request.url, 'http://fixture.local').pathname;
+      const requestCount = (fixtureRequestCounts.get(pathname) || 0) + 1;
+      fixtureRequestCounts.set(pathname, requestCount);
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end('<!doctype html><title>MCP fixture</title><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>');
+      if (pathname === '/slow') {
+        response.write('<!doctype html><title>Slow MCP fixture</title><h1>Slow destination</h1>');
+        setTimeout(() => response.end('<p>Document finished</p>'), 500);
+        return;
+      }
+      if (pathname === '/dynamic') {
+        response.end('<!doctype html><title>Dynamic MCP fixture</title><body><p>Single-page fixture</p><script>const target=document.createElement("button");target.id="dynamic-target";target.textContent="Dynamic result";target.hidden=true;document.body.append(target);setTimeout(()=>target.hidden=false,180);setTimeout(()=>target.hidden=true,480);setTimeout(()=>target.remove(),780)</script></body>');
+        return;
+      }
+      if (pathname === '/scroll') {
+        response.end('<!doctype html><title>Scroll MCP fixture</title><style>html,body{margin:0}body{height:2600px}#panel{position:fixed;left:24px;top:24px;width:240px;height:140px;overflow:auto;background:#eee}#panel-content{height:1000px}</style><main><h1>Long page</h1><div id="panel"><div id="panel-content">Nested scroll area</div></div></main>');
+        return;
+      }
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><div id="rich-editor" contenteditable>Existing <strong>format</strong></div><div id="locked-editor" contenteditable="false">Locked content</div><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -136,9 +155,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_click', 'page_fill', 'page_info', 'page_navigate', 'page_press', 'page_snapshot']);
-    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
-    assert.ok(listed.tools.filter(tool => ['page_click', 'page_fill', 'page_navigate', 'page_press'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
+    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -154,12 +173,76 @@ class McpProcess {
     const info = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(info.value.roomId, room.id);
     assert.equal(info.value.targetId, tab.id);
+    const foregroundBeforeScreenshot = (await call('/rooms')).activeRoomId;
+    const screenshotResult = await mcp.request('tools/call', { name: 'page_screenshot', arguments: { roomId: room.id, tabId: tab.id } });
+    assert.equal(screenshotResult.isError, undefined, JSON.stringify(screenshotResult));
+    const screenshotImage = screenshotResult.content.find(item => item.type === 'image');
+    assert.ok(screenshotImage, 'page_screenshot returns an MCP image content item');
+    assert.equal(screenshotResult.content.length, 1, 'the screenshot is returned as image content instead of a base64 text result');
+    assert.equal(screenshotImage?.mimeType, 'image/png');
+    const screenshotBytes = Buffer.from(screenshotImage.data, 'base64');
+    assert.ok(screenshotBytes.length > 100 && screenshotBytes.length <= MAX_SCREENSHOT_BYTES);
+    assert.deepEqual([...screenshotBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal((await call('/rooms')).activeRoomId, foregroundBeforeScreenshot, 'a screenshot of a background Room does not activate it');
+    home = await currentBrowserHome();
+    assert.ok(home?.visible, 'the foreground browser home remains visible after the screenshot');
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
+    const waitPage = await mcp.callTool('page_new', { roomId: room.id });
+    const waitTabId = waitPage.value.targetId;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: waitTabId, url: `${fixtureUrl}dynamic` });
+    const attachedWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'attached', timeoutMs: 3000 });
+    assert.equal(attachedWait.value.waitedFor.state, 'attached');
+    const visibleWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, timeoutMs: 3000 });
+    assert.equal(visibleWait.value.waitedFor.state, 'visible', 'visible is the default selector state');
+    const hiddenWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'hidden', timeoutMs: 3000 });
+    assert.equal(hiddenWait.value.waitedFor.state, 'hidden');
+    const detachedWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'detached', timeoutMs: 3000 });
+    assert.equal(detachedWait.value.waitedFor.state, 'detached');
+    const selectorTimeout = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 150 });
+    assert.equal(selectorTimeout.result.isError, true);
+    assert.equal(selectorTimeout.value.code, 'CORVID_TIMEOUT');
+    assert.equal((await mcp.callTool('page_close', { roomId: room.id, tabId: waitTabId })).result.isError, undefined);
+    assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'selector waits on a background page do not activate its Room');
+
+    const scrollPage = await mcp.callTool('page_new', { roomId: room.id });
+    const scrollTabId = scrollPage.value.targetId;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: scrollTabId, url: `${fixtureUrl}scroll` });
+    const scrollView = id => app.evaluate(async ({ webContents }, targetId) => {
+      const contents = webContents.getAllWebContents().find(item => item.getURL().endsWith('/scroll'));
+      if (!contents) throw new Error(`Scroll fixture WebContents missing for ${targetId}`);
+      return contents.executeJavaScript('({page:window.scrollY,panel:document.querySelector("#panel").scrollTop,viewport:{width:innerWidth,height:innerHeight}})');
+    }, id);
+    const centerScroll = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 360 });
+    assert.equal(centerScroll.result.isError, undefined, JSON.stringify(centerScroll.result));
+    assert.ok(centerScroll.value.point.x > 0 && centerScroll.value.point.y > 0, 'omitted coordinates choose a viewport point');
+    const afterCenterScroll = await scrollView(scrollTabId);
+    assert.ok(afterCenterScroll.page > 0, `scroll gesture at viewport center scrolls the long document: ${JSON.stringify(afterCenterScroll)}`);
+    const nestedScroll = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 280, x: 80, y: 80 });
+    assert.deepEqual(nestedScroll.value.point, { x: 80, y: 80 });
+    assert.ok((await scrollView(scrollTabId)).panel > 0, 'explicit viewport coordinates target a nested scroll container');
+    assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'scrolling a background page leaves the foreground Room unchanged');
+    const badScrollPoint = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 100, x: 100000, y: 80 });
+    assert.equal(badScrollPoint.result.isError, true);
+    assert.match(badScrollPoint.value.error, /outside the viewport/);
+
+    const emptyBack = await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
+    const emptyForward = await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
+    assert.equal(emptyBack.result.isError, undefined);
+    assert.equal(emptyForward.result.isError, undefined);
+    assert.equal((await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value.url, 'about:blank', 'history actions with no entries leave the managed page unchanged');
 
     const { connect } = await import('../sdk/index.js');
     const scopedSdk = await connect({ dataDir, token: authorization.token });
     try {
+      const scrollRoom = await scopedSdk.room(room.id);
+      const sdkScrollPage = scrollRoom.page(scrollRoom.info.tabs.find(item => item.id === scrollTabId).label);
+      await assert.rejects(sdkScrollPage.scroll(0, 0), /not both zero/);
+      await assert.rejects(sdkScrollPage.scroll(0, 2001), /-2000..2000/);
+      await assert.rejects(sdkScrollPage.scroll(0, 50, { x: 40 }), /together/);
+      const panelBeforeSdk = (await scrollView(scrollTabId)).panel;
+      await sdkScrollPage.scroll(0, 180, { x: 80, y: 80 });
+      assert.ok((await scrollView(scrollTabId)).panel > panelBeforeSdk, 'SDK scroll uses the same explicit-coordinate action');
       const hiddenRoom = await scopedSdk.room(room.id);
       assert.ok(tab.label, 'the Agent-owned page has a stable label for SDK access');
       const hiddenPage = hiddenRoom.page(tab.label);
@@ -172,8 +255,55 @@ class McpProcess {
     const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
+    const slowUrl = `${fixtureUrl}slow`;
+    await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'link', name: 'Open slow page' } });
+    const urlWait = await mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: slowUrl, timeoutMs: 5000 });
+    assert.equal(urlWait.result.isError, undefined);
+    assert.equal(urlWait.value.url, slowUrl, 'URL wait returns info for the page reached by the link');
+    const waitStartedAt = Date.now();
+    const loadWait = await mcp.callTool('page_wait_for_load', { roomId: room.id, tabId: tab.id, state: 'load', timeoutMs: 5000 });
+    assert.equal(loadWait.result.isError, undefined);
+    assert.equal(loadWait.value.loadComplete, true, 'load wait resolves only after the delayed document finishes');
+    assert.ok(Date.now() - waitStartedAt >= 200, 'load wait observes the delayed response rather than returning immediately');
+    const timedOutWait = await mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 150 });
+    assert.equal(timedOutWait.result.isError, true);
+    assert.equal(timedOutWait.value.code, 'CORVID_TIMEOUT');
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
+    const secondUrl = `${fixtureUrl}second`;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: secondUrl });
+    await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
+    let currentInfo;
+    for (let i = 0; i < 100; i++) {
+      currentInfo = (await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value;
+      if (currentInfo.url === fixtureUrl) break;
+      await delay(25);
+    }
+    assert.equal(currentInfo.url, fixtureUrl, 'page_back navigates only the explicitly selected tab to its prior URL');
+    await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
+    for (let i = 0; i < 100; i++) {
+      currentInfo = (await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value;
+      if (currentInfo.url === secondUrl) break;
+      await delay(25);
+    }
+    assert.equal(currentInfo.url, secondUrl, 'page_forward restores the next URL in the same tab history');
+    const priorRequestCount = fixtureRequestCounts.get('/second');
+    const reloaded = await mcp.callTool('page_reload', { roomId: room.id, tabId: tab.id });
+    assert.equal(reloaded.result.isError, undefined);
+    for (let i = 0; i < 100 && fixtureRequestCounts.get('/second') <= priorRequestCount; i++) await delay(25);
+    assert.ok(fixtureRequestCounts.get('/second') > priorRequestCount, 'page_reload requests the selected page again');
+    const reloadSnapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.equal(new URL((await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value.url).pathname, '/second');
+    assert.match(JSON.stringify(reloadSnapshot.value), /Request 2 \/second/);
     const filled = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'textbox', name: 'Query' }, value: 'corvid mcp' });
     assert.equal(filled.result.isError, undefined, JSON.stringify(filled.value));
+    const filledEditor = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#rich-editor' }, value: '<b>plain text</b>' });
+    assert.equal(filledEditor.result.isError, undefined, JSON.stringify(filledEditor.value));
+    const editorSnapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(editorSnapshot.value), /<b>plain text<\/b>/, 'MCP fills a contenteditable host with literal text');
+    assert.doesNotMatch(JSON.stringify(editorSnapshot.value), /Existing/);
+    const lockedEditor = await mcp.callTool('page_fill', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#locked-editor' }, value: 'blocked' });
+    assert.equal(lockedEditor.result.isError, true);
+    assert.match(lockedEditor.value.error, /contenteditable hosts only/);
     const searched = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
     assert.equal(searched.result.isError, undefined);
     const afterSubmit = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
@@ -183,9 +313,51 @@ class McpProcess {
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
     const afterClick = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterClick.value), /Searched: corvid mcpx/);
+    const selectedCategory = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: 'books' });
+    assert.deepEqual(selectedCategory.value, ['books']);
+    const selectedByLabel = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: { label: 'Music' } });
+    assert.deepEqual(selectedByLabel.value, ['music']);
+    const clearedCategory = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'combobox', name: 'Category' }, choices: null });
+    assert.deepEqual(clearedCategory.value, []);
+    const selectedTags = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#tags' }, choices: ['red', { index: 1 }] });
+    assert.deepEqual(selectedTags.value, ['red', 'blue']);
+    const missingOption = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: 'missing' });
+    assert.equal(missingOption.result.isError, true);
+    assert.match(missingOption.value.error, /Select option not found/);
+    const ambiguousSelect = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'combobox' }, choices: 'books' });
+    assert.equal(ambiguousSelect.result.isError, true);
+    assert.match(ambiguousSelect.value.error, /Locator matched [2-9] elements/);
+    const hovered = await mcp.callTool('page_hover', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Hover menu' } });
+    assert.equal(hovered.result.isError, undefined, JSON.stringify(hovered.value));
+    const afterHover = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(afterHover.value), /Hover menu revealed/);
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     const afterToggle = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterToggle.value), /Clicked/);
+    const popupOpened = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Open popup' } });
+    assert.equal(popupOpened.result.isError, undefined, JSON.stringify(popupOpened.value));
+    let popupTab;
+    for (let i = 0; i < 100; i++) {
+      popupTab = (await mcp.callTool('list_tabs', { roomId: room.id })).value.tabs.find(item => item.openedBy === 'unknown');
+      if (popupTab) break;
+      await delay(25);
+    }
+    assert.ok(popupTab, `the window.open popup is listed with unknown origin; action=${JSON.stringify(popupOpened.value)}`);
+    assert.equal(popupTab.label, null, 'unknown-origin popup remains unmanaged until the user adopts it');
+    const deniedPopupClose = await mcp.callTool('page_close', { roomId: room.id, tabId: popupTab.id });
+    assert.equal(deniedPopupClose.result.isError, true);
+    assert.equal(deniedPopupClose.value.code, 'CORVID_FORBIDDEN');
+    const deniedPopupScreenshot = await mcp.callTool('page_screenshot', { roomId: room.id, tabId: popupTab.id });
+    assert.equal(deniedPopupScreenshot.result.isError, true);
+    assert.equal(deniedPopupScreenshot.value.code, 'CORVID_CONTROL_LOST');
+    const createdPage = await mcp.callTool('page_new', { roomId: room.id });
+    assert.equal(createdPage.result.isError, undefined);
+    assert.equal(createdPage.value.openedBy, 'agent');
+    assert.equal(createdPage.value.url, 'about:blank');
+    assert.ok(createdPage.value.label && createdPage.value.targetId);
+    const closedPage = await mcp.callTool('page_close', { roomId: room.id, tabId: createdPage.value.targetId });
+    assert.equal(closedPage.result.isError, undefined);
+    assert.equal((await mcp.callTool('list_tabs', { roomId: room.id })).value.tabs.some(item => item.id === createdPage.value.targetId), false, 'closed Agent page disappears from Room tabs');
     assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'background Agent actions never activate or steal the foreground Room');
     home = await currentBrowserHome();
     assert.ok(home?.visible,'the home surface remains visible after background Agent actions');
@@ -203,16 +375,38 @@ class McpProcess {
     assert.equal(missingProfile.result.isError, true);
     assert.equal(missingProfile.value.code, 'CORVID_NOT_FOUND');
 
+    const waitingDuringHandoff = mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 5000 });
+    const waitingForSelectorDuringHandoff = mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 5000 });
+    await delay(150);
     await call(`/rooms/${room.id}/yieldControl`, 'POST', {});
+    const interruptedWait = await waitingDuringHandoff;
+    assert.equal(interruptedWait.result.isError, true, 'an in-flight wait stops when the user takes Room control');
+    assert.equal(interruptedWait.value.code, 'CORVID_CONTROL_LOST');
+    const interruptedSelectorWait = await waitingForSelectorDuringHandoff;
+    assert.equal(interruptedSelectorWait.result.isError, true, 'an in-flight selector wait stops when the user takes Room control');
+    assert.equal(interruptedSelectorWait.value.code, 'CORVID_CONTROL_LOST');
     const denied = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(denied.result.isError, true);
     assert.equal(denied.value.code, 'CORVID_CONTROL_LOST');
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
+    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_wait_for_selector', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
+      const args = { roomId: room.id, tabId: tab.id };
+      if (name === 'page_scroll') Object.assign(args, { deltaX: 0, deltaY: 100 });
+      if (name === 'page_hover') Object.assign(args, { target: { by: 'role', value: 'button', name: 'Hover menu' } });
+      if (name === 'page_select_option') Object.assign(args, { target: { by: 'css', value: '#category' }, choices: 'books' });
+      if (name === 'page_wait_for_selector') Object.assign(args, { target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 100 });
+      if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
+      if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
+      if (name === 'page_new') delete args.tabId;
+      const deniedNavigation = await mcp.callTool(name, args);
+      assert.equal(deniedNavigation.result.isError, true, `${name} is denied while the user owns the Room`);
+      assert.equal(deniedNavigation.value.code, 'CORVID_CONTROL_LOST');
+    }
     await call(`/rooms/${room.id}/resumeControl`, 'POST', {});
     assert.equal((await call('/rooms')).rooms.length, roomCountBefore);
-    console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, post-action verification, user-control denial, bounded responses');
+    console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, page scrolling, post-action verification, user-control denial, bounded responses');
   } finally {
     if (mcp) await mcp.close();
     if (app) await app.close().catch(() => {});

@@ -31,6 +31,26 @@ module.exports = function createLibrary(directory) {
   const validUrl = value => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol); } catch { return false; } };
   return {
     history: profileId => data.history.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
+    historySuggestions(profileId, query, limit=6) {
+      if(typeof query!=='string'||!query.trim())return [];
+      const needle=query.trim().toLocaleLowerCase();
+      const matches=data.history
+        .filter(item=>(item.profileId ?? 'default')===profileId&&validUrl(item.url))
+        .map(item=>{
+          const url=item.url.toLocaleLowerCase(),title=(item.title||'').toLocaleLowerCase();
+          const rank=url.startsWith(needle)?0:title.startsWith(needle)?1:url.includes(needle)?2:title.includes(needle)?3:Infinity;
+          return {item,rank};
+        })
+        .filter(match=>Number.isFinite(match.rank))
+        .sort((left,right)=>left.rank-right.rank||String(right.item.visitedAt).localeCompare(String(left.item.visitedAt)));
+      const seen=new Set(),suggestions=[];
+      for(const {item} of matches){
+        if(seen.has(item.url))continue;
+        seen.add(item.url);suggestions.push({id:item.id,url:item.url,title:item.title||item.url,visitedAt:item.visitedAt});
+        if(suggestions.length>=Math.max(1,Math.min(10,limit)))break;
+      }
+      return suggestions;
+    },
     bookmarks: profileId => data.bookmarks.filter(item=>(item.profileId ?? 'default')===profileId),
     downloads: profileId => data.downloads.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
     removeProfile(profileId) {
