@@ -14,7 +14,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 2 管理；
 - Agent SDK 与 CLI 连接本地控制服务。管理员 Bearer 凭据保存在权限为 0600 的 `control.json`；可由管理员为 Agent 客户端签发仅保存 SHA-256 摘要的独立凭据，并将每个客户端限制到明确的 Room ID 列表。服务在每次请求中校验身份和 Room 范围；撤销立即生效。Scoped 客户端只能列出/访问已授权 Room，Profile 列表只返回授权 Room 所属身份，并拒绝历史、书签、下载和窗口接口。用户可在设置中签发/查看/撤销客户端凭据；Browser MCP 仅接受 `CORVID_AGENT_TOKEN` scoped credential，不再回退到管理员 token。内置 Agent 每个任务轮次使用只存在于主进程内存、绑定单一任务和 Room 的短期 scoped credential；续聊重新签发，完成、失败、停止及用户接管时撤销。该凭据不写入客户端授权文件、任务记录或对话记录。稳定 Room ID、标签 ID 和 Page label 映射由服务维护；显示名称不充当唯一标识。
 - 内置 Agent 通过 Corvid 运行时适配层执行会话与模型调用，并用与 SDK/CLI、Browser MCP 一致的服务端身份和 Room 授权检查。当前适配器名称、专属类型、配置格式和错误不得进入用户可见的界面、帮助文档或持久化产品合同；Corvid 拥有任务 UI、模型配置、对话记录、Profile/Room/Page 绑定、浏览器工具授权与用户接管合同。替换运行时时由适配层转换供应商格式，并由 Corvid 负责既有配置与对话记录的兼容迁移。任何运行时默认文件与 shell 工具均不作为浏览器 Agent 的隐式能力。
 - 页面动作通过被授权页面的 Chromium 调试能力执行。用户控制期间拒绝自动操作；执行超时或异常退出后保留"结果未知"的风险状态，直到用户确认。
-- 新标签起始页渲染在用户打开的 `about:blank` WebContentsView 内，通过闭合 Shadow DOM 与网页 DOM 隔离；仅用户拥有的 Room 可注入，Agent 拥有的页面不会收到该 UI 或用户书签。窗口布局保留后台 WebContentsView，由当前活动用户标签置顶，因此授权 Agent 可在后台页进行操作与截图，且不会改写前台页面。壳层模态框打开期间页面视图仍隐藏；主进程重新校验起始页动作所属 Room、当前标签和窗口状态。该设计的 E2E 覆盖与跨平台边界见 D22、D20 和验证记录。
+- 新标签起始页渲染在用户打开的 `about:blank` WebContentsView 内，通过闭合 Shadow DOM 与网页 DOM 隔离；仅用户拥有的 Room 可注入，Agent 拥有的页面不会收到该 UI 或用户书签。窗口布局保留后台 WebContentsView，由当前活动用户标签置顶，因此授权 Agent 可在后台页进行操作与截图，且不会改写前台页面；Browser MCP 的 `page_screenshot` 只返回受管页面的视口 PNG image content，最大 8 MiB，不保存文件或切换前台。壳层模态框打开期间页面视图仍隐藏；主进程重新校验起始页动作所属 Room、当前标签和窗口状态。该设计的 E2E 覆盖与跨平台边界见 D22、D20 和验证记录。
 
 ## 关键决策
 

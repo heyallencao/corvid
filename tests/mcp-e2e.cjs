@@ -73,6 +73,8 @@ class McpProcess {
 }
 
 (async () => {
+  const { asPngImageContent, MAX_SCREENSHOT_BYTES } = await import('../mcp/image-content.mjs');
+  assert.throws(() => asPngImageContent(Buffer.alloc(MAX_SCREENSHOT_BYTES + 1)), error => error.code === 'CORVID_OUTPUT_TOO_LARGE');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-'));
   let app, mcp, fixture;
   try {
@@ -145,8 +147,8 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
-    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
     assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_navigate', 'page_new', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
@@ -163,6 +165,19 @@ class McpProcess {
     const info = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(info.value.roomId, room.id);
     assert.equal(info.value.targetId, tab.id);
+    const foregroundBeforeScreenshot = (await call('/rooms')).activeRoomId;
+    const screenshotResult = await mcp.request('tools/call', { name: 'page_screenshot', arguments: { roomId: room.id, tabId: tab.id } });
+    assert.equal(screenshotResult.isError, undefined, JSON.stringify(screenshotResult));
+    const screenshotImage = screenshotResult.content.find(item => item.type === 'image');
+    assert.ok(screenshotImage, 'page_screenshot returns an MCP image content item');
+    assert.equal(screenshotResult.content.length, 1, 'the screenshot is returned as image content instead of a base64 text result');
+    assert.equal(screenshotImage?.mimeType, 'image/png');
+    const screenshotBytes = Buffer.from(screenshotImage.data, 'base64');
+    assert.ok(screenshotBytes.length > 100 && screenshotBytes.length <= MAX_SCREENSHOT_BYTES);
+    assert.deepEqual([...screenshotBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal((await call('/rooms')).activeRoomId, foregroundBeforeScreenshot, 'a screenshot of a background Room does not activate it');
+    home = await currentBrowserHome();
+    assert.ok(home?.visible, 'the foreground browser home remains visible after the screenshot');
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
 
@@ -253,6 +268,9 @@ class McpProcess {
     const deniedPopupClose = await mcp.callTool('page_close', { roomId: room.id, tabId: popupTab.id });
     assert.equal(deniedPopupClose.result.isError, true);
     assert.equal(deniedPopupClose.value.code, 'CORVID_FORBIDDEN');
+    const deniedPopupScreenshot = await mcp.callTool('page_screenshot', { roomId: room.id, tabId: popupTab.id });
+    assert.equal(deniedPopupScreenshot.result.isError, true);
+    assert.equal(deniedPopupScreenshot.value.code, 'CORVID_CONTROL_LOST');
     const createdPage = await mcp.callTool('page_new', { roomId: room.id });
     assert.equal(createdPage.result.isError, undefined);
     assert.equal(createdPage.value.openedBy, 'agent');
@@ -290,7 +308,7 @@ class McpProcess {
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
+    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_screenshot', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
       const args = { roomId: room.id, tabId: tab.id };
       if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
       if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
