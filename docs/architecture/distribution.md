@@ -1,18 +1,19 @@
-# Corvid 桌面打包与启动边界
+# Corvid 桌面打包与分发边界
 
-## 首个可复现产物
+## Release 产物
 
-首个打包切片为 macOS arm64 `.app` 开发包。`electron-builder` 使用固定版本和显式 bundle identifier，打包桌面、CLI、MCP 与 SDK 运行文件及生产依赖；E2E 测试、文档和工作区数据不进入应用包。构建产物写入被 Git 忽略的 `dist/`。
+GitHub Actions 的手动 Release workflow 在同一源码 SHA 上构建 macOS arm64/x64 DMG+ZIP 和 Windows x64 当前用户 NSIS 安装器。三个目标均通过构建和打包版启动 smoke 后，才创建私有 GitHub Release，并附 SHA-256 清单。版本必须与 `package.json` 完全一致，格式为 `0.x.x`；常规开发只递增 patch，只有用户明确要求时才升级 minor/major。
 
-应用显式使用 `com.heyallencao.corvid` 作为 bundle identifier。Corvid 用户数据仍使用 `~/.corvid`；测试通过 `CORVID_DATA_DIR` 指向临时目录，不依赖安装位置或当前工作目录。
-本轮未包含 Corvid 专属 macOS 图标，因此开发包会使用 Electron 默认图标；品牌图标仍需在面向用户分发前补齐。
+`electron-builder` 使用固定版本和显式 bundle identifier，打包桌面、CLI、MCP、SDK 与生产依赖；测试、文档和工作区数据不进入应用包。构建产物写入 Git 忽略的 `dist/`。目前应用图标仍是 Electron 默认图标。
 
 ## 打包后启动验收
 
-`npm run package:mac:dir` 在 Apple Silicon 主机上构建未签名的 arm64 `.app`。构建前删除同路径旧 `.app`，构建失败时清除不完整产物，避免旧包被误当作本次结果。随后运行 `npm run test:packaged:mac`，从应用包的可执行文件启动真实 Electron，检查 `app.isPackaged`、架构、Electron 版本、归档资源、浏览器窗口、Room 控制接口及优雅退出后的 `control.json` 清理。
+本地 Apple Silicon 开发验收使用 `npm run package:mac:dir` 和 `npm run test:packaged:mac`。Release workflow 在 macOS arm64 上运行 `npm test`，并在 macOS arm64、macOS x64 与 Windows x64 原生 runner 分别构建并启动打包应用。macOS 开发包构建前清除同路径旧 `.app`，失败时删除不完整产物；各平台 smoke 检查 `app.isPackaged`、目标架构、归档资源、浏览器窗口、Room 控制接口及优雅退出后的 `control.json` 清理。
 
-该 smoke test 只使用隔离临时数据目录和本地 Electron UI，不导入真实浏览器资料，不连接 OAuth 或模型，不修改默认浏览器或协议关联。
+Smoke 使用隔离临时数据目录和本地 Electron UI，不导入真实浏览器资料，不连接 OAuth 或模型，不修改默认浏览器或协议关联。
 
-## 尚未建立的分发合同
+## 当前限制
 
-开发包没有 Developer ID 签名或公证，不能视为面向公众的 macOS 安装包。DMG/PKG 安装体验、签名/公证、升级/回滚、自动更新、卸载和数据保留，Windows/Linux 构建与原生平台行为仍由[执行任务板 D15/D17](../execution/feature-board.md)跟踪。构建当前只在 macOS arm64 上验收；其他架构不得由该结果外推。
+安装包没有 Apple Developer ID、macOS 公证或 Windows 代码签名，当前面向受邀测试者，不代表公众级可信安装体验。macOS 首次打开可能需要用户确认，Windows 可能显示 SmartScreen 提示。Linux、自动更新、默认浏览器/协议注册、升级/回滚、卸载后的数据保留仍未验证，详见[执行任务板 D15/D17](../execution/feature-board.md)。
+
+若 GitHub Actions runner 因账户计费限制无法启动，不得把构建或 Release 报告为成功，也不得用源码归档代替可安装产物。

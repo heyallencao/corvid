@@ -2,10 +2,15 @@ const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const appPath = path.join(__dirname, '..', 'dist', 'mac-arm64', 'Corvid.app');
+const arch = process.argv[2] ?? 'arm64';
+if (!['arm64', 'x64'].includes(arch)) {
+  throw new Error(`Unsupported macOS architecture: ${arch}`);
+}
+
+const appPath = path.join(__dirname, '..', 'dist', `mac-${arch}`, 'Corvid.app');
 fs.rmSync(appPath, { recursive: true, force: true });
 
-const result = spawnSync('electron-builder', ['--mac', '--arm64', '--dir'], {
+const result = spawnSync('electron-builder', ['--mac', `--${arch}`, '--dir'], {
   cwd: path.join(__dirname, '..'),
   env: process.env,
   stdio: 'inherit',

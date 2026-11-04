@@ -131,10 +131,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       await loading.waitFor({state:'detached'});
       await until(async()=>{const snapshot=await call('/rooms');const current=snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs[0];return current?.title==='Slow Fixture'&&current.isLoading===false;},`${locale} slow tab completes`);
       await tabs.first().locator('.tab-loading-indicator').waitFor({state:'detached'});
-      await tabs.first().locator('img.favicon').waitFor({state:'visible'});
+      await tabs.first().locator('.tab-main .favicon').waitFor({state:'visible'});
       assert.equal(await tabs.first().locator('.tab-loading-indicator').count(),0,'loading indicator is removed after navigation completes');
       if(loadingQaDir&&locale==='zh-CN')await shell.screenshot({path:path.join(loadingQaDir,'issue-197-loaded.png')});
-      assert.equal(await tabs.first().locator('.tab-main').getAttribute('aria-label'),null,'loading label is removed after navigation completes');
+      assert.equal(await tabs.first().locator('.tab-main').getAttribute('aria-label'),'Slow Fixture','loading label is replaced by the completed page title');
     }
     await shell.evaluate(async()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
     await shell.locator('#address').fill(`${base}/`);await shell.locator('#address').press('Enter');

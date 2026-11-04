@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 Release 构建链路准备
+
+- 范围：新增 GitHub Actions 手动 Release workflow；固定同一 `github.sha` 构建 macOS arm64/x64 DMG+ZIP 与 Windows x64 NSIS，全部平台打包 smoke 成功后才创建 `v0.x.x` tag/私有 Release，并上传可在下载目录直接执行的 SHA-256 清单。`package.json` 当前仍为 `0.2.0`；仓库原先没有 Git tag 或 Release。
+- 本机打包：macOS arm64、Node.js v24.22.1、Electron 45.2.1。`npm run package:mac:release` 成功生成 `Corvid-0.2.0-mac-arm64.dmg`（138 MiB）及 `.zip`（133 MiB）；`env -u ELECTRON_RUN_AS_NODE npm run package:mac:dir` 与 `env -u ELECTRON_RUN_AS_NODE npm run test:packaged:mac` 通过，真实打包应用启动、Room/control 接口和正常退出清理均通过。产物未签名/公证，使用 Electron 默认图标。
+- 回归修正：`tab-ux-e2e`、`agent-rooms-panel-e2e` 和 `window-state-e2e` 中存在与当前 ARIA/DOM/原生窗口合同不一致的断言，按当前运行态修正；上述三个定向用例及 `download-e2e`、`tab-overflow-e2e`、`restore-loading-e2e` 单独运行均通过。
+- 全量边界：本机 `env -u ELECTRON_RUN_AS_NODE npm test` 未通过，最后一次失败于 `restore-loading-e2e` 的 Electron 清理：`app.close()` 超过 3000ms，测试发送 SIGKILL 结束进程。该用例单独复跑通过；因此全量回归本轮记为失败/间歇性清理问题，不得标成全量通过。
+- GitHub 边界：2026-11-04 复核开放 PR 的失败检查时，GitHub 注释显示付款失败/支出限额导致 runner 未启动（`steps=[]`）；无代码步骤日志。Intel macOS、Windows 构建及 Release workflow 尚未获得 GitHub 原生 runner 验证。
+
 ## 2026-11-04 Issue #244 链接债务复核
 
 - 只读检查：重新读取 GitHub 开放列表与 PR 正文，并对照本地 `git worktree list`。当前 27 个开放 Issue、21 个开放 PR；9 个 Issue 正文含本机路径（包括 #244 自身，另 8 个），8 个开放 PR 共 21 个图片目标仍引用非 `main` 分支或相对路径，相关 8 个分支都有独立工作树。
