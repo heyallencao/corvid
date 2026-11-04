@@ -17,7 +17,7 @@ function agentEventText(event) {
   if(event.type==='retry'&&retry)return extensionMessages.t('agentRetrying',{attempt:retry[1],maxAttempts:retry[2]});
   return event.type==='error'?userFacingAgentError(value):value;
 }
-let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, piShowNewChat = false, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null, addressSuggestionItems = [], addressSuggestionIndex = -1, addressSuggestionRequest = 0, addressSuggestionOwner = null;
+let state, libraryKind = null, libraryTrigger = null, controlError = '', siteDataNotice = null, piBinding = null, piContextPreview = null, piTasks = [], agentTaskSummaries = [], agentTaskSummaryProfileId = null, agentTaskSummaryRequest = 0, piPromptDraft = '', piContinueTaskId = null, piContinuationPreview = null, piContinuationDraft = '', piContinuationConsent = false, piHistoryOpen = false, piSelectedTaskId = null, piShowNewChat = false, addressDraftDirty = false, addressDraftTabId = null, addressDraftBaseUrl = null, addressSuggestionItems = [], addressSuggestionIndex = -1, addressSuggestionRequest = 0, addressSuggestionOwner = null;
 let piQueueEdit = null, piQueueDraft = '', piQueueDrafts = new Map(), piQueueSend = null;
 let piTaskDurationTimer = null;
 const extensionPopupOpenIds=new Set();
@@ -108,13 +108,38 @@ async function openProfileDeletionDialog() {
   await openShellDialog('#profile-deletion','#profile-deletion-select');
   await refreshProfileDeletionPreview();
 }
-function roomDisplayName(room) { return room.name === '我的空间' ? extensionMessages.t('mySpace') : room.name === '新窗口的空间' ? extensionMessages.t('newWindowSpace') : room.name; }
+function roomDisplayName(room) { return room.name === '我的空间' ? extensionMessages.t('mySpace') : room.name === '新窗口的空间' ? extensionMessages.t('newWindowSpace') : room.name === 'Corvid Agent 对话' ? extensionMessages.t('agentConversationRoom') : room.name; }
+function summaryForDisplay(value, maximum = 72) {
+  const text=String(value||'').replace(/```[\s\S]*?```|`[^`]*`/g,' ').replace(/https?:\/\/[^\s<>"'，。；、！？)\]}]+/gi,extensionMessages.t('hiddenLink'))
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,extensionMessages.t('hiddenValue'))
+    .replace(/\+?(?:\d[\s().-]*){9,}\d/g,extensionMessages.t('hiddenValue'))
+    .replace(/((?:api[-_ ]?key|password|secret|token)\s*[:=]\s*)[^\s,;]+/gi,`$1${extensionMessages.t('hiddenValue')}`)
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,})\b/g,extensionMessages.t('hiddenValue'))
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g,extensionMessages.t('hiddenValue')).replace(/\s+/g,' ').trim();
+  const characters=Array.from(text);
+  return characters.length>maximum?`${characters.slice(0,maximum-1).join('').trimEnd()}…`:characters.join('');
+}
+function localizeTaskSummary(value) {
+  return String(value||'').replace(/\[已隐藏\]/g,extensionMessages.t('hiddenValue')).replace(/链接/g,extensionMessages.t('hiddenLink'));
+}
 function updateNewTabSurface(active) {
   const isNewTab=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
   document.querySelector('#bookmarks-bar').toggleAttribute('hidden',isNewTab);
 }
+function loadAgentTaskSummaries(profileId) {
+  if(agentTaskSummaryProfileId===profileId)return;
+  agentTaskSummaryProfileId=profileId;
+  agentTaskSummaries=[];
+  const request=++agentTaskSummaryRequest;
+  void api.invoke('agentTaskSummaries',{profileId}).then(result=>{
+    if(request!==agentTaskSummaryRequest||state?.activeProfileId!==profileId||result.profileId!==profileId)return;
+    agentTaskSummaries=result.tasks||[];
+    draw(state);
+  }).catch(()=>{});
+}
 function draw(value) {
   state = value;
+  loadAgentTaskSummaries(state.activeProfileId);
   extensionMessages.setLocale(state.uiLocale);
   const fullscreenToggle=document.querySelector('#toggle-fullscreen');
   fullscreenToggle.setAttribute('aria-checked',String(Boolean(state.fullscreen)));
@@ -138,10 +163,24 @@ function draw(value) {
   const roomStrip=document.querySelector('#room-strip');roomStrip.replaceChildren();
   for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) {
     const displayName=roomDisplayName(s);
+    const summary=[...agentTaskSummaries].filter(task=>task.roomId===s.id).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0];
     const item=button(displayName,()=>api.invoke('activateRoom',{id:s.id}),s.id===state.activeRoomId);
     item.dataset.ownership=s.ownership;
     item.setAttribute('aria-current',s.id===state.activeRoomId?'page':'false');
-    item.title=`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`;
+    if(summary){
+      const prompt=localizeTaskSummary(summary.promptSummary)||extensionMessages.t('conversationTask'), accessiblePrompt=localizeTaskSummary(summary.promptAccessibleSummary)||prompt, titlePrompt=localizeTaskSummary(summary.promptTitle||summary.promptAccessibleSummary||prompt), page=localizeTaskSummary(summary.pageTitle)||extensionMessages.t('page');
+      const time=summary.updatedAt?extensionMessages.formatDate(summary.updatedAt,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'';
+      const defaultAgentRoom=s.name==='Corvid Agent 对话';
+      const name=document.createElement('span');name.className='room-name';name.textContent=defaultAgentRoom?prompt:displayName;
+      const detail=document.createElement('span');detail.className='room-agent-summary';detail.textContent=(defaultAgentRoom?[page,time]:[prompt,page,time]).filter(Boolean).join(' · ');
+      item.replaceChildren(name,detail);
+      item.dataset.roomMark=Array.from(prompt)[0]||'•';
+      item.setAttribute('aria-label',`${displayName} · ${extensionMessages.t('agentConversationSummary',{summary:accessiblePrompt,page,time})}`);
+      item.title=`${displayName} · ${titlePrompt} · ${page}${time?` · ${time}`:''}`;
+    }else{
+      item.setAttribute('aria-label',`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`);
+      item.title=`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`;
+    }
     roomStrip.append(item);
   }
   const profileMenu=document.querySelector('#profile-menu');profileMenu.replaceChildren();
@@ -364,13 +403,19 @@ async function renderAgentRooms(){
     const roomTasks=tasksByRoom.get(room.id)||[];
     const taskStates=document.createElement('div');taskStates.className='agent-room-tasks';
     for(const task of roomTasks){
-      const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||extensionMessages.t('taskStatusUnknown')}`;taskStates.append(taskStatus);
+      const rawPrompt=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask');
+      const prompt=summaryForDisplay(rawPrompt), accessiblePrompt=summaryForDisplay(rawPrompt,240), titlePrompt=summaryForDisplay(rawPrompt,8_000);
+      const page=summaryForDisplay(task.page?.title||task.page?.url||extensionMessages.t('page'));
+      const time=task.updatedAt||task.createdAt?extensionMessages.formatDate(task.updatedAt||task.createdAt,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'';
+      const detail=document.createElement('div');detail.className='agent-room-task-detail';
+      const taskStatus=document.createElement('span');taskStatus.className='agent-room-task-state';taskStatus.dataset.status=task.status;taskStatus.textContent=`Corvid Agent · ${taskLabels[task.status]||extensionMessages.t('taskStatusUnknown')}`;detail.append(taskStatus);
+      const summary=document.createElement('span');summary.className='agent-room-task-summary';summary.textContent=[prompt,page,time].filter(Boolean).join(' · ');detail.append(summary);taskStates.append(detail);
       const openTask=button(extensionMessages.t('viewConversation'),async()=>{
         piSelectedTaskId=task.id;piHistoryOpen=false;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding={profileId:task.profileId,roomId:task.roomId,tabId:task.tabId};piContextPreview=null;
         setLibraryPanel('pi-workbench',document.querySelector('#show-pi-workbench'));
         await api.invoke('setPanel',{open:true,workspace:true});
         renderPiWorkbench();
-      });openTask.setAttribute('aria-label',`${extensionMessages.t('viewConversation')} · Corvid Agent · ${room.name} · ${taskLabels[task.status]||extensionMessages.t('conversationTask')}`);taskStates.append(openTask);
+      });openTask.setAttribute('aria-label',extensionMessages.t('conversationHistoryItem',{summary:accessiblePrompt,page,status:taskLabels[task.status]||extensionMessages.t('conversationTask'),time}));openTask.title=titlePrompt;taskStates.append(openTask);
     }
     const view=button(extensionMessages.t('view'),async()=>{await closeLibraryPanel({restoreFocus:true});await api.invoke('activateRoom',{id:room.id});});
     view.setAttribute('aria-label',`${extensionMessages.t('view')} ${room.name}`);
@@ -427,14 +472,18 @@ async function renderPiTasks(){
     const history=document.createElement('div');history.id='pi-chat-history';history.className='pi-chat-history';
     for(const task of [...piTasks].reverse()){
       const item=button('',()=>{piSelectedTaskId=task.id;piShowNewChat=false;piContinueTaskId=task.canContinue&&!['running','preparing'].includes(task.status)?task.id:null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piHistoryOpen=false;renderPiTasks();});item.className='pi-history-item';item.setAttribute('aria-current',String(task.id===piSelectedTaskId));
-      const title=document.createElement('span');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask');
-      const subtitle=document.createElement('small');subtitle.textContent=`${labels[task.status]||task.status} · ${task.page?.title||task.page?.url||extensionMessages.t('page')}`;item.append(title,subtitle);history.append(item);
+      const prompt=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask');
+      const summary=summaryForDisplay(prompt), accessibleSummary=summaryForDisplay(prompt,240), titleSummary=summaryForDisplay(prompt,8_000), page=summaryForDisplay(task.page?.title||task.page?.url||extensionMessages.t('page'));
+      const time=task.updatedAt||task.createdAt?extensionMessages.formatDate(task.updatedAt||task.createdAt,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'';
+      const title=document.createElement('span');title.className='pi-task-title';title.textContent=summary;
+      const subtitle=document.createElement('small');subtitle.textContent=[labels[task.status]||task.status,page,time].filter(Boolean).join(' · ');item.append(title,subtitle);
+      item.setAttribute('aria-label',extensionMessages.t('conversationHistoryItem',{summary:accessibleSummary,page,status:labels[task.status]||task.status,time}));item.title=titleSummary;history.append(item);
     }
     list.append(history);
   }
   for(const task of visibleTasks){
     const row=document.createElement('article');row.className='pi-task-entry';row.dataset.taskId=task.id;
-    const title=document.createElement('strong');title.className='pi-task-title';title.textContent=task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask');title.title=title.textContent;row.append(title);
+    const title=document.createElement('strong');title.className='pi-task-title';title.textContent=summaryForDisplay(task.conversation?.find(turn=>turn.role==='user')?.text||task.prompt||extensionMessages.t('conversationTask'));row.append(title);
     const context=document.createElement('div');context.className='pi-task-context';context.textContent=`Corvid Agent${task.selectedModel?.name?` · ${task.selectedModel.name}`:''} · ${task.page?.title||task.page?.url||extensionMessages.t('page')}`;row.append(context);
     const meta=document.createElement('div');meta.className='pi-task-meta';
     const roomState=state.rooms.find(room=>room.id===task.roomId);const controlLabel=roomState?.executionRisk?extensionMessages.t('executionStatusUnknown'):roomState?.userResumePending?extensionMessages.t('takingOver'):roomState?.ownership==='user'?extensionMessages.t('userInControlShort'):'';
@@ -653,7 +702,9 @@ api.onBrowserHomeAction(kind=>{
   else if(kind==='history')void showLibrary('history',document.querySelector('#show-history'));
   else if(kind==='agent')void document.querySelector('#show-pi-workbench').click();
 });
-api.onState(draw); api.onPiTasks(()=>{if(libraryKind==='pi-workbench')void renderPiTasks();else if(libraryKind==='agent-rooms')void renderAgentRooms();}); api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=extensionMessages.t('loginCode',{code:event.userCode,url:event.verificationUri});return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=userFacingAgentError(error);}};if(status)status.textContent=extensionMessages.t('authBrowserInstruction');return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=userFacingAgentError(event.message,extensionMessages.t('connectingModelAccount'));});
+api.onState(draw); api.onPiTasks(()=>{if(libraryKind==='pi-workbench')void renderPiTasks();else if(libraryKind==='agent-rooms')void renderAgentRooms();});
+api.onAgentTaskSummaries(payload=>{if(!state||payload?.profileId!==state.activeProfileId)return;agentTaskSummaryRequest++;agentTaskSummaryProfileId=payload.profileId;agentTaskSummaries=Array.isArray(payload.tasks)?payload.tasks:[];draw(state);});
+api.onPiAuthEvent(event=>{const status=document.querySelector('.pi-model-status');if(event.type==='device_code'){if(status)status.textContent=extensionMessages.t('loginCode',{code:event.userCode,url:event.verificationUri});return;}if(event.type==='auth_url'){const link=document.querySelector('#pi-auth-open-url');link.href=event.url;link.hidden=false;link.onclick=async e=>{e.preventDefault();try{await api.invoke('openPiAuthUrl',{url:event.url});}catch(error){if(status)status.textContent=userFacingAgentError(error);}};if(status)status.textContent=extensionMessages.t('authBrowserInstruction');return;}if((event.type==='progress'||event.type==='info')&&status)status.textContent=userFacingAgentError(event.message,extensionMessages.t('connectingModelAccount'));});
 api.onPiAuthPrompt(async request=>{
   const prompt=request.prompt||{},dialog=document.querySelector('#pi-auth-dialog'),form=document.querySelector('#pi-auth-form'),message=document.querySelector('#pi-auth-message'),label=document.querySelector('#pi-auth-input-label');let input=document.querySelector('#pi-auth-input');
   message.textContent=userFacingAgentError(prompt.message||prompt.instructions,extensionMessages.t('authorizationPrompt'));label.replaceChildren(document.createTextNode(prompt.type==='manual_code'?extensionMessages.t('authCodeOrCallback'):extensionMessages.t('authorizationInfo')));
