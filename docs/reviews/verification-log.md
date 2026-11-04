@@ -24,6 +24,16 @@
 - GitHub Actions：PR #243 的两个跨平台 workflow 启动 6 个矩阵作业，均约 2 秒后失败；`gh run view` 显示所有作业 `steps: []`，没有可读取的作业步骤或失败日志。因此本轮远程 CI 未执行测试，当前无法从这些结果判断实现兼容性或根因。
 - 限制：不覆盖原生滚动条像素、WebContentsView 合成、真机输入设备、Windows/Linux、打包版本、屏幕阅读器及站点页面 CSS；结果只证明本地开发 Electron 下的定向 UI 状态。
 
+## 2026-11-04 Issue #215 空间与导航选中态统一
+
+- 变更：当前 Room 的文字、底色与内侧强调指示线改用与当前侧栏入口相同的主题 token；保留空间身份圆点。回归测试覆盖选中态一致性、浅/深主题对比度、Room/nav hover 稳定性与 704×420 紧凑视口。
+- 基线证据：同一 Electron 测试在修改前失败，浅色主题 Room 文字 `rgb(48, 55, 80)` 与侧栏选中文字 `rgb(53, 73, 185)` 不同；修复后 E2E 从渲染 computed style 读取并通过，两主题对比度为浅色 6.49:1、深色 8.04:1。
+- 环境：独立 worktree `/private/tmp/corvid-issue215-selection-states`，更新并重放到 `origin/main` 的 `5dc0563`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与 `about:blank`，不读取用户资料、不访问真实网页、不使用 OAuth 或模型。命令：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue215-captures node tests/interaction-states-e2e.cjs`。
+- 视觉与 REA：修复前后浅/深截图、状态尺寸和 SHA-256 见[QA 记录](../qa/ui-visual-check.md#2026-11-04-空间与导航选中态统一-issue-215)。Kobra 当前目录状态由 REA controlled replay `ev_f172ddf847c4c72b6741c44d18c37ef6356fdfd5b8a4be3b5c1c6a086ae0fc01` 直接观察；它只支持“选中项应有清楚状态线索”的灵感，不支持 hover/键盘或浏览器 chrome 行为推断。
+- 检查：`node --check tests/interaction-states-e2e.cjs`、`package.json` JSON 解析和 `git diff --check` 均通过。Impeccable detector 对 `desktop/styles.css` 返回两条既有 warning（第 442、581 行）；新增选中态规则未触发。全量 `npm test` 未运行。
+- 最终定向复跑：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue215-captures node tests/interaction-states-e2e.cjs`，EXIT 0；真实 Electron 覆盖 1024×700 与 704×420，浅/深主题选中态一致、hover 稳定，渲染态文字对比度 6.49:1 / 8.04:1。QA 截图与 SHA-256 见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-空间与导航选中态统一-issue-215)。
+- 限制：本次开发版 Electron 与 renderer 截图不证明打包版、原生窗口合成、网页视图、Windows/Linux、VoiceOver 或用户自定义高对比度主题。只交付 #215 的选中状态语言子项，不关闭该 Issue。
+
 
 
 ## 2026-11-04 对话框提交按钮悬停级联（Issue #211 子项）

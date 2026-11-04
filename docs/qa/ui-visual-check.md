@@ -16,6 +16,15 @@
 - 验证：`CORVID_INTERACTION_QA_DIR=docs/qa/screenshots/issue-216 env -u ELECTRON_RUN_AS_NODE node tests/interaction-states-e2e.cjs` 最终 EXIT 0，覆盖浅/深主题、selected/hover/active、细滚动条、选区与 reduced-motion。E2E 使用临时数据目录并在退出时清理；Electron 进程与临时依赖链接已退出/移除。不访问真实网站、用户资料、模型或 OAuth。
 - 未覆盖：浏览器 renderer 的截图不包含上层 `WebContentsView` 合成像素；未测试原生 macOS overlay scrollbar 的实际显示、Windows/Linux、打包版、真实鼠标硬件、屏幕阅读器及用户自定义高对比度主题；Kobra 行为也只覆盖静态目录画面。
 
+## 2026-11-04 空间与导航选中态统一（Issue #215）
+
+- 问题与修正：最新主线已经由 PR #243 让侧栏选中项在 hover 时保持原状态，但当前空间仍使用中性文字/灰底，当前书签入口使用强调文字/强调底色/内侧指示线。隔离 Electron 基线断言在浅色主题实测 `rgb(48, 55, 80)` 与 `rgb(53, 73, 185)` 文字色不一致。修正后，当前空间沿用现有侧栏选中 token 与 2px 内侧指示线，空间圆点仍保留为空间身份标记；没有新增品牌色或改变导航行为。
+- Corvid 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；临时 `CORVID_DATA_DIR`、`about:blank` 合成初始 Room/书签面板、shell viewport 1024×700 CSS px（PNG 2048×1400，Retina 2×）；未加载网页主体、用户浏览数据或账号信息。修复前浅/深主题截图重用 PR #243 的基线图，提交来源 `48cfea6`：[浅色修复前](screenshots/issue-215/issue-215-selection-light-before-1024x700.png)，SHA-256 `504e97eb5d5149f136d3b0c6159b74ed116f0dd9f6225cf76d365243968b45f0`；[深色修复前](screenshots/issue-215/issue-215-selection-dark-before-1024x700.png)，SHA-256 `ec9586cee31b05edeb83c9c4bfaf50cf8f3e8273b46e189b6101cc789205c316`。修复后浅色[当前空间与书签同时选中](screenshots/issue-215/issue-215-selection-light-after-1024x700.png)，SHA-256 `ea2a87992725bb0faeaf544abe3a8b652590835feaa224894a2c35fa0e6275b8`；深色[当前空间与书签同时选中](screenshots/issue-215/issue-215-selection-dark-after-1024x700.png)，SHA-256 `4f310051d103300a205e901aec1773a07abd46191891a8baf94d873e84ff00c0`。
+- 运行态验证：`interaction-states-e2e.cjs` 在 1024×700 断言当前空间与当前侧栏入口颜色、底色和指示线相同；浅/深主题选中文字对比度分别为 6.49:1、8.04:1；当前空间和侧栏选中项在 hover 时保持已选样式。随后在 704×420 紧凑视口重做两主题样式相等断言。测试保持 `about:blank`，未调用模型、OAuth 或网络服务。截图由 Electron renderer 产生，不包含原生标题栏或网页 `WebContentsView` 合成层。
+- UI/UE 参考与 REA：Kobra `https://kobra.systems/components/input-otp`，2026-11-04，1280×850，REA controlled replay Evidence `ev_f172ddf847c4c72b6741c44d18c37ef6356fdfd5b8a4be3b5c1c6a086ae0fc01`，截图 SHA-256 `0661c85e09182ee4980f9638a0c459b22aad0e7ab543dab7a1c7ff71fc0a1f30`。直接观察：当前组件目录项以绿色圆点和文字区别于中性未选项；页面属于组件文档，不是浏览器。没有点击或 hover Kobra 导航，因此不推断其 hover、pressed、键盘或滚动行为。只借鉴“当前项应有稳定且克制的状态线索”，颜色和指示线沿用 Corvid 自有 token；没有复制代码、图标或素材。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描。
+- Impeccable detector：对 `desktop/styles.css` 运行一次检测，退出码 2；只报告既有 `side-tab` warnings（第 442、581 行），均与本次 Room/导航选择器无关。没有把 detector 结果描述为全站通过。
+- 未覆盖：没有测试用户自建长名称空间、Windows/Linux、打包版、VoiceOver/其他读屏、系统高对比度主题、原生窗口合成或网页画布截图。Issue #215 还包括标题栏、整体品牌/主题与 Agent 面板整合，本切片只统一当前空间和侧栏页面的选中语言，Issue 继续开放。
+
 
 ## 2026-11-04 书签即时反馈与窄窗布局（Issue #195）
 

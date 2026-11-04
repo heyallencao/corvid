@@ -201,7 +201,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #room-strip button { position: relative; width: 100%; min-height: 35px; display: flex; align-items: center; gap: 9px; padding: 6px 10px 6px 12px; color: var(--text-secondary); text-align: left; }
 #room-strip button::before { content: ""; width: 7px; height: 7px; flex: none; border: 1.5px solid var(--room-indicator); border-radius: 50%; }
 #room-strip button[data-ownership="agent"]::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-#room-strip button[aria-current="page"] { background: var(--surface-selected); color: var(--surface-selected-text); font-weight: 600; }
+#room-strip button[aria-current="page"] { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; box-shadow: inset 2px 0 var(--accent); }
 #room-strip button[aria-current="page"]::before { border-color: var(--accent); background: var(--accent); }
 #room-strip .room-name, #room-strip .room-agent-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #room-strip .room-name { font-weight: 600; }
