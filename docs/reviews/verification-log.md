@@ -1460,3 +1460,4 @@
 - 截图：双语 700×420 下载页及中文未保存决策框已重新采集并目视检查，像素尺寸、SHA-256 和直接观察边界见[QA 视觉记录](../qa/ui-visual-check.md#issue-285-离开设置时的草稿与窄窗首屏2026-11-04)。下载前询问及辅助说明需滚动查看；设置留白压缩不等于整个设置页已适配所有短窗内容。
 - REA/CUA 边界：CUA 在解锁后的本机原生窗口直接查看设置中心截图与 AX 树，但没有保留该截图文件；REA `observe_native_ui` 因 provider 缺少可验证的进程启动时间而 `capability_unavailable`，不声称 REA 原生观察。已有 EasyUI 与 Aceternity REA 证据仅用于有限的分类/状态灵感，本轮未重新采集站点；详见 QA 记录。
 - 未覆盖：没有运行全量 `npm test`；没有验证真实 macOS 文件夹选择器、VoiceOver、签名包、Windows/Linux 或屏幕截图中的 WebContentsView 像素。
+- PR checks 边界：GitHub Actions 运行 `41824401312`、`41824401405` 和截图链接检查 `41824467888` 均在 runner 执行前失败；GitHub annotation 表示账户付款失败或支出限额需要调整。作业没有测试步骤/日志，故这是 CI 账户阻塞，不是测试失败或代码验证结果；需要账户侧恢复 Actions 额度后重新运行，合并前置检查仍未通过。
