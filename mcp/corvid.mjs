@@ -67,6 +67,15 @@ async function withManagedPage(roomId, tabId, operation) {
   } finally { await client.disconnect(); }
 }
 
+async function withAgentRoom(roomId, operation) {
+  const client = await connectAgent();
+  try {
+    const room = await client.room(roomId);
+    assertAgentReadable(room);
+    return await operation(room);
+  } finally { await client.disconnect(); }
+}
+
 function createServer() {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
@@ -139,6 +148,19 @@ function createServer() {
   registerReadTool(server, 'page_wait_for_load', 'Wait for the selected page document to reach domcontentloaded or load, then return its current page info. networkidle is not supported.', pageScopeSchema.extend({ state: z.enum(['domcontentloaded', 'load']).default('load'), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, state, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
     await page.waitForLoadState(state, { timeout: timeoutMs });
     return await page.info();
+  }));
+
+  registerActionTool(server, 'page_new', 'Create a new blank, Agent-owned managed page in the explicitly selected Room. This adds a tab but does not navigate it or activate the Room.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => withAgentRoom(roomId, async room => {
+    const page = await room.newPage();
+    return await page.info();
+  }));
+
+  registerActionTool(server, 'page_close', 'Close one explicitly selected managed page only when it was created by the Agent. Pages with user or unknown origin cannot be closed. A site beforeunload prompt may require user confirmation.', pageScopeSchema, async ({ roomId, tabId }) => withAgentRoom(roomId, async room => {
+    const tab = (await room.tabs()).find(item => item.id === tabId);
+    if (!tab) throw Object.assign(new Error(`Tab not found: ${tabId}`), { code: 'CORVID_NOT_FOUND' });
+    if (tab.openedBy !== 'agent') throw Object.assign(new Error('Only Agent-created pages can be closed through Browser MCP'), { code: 'CORVID_FORBIDDEN' });
+    if (!tab.label) throw Object.assign(new Error('Tab is unmanaged; adopt it in Corvid before closing it'), { code: 'CORVID_CONTROL_LOST' });
+    return await room.page(tabId).close();
   }));
 
   registerActionTool(server, 'page_navigate', 'Navigate an explicitly selected managed page to an HTTP or HTTPS URL. This can change site state; inspect the result after acting.', pageScopeSchema.extend({ url: z.string().url().max(8192) }), async ({ roomId, tabId, url }) => {
