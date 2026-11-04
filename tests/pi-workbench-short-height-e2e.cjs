@@ -100,12 +100,15 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return {
         scrollable: form.scrollHeight > form.clientHeight,
         modelSelectorVisible: fullyVisible('.pi-model-select'),
+        connectionStatusVisible: fullyVisible('.pi-model-status'),
+        connectActionVisible: fullyVisible('.pi-model-connection > .pi-model-action'),
+        modelManagementVisible: fullyVisible('.pi-model-manage'),
         promptVisible: fullyVisible('textarea'),
         pageReviewVisible: fullyVisible('.pi-secondary-action'),
       };
     });
-    assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
-      'model, prompt, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
+    assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.connectionStatusVisible && composerAccess.connectActionVisible && composerAccess.modelManagementVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
+      'model, account recovery, prompt, management, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
 
     console.log('PASS Corvid Agent welcome remains readable in zh-CN/en at short window height: ' + JSON.stringify({ zh: zhLayout, en: enLayout }));
   } finally {
