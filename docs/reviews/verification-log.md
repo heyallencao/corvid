@@ -1271,6 +1271,7 @@
 - 环境：独立 worktree `/private/tmp/corvid-issue209-icon-system`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。所有 Electron 验收使用临时 `CORVID_DATA_DIR` 与合成 HTTP fixture；未访问真实用户页面/浏览数据，未使用模型、OAuth 或外网。
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/navigation-error-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE node tests/tab-pin-menu-e2e.cjs` EXIT 0。覆盖未加密 HTTP、HTTP 500、失败连接未知、双语状态名称、六个侧栏入口 SVG、内联 favicon 与色彩 token、currentColor pin，以及原有导航重试、标签溢出、pin/menu/restart 回归。`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/navigation-error-e2e.cjs`、`node --check tests/tab-overflow-e2e.cjs`、`node --check tests/tab-pin-menu-e2e.cjs` 与 `git diff --check` 通过。一次初始语言假设、favicon 异步替换和旧 `img.favicon` 断言被修正后，各相关测试完整重跑通过。开发依赖通过根目录 `node_modules` 临时软链接提供，测试结束后移除；Electron 进程已退出。没有运行完整 `npm test`。
 - 截图：英文 700×420 SHA-256 `784222a20d9e8da0dc95ab1e1da7edcd37d274c825325ac58fd81f430f094d2c`；简体中文 1024×700 SHA-256 `6d99c79ee99e4c663888e0ede33ec08b7b019cbac73d332c85f12fc497ca4a66`；界面检查与 REA 参考限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-地址栏连接状态与-svg-图标-issue-209)。
+- GitHub CI：PR #233 的 Chrome 导入类别和系统凭据存储共 6 个 job 全部 `runner_id=0`、`steps=[]`，annotation 指出近期付款失败或支出上限导致 job 未启动；属于账户/runner 限制，不是测试代码失败。macOS arm64 另有容量提示。跨平台 CI 未执行，不能记为通过。
 - 限制：HTTPS 只按当前 HTTPS URL 及 Chromium 默认 TLS 校验结果派生，未用本机受信任证书执行真实 HTTPS 成功页验收，也未注入证书错误；未验证深色主题、VoiceOver、Windows/Linux 和打包版本。REA EGO/Kaze 原生观察只证明浏览器 chrome 和导航布局语境，不证明其锁态行为；具体 Evidence 和未观察站点列于视觉检查记录。
 
 
