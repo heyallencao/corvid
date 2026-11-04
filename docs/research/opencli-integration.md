@@ -114,3 +114,9 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #262 为 MCP 增加只读 `page_screenshot`：复用显式授权 Room/受管 Page 与 Agent 控制检查，返回当前视口 `image/png` 内容；不导航、不切换前台、不落盘，图像字节上限 8 MiB，完整页截图不对 MCP 开放。
 - 验证使用隔离真实 Electron 和本地 fixture；覆盖 image content/PNG 签名、后台 Room 前台稳定和超限拒绝。没有真实 MCP host，因此不证明具体 host 会显示图像或将其转交视觉模型。
+
+
+## 2026-11-04 Browser MCP 表单选择与悬停
+
+- Issue #264 将 SDK 已有的 `selectOption()` 与 `hover()` 暴露为 `page_select_option`、`page_hover`。选择支持 value/label/index、单选/多选和清空；按 SDK 合同更新 DOM 选项并发出非可信 input/change 事件，不操作原生选择器；悬停只接受 locator，不开放任意坐标或脚本。两者都遵循显式 Room/Page 与 Agent 控制检查，并标记为可产生页面副作用的 action。
+- 隔离真实 Electron + 本地 fixture 验证下拉状态和悬停后菜单可见、错误选项，以及用户接管拒绝。没有真实站点/MCP host 证据，不推断所有自定义下拉菜单、hover 触屏兼容或 host 交互。

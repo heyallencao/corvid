@@ -89,7 +89,7 @@ class McpProcess {
         setTimeout(() => response.end('<p>Document finished</p>'), 500);
         return;
       }
-      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -147,9 +147,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
-    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_navigate', 'page_new', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -252,6 +252,24 @@ class McpProcess {
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Search' } });
     const afterClick = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterClick.value), /Searched: corvid mcpx/);
+    const selectedCategory = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: 'books' });
+    assert.deepEqual(selectedCategory.value, ['books']);
+    const selectedByLabel = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: { label: 'Music' } });
+    assert.deepEqual(selectedByLabel.value, ['music']);
+    const clearedCategory = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'combobox', name: 'Category' }, choices: null });
+    assert.deepEqual(clearedCategory.value, []);
+    const selectedTags = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#tags' }, choices: ['red', { index: 1 }] });
+    assert.deepEqual(selectedTags.value, ['red', 'blue']);
+    const missingOption = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#category' }, choices: 'missing' });
+    assert.equal(missingOption.result.isError, true);
+    assert.match(missingOption.value.error, /Select option not found/);
+    const ambiguousSelect = await mcp.callTool('page_select_option', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'combobox' }, choices: 'books' });
+    assert.equal(ambiguousSelect.result.isError, true);
+    assert.match(ambiguousSelect.value.error, /Locator matched [2-9] elements/);
+    const hovered = await mcp.callTool('page_hover', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Hover menu' } });
+    assert.equal(hovered.result.isError, undefined, JSON.stringify(hovered.value));
+    const afterHover = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
+    assert.match(JSON.stringify(afterHover.value), /Hover menu revealed/);
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     const afterToggle = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.match(JSON.stringify(afterToggle.value), /Clicked/);
@@ -308,8 +326,10 @@ class McpProcess {
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_screenshot', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
+    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_select_option', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
       const args = { roomId: room.id, tabId: tab.id };
+      if (name === 'page_hover') Object.assign(args, { target: { by: 'role', value: 'button', name: 'Hover menu' } });
+      if (name === 'page_select_option') Object.assign(args, { target: { by: 'css', value: '#category' }, choices: 'books' });
       if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
       if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
       if (name === 'page_new') delete args.tabId;
