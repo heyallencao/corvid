@@ -271,6 +271,18 @@ module.exports = async function runAction(contents, operation, args = {}) {
     const timeout=Math.min(Math.max(Number(args.options?.timeout ?? 5000),0),10000); const deadline=Date.now()+timeout;
     do { try { return await run('exists',args); } catch(error) { if(!String(error.message).includes('Locator matched 0 elements')) throw error; if(Date.now()>=deadline) throw new Error('Wait timed out'); await new Promise(resolve=>setTimeout(resolve,Math.min(100,deadline-Date.now()))); } } while(true);
   }
+  if (operation === 'scroll') {
+    const {deltaX,deltaY,x,y}=args;
+    if(!Number.isFinite(deltaX) || !Number.isFinite(deltaY) || Math.abs(deltaX)>2000 || Math.abs(deltaY)>2000 || (deltaX===0 && deltaY===0))throw new Error('Scroll deltas must be finite, within -2000..2000, and not both zero');
+    if((x===undefined)!==(y===undefined) || (x!==undefined && (!Number.isFinite(x) || !Number.isFinite(y))))throw new Error('Scroll coordinates must be finite and supplied together');
+    const viewport=await run('viewport',{});
+    const point=x===undefined?{x:Math.floor(viewport.width/2),y:Math.floor(viewport.height/2)}:{x,y};
+    if(point.x<0 || point.y<0 || point.x>=viewport.width || point.y>=viewport.height)throw new Error('Scroll coordinates are outside the viewport');
+    // CDP mouseWheel is ignored by hidden background WebContentsView targets; use a mouse-source scroll gesture so background Rooms scroll without activation.
+    await pageDebugger.ensure(contents);
+    await contents.debugger.sendCommand('Input.synthesizeScrollGesture',{x:point.x,y:point.y,xDistance:-deltaX,yDistance:-deltaY,gestureSourceType:'mouse',speed:1200,preventFling:true});
+    return {ok:true,point};
+  }
   if (operation === 'setInputFiles') {
     await validateFiles(args.files);
     const {ref}=await run('resolve',args);

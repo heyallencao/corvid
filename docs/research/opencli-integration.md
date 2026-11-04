@@ -126,3 +126,8 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #266 将 SDK `Page.waitForSelector()` 收敛为 `page_wait_for_selector`：只接受已有 locator schema，状态限定 `attached`、`detached`、`visible`、`hidden`，timeout 100–60,000ms，默认 10 秒；不暴露函数或任意脚本。
 - 隔离真实 Electron + 本地 SPA fixture 已验证动态出现、隐藏、移除、timeout 与用户接管中断。通过 fixture 的局部 DOM 变化验证同文档观察，不代表真实网站/MCP host 对所有 selector 和动画的兼容性。
+
+## 2026-11-04 Browser MCP 页面滚动
+
+- Issue #268 将 SDK `Page.scroll(deltaX, deltaY, {x, y})` 暴露为 `page_scroll`：位移每轴限制 -2000..2000，至少一个非零；坐标必须成对且落在主视口内，缺省使用视口中心。主进程使用单次 Room 序列化的 CDP `Input.synthesizeScrollGesture`（mouse source）定位并滚动页面或嵌套容器，不运行网页脚本、不激活后台 Room。
+- 验收发现直接对后台 WebContentsView 派发 CDP `mouseWheel` 未产生页面滚动；改用 mouse-source scroll gesture 后，隔离 Electron fixture 中长文档和坐标命中的内部滚动面板都实际滚动。该差异只在当前 macOS/Electron 运行态观测，不推断其他平台或所有 Chromium 版本相同。
