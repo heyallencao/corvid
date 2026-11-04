@@ -228,6 +228,16 @@ document.querySelector('#page-dialog-form').onsubmit=event=>{event.preventDefaul
 document.querySelector('#page-dialog-dismiss').onclick=()=>answerPageDialog(false);
 document.querySelector('#page-dialog').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let libraryRenderVersion=0;
+function historyLocalDayKey(value){const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+function historyGroup(item){
+  const date=new Date(item.visitedAt),dayKey=historyLocalDayKey(date);
+  if(!dayKey)return {key:'unavailable',label:extensionMessages.t('historyDateUnavailable')};
+  const today=new Date(),yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);
+  if(dayKey===historyLocalDayKey(today))return {key:'today',label:extensionMessages.t('historyToday')};
+  if(dayKey===historyLocalDayKey(yesterday))return {key:'yesterday',label:extensionMessages.t('historyYesterday')};
+  return {key:dayKey,label:extensionMessages.formatDate(date,{dateStyle:'full'})};
+}
+function historyDisplayUrl(value){try{const url=new URL(value);return `${url.host}${url.pathname}`;}catch{return value;}}
 async function renderLibrary() {
   if (!libraryKind) return;
   if(libraryKind==='agent-rooms'){await renderAgentRooms();return;}
@@ -239,6 +249,32 @@ async function renderLibrary() {
   const matching=result[kind].filter(item=>!query || [item.title,item.url,item.filename,item.path].some(value=>typeof value==='string' && value.toLocaleLowerCase().includes(query)));
   const items = document.querySelector('#library-items'); items.replaceChildren();
   document.querySelector('#library-title').textContent = kind === 'history' ? extensionMessages.t('historyTitle') : kind === 'downloads' ? extensionMessages.t('downloadsTitle') : extensionMessages.t('bookmarksTitle');
+  if(kind==='history'){
+    const groups=new Map();
+    for(const item of matching){const group=historyGroup(item);if(!groups.has(group.key))groups.set(group.key,{...group,items:[]});groups.get(group.key).items.push(item);}
+    for(const group of groups.values()){
+      const section=document.createElement('section');section.className='history-group';section.dataset.historyGroup=group.key;
+      const heading=document.createElement('h3');heading.className='history-group-title';heading.textContent=group.label;section.append(heading);
+      for(const item of group.items){
+        const row=document.createElement('div');row.className='entry history-entry';row.dataset.historyId=item.id;
+        const details=document.createElement('div');details.className='history-entry-details';
+        const link=document.createElement('a');link.href='#';link.className='history-title';link.textContent=item.title||historyDisplayUrl(item.url);link.title=historyDisplayUrl(item.url);
+        link.onclick=async event=>{event.preventDefault();const tab=activeTab();if(tab)await api.invoke('navigate',{id:tab.id,url:item.url});};
+        const meta=document.createElement('div');meta.className='history-entry-meta';
+        const address=document.createElement('span');address.className='history-url';address.textContent=historyDisplayUrl(item.url);address.title=historyDisplayUrl(item.url);
+        const time=document.createElement('time');time.className='history-time';
+        const date=new Date(item.visitedAt);
+        if(Number.isFinite(date.getTime())){time.dateTime=date.toISOString();time.textContent=extensionMessages.formatDate(date,{hour:'numeric',minute:'2-digit'});}
+        else time.textContent=extensionMessages.t('historyTimeUnavailable');
+        meta.append(address,time);details.append(link,meta);row.append(details);
+        const remove=button(extensionMessages.t('delete'),async()=>{await api.invoke('removeHistory',{id:item.id,profileId});await renderLibrary();});
+        remove.setAttribute('aria-label',`${extensionMessages.t('delete')} ${item.title||historyDisplayUrl(item.url)}`);row.append(remove);section.append(row);
+      }
+      items.append(section);
+    }
+    if(!matching.length)items.textContent=query&&result.history.length?extensionMessages.t('noMatches'):extensionMessages.t('noHistory');
+    return;
+  }
   for (const item of matching) {
     const row = document.createElement('div'); row.className = 'entry';
     if (kind === 'downloads') {

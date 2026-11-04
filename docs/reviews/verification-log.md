@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 历史面板日期与来源信息（Issue #196）
+
+- 实现范围：历史行改为标题、可见主机/路径、本地化时间与删除动作；按浏览器本地日历分为今天、昨天和按日期标题的较早记录。界面不显示 URL 查询参数或片段，搜索仍使用库中的完整 URL。日期异常时回退到双语“日期未知 / Date unavailable”，不丢弃历史条目。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE CORVID_HISTORY_QA_DIR=/tmp/corvid-issue196-qa node tests/history-panel-e2e.cjs` 通过：两次真实本地 fixture 访问与合成历史按本地日期降序分组，验证今天/昨天/较早日期标题、zh-CN/en 格式、可见主机/路径、查询参数与片段不出现在可见文本或 tooltip、完整 URL 仍可搜索、单条删除和 700×420 无横向溢出。回归 `env -u ELECTRON_RUN_AS_NODE node tests/library-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/library-search-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均通过。所有改动 JS 文件 `node --check` 与 `git diff --check` 通过。没有访问真实网站、模型、OAuth 或个人浏览记录。
+- 截图：隔离合成历史数据，宽窗 [issue-196-history-zh-CN-1024x700.png](../qa/screenshots/issue-196-history-zh-CN-1024x700.png)（实际 PNG 2048×1336，SHA-256 `9a9e9a9b93b65b4a716efa5ac6d7365de8cc89fb01550667944464ad1522c427`）；窄窗 [issue-196-history-zh-CN-700x420.png](../qa/screenshots/issue-196-history-zh-CN-700x420.png)（实际 PNG 1408×776，SHA-256 `8c65db9b902f25c443e090e7536ae7870c1fd95dfd14b432b2d1fa5629c0573a`）。页面仅显示本地夹具与合成记录，无个人浏览内容。
+- REA/UI 参考与边界：项目既有研究文档记录 EGO `observe_native_ui` Evidence `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 与 Kaze `observe_native_ui` Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02）。本轮用 REA 查询这两个 ID 时，当前 Evidence store 均返回 0 条匹配记录，因此没有新鲜打开或重新分析这两份证据。项目文档记载的直接观察仅包括浏览器 chrome、标签/空间入口和网页画布；两份快照都没有打开历史面板，竞品时间分组与条目交互仍未知。样式取舍基于 Corvid 现有 Library 面板及 Issue #196 的可见差距：补足识别页面所需的时间和主机/路径，不引入另一套卡片或导航模型。
+- 未覆盖：跨时区切换后的历史分组、远端竞品历史面板、VoiceOver/Narrator/Orca 实播、Windows/Linux 窗口布局和真实用户历史数据。
+
 ## 2026-11-04 标签页加载反馈（Issue #197）
 
 - 实现：导航进行中在对应标签的 favicon 槽位显示 15px CSS spinner；完成或失败后恢复 favicon。将 `isLoading` 加入标签栏渲染签名，避免状态变化被跳过；加载状态的按钮可访问名称提供 `zh-CN`/`en` 双语，动画沿用现有 `prefers-reduced-motion` 全局策略。没有增加第二条进度条，避免重复表达同一加载状态和挤压标签栏。
