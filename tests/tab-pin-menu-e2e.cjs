@@ -83,13 +83,14 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(list.filter(tab=>tab.pinned).length,1);
     assert.equal(await shell.locator('.tab.pinned').count(),1);
     assert.equal(await shell.locator('.tab.pinned .pin-icon').count(),1);
+    assert.equal(await shell.locator('.tab.pinned .pin-icon path').getAttribute('fill'),null,'the pinned-tab SVG takes its fill from currentColor');
     await shell.locator('.tab.pinned .tab-main').click();
     await shell.locator('#address').fill(base+'/slow');await shell.locator('#address').press('Enter');
     const pinnedLoading=shell.locator('.tab.pinned .tab-loading-indicator');await pinnedLoading.waitFor({state:'visible'});
     assert.equal(await pinnedLoading.locator('.pin-icon').count(),1,'pinned tabs retain their pin glyph inside the loading ring');
     assert.match(await shell.locator('.tab.pinned .tab-main').getAttribute('aria-label'),/已固定|Loading pinned tab/,'pinned loading status is available to assistive technology');
     await pinnedLoading.waitFor({state:'detached'});
-    await shell.locator('.tab.pinned img.favicon').waitFor({state:'visible'});
+    await shell.locator('.tab.pinned .favicon').waitFor({state:'visible'});
     await shell.locator('#address').fill(base+'/three');await shell.locator('#address').press('Enter');
     await until(async()=>(await tabs()).find(tab=>tab.title==='Three')?.active,'restore pinned tab page after loading indicator check');
 
