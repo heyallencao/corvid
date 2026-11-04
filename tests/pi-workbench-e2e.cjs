@@ -9,12 +9,18 @@ const path = require('node:path');
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
+const queueEvidenceDirectory = process.env.CORVID_ISSUE194_QA_DIR;
 const saveScreenshot = async (page, fileName) => {
   const directory = evidenceDirectory || os.tmpdir();
   fs.mkdirSync(directory, { recursive: true });
   const outputPath = path.join(directory, fileName);
   await page.screenshot({ path: outputPath });
   return outputPath;
+};
+const saveQueueScreenshot = async (page, fileName) => {
+  if (!queueEvidenceDirectory) return;
+  fs.mkdirSync(queueEvidenceDirectory, { recursive: true });
+  await page.screenshot({ path: path.join(queueEvidenceDirectory, fileName) });
 };
 const readSavedTasks = dataDir => {
   const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
@@ -202,14 +208,24 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       await queueForm.getByRole('button',{name:'加入队列'}).click();
     }
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),3,'running task presents persisted follow-up messages in its own conversation');
-    await queuedTask.locator('.pi-message-queue-item').nth(2).getByRole('button',{name:'上移'}).click();
-    await queuedTask.locator('.pi-message-queue-item').nth(1).getByRole('button',{name:'上移'}).click();
+    const thirdQueueItem=queuedTask.locator('.pi-message-queue-item').nth(2),thirdQueueMenu=thirdQueueItem.locator('.pi-message-queue-more');
+    await thirdQueueMenu.locator('summary').focus();await shell.keyboard.press('Enter');
+    assert.equal(await thirdQueueMenu.evaluate(menu=>menu.open),true,'keyboard can reveal lower-frequency queue actions');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'上移','keyboard focus moves from the disclosure to its first available action');
+    await shell.keyboard.press('Enter');
+    const secondQueueItem=queuedTask.locator('.pi-message-queue-item').nth(1);
+    await secondQueueItem.locator('.pi-message-queue-more summary').click();
+    await secondQueueItem.getByRole('button',{name:'上移'}).click();
     const firstQueueItem=queuedTask.locator('.pi-message-queue-item').first();
+    await firstQueueItem.locator('.pi-message-queue-more summary').click();
     await firstQueueItem.getByRole('button',{name:'编辑'}).click();
     await firstQueueItem.getByRole('textbox',{name:'编辑'}).fill('整理成要点');
     await firstQueueItem.getByRole('button',{name:'保存'}).click();
     assert.match(await firstQueueItem.innerText(),/整理成要点/);
-    await queuedTask.locator('.pi-message-queue-item').nth(1).getByRole('button',{name:'移除'}).click();
+    const secondAfterEdit=queuedTask.locator('.pi-message-queue-item').nth(1);
+    await secondAfterEdit.locator('.pi-message-queue-more summary').click();
+    await secondAfterEdit.getByRole('button',{name:'移除'}).click();
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'editing, reordering, and removing queue entries leaves the intended order');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await queuedTask.locator('.pi-task-state[data-status="interrupted"]').waitFor();
@@ -221,12 +237,26 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await queuedTask.locator('.pi-task-elapsed').getByText(/^Turn elapsed/).waitFor();
     await queuedTask.getByText('Follow-up queue',{exact:false}).waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell,'English follow-up queue');
+    const primaryQueueAction=queuedTask.locator('.pi-message-queue-send').first(),moreQueueMenu=queuedTask.locator('.pi-message-queue-item').first().locator('.pi-message-queue-more');
+    assert.equal(await primaryQueueAction.isVisible(),true,'the explicit page-review action stays visible outside the management disclosure');
+    assert.equal(await primaryQueueAction.evaluate(action=>action.closest('.pi-message-queue-more')),null,'the primary queue action is not mixed into the low-frequency menu');
+    assert.equal(await moreQueueMenu.evaluate(menu=>menu.open),false,'low-frequency actions remain collapsed by default');
+    await saveQueueScreenshot(shell,'issue-194-message-queue-en-1280x850.png');
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
+    await saveQueueScreenshot(shell,'issue-194-message-queue-zh-CN-1280x850.png');
     await saveScreenshot(shell, 'issue-180-agent-message-queue-1280x850.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(700,420));await delay(150);
     await queueInput.focus();
     const narrowQueueVisible=await queueInput.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-list').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
     assert.equal(narrowQueueVisible,true,'the queue composer remains reachable inside the task history scroller at short height');
+    for(const locale of ['zh-CN','en']){
+      await shell.evaluate(value=>window.corvidI18n.setLocale(value),locale);await delay(120);
+      const primaryFits=await primaryQueueAction.evaluate(action=>{const scroller=action.closest('#pi-task-list'),clip=scroller.getBoundingClientRect(),box=action.getBoundingClientRect();scroller.scrollTop+=box.top-clip.top-8;const visible=action.getBoundingClientRect();return visible.top>=clip.top&&visible.bottom<=clip.bottom&&visible.left>=clip.left&&visible.right<=clip.right;});
+      assert.equal(primaryFits,true,`${locale} primary queue action is fully visible in the task history viewport at the minimum window size`);
+      assert.equal(await moreQueueMenu.evaluate(menu=>menu.open),false,`${locale} secondary queue actions start collapsed at the minimum window size`);
+      await saveQueueScreenshot(shell,`issue-194-message-queue-${locale}-704x420.png`);
+    }
+    await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     await saveScreenshot(shell, 'issue-180-agent-message-queue-700x420.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));await delay(100);
     await queuedTask.locator('.pi-message-queue-send').first().click();
