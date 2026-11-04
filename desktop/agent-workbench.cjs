@@ -231,13 +231,16 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         catch { try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; } }
       });
     } catch (error) {
-      await revokeSessionCredential(task.id);
+      let credentialCleanupFailed = false;
+      try { await revokeSessionCredential(task.id); }
+      catch { credentialCleanupFailed = true; }
       if (task.status === 'preparing') {
         const assistantTurn = task.conversation?.at(-1);
         if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`);
-        throw new Error(task.error);
       }
+      if (credentialCleanupFailed) reportSessionCleanupFailure(task);
+      if (task.status === 'failed' && task.error) throw new Error(task.error);
       throw new Error(safeError(error));
     }
   }

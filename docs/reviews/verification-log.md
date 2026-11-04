@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-04 Agent 启动失败时凭据撤销失败恢复（Issue #5 后续切片）
+
+- 复现：在 PR #156 的隔离 follow-up worktree 中，确定性 runtime 令 `createSession()` 失败，并令首次 `revokeAgentCredential()` reject。修复前合同断言失败，调用方收到撤销异常，持久任务仍为 `preparing`，没有进入可删除的终态。
+- 修正：启动错误路径捕获凭据撤销失败，优先将任务与 assistant turn 写入 `failed` 并保留原始初始化错误；撤销失败时记录现有清理错误事件、设置 `stopUnconfirmed` 并禁用续聊。内存凭据映射不清除，后续删除任务会重试撤销。
+- 验证：`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、相关 `node --check` 与 `git diff --check` 均通过。环境为 macOS 26.5.1、Node.js v24.22.1；测试使用临时数据目录与假 runtime，不启动 Electron、不连接真实模型或 OAuth。
+- 限制：未运行全量 `npm test`、Electron UI、Pi SDK/provider、OAuth、打包版或跨平台验证；Issue #5 保持开放。
+
 ## 2026-11-04 Issue #5 清理失败切片合并最新主线复验
 
 - 基线：PR #156 分支合并 `origin/main` `2ae872c`，保留主线新增浏览器菜单、Profile 删除、窄窗及 2026-11-04 文档/截图，同时合并 #5 的 zh-CN/en 清理错误资源与 QA 覆盖行。合并冲突仅在两项新增 locale key 和 E2E 测试索引；逐项保留双方独立新增内容。`npm ci` 成功，376 个包、0 vulnerabilities。
