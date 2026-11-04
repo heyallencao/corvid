@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 最小窗口与紧凑工具栏（Issue #219）
+
+- 环境与截图：macOS arm64、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；窗口逻辑尺寸 704×420，Retina PNG 1408×776。[中文最小窗口截图](screenshots/issue-219-window-minimum-zh-CN-704x420.png)，SHA-256 `04a78147606bb0b9a4ae8fb5d12c1af5d3324227469451cc22463e9170666487`。窗口显示合成的 `about:blank`，不含个人浏览数据或账号信息。
+- Corvid 直接观察与视觉判断：真实 Electron 将 600×400 请求钳制为 704×420；工具栏中的后退/前进/刷新、地址栏、书签和更多操作在同一行完整可见，侧栏图标保持统一尺寸，地址栏吸收剩余宽度，截图状态没有横向溢出。紧凑控件沿用现有颜色、表面和图标系统，整体密度仍可辨识，符合 Corvid 克制的浏览器 chrome；此窗口的空白网页画布仅用于隔离布局检查，不代表内容页验收。
+- UI/UE 参考与 REA 证据：Aceternity UI Sidebar 组件文档页 <https://ui.aceternity.com/components/sidebar>，2026-11-04 受控浏览器观察，Chromium 156.0.8078.80，704×420，浅色、英文、减少动态效果。REA Evidence `ev_162bfcf637c7995af8504348a1df4b65eb03da2bee0010a657df75c2f1662181`。**直接观察**：在 704×420 视口内，站点文档页的顶栏、标题/说明和 Preview/Code 控件可见，侧栏示例只显示上部；该文档页面视口没有可见的水平溢出。**静态证据**：没有检查站点源码或样式。**推断**：仅把这一窄视口的内容层级与留白作为参考；它不是浏览器 chrome，未观察 Sidebar 示例的响应式交互，不能据此推断 Corvid 或参考组件的完整行为。**未知与覆盖限制**：REA 捕获由 provider-owned headless Chromium 完成，宿主平台/架构未记录；未验证其他参考站点、深色主题、屏幕阅读器或 Windows/Linux。没有复制代码、图标或素材。
+- 最小调整与验收：紧凑工具栏断点从不可达的 600px 并入 720px 断点，使它在 Corvid 704px 最小宽度实际触发；E2E 检查 28px 图标宽度及文档无横向溢出。没有额外增加装饰或动画。
+
 ## 2026-11-04 地址栏建议与键盘选择（Issue #191）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.14.1；隔离 `CORVID_DATA_DIR`、合成历史与本地 HTTP fixture。窗口逻辑尺寸为 1024×700 与 704×420；Retina PNG 分别为 2048×1336、1408×776。常规窗口[中文截图](screenshots/issue-191-suggestions-zh-CN-1024x700.png)，SHA-256 `4fd7963e78b681ac9a744220d78874e1bbb348c359346020f50ea21ce44384ec`；窄窗[中文截图](screenshots/issue-191-suggestions-zh-CN-704x420.png)，SHA-256 `2c8ee0a48b54b07240b7fe067af20706ff201333ed966853de1875a5d44c2c21`。截图仅含本地 fixture 地址和合成页面标题，无个人浏览数据或账号信息。
