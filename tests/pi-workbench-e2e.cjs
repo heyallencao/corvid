@@ -528,7 +528,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       return row.top>=bounds.top&&row.bottom<=bounds.bottom;
     },undefined,{timeout:10_000});
     assert.equal(await roomSummaryItem.isVisible(),true,'the current Agent room summary is visible in the scrollable sidebar');
-    const roomSummaryBounds=await roomSummaryItem.evaluate(node=>({row:node.parentElement.getBoundingClientRect(),strip:node.parentElement.parentElement.getBoundingClientRect()}));
+    const roomSummaryBounds=await roomSummaryItem.evaluate(node=>({row:node.parentElement.getBoundingClientRect(),strip:document.querySelector('#room-strip').getBoundingClientRect()}));
     assert.ok(roomSummaryBounds.row.top>=roomSummaryBounds.strip.top&&roomSummaryBounds.row.bottom<=roomSummaryBounds.strip.bottom,'the Agent room summary row fits inside the sidebar without clipping');
     const roomSummary=await roomSummaryItem.locator('xpath=..').innerText();
     assert.match(roomSummary,/比较页面重点并检查 token=\[已隐藏\]/,'the generic Agent room label is replaced by its clipped, redacted task summary');
