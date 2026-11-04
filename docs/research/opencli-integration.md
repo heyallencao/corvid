@@ -108,3 +108,9 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #259 将 SDK 已有的 Room/Page 生命周期收敛为窄 MCP 工具：`page_new` 只创建 Agent-owned 空白标签，`page_close` 只关闭 Agent 创建且受管的页面；不会接管 Room、关闭用户/未知来源页或自动跳转。网页 `beforeunload` 仍由应用交给用户处理。
 - 隔离真实 Electron 将验证 Agent 新建/关闭、未知来源 popup 拒绝关闭、控制权拒绝及后台 Room 不切换前台。此结果不等于真实 MCP host 的用户确认体验或多窗口平台验证。
+
+
+## 2026-11-04 Browser MCP 视口截图
+
+- Issue #262 为 MCP 增加只读 `page_screenshot`：复用显式授权 Room/受管 Page 与 Agent 控制检查，返回当前视口 `image/png` 内容；不导航、不切换前台、不落盘，图像字节上限 8 MiB，完整页截图不对 MCP 开放。
+- 验证使用隔离真实 Electron 和本地 fixture；覆盖 image content/PNG 签名、后台 Room 前台稳定和超限拒绝。没有真实 MCP host，因此不证明具体 host 会显示图像或将其转交视觉模型。

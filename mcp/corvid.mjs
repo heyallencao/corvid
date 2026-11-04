@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { connect } from '../sdk/index.js';
+import { asPngImageContent } from './image-content.mjs';
 
 const SERVER_NAME = 'corvid-browser';
 const SERVER_VERSION = '0.1.0';
@@ -36,6 +37,19 @@ function registerActionTool(server, name, description, inputSchema, handler) {
   server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } }, async args => {
     try { return asToolResult(await handler(args)); }
     catch (error) { return asToolError(error); }
+  });
+}
+
+function registerScreenshotTool(server, handler) {
+  server.registerTool('page_screenshot', {
+    description: 'Capture the current viewport of one explicitly selected managed page and return a PNG image. This does not navigate, activate its Room, or save the image to disk.',
+    inputSchema: pageScopeSchema,
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, async args => {
+    try {
+      const image = await handler(args);
+      return { content: [asPngImageContent(image)] };
+    } catch (error) { return asToolError(error); }
   });
 }
 
@@ -149,6 +163,8 @@ function createServer() {
     await page.waitForLoadState(state, { timeout: timeoutMs });
     return await page.info();
   }));
+
+  registerScreenshotTool(server, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.screenshot()));
 
   registerActionTool(server, 'page_new', 'Create a new blank, Agent-owned managed page in the explicitly selected Room. This adds a tab but does not navigate it or activate the Room.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => withAgentRoom(roomId, async room => {
     const page = await room.newPage();
