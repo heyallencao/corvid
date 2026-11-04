@@ -1,0 +1,26 @@
+name: PR 描述截图链接
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review, closed]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  screenshot-links:
+    name: 检查 PR 截图链接
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 检出目标分支中的检查器
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: 检查截图链接规则回归
+        run: node tests/pr-description-images.test.cjs
+
+      - name: 检查 PR 描述
+        run: node scripts/check-pr-description-images.cjs "$GITHUB_EVENT_PATH"
