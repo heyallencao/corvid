@@ -59,11 +59,20 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     const waitForTab=predicate=>until(async()=>{lastTabState=(await room.tabs())[0];return predicate(lastTabState)?lastTabState:false;},'browser tab state').catch(error=>{console.error('Last tab state:',lastTabState);throw error;});
     const waitForError=message=>until(async()=>{const value=await shell.locator('#status .navigation-error').textContent().catch(()=>null);return value?.includes(message)?value:false;},`navigation message ${message}`);
     const waitForHttpStatus=async(statusCode,message)=>{await waitForError(message);return waitForTab(tab=>tab.loadComplete&&tab.navigationError?.code===`HTTP ${statusCode}`);};
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='Local page');
     await shell.locator('#address').fill(`${base}/home`);await shell.locator('#address').press('Enter');
     await waitForTab(tab=>tab.url===`${base}/home`&&tab.loadComplete);
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='Connection is not encrypted');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP page should show that its connection is unencrypted');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'Connection is not encrypted','the connection state should be accessible in English');
+    assert.equal(await shell.locator('.nav-symbol').evaluateAll(icons=>icons.length===6&&icons.every(icon=>icon.querySelector('svg')&&!icon.textContent.trim())),true,'sidebar navigation should render drawn SVG icons instead of text glyphs');
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='连接未加密');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'连接未加密','the connection state should follow the Chinese locale');
     await shell.locator('#address').fill(`${base}/status/500`);await shell.locator('#address').press('Enter');
     const http500Zh=await waitForHttpStatus(500,'服务器返回 HTTP 500');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP error response is still an unencrypted connection, not an unknown connection');
     assert.equal(await shell.locator('#status .navigation-error').textContent(),'服务器返回 HTTP 500','Chinese UI should state the HTTP 500 response without calling the loaded page a navigation failure');
     assert.equal(http500Zh.navigationError.code,'HTTP 500');
     assert.equal(await shell.locator('#address').inputValue(),`${base}/status/500`,'HTTP response errors should preserve the address for editing');
@@ -98,6 +107,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     await shell.locator('#address').fill(refusedUrl);await shell.locator('#address').press('Enter');
     assert.match(await waitForError('Server refused the connection'),/Page failed to load: Server refused the connection/,'connection refusal should differ from HTTP failures');
     assert.equal((await room.tabs())[0].navigationError.code,'ERR_CONNECTION_REFUSED');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unknown','a failed connection must not be shown as encrypted');
     await shell.locator('#address').fill(`${base}/fail`);await shell.locator('#address').press('Enter');
     await waitForError('Unable to load this page');
     assert.ok(failedRequests>0,'fixture should receive the failed navigation request');

@@ -30,6 +30,8 @@ let lastAgentRoomAnnouncementStates=new Map();
 let hasAgentRoomAnnouncementSnapshot=false;
 let currentBookmarkId=null, bookmarkButtonRequest=0, bookmarkMutationPending=false, bookmarkFeedbackKey=null, bookmarkFeedbackTimer=null;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
+const shellIconPaths={close:'m5 5 10 10M15 5 5 15',plus:'M10 4v12M4 10h12',sparkle:'M10 2.5 11.5 8.5 17.5 10 11.5 11.5 10 17.5 8.5 11.5 2.5 10 8.5 8.5 10 2.5Z'};
+function createShellIcon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('shell-icon');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',shellIconPaths[name]);svg.append(path);return svg;}
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
   await api.invoke('setShellModal',{open:true});
@@ -38,9 +40,24 @@ async function openShellDialog(selector, focusSelector) {
 }
 for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{void api.invoke('setShellModal',{open:false});});
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
+function updateConnectionIndicator(tab){
+  const indicator=document.querySelector('#connection-indicator');if(!indicator)return;
+  let connection='local';
+  if(tab?.url){
+    try{
+      const url=new URL(tab.url);
+      const failedCurrentDocument=tab.navigationError?.kind!=='http-status'&&tab.navigationError?.url===tab.url;
+      if(url.protocol==='https:')connection=failedCurrentDocument?'unknown':'encrypted';
+      else if(url.protocol==='http:')connection=failedCurrentDocument?'unknown':'unencrypted';
+      else if(!['about:','file:','chrome-extension:','devtools:'].includes(url.protocol))connection='unknown';
+    }catch{connection='unknown';}
+  }
+  const key={encrypted:'connectionEncrypted',unencrypted:'connectionUnencrypted',unknown:'connectionUnknown',local:'connectionLocal'}[connection];
+  indicator.dataset.connectionState=connection;indicator.setAttribute('aria-label',extensionMessages.t(key));indicator.title=extensionMessages.t(key);
+}
 function profileDisplayName(profile) { return profile.isDefault && profile.name === '默认' ? extensionMessages.t('defaultProfile') : profile.name; }
 let profileDeletionPreviewVersion=0;
-document.addEventListener('corvid-locale-changed',()=>{closeAddressSuggestions();if(libraryKind==='pi-workbench')renderPiWorkbench();renderBookmarkFeedback();updateBookmarkActionLabel();});
+document.addEventListener('corvid-locale-changed',()=>{closeAddressSuggestions();if(libraryKind==='pi-workbench')renderPiWorkbench();renderBookmarkFeedback();updateBookmarkActionLabel();updateConnectionIndicator(activeTab());});
 function formatTaskElapsed(milliseconds) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   const minutes = Math.floor(seconds / 60), remainingSeconds = seconds % 60;
@@ -219,13 +236,15 @@ function draw(value) {
   roomAction(extensionMessages.t('createSpace'),async()=>{await openShellDialog('#new-room','#room-name');});
   if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
   const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
-  const newWindow=button(`＋  ${extensionMessages.t('newWindow')}`,async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
+  const newWindow=button('',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
+  newWindow.append(createShellIcon('plus'),document.createTextNode(extensionMessages.t('newWindow')));
   newWindow.className='new-window-button';
   roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {updateConnectionIndicator(null);void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
+  updateConnectionIndicator(active);
   void syncCurrentBookmarkButton(active,state.activeProfileId);
   updateNewTabSurface(active);
   // 对话框关闭后的状态事件可能晚于输入和失焦到达；同标签草稿应保留到提交。
@@ -542,7 +561,7 @@ async function renderPiTasks(){
     list.append(row);
   }
   updatePiTaskElapsedTimes();
-  if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';const mark=document.createElement('span');mark.className='pi-welcome-mark';mark.textContent='✳';const heading=document.createElement('h3');heading.textContent=extensionMessages.t('welcomeAgentHeading');const description=document.createElement('p');description.textContent=extensionMessages.t('welcomeAgentDescription');empty.append(mark,heading,description);list.append(empty);}
+  if(!piTasks.length&&!piHistoryOpen){const empty=document.createElement('div');empty.className='pi-chat-welcome';const mark=document.createElement('span');mark.className='pi-welcome-mark';mark.append(createShellIcon('sparkle'));const heading=document.createElement('h3');heading.textContent=extensionMessages.t('welcomeAgentHeading');const description=document.createElement('p');description.textContent=extensionMessages.t('welcomeAgentDescription');empty.append(mark,heading,description);list.append(empty);}
   if(piHistoryOpen&&!piTasks.length){const empty=document.createElement('p');empty.className='workspace-empty-state';empty.textContent=extensionMessages.t('noConversationHistory');list.append(empty);}
   list.scrollTop=historyAtEnd?list.scrollHeight:historyTop;
   const currentComposer=document.querySelector('#pi-task-form'),continuingTask=piTasks.find(task=>task.id===piContinueTaskId);
@@ -1054,20 +1073,19 @@ document.querySelector('#show-agent-rooms').onclick=async event=>{if(libraryKind
 document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKind==='pi-workbench'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('pi-workbench',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
-const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z" fill="#4a5568"/></svg>');
 let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
-function createTabPinIcon(){const pin=document.createElement('img');pin.className='pin-icon';pin.alt=extensionMessages.t('pinned');pin.title=extensionMessages.t('pinned');pin.draggable=false;pin.src=PIN_ICON;return pin;}
-function tabFallbackFavicon(tab){let host='corvid';try{host=new URL(tab.url).hostname||host;}catch{}const initial=[...host][0]?.toLocaleUpperCase()||'C';let hash=0;for(const char of host)hash=(hash*31+char.codePointAt(0))>>>0;const hue=hash%360;return {key:`domain:${host}`,src:'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="8" fill="hsl(${hue} 48% 42%)"/><text x="16" y="21" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="600" fill="#fff">${initial.replace(/[<>&"']/g,'')}</text></svg>`)};}
-function tabFaviconSource(tab){return tab.faviconUrl?{key:`url:${tab.faviconUrl}`,src:tab.faviconUrl}:tabFallbackFavicon(tab);}
-function syncTabFavicon(icon,tab){const source=tabFaviconSource(tab);if(icon.dataset.source===source.key)return;icon.dataset.source=source.key;icon.onerror=()=>{if(icon.dataset.source!==source.key)return;icon.onerror=null;icon.src=tabFallbackFavicon(tab).src;};icon.src=source.src;}
-function createTabFavicon(tab){const icon=document.createElement('img');icon.className='favicon';icon.alt='';icon.draggable=false;syncTabFavicon(icon,tab);return icon;}
+function createTabPinIcon(){const pin=document.createElementNS('http://www.w3.org/2000/svg','svg');pin.setAttribute('viewBox','0 0 16 16');pin.setAttribute('aria-hidden','true');pin.setAttribute('focusable','false');pin.classList.add('pin-icon');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z');pin.append(path);return pin;}
+function tabFallbackFavicon(tab,sourceKey=null){let host='corvid';try{host=new URL(tab.url).hostname||host;}catch{}const initial=[...host][0]?.toLocaleUpperCase()||'C';let hash=0;for(const char of host)hash=(hash*31+char.codePointAt(0))>>>0;return {key:sourceKey||`domain:${host}`,host,initial,hue:hash%360};}
+function createFallbackFavicon(tab,sourceKey=null){const fallback=tabFallbackFavicon(tab,sourceKey),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 32 32');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('favicon','favicon-fallback');svg.dataset.source=fallback.key;svg.style.setProperty('--favicon-site-hue',String(fallback.hue));const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');rect.setAttribute('x','1');rect.setAttribute('y','1');rect.setAttribute('width','30');rect.setAttribute('height','30');rect.setAttribute('rx','8');const text=document.createElementNS('http://www.w3.org/2000/svg','text');text.setAttribute('x','16');text.setAttribute('y','21');text.setAttribute('text-anchor','middle');text.setAttribute('font-family','Arial,sans-serif');text.setAttribute('font-size','17');text.setAttribute('font-weight','600');text.textContent=fallback.initial;svg.append(rect,text);return svg;}
+function syncTabFavicon(icon,tab){const sourceKey=tab.faviconUrl?`url:${tab.faviconUrl}`:tabFallbackFavicon(tab).key;if(icon.dataset.source===sourceKey)return icon;const next=createTabFavicon(tab);icon.replaceWith(next);return next;}
+function createTabFavicon(tab){if(!tab.faviconUrl)return createFallbackFavicon(tab);const icon=document.createElement('img'),sourceKey=`url:${tab.faviconUrl}`;icon.className='favicon';icon.alt='';icon.draggable=false;icon.dataset.source=sourceKey;icon.onerror=()=>{if(icon.dataset.source!==sourceKey)return;icon.onerror=null;icon.replaceWith(createFallbackFavicon(tab,sourceKey));};icon.src=tab.faviconUrl;return icon;}
 function syncTabElement(el,tab,room){
   el.className=tab.pinned?'tab pinned':'tab';el.dataset.active=String(tab.active);el.dataset.tabId=tab.id;
   if(tab.pinned)el.dataset.pinned='true';else delete el.dataset.pinned;
   const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close'),titleText=tab.title||tab.url||extensionMessages.t('newTab');
   main.title=titleText;main.setAttribute('aria-label',titleText);
   if(tab.active)main.setAttribute('aria-current','page');else main.removeAttribute('aria-current');
-  let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('img.favicon'),pin=main.querySelector(':scope > img.pin-icon');
+  let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('.favicon'),pin=main.querySelector(':scope > .pin-icon');
   if(tab.isLoading){
     if(!loading){loading=document.createElement('span');loading.className='tab-loading-indicator';loading.setAttribute('aria-hidden','true');if(tab.pinned){loading.dataset.pinned='true';pin ||= createTabPinIcon();loading.append(pin);pin=null;}if(favicon)favicon.replaceWith(loading);else main.insertBefore(loading,main.querySelector('.tab-title'));}
     main.setAttribute('aria-label',extensionMessages.t(tab.pinned?'pinnedTabLoadingLabel':'tabLoadingLabel',{tab:titleText}));
@@ -1091,7 +1109,7 @@ function syncTabElement(el,tab,room){
   el.onpointerdown=event=>{if(event.button!==0 || event.target===close) return;closeTabMenu();startTabDrag(event,el,room);};
   return el;
 }
-function tabElement(tab,room){const el=document.createElement('div');const main=document.createElement('button');main.type='button';main.className='tab-main';main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');const title=document.createElement('span');title.className='tab-title';main.append(title);const close=document.createElement('button');close.type='button';close.className='tab-close';close.textContent='×';close.setAttribute('aria-label',extensionMessages.t('closeTab'));el.append(main,close);return syncTabElement(el,tab,room);}
+function tabElement(tab,room){const el=document.createElement('div');const main=document.createElement('button');main.type='button';main.className='tab-main';main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');const title=document.createElement('span');title.className='tab-title';main.append(title);const close=document.createElement('button');close.type='button';close.className='tab-close';close.append(createShellIcon('close'));close.setAttribute('aria-label',extensionMessages.t('closeTab'));el.append(main,close);return syncTabElement(el,tab,room);}
 let tabsStructureSignature='';
 function updateTabScrollControls(){const tabs=document.querySelector('#tabs'),left=document.querySelector('#tab-scroll-left'),right=document.querySelector('#tab-scroll-right');if(!tabs||!left||!right)return;const overflow=tabs.scrollWidth>tabs.clientWidth+1;left.hidden=right.hidden=!overflow;left.disabled=!overflow||tabs.scrollLeft<=1;right.disabled=!overflow||tabs.scrollLeft+tabs.clientWidth>=tabs.scrollWidth-1;}
 function scrollTabStrip(direction){const tabs=document.querySelector('#tabs');if(!tabs)return;tabs.scrollBy({left:direction*Math.max(120,tabs.clientWidth*.7),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
@@ -1114,8 +1132,8 @@ function renderTabs(room){
   tabsStructureSignature=signature;
   tabs.replaceChildren();
   for(const tab of room.tabs) tabs.append(tabElement(tab,room));
-  const add=button('+',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
-  add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton')); tabs.append(add);
+  const add=button('',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
+  add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton'));add.title=extensionMessages.t('newTabButton');add.append(createShellIcon('plus')); tabs.append(add);
   requestAnimationFrame(updateTabScrollControls);
 }
 async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTabFromUser',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
