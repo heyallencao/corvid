@@ -1459,3 +1459,12 @@
 - 验证：接管复跑 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue210-takeover-captures node tests/interaction-states-e2e.cjs` EXIT 0，覆盖浅/深主题的 radius/elevation、profile/address/new-tab/menu/site-tools/findbar/library/dialog 计算样式及原有 selected/hover/press、滚动条/选区和 reduced-motion 合同。一次先前运行在窗口 resize 等待时超时；短探针确认窗口实际尺寸可变，随后完整复跑通过。`node --check tests/interaction-states-e2e.cjs` 与 `git diff --check` 通过。浅/深主题合成截图的窗口状态、尺寸和 SHA-256 见[Issue #210 QA 记录](../qa/issue-210-token-consolidation.md#截图证据)。完整 `npm test` 未运行。
 - UI 参考：REA 捕获 Kobra Input OTP 页面（Evidence `ev_b0061997e9ffbc39f967e8a14fdb42242d400edb6458f7d5b02132840b458e74`），直接观察仅限 1280×800 浅色静态截图与 AX；场景因 wait action 失败标记 incomplete。它只提供细分隔线、克制表面与轻投影的视觉线索，不证明组件交互或 token 行为，未复制代码/素材。详见 QA 记录。
 - 限制：Issue 正文的“无深色主题”已由当前源码 `prefers-color-scheme: dark` 规则证伪；本次也只复核开发版 macOS Electron renderer viewport，未验跨平台、打包版、VoiceOver 或原生 `WebContentsView` 合成像素。颜色、近似灰、状态色、hover 灰和对比度审计仍开放。本轮没有运行代码签名、钥匙串或 notarization 诊断；该 Issue 不涉及签名行为。
+
+## 2026-11-04 集成门禁恢复与逐入口豁免基线（integrate-glm-02）
+
+- 背景：#225（285cadb）变更非加载态 tab aria-label 契约未同步 `tests/tab-ux-e2e.cjs`（#292），且全量链此前总在前部环境敏感入口中止（#289），tab-ux 自 #225 落地后从未被链内执行，门禁红。
+- 修复：`02244ff` 同步 `:137` 断言为「完成后可访问名称恢复为页面标题」、`:134` 选择器放宽为 `.favicon`（匹配 #225 的 SVG 域名首字母回退）。修后干净环境隔离 3/3 EXIT 0。
+- 基线：main `02244ff` 逐入口全链两轮（63 入口，56 PASS / 7 FAIL）。失败定性（事实）：window-state=#293（本机 workArea 钳制）；agent-rooms-panel/pi-custom-endpoint=#295；localization=#288 间歇；fullscreen/application-menu/chrome-import 隔离 2/2 确定性失败，与 verification-log 既有 CUA「Mac 锁屏」同签名先例（1290–1316 行）归为激活/焦点族，开 #300；sdk-e2e/unit-batch 出现 UnknownVizError/`Input focus was not acquired` 间歇，属 #289 既有族。推断（未直接探测）：本轮机器处于锁屏/焦点受限态，同族失败随机器态翻动（application-menu/fullscreen 在两轮基线间互有通过/失败）。
+- 门禁政策（#289 公告）：逐入口对照同机同态 main 基线；豁免集=已立案环境敏感入口（#293/#288/#295/#300）；PR 链失败集超集部分须隔离复跑通过且属环境族，否则拒绝。
+- 首次应用：#252（radius/elevation token）三方合并无 styles.css 冲突，全链失败集与同态基线一致，3 个超集失败隔离 1/1 全过，squash 合并为 `afc4899`；merge 依据留 PR 评论。#298 的同源修法 issue 已关闭（与 02244ff 逐条一致）。
+- 边界：豁免集入口在 lane:infra 修复（#303/#304/#305/#300）落地前无法在本机达成 63/63 全绿；本记录不将豁免通过表述为全量通过。
