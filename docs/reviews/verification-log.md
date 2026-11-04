@@ -1300,3 +1300,11 @@
 - Impeccable：按项目 Skill 执行一次 `impeccable detect --json desktop/index.html desktop/renderer.js desktop/styles.css desktop/locales.js`；命令退出码 2 并返回仓库级样式/字号提示。因此不宣称全站 detector 通过；当前切片继续使用既有 Corvid 图标、表面和布局，通过截图人工检查本次变更区域，没有扩展修复无关 UI。
 - GitHub CI：PR #230 的 Chrome 导入类别矩阵与系统凭据存储矩阵均在 2026-11-04 被拒绝启动。六个 job 均 `runner_id=0`、无执行步骤；check annotation 明确为近期账户付款失败或支出上限。它们不是代码测试失败，本地真实 Electron E2E 已通过。PR #230 后续经普通 squash 流程于 04:33:55 UTC 合并，提交 `1f87731`；没有使用管理员绕过参数。跨平台 CI 仍未执行，不能记作通过。
 - 限制：只验证 macOS 开发版和本地 fixture；未测 VoiceOver、其他操作系统、深色模式、打包版、失败注入/磁盘故障或成功消息与加载/导航错误等状态同时出现；REA 竞品证据未覆盖星标行为。
+
+## 2026-11-04 浏览器 chrome 与网页画布边界（Issue #213，PR 前验证）
+
+- 变更：每个 Corvid 窗口保存 renderer 测得的 `#browser-shell` 高度；主进程验证发送方属于受信任 shell 窗口且高度为有限 1–600px 数值，再重新布局原生 `WebContentsView`。Library 与站点工具浮层共享高度 CSS token 和 12px 间隔。添加 `tests/browser-layout-e2e.cjs` 并纳入 `npm test`；更新 UI 架构、执行任务板、测试索引与本轮 QA 记录。
+- 环境：独立 worktree `/private/tmp/corvid-issue213-browser-chrome`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、本地 HTTP 蓝色合成页面，不读取个人浏览数据、不访问外网、不登录 OAuth、不调用或消耗模型额度。
+- 验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/browser-layout-e2e.cjs` 退出码 0。覆盖 DOM 实测 chrome 与主进程原生 bounds 一致、无书签/状态、书签及瞬时状态、Library 和站点工具浮层、704×420 resize、新标签折叠书签栏。一次中间断言错误地假定状态行总高至少 151px；实际测量表明内容和 CSS 行高决定总高，已改为比较实测值与原生 bounds。`node --check desktop/main.cjs`、`desktop/preload.cjs`、`desktop/renderer.js`、`tests/browser-layout-e2e.cjs`、`package.json` JSON 解析及 `git diff --check` 均通过；最终复跑上述 E2E 后仍退出码 0。`impeccable detect --json --scope layout desktop/styles.css` 返回空 findings。全量 `npm test` 未运行。
+- UI/UE 参考与证据边界：本轮只引用项目研究文档中的 EGO `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 和 Kaze `ev_fdb1ec28706c6b2401549b230199346e86c42a50c2e12ce04b0a06f7073563b3` 既有直接观察记录，用于浏览器 chrome/网页画布的层级语境；没有新的竞品捕获，REA 本轮未返回历史记录，竞品精确行为和尺寸未知。几何结论来自 Corvid 隔离 Electron 的 DOM 与原生 bounds 实测，不来自竞品截图。macOS 在截屏复核前重新锁屏，REA/CUA 无法获取当前 Corvid 原生窗口截图；因此没有桌面合成截图。
+- 限制：定向开发版 Electron E2E 通过不代表全量测试、打包版或跨平台通过；未测试多窗口并行高度变化、恶意 IPC、深色主题、辅助技术实播或其他系统。Electron E2E 已退出。PR #239 已于 2026-11-04 创建并关联 Issue #213，目前仍开放、待合并。其六个 GitHub Actions job 均在启动前失败且 `steps=[]`；GitHub annotation 明确为近期账户付款失败或支出上限导致 runner 未启动，并提示 macOS arm64 容量限制。这不是代码测试执行失败，也不能计为跨平台通过；没有使用管理员绕过。

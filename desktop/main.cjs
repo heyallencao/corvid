@@ -11,6 +11,8 @@ const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
 const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
+// Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
+const INITIAL_BROWSER_CHROME_HEIGHT = 90;
 let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
@@ -700,7 +702,7 @@ function layout(record = activeRecord()) {
   const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
-  const top = 112;
+  const top = record.browserChromeHeight ?? INITIAL_BROWSER_CHROME_HEIGHT;
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
@@ -1543,7 +1545,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
@@ -1602,6 +1604,15 @@ app.whenReady().then(async () => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
     if (record) { focusWindow(record); syncRecordFromAliases(record); }
     return dispatchQueued(method,args);
+  });
+  // Native page bounds follow each trusted shell window's measured chrome; remote page renderers have no sender match.
+  ipcMain.on('shell-browser-chrome-height',(event,value)=>{
+    const record=[...windowRecords.values()].find(item=>!item.browserWindow.isDestroyed()&&item.browserWindow.webContents===event.sender);
+    if(!record||typeof value!=='number'||!Number.isFinite(value)||value<1||value>600)return;
+    const height=Math.ceil(value);
+    if(record.browserChromeHeight===height)return;
+    record.browserChromeHeight=height;
+    layout(record);
   });
   ipcMain.handle('browser-home-action',(event,action,value)=>{
     const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);

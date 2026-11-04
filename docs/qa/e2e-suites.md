@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 64 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 57 条独立脚本命令，共 88 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 65 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 58 条独立脚本命令，共 89 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -80,6 +80,7 @@
 | 63 | `tests/history-panel-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：访问两页后核对历史记录按本地日历分为今天、昨天与较早日期；两种语言的分组标题及 `Intl` 时间格式；显示本地首字母标识、主机/路径并隐藏 URL 查询与片段；保持完整 URL 搜索、单条删除；700×420 窄窗中来源、时间与删除操作不溢出。 | 使用隔离临时 `CORVID_DATA_DIR`、合成旧历史及本地 fixture；不读取真实浏览记录或访问互联网；系统时区用于日分组，时间显示为本地化小时/分钟；`CORVID_HISTORY_QA_DIR` 保存 Issue #196 回归截图，`CORVID_LIBRARY_ROWS_QA_DIR` 保存 Issue #220 [宽窗](screenshots/issue-220-history-zh-CN-1024x700.png)与[窄窗](screenshots/issue-220-history-zh-CN-700x420.png)截图。 |
 | 64 | `tests/address-suggestions-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：当前 Profile 历史匹配、重复 URL 去重、查询参数/片段不显示、其他 Profile 不泄漏；地址候选与自定义搜索模板候选；方向键/Enter/Esc、清空关闭、zh-CN/en 可访问名称；704×420 窄窗边界。 | 使用隔离临时 `CORVID_DATA_DIR`、合成历史与本地搜索模板，不访问真实网站、搜索服务、模型或 OAuth；`CORVID_ADDRESS_SUGGESTIONS_QA_DIR` 保存[常规截图](screenshots/issue-191-suggestions-zh-CN-1024x700.png)和[短窗截图](screenshots/issue-191-suggestions-zh-CN-704x420.png)。
 | 65 | `tests/tab-overflow-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：1/5/14 个标签分别在常规窗与 704×420 窄窗的身份标题；常规窗 170px 优先宽度/120px 最小标签宽、窄窗 44px 图标模式；14 标签左右滚动箭头及边界禁用、焦点/Enter 切换、新建标签入口固定可达、无 favicon 时本地域名首字母回退、zh-CN/en 滚动控件可访问名称、页面主体无横向溢出。 | 临时 `CORVID_DATA_DIR` 与本地合成标题页面；不读真实浏览数据，不访问互联网，不调用模型/OAuth；`CORVID_TAB_OVERFLOW_QA_DIR` 可保存合成窗口截图。
+| 66 | `tests/browser-layout-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：断言每窗 `WebContentsView` 顶边等于 DOM 测得的浏览器 chrome 高度；无书签/状态、书签栏、瞬时状态栏、书签面板、站点工具菜单、704×420 窄窗及新标签时动态核验视图和浮层边界。 | 使用隔离临时 `CORVID_DATA_DIR` 与合成蓝色页面，不访问真实网站/浏览数据，不调用模型/OAuth；以 DOM 高度、原生 view bounds 和浮层 bounds 为主要证据，不单独凭 renderer 截图推断 WebContentsView 的合成结果。
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |

@@ -66,6 +66,8 @@
   --focus-ring: var(--accent);
   --sidebar-width: 232px;
   --workspace-width: 420px;
+  --browser-chrome-height: 90px;
+  --browser-chrome-overlay-gap: 12px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -315,7 +317,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 @keyframes navigation-spin { to { transform: rotate(360deg); } }
 
 /* Pi workspace and browser library panels. */
-#library { position: fixed; z-index: 20; top: 126px; right: 12px; bottom: 12px; width: var(--workspace-width); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 12px 36px var(--shadow-panel); }
+#library { position: fixed; z-index: 20; top: calc(var(--browser-chrome-height) + var(--browser-chrome-overlay-gap)); right: 12px; bottom: 12px; width: var(--workspace-width); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 12px 36px var(--shadow-panel); }
 #library[hidden] { display: none; }
 .panel-header { min-height: 74px; display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
 .panel-header > div { min-width: 0; flex: 1; }
@@ -532,7 +534,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 
 /* Menus, find bar and dialogs. */
 #site-tools, #tab-menu { position: fixed; z-index: 90; min-width: 190px; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: 0 14px 38px var(--shadow-popover); }
-#site-tools { top: 104px; right: 12px; }
+#site-tools { top: calc(var(--browser-chrome-height) + var(--browser-chrome-overlay-gap)); right: 12px; }
 #site-tools[hidden], #tab-menu[hidden] { display: none; }
 #site-tools button, #tab-menu .menu-item { display: block; width: 100%; padding: 8px 10px; text-align: left; }
 #site-tools #toggle-fullscreen { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -710,7 +712,7 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
   #chrome-tools { gap: 1px; padding-inline: 5px; }
   .icon-button { width: 28px; }
   #address-form { margin-inline: 2px; padding-inline: 8px; }
-  #library { top: 98px; right: 6px; bottom: 6px; }
+  #library { right: 6px; bottom: 6px; }
   .panel-header { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 8px; padding: 10px; }
   .panel-header > div { grid-column: 1; grid-row: 1; }
   .panel-header .close-button { grid-column: 2; grid-row: 1; }
