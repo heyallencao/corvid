@@ -58,7 +58,10 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
     const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
-    await modelSelect.waitFor();
+    await modelSelect.waitFor({timeout:5_000}).catch(async error=>{
+      const diagnostic=await shell.evaluate(()=>({panelKind:document.querySelector('#library')?.dataset.kind,panelHidden:document.querySelector('#library')?.hidden,workbench:Boolean(document.querySelector('#pi-workbench-content')),form:Boolean(document.querySelector('#pi-task-form')),controls:document.querySelector('.pi-model-controls')?.innerText,modelLabel:document.querySelector('.pi-model-select')?.getAttribute('aria-label'),status:document.querySelector('.pi-model-status')?.textContent,libraryText:document.querySelector('#library')?.innerText}));
+      throw new Error(`${error.message}; workbench state: ${JSON.stringify(diagnostic)}`);
+    });
     assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
     await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
     await shell.locator('#pi-model-settings[open]').waitFor();

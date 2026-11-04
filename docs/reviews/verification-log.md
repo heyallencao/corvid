@@ -35,8 +35,8 @@
 
 - 当前实现：任务输入框先于模型选择；模型管理收敛为有本地化可访问名称的紧凑按钮；未连接状态提高字号与表面层级，并将“连接账号”作为明显操作；移除表单按钮依赖 `:last-child` 的偶然着色与相关 `!important` 覆盖。模型/Provider 名称继续按用户配置显示，符合[统一桌面体验设计](../architecture/ui-experience.md)对可配置模型语义的约定。
 - 参考判断：Kaze 运行中 Agent 面板 REA Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`（2026-11-02）直接显示模型选择器靠近输入区；证据未展开选择器或验证授权/窄窗行为。Corvid 本地隔离截图 `/tmp/ue/14-agent-workbench-empty.png` 直接显示当前实现中页面绑定、默认 GPT-6 Luna 选择器、细小灰色“未连接”、账号连接和模型管理按钮连续堆在输入前；这是旧状态的既有截图，不代表本分支新布局。该截图只作为本地合成页面证据，没有私人网页资料。
-- 静态检查：`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 通过。工作台 E2E 已改为断言任务输入后的新 Tab 顺序，但因当前 CUA 两次报告 macOS 锁屏，本轮未启动真实 Electron，不能声称 UI/E2E 已通过。
-- 待完成：在隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture 下运行 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`，检查未连接/已连接/发送、键盘顺序、1280×850 与 704×420、zh-CN/en，并保存脱敏前后截图；之后根据实际观察修正并更新本记录及视觉 QA。未调用真实模型/OAuth，未消耗模型额度；没有执行 `npm test`。
+- 静态检查：`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 通过。工作台 E2E 已改为断言任务输入后的新 Tab 顺序，并加入断连/本地配置连接状态、发送状态与截图路径断言。
+- 运行态尝试：在 CUA 已报告桌面解锁后，于隔离 worktree 执行 `env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/tmp/corvid-issue200-evidence NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/pi-workbench-e2e.cjs`。用例在打开工作台后等待模型选择器 30 秒超时，未生成截图，也未进入新状态断言；约 15 秒后另一个 `/tmp/corvid-vis4` Electron 进程出现，故本次失败原因未确定，不能归因于产品或测试争用。已为下次运行补充面板/控件/状态诊断，待其他会话释放桌面后串行重跑。未调用真实模型/OAuth，未消耗模型额度；没有执行完整 `npm test`。
 
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
