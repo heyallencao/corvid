@@ -31,6 +31,13 @@
 - 真实 Electron 验证：`permissions-e2e.cjs`、`evaluation-risk-e2e.cjs`、`claim-e2e.cjs`、`beforeunload-e2e.cjs`、`navigation-error-e2e.cjs` 与 `localization-e2e.cjs` 均通过。Chrome 导入默认模式在系统原生弹窗关闭时等待超时；启用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 后完整导入主体通过，但该模式不验证原生点外/失焦关闭。应用菜单结构合同测试 3/3 通过；`application-menu-e2e.cjs` 在键盘检查前因 `BrowserWindow.getFocusedWindow()` 返回 null 退出，因此尚未验证重放后的菜单语言切换运行态。
 - 未覆盖：未运行全量 `npm test`；上述结果来自本机 macOS、Node.js v24.14.1、Electron 45.2.1 与隔离临时数据/本地 fixture。仍未证明原生系统对话框布局、VoiceOver、其他 OS、打包签名、所有 Chromium 错误码或全产品文案盘点；Issue #130 与 D24 保持开放/部分。
 
+## 2026-11-04 Corvid Agent 首任务表单顺序与断连状态（Issue #200，待运行态验收）
+
+- 当前实现：任务输入框先于模型选择；模型管理收敛为有本地化可访问名称的紧凑按钮；未连接状态提高字号与表面层级，并将“连接账号”作为明显操作；移除表单按钮依赖 `:last-child` 的偶然着色与相关 `!important` 覆盖。模型/Provider 名称继续按用户配置显示，符合[统一桌面体验设计](../architecture/ui-experience.md)对可配置模型语义的约定。
+- 参考判断：Kaze 运行中 Agent 面板 REA Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`（2026-11-02）直接显示模型选择器靠近输入区；证据未展开选择器或验证授权/窄窗行为。Corvid 本地隔离截图 `/tmp/ue/14-agent-workbench-empty.png` 直接显示当前实现中页面绑定、默认 GPT-6 Luna 选择器、细小灰色“未连接”、账号连接和模型管理按钮连续堆在输入前；这是旧状态的既有截图，不代表本分支新布局。该截图只作为本地合成页面证据，没有私人网页资料。
+- 静态检查：`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 通过。工作台 E2E 已改为断言任务输入后的新 Tab 顺序，但因当前 CUA 两次报告 macOS 锁屏，本轮未启动真实 Electron，不能声称 UI/E2E 已通过。
+- 待完成：在隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture 下运行 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`，检查未连接/已连接/发送、键盘顺序、1280×850 与 704×420、zh-CN/en，并保存脱敏前后截图；之后根据实际观察修正并更新本记录及视觉 QA。未调用真实模型/OAuth，未消耗模型额度；没有执行 `npm test`。
+
 ## 2026-11-04 Agent 当前轮运行时长（Issue #186）
 
 - 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。

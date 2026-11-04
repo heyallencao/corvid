@@ -79,7 +79,13 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await taskPrompt.fill('总结当前页面内容 [fixture:stream-and-tool-events]');
     await taskPrompt.focus();
     await shell.keyboard.press('Tab');
-    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'检查并预览页面上下文','Tab reaches the page-context preview action from the task prompt');
+    assert.equal(await shell.evaluate(()=>document.activeElement.className),'pi-model-select','Tab reaches the model choice after the user can enter a task');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.getAttribute('aria-label')),'管理模型','model management follows the compact model choice');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'连接账号','the visible disconnected state has a direct account connection action');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'检查并预览页面上下文','page context review follows the task and model controls');
     await shell.keyboard.press('Enter');
     await shell.getByText(/将分享给 Agent：/).waitFor();
     assert.equal(await shell.evaluate(()=>document.activeElement.id),'pi-context-consent','preview rerender moves keyboard focus to the required consent checkbox');
