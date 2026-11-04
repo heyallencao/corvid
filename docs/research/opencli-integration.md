@@ -96,3 +96,9 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Corvid SDK Page 通过受控 `back` / `forward` API 路由调用浏览器历史；Browser MCP 新增 `page_back`、`page_forward`、`page_reload`，仍适配现有 SDK，不增加端口、凭据或任意代码执行能力。
 - 本轮隔离 Electron + 本地 HTTP fixture 的 MCP E2E 证明空历史不导航、同一 managed Tab 的前进/后退与重新请求、用户接管后拒绝操作、后台 Agent 动作不切换前台 Room。该证据只覆盖 Corvid 当前实现，不验证参考 BrowserMCP 的对应行为、真实 MCP host 或真实网站。
+
+
+## 2026-11-04 Browser MCP 页面等待能力
+
+- Issue #257 为 MCP 补充两个有限观察工具：精确 URL 等待与 `domcontentloaded`/`load` 等待。它们复用 SDK 轮询与控制权检查，不改变页面，也不支持任意表达式或 `networkidle`。
+- 验收使用本地 HTTP 延迟响应，确认点击链接后返回预期 URL、文档完成前等待不提前返回、timeout 有界，并检查后台等待不影响前台浏览空间。真实 MCP host、真实站点及 Chromium 所有加载边界不由该本地证据覆盖。

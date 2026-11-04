@@ -46,6 +46,7 @@ async function connectAgent() {
 }
 
 const pageScopeSchema = z.object({ roomId: z.string().min(1), tabId: z.string().min(1) });
+const pageWaitTimeoutSchema = z.number().int().min(100).max(60_000).default(10_000);
 const locatorSchema = z.discriminatedUnion('by', [
   z.object({ by: z.literal('ref'), value: z.string().regex(/^@\d+$/) }),
   z.object({ by: z.enum(['css', 'text', 'href']), value: z.string().min(1).max(2048) }),
@@ -129,6 +130,16 @@ function createServer() {
       return await room.page(tabId).snapshot({ scope });
     } finally { await client.disconnect(); }
   });
+
+  registerReadTool(server, 'page_wait_for_url', 'Wait until the explicitly selected managed page reaches this exact URL, then return its current page info. This only observes navigation; it does not navigate the page.', pageScopeSchema.extend({ url: z.string().min(1).max(8192), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, url, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
+    await page.waitForURL(url, { timeout: timeoutMs });
+    return await page.info();
+  }));
+
+  registerReadTool(server, 'page_wait_for_load', 'Wait for the selected page document to reach domcontentloaded or load, then return its current page info. networkidle is not supported.', pageScopeSchema.extend({ state: z.enum(['domcontentloaded', 'load']).default('load'), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, state, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
+    await page.waitForLoadState(state, { timeout: timeoutMs });
+    return await page.info();
+  }));
 
   registerActionTool(server, 'page_navigate', 'Navigate an explicitly selected managed page to an HTTP or HTTPS URL. This can change site state; inspect the result after acting.', pageScopeSchema.extend({ url: z.string().url().max(8192) }), async ({ roomId, tabId, url }) => {
     const parsed = new URL(url);

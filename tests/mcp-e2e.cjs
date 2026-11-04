@@ -82,7 +82,12 @@ class McpProcess {
       const requestCount = (fixtureRequestCounts.get(pathname) || 0) + 1;
       fixtureRequestCounts.set(pathname, requestCount);
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
+      if (pathname === '/slow') {
+        response.write('<!doctype html><title>Slow MCP fixture</title><h1>Slow destination</h1>');
+        setTimeout(() => response.end('<p>Document finished</p>'), 500);
+        return;
+      }
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><form id="form"><label>Query <input aria-label="Query"></label><button type="submit">Search</button></form><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -140,8 +145,8 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_press', 'page_reload', 'page_snapshot']);
-    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_fill', 'page_forward', 'page_info', 'page_navigate', 'page_press', 'page_reload', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true));
     assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_fill', 'page_forward', 'page_navigate', 'page_press', 'page_reload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
@@ -182,6 +187,20 @@ class McpProcess {
     const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
+    const slowUrl = `${fixtureUrl}slow`;
+    await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'link', name: 'Open slow page' } });
+    const urlWait = await mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: slowUrl, timeoutMs: 5000 });
+    assert.equal(urlWait.result.isError, undefined);
+    assert.equal(urlWait.value.url, slowUrl, 'URL wait returns info for the page reached by the link');
+    const waitStartedAt = Date.now();
+    const loadWait = await mcp.callTool('page_wait_for_load', { roomId: room.id, tabId: tab.id, state: 'load', timeoutMs: 5000 });
+    assert.equal(loadWait.result.isError, undefined);
+    assert.equal(loadWait.value.loadComplete, true, 'load wait resolves only after the delayed document finishes');
+    assert.ok(Date.now() - waitStartedAt >= 200, 'load wait observes the delayed response rather than returning immediately');
+    const timedOutWait = await mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 150 });
+    assert.equal(timedOutWait.result.isError, true);
+    assert.equal(timedOutWait.value.code, 'CORVID_TIMEOUT');
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     const secondUrl = `${fixtureUrl}second`;
     await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: secondUrl });
     await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
@@ -238,15 +257,23 @@ class McpProcess {
     assert.equal(missingProfile.result.isError, true);
     assert.equal(missingProfile.value.code, 'CORVID_NOT_FOUND');
 
+    const waitingDuringHandoff = mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 5000 });
+    await delay(150);
     await call(`/rooms/${room.id}/yieldControl`, 'POST', {});
+    const interruptedWait = await waitingDuringHandoff;
+    assert.equal(interruptedWait.result.isError, true, 'an in-flight wait stops when the user takes Room control');
+    assert.equal(interruptedWait.value.code, 'CORVID_CONTROL_LOST');
     const denied = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(denied.result.isError, true);
     assert.equal(denied.value.code, 'CORVID_CONTROL_LOST');
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_reload']) {
-      const deniedNavigation = await mcp.callTool(name, { roomId: room.id, tabId: tab.id });
+    for (const name of ['page_back', 'page_forward', 'page_reload', 'page_wait_for_url', 'page_wait_for_load']) {
+      const args = { roomId: room.id, tabId: tab.id };
+      if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
+      if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
+      const deniedNavigation = await mcp.callTool(name, args);
       assert.equal(deniedNavigation.result.isError, true, `${name} is denied while the user owns the Room`);
       assert.equal(deniedNavigation.value.code, 'CORVID_CONTROL_LOST');
     }
