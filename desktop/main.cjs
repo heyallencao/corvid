@@ -3,6 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { safePageUrl, createPageContextMenuTemplate } = require('./page-context-menu.cjs');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
@@ -789,6 +790,21 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     if(s.ownership==='agent'){for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
     const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:[mainMessages.t('stayOnPage'),mainMessages.t('leavePage')],defaultId:0,cancelId:0,title:mainMessages.t('leavePageTitle'),message:mainMessages.t('unsavedChangesMessage'),detail:mainMessages.t('unsavedChangesDetail',{room:s.name})});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
+  });
+  view.webContents.on('context-menu',(_event,params)=>{
+    const currentTab=tabs.get(tabId),currentRoom=currentTab&&rooms.find(room=>room.id===currentTab.roomId);
+    const canUseTab=()=>Boolean(currentTab&&tabs.get(tabId)===currentTab&&!currentTab.view.webContents.isDestroyed()&&currentRoom&&rooms.includes(currentRoom)&&currentRoom.ownership==='user'&&!currentRoom.userResumePending&&!currentRoom.executionRisk);
+    if(!canUseTab())return;
+    const owner=windowRecords.get(currentRoom.windowId);
+    if(!owner||owner.browserWindow.isDestroyed())return;
+    const navigate=method=>{if(!canUseTab())return;void dispatchQueued(method,{id:tabId}).catch(error=>console.error('Page context menu navigation failed:',error.message));};
+    const openLink=url=>{
+      const target=safePageUrl(url);
+      if(!target||!canUseTab())return;
+      void createTab(currentRoom.id,target,id(),{openedBy:'user',openerId:tabId}).catch(error=>console.error('Page context menu could not open a tab:',error.message));
+    };
+    const template=createPageContextMenuTemplate({context:{...params,canGoBack:currentTab.view.webContents.navigationHistory.canGoBack(),canGoForward:currentTab.view.webContents.navigationHistory.canGoForward()},handlers:{back:()=>navigate('back'),forward:()=>navigate('forward'),reload:()=>navigate('reload'),openLink,copyText:value=>{if(canUseTab())clipboard.writeText(value);}},t:key=>mainMessages.t(key)});
+    if(template.length)Menu.buildFromTemplate(template).popup({window:owner.browserWindow});
   });
   installShortcuts(view.webContents,()=>{const currentRoom=rooms.find(room=>room.id===s.id);return currentRoom&&windowRecords.get(currentRoom.windowId);});
   const owner=findWindowRecord(s.windowId);
