@@ -130,7 +130,12 @@ async function openApiKeyProvider(app) {
         ]);
       }
     }
-    await new Promise(resolve => site.close(resolve));
+    await new Promise(resolve => {
+      let closeTimer;
+      site.close(() => { clearTimeout(closeTimer); resolve(); });
+      site.closeAllConnections?.();
+      closeTimer = setTimeout(resolve, 2_000);
+    });
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });
