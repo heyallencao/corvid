@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 70 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 61 条独立脚本命令，共 92 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 71 项入口，其中 `tests/pi-real-model-smoke.cjs` 为需显式运行的真实模型验收，不属于 `npm test`。当前 `npm test` 配置包含 1 条 `node --test` 命令（8 个文件、31 个 `node:test` 用例）和 62 条独立脚本命令，共 93 项自动化检查；原生菜单与 Chrome 导入类别隔离模块合同见 `tests/application-menu.test.mjs`、`tests/chrome-import-categories.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -122,3 +122,4 @@
 - "通过"只记录当次真实运行；不得用 API 级结果代替 UI 结果，也不得用本地夹具结果替代真实网站结论。
 - 系统对话框替身、非 `isTrusted` 合成事件和轮询实现必须在"关键限制"列写明。
 - 人眼布局检查不属于自动化项，记录在 [桌面 UI 视觉检查记录](ui-visual-check.md)，并在相关验收合同的证据列引用。
+| 69 | `tests/agent-legacy-checkpoint-migration.cjs` | 不启动 Electron 的迁移/续聊合同：旧数组任务仅含 Pi session 文件路径时保留该路径但标记版本为 `unknown`；当前 runtime 拒绝恢复该 checkpoint 并使用有界 Corvid transcript 创建新会话；保留 task ID、模型及 Profile/Room/Page 绑定；只有新会话首轮成功后才提交新版本 checkpoint；用户可见任务摘要不含运行库或 checkpoint 字段。 | 隔离临时数据目录与确定性 runtime；不启动 Electron，不调用真实模型、Provider 或 OAuth；窗口呈现和签名包未覆盖。 |
