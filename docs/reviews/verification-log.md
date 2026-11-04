@@ -1455,3 +1455,12 @@
 - 截图：`docs/qa/screenshots/issue-211-a-branch-agent-access-light-1024x700.png`（SHA-256 前 16 位 `c08969d5fd9c94fc`）与 `issue-211-a-branch-chrome-import-dark-1024x700.png`（`716bfa0525686f7a`）与 main 对照截图逐字节相同（像素级不变）。
 - E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 chrome-import-e2e.cjs` 通过；`agent-rooms-panel-e2e.cjs` 在本分支与 `origin/main` 对照同点失败（等待 `我的空间` 精确按钮名超时），为 main 上既有的测试与 DOM 失配（PR #273 修正对象），非本切片引入。
 - 未覆盖：VoiceOver、Windows/Linux、打包版；hover 规则按组件/状态收敛（条目 1 剩余）与死规则合并（条目 3）在后续子切片 B/C。
+
+## 2026-11-04 CSS 级联债务收敛子切片 C（Issue #211）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-hover-convergence`（基于 `main` `bc8bb78`）。
+- 改动：renderer `button()` 助手统一 `b.type='button'`（动态按钮：空间条、菜单、pi 取消/发送/登出等）；静态 index.html 为 21 个未声明 type 的按钮补 `type="button"`（全部位于表单外：侧栏、chrome-tools、查找条、site-tools 菜单、关闭面板）；删除冗余的 `#pi-task-form .pi-model-action:hover` 声明（与全局 hover 同值）。
+- 关键更正（相对拆解方案预判）：`:not([type="submit"])` 为属性字面匹配，未声明 type 的按钮**从未被排除**在全局 hover 之外——全局 hover 交互面本就统一，不存在「补 type 后 hover 面扩大」的视觉变化。审计时未识别该语义，子切片 A/B 的探针不受影响（未涉及 hover 规则）。
+- 验证：hover 终态探针（等待 400ms > 120ms 过渡）读取 sidebar-nav-item / icon-button / subtle-icon-button / room-strip 项的 hover 背景，`origin/main` 与本分支四项全部一致；80ms 早期采样曾显示 icon-button 0.482→0.96 差异，确认为过渡采样伪差。工具栏 hover 截图 `docs/qa/screenshots/issue-211-c-branch-toolbar-hover.png`（SHA-256 前 16 位 `e619b94ef61ff1e4`）与 main 对照逐字节相同。`interaction-states-e2e.cjs`（含 hover 底色断言）、`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`git diff --check` 通过。
+- 表单语义收益：动态按钮显式 `type='button'` 后，即使未来被移入真实 `<form>` 也不会隐式提交（当前 `#pi-task-form` 为 `<section>`、唯一动态真表单 :623 已显式 `type='submit'` + `onsubmit` preventDefault，无既有 bug）。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；查找条/菜单/关闭面板按钮未逐一 hover 探测（同类全局规则覆盖，工具栏代表已证一致）。

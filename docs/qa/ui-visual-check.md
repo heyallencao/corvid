@@ -467,3 +467,9 @@
 - 环境：macOS arm64、Electron 45.2.1、1024×700 CSS px、隔离 `CORVID_DATA_DIR`；浅色 Agent 授权对话框与深色 Chrome 导入对话框各一张，来自 Playwright renderer 截图。
 - [浅色 Agent 授权（分支）](screenshots/issue-211-a-branch-agent-access-light-1024x700.png) SHA-256 `c08969d5fd9c94fc…`、[深色 Chrome 导入（分支）](screenshots/issue-211-a-branch-chrome-import-dark-1024x700.png) SHA-256 `716bfa0525686f7a…` 与 origin/main 同法截取的对照图逐字节相同；计算样式矩阵（含 renderer 动态注入的 `.pi-consent`、`.extension-load-error` 与窄窗 `.pi-create-room`）亦逐字节一致。
 - 边界：截图只证明本切片改动前后渲染不变，不证明级联债务全部收敛；后续子切片见 issue #211 拆解方案评论。
+
+## 2026-11-04 按钮 type 显式化 hover 终态一致性（Issue #211 子切片 C）
+
+- 环境：macOS arm64、Electron 45.2.1、1024×700 CSS px、隔离 `CORVID_DATA_DIR`；hover 状态下 `#chrome-tools` 工具栏截图（Playwright renderer 截图）。
+- [分支工具栏 hover 截图](screenshots/issue-211-c-branch-toolbar-hover.png) SHA-256 `e619b94ef61ff1e4…` 与 origin/main 对照逐字节相同——type 显式化前后 hover 终态渲染不变（`:not([type="submit"])` 为属性字面匹配的实证）。
+- 边界：只覆盖工具栏代表组件；侧栏/空间条以计算样式探针（终态等待 400ms）证实一致。
