@@ -46,6 +46,8 @@ The page tools include `page_back`, `page_forward`, and `page_reload`. Each requ
 
 `page_wait_for_url` waits for an exact URL string, and `page_wait_for_load` waits for `domcontentloaded` or `load`; both return current page info. They only observe the selected managed page and do not navigate or run page scripts. Each wait has a 10-second default and a 60-second maximum; `networkidle` is not supported. Waits stop when Agent control is lost or execution risk requires user review.
 
+`page_hover` moves over one locator and can reveal site menus or tooltips. `page_select_option` sets select-control values by value/label string or value/label/index criteria, supports multiple values and clearing, and returns selected values; selection updates option state and emits untrusted `input`/`change` events rather than operating the native picker. Additional SDK options are not exposed through MCP. Both are site actions and can change page state.
+
 `page_screenshot` returns the selected managed page viewport as an MCP `image/png` content item. It uses the same explicit Room/Tab and Agent-control checks as page reads, does not activate a background Room or save an image to disk, and rejects images larger than 8 MiB with `CORVID_OUTPUT_TOO_LARGE`. The MCP host must support image content to display or pass the result to a vision model; full-page capture is not exposed through MCP.
 
 `page_new` creates a blank managed page in the explicitly selected Agent-owned Room and returns its Page info; use `page_navigate` separately to load an HTTP(S) URL. `page_close` only closes a managed page created by the Agent. User-created and unknown-origin pages are refused, and a site `beforeunload` prompt may require user confirmation.

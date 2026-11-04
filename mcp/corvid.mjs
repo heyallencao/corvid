@@ -61,6 +61,11 @@ async function connectAgent() {
 
 const pageScopeSchema = z.object({ roomId: z.string().min(1), tabId: z.string().min(1) });
 const pageWaitTimeoutSchema = z.number().int().min(100).max(60_000).default(10_000);
+const selectChoiceSchema = z.union([
+  z.string().max(2048),
+  z.strictObject({ value: z.string().max(2048).optional(), label: z.string().max(2048).optional(), index: z.number().int().min(0).optional() }).refine(choice => Object.keys(choice).length > 0),
+]);
+const selectChoicesSchema = z.union([selectChoiceSchema, z.array(selectChoiceSchema).max(100), z.null()]);
 const locatorSchema = z.discriminatedUnion('by', [
   z.object({ by: z.literal('ref'), value: z.string().regex(/^@\d+$/) }),
   z.object({ by: z.enum(['css', 'text', 'href']), value: z.string().min(1).max(2048) }),
@@ -190,8 +195,10 @@ function createServer() {
   registerActionTool(server, 'page_reload', 'Reload the current document in the explicitly selected managed page. This repeats the site request; inspect page_info or page_snapshot after acting.', pageScopeSchema, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.reload()));
 
   registerActionTool(server, 'page_click', 'Click one explicit snapshot reference or a unique CSS, text, role, or href locator in a managed page. This may submit forms or trigger other site actions; inspect the page afterwards.', pageScopeSchema.extend({ target: locatorSchema }), async ({ roomId, tabId, target }) => withManagedPage(roomId, tabId, async page => page.click(target.by === 'ref' ? target.value : target)));
+  registerActionTool(server, 'page_hover', 'Move the pointer over one explicit locator in a managed page. This may reveal hover menus or tooltips; inspect the page afterwards.', pageScopeSchema.extend({ target: locatorSchema }), async ({ roomId, tabId, target }) => withManagedPage(roomId, tabId, async page => page.hover(target.by === 'ref' ? target.value : target)));
   registerActionTool(server, 'page_fill', 'Fill one explicit snapshot reference or a unique CSS, text, role, or href locator in a managed page. Use only when you intend to enter this value into the site.', pageScopeSchema.extend({ target: locatorSchema, value: z.string().max(20_000) }), async ({ roomId, tabId, target, value }) => withManagedPage(roomId, tabId, async page => page.fill(target.by === 'ref' ? target.value : target, value)));
   registerActionTool(server, 'page_press', 'Press one supported key on an explicitly selected managed page target. This may submit forms or trigger site actions; inspect the page afterwards.', pageScopeSchema.extend({ target: locatorSchema, key: z.string().min(1).max(32) }), async ({ roomId, tabId, target, key }) => withManagedPage(roomId, tabId, async page => page.press(target.by === 'ref' ? target.value : target, key)));
+  registerActionTool(server, 'page_select_option', 'Select one or more values, labels, or option indexes in a managed page select control. Use null or an empty array to clear selection; inspect the selected values afterwards.', pageScopeSchema.extend({ target: locatorSchema, choices: selectChoicesSchema }), async ({ roomId, tabId, target, choices }) => withManagedPage(roomId, tabId, page => page.selectOption(target.by === 'ref' ? target.value : target, choices)));
 
   return server;
 }
