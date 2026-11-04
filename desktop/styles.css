@@ -165,7 +165,7 @@ body { margin: 0; overflow: hidden; background: var(--surface); letter-spacing: 
 :root:lang(zh-CN) .sidebar-section-heading, :root:lang(zh-CN) .panel-eyebrow { letter-spacing: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), filter var(--motion-fast) var(--motion-ease); }
-button:hover:not(:disabled) { background: var(--surface-hover); }
+button:hover:not(:disabled):not([type="submit"]) { background: var(--surface-hover); }
 button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.94); }
 button:disabled { opacity: .46; cursor: default; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

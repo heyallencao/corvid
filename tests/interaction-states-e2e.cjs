@@ -77,6 +77,30 @@ let app;
       assert.equal(selected.background, selectedBeforeHover.background, `${colorScheme}: selected navigation surface remains stable on hover`);
       assert.match(selected.boxShadow, /2px 0px.*inset/, `${colorScheme}: selected navigation keeps its accent marker`);
 
+      await shell.locator('#create-room-trigger').click();
+      const createRoom = shell.locator('#new-room-form button[type="submit"]');
+      await createRoom.waitFor({ state: 'visible' });
+      const submitBeforeHover = await createRoom.evaluate(element => getComputedStyle(element).backgroundColor);
+      await createRoom.hover();
+      await shell.waitForFunction(() => document.querySelector('#new-room-form button[type="submit"]')?.matches(':hover'));
+      await shell.waitForTimeout(140);
+      const submitHover = await createRoom.evaluate(element => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--accent-solid)';
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { background: getComputedStyle(element).backgroundColor, expected, hovered: element.matches(':hover') };
+      });
+      assert.equal(submitHover.hovered, true, `${colorScheme}: the pointer is over the dialog submit button`);
+      assert.equal(submitHover.background, submitBeforeHover, `${colorScheme}: dialog submit keeps its primary surface while hovered`);
+      assert.equal(submitHover.background, submitHover.expected, `${colorScheme}: dialog submit surface follows the accent token`);
+      if (qaDir) {
+        fs.mkdirSync(qaDir, { recursive: true });
+        await shell.screenshot({ path: path.join(qaDir, `issue-211-submit-hover-${colorScheme}-${viewport.width}x${viewport.height}.png`) });
+      }
+      await shell.locator('#cancel-room').click();
+
       if (qaDir) {
         fs.mkdirSync(qaDir, { recursive: true });
         await shell.screenshot({ path: path.join(qaDir, `issue-216-interaction-${colorScheme}-${viewport.width}x${viewport.height}.png`) });
@@ -111,7 +135,7 @@ let app;
       assert.equal(reduced.scroll, 'auto', `${colorScheme}: reduced motion disables smooth scrolling`);
     }
 
-    console.log(`PASS interaction states at ${viewport.width}x${viewport.height}: selected navigation survives hover, press feedback is visible, and themed scrollbars/selection respect reduced motion across light/dark themes`);
+    console.log(`PASS interaction states at ${viewport.width}x${viewport.height}: selected navigation survives hover, dialog submit keeps its accent on hover, press feedback is visible, and themed scrollbars/selection respect reduced motion across light/dark themes`);
   } finally {
     if (app) await closeElectron(app).catch(error => { console.error(error); process.exitCode = 1; });
     fs.rmSync(dataDir, { recursive: true, force: true });

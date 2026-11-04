@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 对话框提交按钮悬停状态（Issue #211 子项）
+
+- 当前 Corvid 运行态：隔离 Electron 中打开“新建空间”原生 HTML dialog；鼠标悬停提交按钮时，浅色和深色主题都保留 `--accent-solid`。截图显示输入框焦点、主/次操作层级与 backdrop；没有个人网页或 Profile 数据。[实施与测试记录](issue-211-submit-hover.md)
+- 最小调整：全局中性 hover 排除 `type="submit"`，不改变通用按钮、取消按钮或主按钮原有颜色。这样交互反馈不再覆盖确认操作的语义色。
+- 市场参考的边界：REA 已观察的 Kobra Chat Input 直接证据仅支持输入与发送操作的清晰组合；没有观察按钮悬停。Rare UI 被安全页拦截，Aceternity Sidebar 的 hover 说明未执行，EasyUI/Pin UI 未检查。以上均不作为本次状态行为依据。
+- 视觉比较：Corvid 的主次操作在正常态与 hover 态保持一致，避免确认目标在点击前失去主色提示；截图和完整限制见[Issue #211 hover 验收](issue-211-submit-hover.md)。
+
 ## 2026-11-04 交互状态与主题浏览器表面（Issue #216）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；隔离临时 `CORVID_DATA_DIR`，shell 视口 1024×700 CSS px（PNG 2048×1400，Retina 2×）。页面为 `about:blank`，书签面板和空间为合成初始数据，没有个人浏览数据或网页内容。浅色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-light-1024x700.png)，SHA-256 `504e97eb5d5149f136d3b0c6159b74ed116f0dd9f6225cf76d365243968b45f0`；深色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-dark-1024x700.png)，SHA-256 `ec9586cee31b05edeb83c9c4bfaf50cf8f3e8273b46e189b6101cc789205c316`。

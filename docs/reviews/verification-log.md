@@ -12,6 +12,14 @@
 - 限制：不覆盖原生滚动条像素、WebContentsView 合成、真机输入设备、Windows/Linux、打包版本、屏幕阅读器及站点页面 CSS；结果只证明本地开发 Electron 下的定向 UI 状态。
 
 
+
+## 2026-11-04 对话框提交按钮悬停级联（Issue #211 子项）
+
+- 范围：修复全局 `button:hover` 覆盖 dialog submit 主色的问题。最新主线已用 `#new-tab` 稳定 ID 选择器，因此不再把已修复的 aria-label 失配写成本次结果；完整 CSS 级联债务仍由 Issue #211 跟踪。
+- 验证命令：`CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue211-validation-output node tests/interaction-states-e2e.cjs`，EXIT 0；另执行 `git diff --check`。真实 Electron E2E 打开新建空间 dialog，确认 `:hover` 命中并等待 140ms 后，在浅色与深色主题断言提交按钮背景色等于悬停前值和 `--accent-solid`。为验证断言敏感度，临时恢复旧选择器后同一 E2E 在主色断言处失败，观察到中性色 `rgb(236, 238, 242)` 而预期强调色为 `rgb(83, 103, 216)`。
+- 环境：独立 worktree `/private/tmp/corvid-issue211-submit-hover`，基于 `origin/main` `7244a88`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR`，窗口为 1024×700。截图见[QA 记录](../qa/issue-211-submit-hover.md)。未访问外网、用户网页或 Profile；未使用模型与 OAuth。测试后 Electron 进程退出，临时 `node_modules` 软链接已移除。
+- Impeccable：运行 `impeccable detect --json desktop/index.html`。检测器报告现有 HTML 内联样式中的侧边强调线、面板边框/阴影和排版层级提示；本切片只改通用 button hover 级联，没有修改这些不同区域。未运行全量 `npm test`。
+- 限制：不覆盖打包版、Windows/Linux、系统原生主题、辅助技术播报或完整的其他 dialog 流程。该验证只覆盖本地开发 Electron 中主按钮的悬停背景。
 ## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验
 
 - 背景：PR #148 因 macOS 锁屏时未能完成 Electron 原生焦点验收而保留了该限制；本次在解锁桌面后对 PR 合并版本与当前主线分别重跑默认模式，未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`。
