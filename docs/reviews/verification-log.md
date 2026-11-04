@@ -4,6 +4,7 @@
 - 验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 和本地 HTTP fixture。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_ISSUE202_QA_DIR=docs/qa/screenshots/issue-202 node tests/navigation-error-e2e.cjs` 通过，覆盖 zh-CN/en、HTTP 408/500、拒绝连接、重试/恢复、复制链接（剪贴板替身）、host 标题、加载 spinner/2px 进度线同时出现、进度线不改工具栏高度且遵循 `prefers-reduced-motion`、完成后消失、不显示加载横幅、700×420 无溢出并生成五张截图。没有访问真实网站、模型或 OAuth，也没有启动签名包。
 - 回归边界：`node --check`（`desktop/renderer.js`、`desktop/main.cjs`、`desktop/locales.js`、`tests/navigation-error-e2e.cjs`）与 `git diff --check` 在实现主体修改后通过。`tests/localization-e2e.cjs` 未完整通过：已运行到 Corvid Agent 模型管理步骤，等待 `.pi-model-manage` 30 秒超时（第 117 行）；此路径不属于本次状态区修改，故双语全套回归状态记为未通过/未完成，不以导航定向测试代替。测试源码 locale 唯一键检查已在该脚本开头完成；状态错误原因、复制动作和 fallback tab title 的中文/英文由本次导航 E2E 覆盖。
 - 视觉证据：状态行四种语言/窗口截图与 hash 见[状态区视觉检查](../qa/ui-visual-check.md#2026-11-04-导航状态区与恢复-issue-202)。使用的 Kobra Alert REA 既有 Evidence、观察时间和限制亦见该记录。
+- GitHub 自动检查：PR 创建后，Chrome 导入类别隔离与系统凭据存储 workflow 共 6 个跨平台 job 在 2–3 秒内失败，GitHub job 记录均为 `steps=[]`；runner 未实际执行，不能据此判定代码失败或跨平台通过。运行记录：[Chrome 导入类别隔离](https://github.com/heyallencao/corvid/actions/runs/41780261442)、[系统凭据存储](https://github.com/heyallencao/corvid/actions/runs/41780261386)。
 - 未覆盖：暗色主题实机截图、完整定位/键盘遍历、读屏播报、跨平台、签名分发包与真实网络环境；HTTP 408 为 fixture 的 HTTP 响应，不是网络层超时集成验证。
 
 # 验证记录
