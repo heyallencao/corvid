@@ -147,6 +147,10 @@ try {
   assert.equal(await page.evaluate(() => document.querySelector('input').value), 'Hellox');
   assert.ok((await page.evaluate(() => window.events)).some(event => event.type === 'keydown' && event.key === 'a' && event.ctrl && event.trusted));
   const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.press('#plain-editor', `${primaryModifier}+a`);
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'Plain replacement');
+  await page.keyboard.type('Plain selected');
+  assert.equal(await page.text('#plain-editor'), 'Plain selected');
   await page.fill(input.ref, 'select all');
   await page.press(input.ref, `${primaryModifier}+a`);
   assert.deepEqual(await page.evaluate(() => {
