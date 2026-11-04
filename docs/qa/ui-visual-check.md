@@ -1,5 +1,15 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 交互状态与主题浏览器表面（Issue #216）
+
+- 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；隔离临时 `CORVID_DATA_DIR`，shell 视口 1024×700 CSS px（PNG 2048×1400，Retina 2×）。页面为 `about:blank`，书签面板和空间为合成初始数据，没有个人浏览数据或网页内容。浅色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-light-1024x700.png)，SHA-256 `504e97eb5d5149f136d3b0c6159b74ed116f0dd9f6225cf76d365243968b45f0`；深色主题[选中书签入口](screenshots/issue-216/issue-216-interaction-dark-1024x700.png)，SHA-256 `ec9586cee31b05edeb83c9c4bfaf50cf8f3e8273b46e189b6101cc789205c316`。
+- Corvid 直接观察与视觉判断：浅色与深色截图均显示选中的“书签”入口有浅色/深色强调面、品牌色图标和 2px 内侧指示线，视觉身份稳定；侧栏其他入口保持中性色。隔离真实 Electron E2E 使用 Playwright hover、mouse down/up 及 DOM computed style 断言确认选中项 hover 不改变文字/底色，按钮按下时出现 1px 位移和轻微色调反馈。侧栏滚动区域使用主题色细滚动条；标签栏仍保留隐藏滚动条；`::selection` 使用主题强调面与强调文字。120ms 快速过渡统一服务于即时控件反馈，`prefers-reduced-motion` 将过渡压至 0.01ms 并将平滑滚动设为 auto。截图展示稳定选中态，不展示按压瞬间或系统原生滚动条像素。
+- UI/UE 参考与 REA 证据：Kobra `/components` overview，2026-11-04 controlled replay Evidence `ev_9dcc8582eb2b060ca21b2bf5dfa4c9e16d1463ae74abd909134c71b67bce21d1`；REA 的 provider-owned headless Chrome 截图直接显示组件目录当前项以小型绿色标记和文字层级表达导航位置。该页是组件文档，不是浏览器；本轮没有 hover/click Kobra 导航，所以只把“当前项有明确且克制的标记”作为视觉灵感，不推断其 pressed、hover、滚动条或动效行为。捕获日期已知，精确时分未保留；本轮没有复用 Kobra 代码或素材。Rare UI、EasyUI、Pin UI、Aceternity UI 未用于该切片。
+- Impeccable detector：对 `desktop/styles.css` 运行一次 `impeccable detect --json desktop/styles.css`，退出码 2；报告两个既有 `border-left` warning（`.pi-task-event` 与 `.agent-access-boundary` 的既有左边框样式）。本次新增规则未触发 detector warning；检测结果不是全站通过结论。
+- 验证：`CORVID_INTERACTION_QA_DIR=docs/qa/screenshots/issue-216 env -u ELECTRON_RUN_AS_NODE node tests/interaction-states-e2e.cjs` 最终 EXIT 0，覆盖浅/深主题、selected/hover/active、细滚动条、选区与 reduced-motion。E2E 使用临时数据目录并在退出时清理；Electron 进程与临时依赖链接已退出/移除。不访问真实网站、用户资料、模型或 OAuth。
+- 未覆盖：浏览器 renderer 的截图不包含上层 `WebContentsView` 合成像素；未测试原生 macOS overlay scrollbar 的实际显示、Windows/Linux、打包版、真实鼠标硬件、屏幕阅读器及用户自定义高对比度主题；Kobra 行为也只覆盖静态目录画面。
+
+
 ## 2026-11-04 书签即时反馈与窄窗布局（Issue #195）
 
 - 环境与截图：macOS arm64、Electron 45.2.1；隔离 `CORVID_DATA_DIR` 和本地 HTTP fixture，页面标题为 `Fixture Page`，没有个人浏览数据、账号信息或外网请求。Playwright shell 视口为 1280×800 CSS px 与 704×420 CSS px。[中文添加状态](screenshots/issue-195-bookmark-added-zh-CN.png)，SHA-256 `d4510280f878ff11e580fd258e06ca41561461ebe54cb01df73dfe6f7cddaf22`；[英文添加状态](screenshots/issue-195-bookmark-added-en.png)，SHA-256 `71f025a9b0faaa62d6d104961f26386a96b1d0a7f7d24dfb46b562e5f0ca094a`；[英文 704×420 状态](screenshots/issue-195-bookmark-added-en-704x420.png)，SHA-256 `3f9092dc4b9b5af45b6eca2b6ff5e9ea39bdd5ea507d4b39d015e6a9f0eec8cf`。
