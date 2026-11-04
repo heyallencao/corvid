@@ -1348,3 +1348,12 @@
 - 验证：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/typography-e2e.cjs`、`node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"` 与 `git diff --check` 通过。首次 `node tests/typography-e2e.cjs` 因 worktree 尚无 `playwright-core` 未启动；安装依赖后首次真实 Electron 运行暴露零字号图标按钮隐藏文字误计为可见字，调整采样条件后完整重跑：`CORVID_TYPOGRAPHY_QA_DIR=docs/qa/screenshots/issue-212 node tests/typography-e2e.cjs` EXIT 0。覆盖 zh-CN/en、1024×700 书签面板、704×420 Agent 工作区与横向边界。未运行完整 `npm test`。
 - UI 检查：Impeccable detector 对所选 `desktop/styles.css`、`desktop/index.html`、`desktop/locales.js` 报告 side-tab warning、hairline-border/wide-shadow advisory 和 flat-type-hierarchy warning；这些扫描结果涉及已有多处组件，须结合页面场景复核，未作为本切片新增功能或验收门槛。具体视觉判断、截图 SHA-256 与 REA/EGO/Kaze 覆盖限制见[字体与中文排版视觉检查](../qa/ui-visual-check.md#2026-11-04-字体与中文排版-issue-212)。
 - 范围限制：四张截图是 Electron renderer viewport，不证明原生窗口合成或网页 WebContentsView 像素；未验 Windows/Linux、打包版、深色主题、VoiceOver、真实模型与 OAuth。跨平台 GitHub Actions 尚未由本记录启动或验证。
+
+## 2026-11-04 首次启动主要操作 hover 对比（Issue #204，PR 前）
+
+- 变更：降低全局中性按钮 hover fallback 的 CSS 特异性，使带语义样式的主要操作保留强调色背景与白色前景；同步 UI 交互原则、D07、E2E 套件索引、QA 记录与 `npm test` 顺序。
+- 环境：隔离 worktree `/private/tmp/corvid-issue204-hover-contrast`，基于最新 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；首次运行引导使用临时 `CORVID_DATA_DIR`，locale `zh-CN`，窗口 shell viewport 1024×700 CSS px，无真实网页或浏览数据。
+- 验证：修改前隔离 Electron 用例以 EXIT 1 重现浅色 hover 对比度 1.16:1。修复后 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_BUTTON_HOVER_QA_DIR=/tmp/corvid-issue204-validation node tests/button-hover-contrast-e2e.cjs` EXIT 0；浅/深主题主要操作实测均为 4.88:1，并确认中性次要按钮仍使用主题 hover 面色。`node --check tests/button-hover-contrast-e2e.cjs`、`node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"` 与 `git diff --check` 通过。测试退出后隔离 Electron 和临时数据均已清理。未运行全量 `npm test`。
+- Impeccable：`impeccable detect --json desktop/styles.css` 返回两项既有 side-tab warning：`styles.css:442` 的消息状态左边线和 `styles.css:581` 的访问边界左边线；本切片没有修改它们，不据此扩大范围。
+- REA/参考：沿用 Kobra Input OTP 的 REA Evidence `ev_b0061997e9ffbc39f967e8a14fdb42242d400edb6458f7d5b02132840b458e74`，只作克制表面/状态层级背景。该 Evidence 是 incomplete 的静态浅色截图/DOM/AX，未覆盖按钮 hover；本轮行为结论只来自 Corvid 隔离 Electron 实测。截图哈希与限制见[Issue #204 QA 记录](../qa/issue-204-hover-contrast.md)。本轮未运行代码签名、钥匙串或 notarization 诊断；该 Issue 不涉及签名行为。
+- 限制：只验 zh-CN、1024×700、macOS 开发版；英文、704×420、VoiceOver、Windows/Linux、打包版与原生网页画布合成仍未覆盖。Issue #204 的低对比正文和字号清理继续开放。
