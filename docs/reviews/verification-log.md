@@ -1264,3 +1264,11 @@
 - 变更：常规标签以 170px 为优先宽度、空间不足时缩到 120px；窄于 760px 时切换到 44px favicon 模式；标签栏显示有名称的左右滚动控制并在边界禁用，新建标签按钮滚动时保持可达。网页未提供 favicon 或 favicon 加载失败时，使用本地生成的域名首字母；标签按钮提供完整标题 tooltip 和 aria-label。`package.json`、E2E 索引、执行板与截图索引已同步。
 - 验证：`node --check desktop/renderer.js`、`node --check tests/tab-overflow-e2e.cjs`、`git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；设置 `CORVID_TAB_OVERFLOW_QA_DIR=docs/qa/screenshots` 重跑也 EXIT 0。真实隔离 Electron 覆盖常规与窄窗各 1/5/14 标签、滚动和边界、键盘 Enter 切换、无 favicon 回退、zh-CN/en 滚动名称与窄窗无页面横向溢出。截图与 REA 证据边界见 [桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-标签页身份与溢出-issue-201)。Electron 测试进程已清理；全量 `npm test` 未运行。中间一次窄窗回归误点了处于禁用态的左箭头，已修正用例顺序（先验证起点禁用，再向右滚动并返回起点）后重新运行通过。
 - 限制：仅 macOS 开发版 Electron 与合成本地页面；截图来自 shell renderer，不包含原生 `WebContentsView` 网页画布；未覆盖其他平台、打包版、屏幕阅读器实播、暗色主题或真实站点 favicon 异常。
+
+
+## 2026-11-04 相似 Agent 对话识别（Issue #193）
+
+- 变更：主进程提供只含 Room ID、首条用户请求脱敏摘要（可见文字最多 72 字符、无障碍名称最多 240 字符、悬停提示最多 8000 字符）、页面标题、状态和更新时间的摘要投影，并按每个窗口当前 Profile 推送；控制 API 不可读取该 UI 摘要接口。Renderer 仅在对应 Profile 的空间侧栏、对话历史和 Agent 工作区展示摘要。默认 Agent Room 用安全摘要替代重复的“Corvid Agent 对话”标签；用户命名的 Room 保留。URL、常见凭据样式值、邮箱、电话号码及 40 字符以上的不透明串在摘要中隐藏；这不是完整个人信息检测。
+- 验证：`node --check desktop/agent-workbench.cjs`、`node --check desktop/main.cjs`、`node --check desktop/preload.cjs`、`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs` 与 `git diff --check` 通过。最终 `CORVID_UI_EVIDENCE_DIR=docs/qa/screenshots node tests/pi-workbench-e2e.cjs` EXIT 0；真实 Electron 45.2.1 + 隔离临时 `CORVID_DATA_DIR` + 本地 HTTP fixture 覆盖同页同状态不同请求、URL 后中文内容保留、凭据/邮箱/电话/URL 脱敏、72 字符视觉摘要、240 字符无障碍名称、超过 240 字符的完整 tooltip 尾部、英文安全占位词、历史键盘顺序、704×420 窄窗、任务动作区分及原有同意/续聊/重启恢复/控制权交接。依赖通过临时软链接从根工作区 `node_modules` 引入，E2E 退出后已移除；测试顺带生成的其他 Issue 截图已恢复，仅保留 #193 两张合成夹具截图。另一个无 Electron 投影合同脚本 EXIT 0，覆盖 Profile 过滤、字段长度与脱敏。没有登录 ChatGPT 或调用 GPT-6 Luna；本切片使用本地确定性 Agent fixture，不需要真实 Provider。全量 `npm test` 未运行。
+- REA 参照：EGO `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e` 仅用于浏览器/Space 侧栏语境；Kaze `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 仅观察 Agent 面板及模型选择，不含历史命名行为；Kobra item `ev_321077654f899ddbc47b6b4feeb4c3acda79d474fc09092023f0183cb54d1343` 仅显示标题/更新时间静态层级。完整证据限制见 UI QA 记录。
+- 限制：仅 macOS 开发版 Electron 与合成本地页面；未覆盖真实用户数据、全部 PII/自然语言、VoiceOver 实播、其他操作系统、打包版、暗色主题或真实模型服务。桌面 E2E 进程已退出。

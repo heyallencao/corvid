@@ -133,6 +133,7 @@ const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
   revokeAgentCredential: credentialId => agentClients.revokeInternal(credentialId),
   onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
+  for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('agent-task-summary-state', {profileId:record.activeProfileId,tasks:agentWorkbench.listSummaries(record.activeProfileId)});
 } });
 let panelOpen = false;
 const selectedChromeSources = new Map();
@@ -948,6 +949,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
     case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'agentTaskSummaries': {if(fromApi)throw new Error('Agent task summaries are available only from Corvid UI');const profileId=findProfile(args.profileId ?? activeProfileId).id;return {profileId,tasks:agentWorkbench.listSummaries(profileId)};}
     case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
     case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
     case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }

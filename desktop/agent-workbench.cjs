@@ -66,6 +66,35 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     const canContinueFromTranscript = Boolean(!canResumeSession && hasAssistantTranscript && transcript.length);
     return { ...visible, hasSession: Boolean(sessionRef || hasAssistantTranscript), continuationMode: task.stopUnconfirmed ? null : canResumeSession ? 'session' : canContinueFromTranscript ? 'saved-conversation' : null, canContinue: Boolean(!task.stopUnconfirmed && (canResumeSession || canContinueFromTranscript)) };
   }
+  // This is a list-only preview; it redacts recognizable patterns but does not replace transcript access controls.
+  function summaryText(value, maximum = 72) {
+    const characters = Array.from(String(value || '')
+      .replace(/```[\s\S]*?```|`[^`]*`/g, ' ')
+      .replace(/https?:\/\/[^\s<>"'，。；、！？)\]}]+/gi, '链接')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[已隐藏]')
+      .replace(/\+?(?:\d[\s().-]*){9,}\d/g, '[已隐藏]')
+      .replace(/((?:api[-_ ]?key|password|secret|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[已隐藏]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,})\b/g, '[已隐藏]')
+      .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '[已隐藏]')
+      .replace(/\s+/g, ' ')
+      .trim());
+    return characters.length > maximum ? `${characters.slice(0, maximum - 1).join('').trimEnd()}…` : characters.join('');
+  }
+  function listSummaries(profileId) {
+    return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(task => {
+      const prompt = task.conversation?.find(turn => turn.role === 'user')?.text || task.prompt;
+      return {
+        id: task.id,
+        roomId: task.roomId,
+        promptSummary: summaryText(prompt),
+        promptAccessibleSummary: summaryText(prompt, 240),
+        promptTitle: summaryText(prompt, 8_000),
+        pageTitle: summaryText(task.page?.title || ''),
+        status: task.status,
+        updatedAt: task.updatedAt || task.createdAt,
+      };
+    }));
+  }
   function list(profileId) { return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(present)); }
   function taskById(taskId) { const task = tasks.find(item => item.id === taskId); if (!task) throw new Error('Agent task not found'); return task; }
   function addEvent(task, type, text, messageKey, params) {
@@ -357,7 +386,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     return removed.length;
   }
   function finishProfileDeletion(profileId) { profileDeletionClaims.delete(profileId); }
-  return { list, prepare, start, continueTask, queueMessage, updateQueuedMessage, moveQueuedMessage, removeQueuedMessage, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, cancelProfileDeletion, removeProfileData, finishProfileDeletion };
+  return { list, listSummaries, prepare, start, continueTask, queueMessage, updateQueuedMessage, moveQueuedMessage, removeQueuedMessage, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, cancelProfileDeletion, removeProfileData, finishProfileDeletion };
 }
 
 module.exports = { createAgentWorkbench, savedConversationContext };

@@ -168,12 +168,16 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .sidebar-section-heading { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 28px; padding: 0 5px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .sidebar-heading-actions { display: flex; }
 .subtle-icon-button { width: 26px; height: 26px; padding: 0; color: var(--text-muted); font-size: 16px; line-height: 1; }
-#room-strip { display: flex; flex-direction: column; gap: 3px; overflow: auto; min-height: 35px; }
+#room-strip { display: flex; flex-direction: column; gap: 3px; overflow: auto; min-height: 35px; padding-bottom: 10px; scroll-padding-block: 8px; }
 #room-strip button { position: relative; width: 100%; min-height: 35px; display: flex; align-items: center; gap: 9px; padding: 6px 10px 6px 12px; color: var(--text-secondary); text-align: left; }
 #room-strip button::before { content: ""; width: 7px; height: 7px; flex: none; border: 1.5px solid var(--room-indicator); border-radius: 50%; }
 #room-strip button[data-ownership="agent"]::before { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 #room-strip button[aria-current="page"] { background: var(--surface-selected); color: var(--surface-selected-text); font-weight: 600; }
 #room-strip button[aria-current="page"]::before { border-color: var(--accent); background: var(--accent); }
+#room-strip .room-name, #room-strip .room-agent-summary { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#room-strip .room-name { font-weight: 600; }
+#room-strip .room-agent-summary { color: var(--text-tertiary); font-size: 10px; line-height: 1.35; font-weight: 400; }
+#room-strip button:has(.room-agent-summary) { min-height: 42px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 1px; padding-left: 27px; }
 .sidebar-window-action { padding: 2px 4px; }
 .sidebar-window-action button { width: 100%; padding: 6px 8px; color: var(--text-muted); text-align: left; font-size: 12px; }
 .sidebar-agent-section { display: grid; gap: 2px; margin-top: 5px; padding-top: 9px; border-top: 1px solid var(--line); }
@@ -452,6 +456,8 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .agent-room-entry .agent-room-state { min-width: 0; overflow: hidden; color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-room-tasks { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 5px 8px; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .agent-room-task-state { min-width: 0; overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-room-task-detail { display: grid; gap: 2px; min-width: 0; }
+.agent-room-task-summary { overflow: hidden; color: var(--text-muted); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .agent-room-task-state[data-status="running"], .agent-room-task-state[data-status="preparing"] { color: var(--accent-ink); }
 .agent-room-task-state[data-status="waiting_for_user"] { color: var(--warning); }
 .agent-room-task-state[data-status="completed"] { color: var(--success); }
@@ -651,6 +657,10 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
   .subtle-icon-button { display: none; }
   #room-strip { width: 100%; align-items: center; }
   #room-strip button { width: 42px; height: 40px; justify-content: center; overflow: hidden; padding: 0; font-size: 0; }
+  #room-strip button:has(.room-agent-summary) { position: relative; min-height: 40px; align-items: center; padding: 0; }
+  #room-strip button:has(.room-agent-summary)::before { display: none; }
+  #room-strip button:has(.room-agent-summary)::after { content: attr(data-room-mark); display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); font-size: 11px; font-weight: 650; }
+  #room-strip .room-name, #room-strip .room-agent-summary { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   #room-strip button::before { width: 10px; height: 10px; }
   .sidebar-agent-section, .sidebar-library { width: 100%; }
   .sidebar-agent-section { margin-top: 0; padding-top: 6px; }
