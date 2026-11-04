@@ -1394,3 +1394,11 @@
 - 环境：隔离 worktree `/private/tmp/corvid-issue266-mcp-wait-selector`，基于 `origin/main` 的 `20bd55b`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 SPA 页面 fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
 - 验证：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具只读 annotation、四种状态、默认 visible、缺失元素 `CORVID_TIMEOUT`、后台 Room 不抢前台、等待期间用户接管返回 `CORVID_CONTROL_LOST`，以及既有 Browser MCP 权限回归。临时 `node_modules` 链接已移除；Electron 与 fixture 已退出。
 - 限制：未运行全量 `npm test`、真实 MCP host、真实站点、打包版或 Windows/Linux；定向 fixture 不证明复杂动画、跨源 frame 与各站点 locator 语义。
+
+## 2026-11-04 Browser MCP 页面滚动（Issue #268，PR 前验证）
+
+- 实现：SDK 新增 `Page.scroll(deltaX, deltaY, {x, y})`，MCP 新增有副作用工具 `page_scroll`。要求显式授权 Room/Tab 和 Agent 控制；每轴位移限制 -2000..2000、不能同时为 0，坐标须成对且位于主视口 CSS 像素范围；缺省使用视口中心。主进程在 Room 序列化动作中执行 CDP mouse-source scroll gesture，可滚动主文档和命中点处的嵌套容器，不执行页面脚本或激活后台 Room。
+- 实现证据：直接 CDP `Input.dispatchMouseEvent` 的 `mouseWheel` 在本地隐藏后台 WebContentsView 上未触发页面滚动；改用 `Input.synthesizeScrollGesture` 且指定 `gestureSourceType: mouse` 后，隔离 Electron fixture 中长文档和嵌套 overflow 面板均实际滚动。此差异仅在当前运行环境观察，不能推断为所有平台/Electron 版本行为。
+- 环境：独立 worktree `/private/tmp/corvid-issue268-page-scroll`，基于 PR #267 合并后的 `origin/main` `92f0615`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture，复用主工作区已安装依赖的临时软链接并在运行后移除。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证通过：`node --check desktop/actions.cjs`、`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖 MCP action annotation、默认中心滚动长页、指定坐标滚动嵌套面板、视口越界拒绝、SDK 归零/超界/单坐标拒绝与有效调用、后台 Room 不抢前台、用户接管后拒绝滚动，以及现有 MCP 授权和离线错误回归。Electron 与 fixture 已退出。
+- 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实 MCP host 或真实站点；本地合成页面不验证触控输入、平台差异、各站点对滚动输入的自定义处理或懒加载兼容性。

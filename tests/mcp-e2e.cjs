@@ -93,6 +93,10 @@ class McpProcess {
         response.end('<!doctype html><title>Dynamic MCP fixture</title><body><p>Single-page fixture</p><script>const target=document.createElement("button");target.id="dynamic-target";target.textContent="Dynamic result";target.hidden=true;document.body.append(target);setTimeout(()=>target.hidden=false,180);setTimeout(()=>target.hidden=true,480);setTimeout(()=>target.remove(),780)</script></body>');
         return;
       }
+      if (pathname === '/scroll') {
+        response.end('<!doctype html><title>Scroll MCP fixture</title><style>html,body{margin:0}body{height:2600px}#panel{position:fixed;left:24px;top:24px;width:240px;height:140px;overflow:auto;background:#eee}#panel-content{height:1000px}</style><main><h1>Long page</h1><div id="panel"><div id="panel-content">Nested scroll area</div></div></main>');
+        return;
+      }
       response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
@@ -151,9 +155,9 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
-    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -201,6 +205,27 @@ class McpProcess {
     assert.equal((await mcp.callTool('page_close', { roomId: room.id, tabId: waitTabId })).result.isError, undefined);
     assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'selector waits on a background page do not activate its Room');
 
+    const scrollPage = await mcp.callTool('page_new', { roomId: room.id });
+    const scrollTabId = scrollPage.value.targetId;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: scrollTabId, url: `${fixtureUrl}scroll` });
+    const scrollView = id => app.evaluate(async ({ webContents }, targetId) => {
+      const contents = webContents.getAllWebContents().find(item => item.getURL().endsWith('/scroll'));
+      if (!contents) throw new Error(`Scroll fixture WebContents missing for ${targetId}`);
+      return contents.executeJavaScript('({page:window.scrollY,panel:document.querySelector("#panel").scrollTop,viewport:{width:innerWidth,height:innerHeight}})');
+    }, id);
+    const centerScroll = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 360 });
+    assert.equal(centerScroll.result.isError, undefined, JSON.stringify(centerScroll.result));
+    assert.ok(centerScroll.value.point.x > 0 && centerScroll.value.point.y > 0, 'omitted coordinates choose a viewport point');
+    const afterCenterScroll = await scrollView(scrollTabId);
+    assert.ok(afterCenterScroll.page > 0, `scroll gesture at viewport center scrolls the long document: ${JSON.stringify(afterCenterScroll)}`);
+    const nestedScroll = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 280, x: 80, y: 80 });
+    assert.deepEqual(nestedScroll.value.point, { x: 80, y: 80 });
+    assert.ok((await scrollView(scrollTabId)).panel > 0, 'explicit viewport coordinates target a nested scroll container');
+    assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'scrolling a background page leaves the foreground Room unchanged');
+    const badScrollPoint = await mcp.callTool('page_scroll', { roomId: room.id, tabId: scrollTabId, deltaX: 0, deltaY: 100, x: 100000, y: 80 });
+    assert.equal(badScrollPoint.result.isError, true);
+    assert.match(badScrollPoint.value.error, /outside the viewport/);
+
     const emptyBack = await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
     const emptyForward = await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
     assert.equal(emptyBack.result.isError, undefined);
@@ -210,6 +235,14 @@ class McpProcess {
     const { connect } = await import('../sdk/index.js');
     const scopedSdk = await connect({ dataDir, token: authorization.token });
     try {
+      const scrollRoom = await scopedSdk.room(room.id);
+      const sdkScrollPage = scrollRoom.page(scrollRoom.info.tabs.find(item => item.id === scrollTabId).label);
+      await assert.rejects(sdkScrollPage.scroll(0, 0), /not both zero/);
+      await assert.rejects(sdkScrollPage.scroll(0, 2001), /-2000..2000/);
+      await assert.rejects(sdkScrollPage.scroll(0, 50, { x: 40 }), /together/);
+      const panelBeforeSdk = (await scrollView(scrollTabId)).panel;
+      await sdkScrollPage.scroll(0, 180, { x: 80, y: 80 });
+      assert.ok((await scrollView(scrollTabId)).panel > panelBeforeSdk, 'SDK scroll uses the same explicit-coordinate action');
       const hiddenRoom = await scopedSdk.room(room.id);
       assert.ok(tab.label, 'the Agent-owned page has a stable label for SDK access');
       const hiddenPage = hiddenRoom.page(tab.label);
@@ -350,8 +383,9 @@ class McpProcess {
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_select_option', 'page_wait_for_selector', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
+    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_wait_for_selector', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
       const args = { roomId: room.id, tabId: tab.id };
+      if (name === 'page_scroll') Object.assign(args, { deltaX: 0, deltaY: 100 });
       if (name === 'page_hover') Object.assign(args, { target: { by: 'role', value: 'button', name: 'Hover menu' } });
       if (name === 'page_select_option') Object.assign(args, { target: { by: 'css', value: '#category' }, choices: 'books' });
       if (name === 'page_wait_for_selector') Object.assign(args, { target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 100 });
@@ -364,7 +398,7 @@ class McpProcess {
     }
     await call(`/rooms/${room.id}/resumeControl`, 'POST', {});
     assert.equal((await call('/rooms')).rooms.length, roomCountBefore);
-    console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, post-action verification, user-control denial, bounded responses');
+    console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, page scrolling, post-action verification, user-control denial, bounded responses');
   } finally {
     if (mcp) await mcp.close();
     if (app) await app.close().catch(() => {});
