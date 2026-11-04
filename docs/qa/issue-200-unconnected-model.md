@@ -12,9 +12,9 @@
 
 | 状态 | BrowserWindow 外框尺寸 | PNG 尺寸 | SHA-256 |
 | --- | --- | --- | --- |
-| 英文未连接 | 1280×850 | 2560×1618 | `236fcb7f4160f75f5cd7abc992dbac4e3ac91b9a2a9fca429721221f9e9485a4` |
-| 中文未连接 | 1280×850 | 2560×1618 | `ab3c1d250277f4901d14b938ad1342b341f2be431674f12387db52ed0558ee6d` |
-| 英文窄窗，滚动后显示模型与连接操作 | 704×420 | 1408×776 | `045900b9f24f35ee3be82ff5c5bf93940de875dfe8a7fe9cb702711a1c8fea9a` |
+| 英文未连接 | 1280×850 | 2560×1618 | `29333375666bfbf7f08639c8c113b20eb162a9c98eda9127ae220ecf3b45e8f9` |
+| 中文未连接 | 1280×850 | 2560×1618 | `c2a5ecd6c44ff11a52e5f672401bfe91399e2aa843500d9a1545febed67fb356` |
+| 英文窄窗，滚动后显示模型与连接操作 | 704×420 | 1408×776 | `631e101075ee53d1316a9d5bfbab127620c6742d11094975192955ae85a2a489` |
 
 截图来自 [英文宽窗](screenshots/issue-200-unconnected-model-en-1280x850.png)、[中文宽窗](screenshots/issue-200-unconnected-model-zh-CN-1280x850.png) 和 [英文窄窗](screenshots/issue-200-unconnected-model-en-704x420.png)。BrowserWindow 尺寸是测试设置的外框尺寸；PNG 为 Retina 图像尺寸，不将 PNG 高度当作 CSS viewport。素材只包含 Corvid 本地合成页面、默认合成 Profile 和未连接模型状态。
 
