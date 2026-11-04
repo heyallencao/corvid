@@ -349,7 +349,13 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   }
 
   async function initialize() {
-    if (!initializationPromise) initializationPromise = Promise.resolve().then(migrateLegacyCredentials);
+    if (!initializationPromise) {
+      const attempt = Promise.resolve().then(migrateLegacyCredentials);
+      initializationPromise = attempt;
+      attempt.catch(() => {
+        if (initializationPromise === attempt) initializationPromise = null;
+      });
+    }
     return initializationPromise;
   }
 
