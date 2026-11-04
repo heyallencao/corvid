@@ -120,3 +120,9 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #264 将 SDK 已有的 `selectOption()` 与 `hover()` 暴露为 `page_select_option`、`page_hover`。选择支持 value/label/index、单选/多选和清空；按 SDK 合同更新 DOM 选项并发出非可信 input/change 事件，不操作原生选择器；悬停只接受 locator，不开放任意坐标或脚本。两者都遵循显式 Room/Page 与 Agent 控制检查，并标记为可产生页面副作用的 action。
 - 隔离真实 Electron + 本地 fixture 验证下拉状态和悬停后菜单可见、错误选项，以及用户接管拒绝。没有真实站点/MCP host 证据，不推断所有自定义下拉菜单、hover 触屏兼容或 host 交互。
+
+
+## 2026-11-04 Browser MCP 页面元素状态等待
+
+- Issue #266 将 SDK `Page.waitForSelector()` 收敛为 `page_wait_for_selector`：只接受已有 locator schema，状态限定 `attached`、`detached`、`visible`、`hidden`，timeout 100–60,000ms，默认 10 秒；不暴露函数或任意脚本。
+- 隔离真实 Electron + 本地 SPA fixture 已验证动态出现、隐藏、移除、timeout 与用户接管中断。通过 fixture 的局部 DOM 变化验证同文档观察，不代表真实网站/MCP host 对所有 selector 和动画的兼容性。

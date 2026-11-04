@@ -169,6 +169,11 @@ function createServer() {
     return await page.info();
   }));
 
+  registerReadTool(server, 'page_wait_for_selector', 'Wait for one explicit locator to become attached, detached, visible, or hidden, then return page info. This only observes the page; it does not run scripts or perform actions.', pageScopeSchema.extend({ target: locatorSchema, state: z.enum(['attached', 'detached', 'visible', 'hidden']).default('visible'), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, target, state, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
+    await page.waitForSelector(target.by === 'ref' ? target.value : target, { state, timeout: timeoutMs });
+    return { ...(await page.info()), waitedFor: { state } };
+  }));
+
   registerScreenshotTool(server, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.screenshot()));
 
   registerActionTool(server, 'page_new', 'Create a new blank, Agent-owned managed page in the explicitly selected Room. This adds a tab but does not navigate it or activate the Room.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => withAgentRoom(roomId, async room => {
