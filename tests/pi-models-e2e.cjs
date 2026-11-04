@@ -22,8 +22,8 @@ const safeStorage=createFakeSafeStorage();
   for(const {language,marker,expected} of [
     {language:'zh-CN',marker:'secure-storage-unavailable',expected:'系统安全存储当前不可用'},
     {language:'en-US',marker:'secure-storage-unavailable',expected:'Secure system storage is unavailable'},
-    {language:'zh-CN',marker:'secure-storage-timeout',expected:'等待系统安全存储响应超时'},
-    {language:'en-US',marker:'secure-storage-timeout',expected:'Timed out waiting for secure system storage'},
+    {language:'zh-CN',marker:'secure-storage-timeout',expected:'系统安全存储在限定时间内未响应'},
+    {language:'en-US',marker:'secure-storage-timeout',expected:'Secure system storage did not respond in time'},
     {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
     {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
     {language:'zh-CN',marker:'secure-storage-response-invalid',expected:'系统安全存储返回了无效响应'},
@@ -43,7 +43,9 @@ const safeStorage=createFakeSafeStorage();
     context.extensionMessages=context.window.corvidI18n;
     vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
     const wrappedMessage=`Error invoking remote method 'shell-action': Error: [[corvid-error:${marker}]] provider tag rejected`;
-    assert.ok(context.userFacingAgentError({message:wrappedMessage}).startsWith(expected),`${language} localizes wrapped ${marker} errors before they reach the UI`);
+    const localizedError=context.userFacingAgentError({message:wrappedMessage});
+    assert.ok(localizedError.startsWith(expected),`${language} localizes wrapped ${marker} errors before they reach the UI`);
+    if(marker==='secure-storage-timeout') assert.doesNotMatch(localizedError,/解锁|unlock/i,`${language} timeout copy does not assume a locked keychain`);
   }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
   const timeoutDir = path.join(root, 'safe-storage-timeouts');

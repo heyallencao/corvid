@@ -1293,3 +1293,11 @@
 - 对照二：以同代码、同 Developer ID/Team、同关闭 Hardened Runtime 构建，唯一顶层 Bundle ID 改为开发版 Electron 使用的 `com.github.Electron`。`codesign --verify --deep --strict` 通过，CodeDirectory flags 为 `none`。`env -u ELECTRON_RUN_AS_NODE CORVID_PACKAGED_APP_PATH=/tmp/corvid-issue110-same-bundle/mac-arm64/Corvid.app CORVID_CREDENTIAL_OS_STORE_QA_DIR=/tmp/corvid-issue110-same-bundle-screenshots node tests/pi-credential-os-store-e2e.cjs` EXIT 1，仍为相同 15 秒超时，无合成凭据写入。
 - 对照结论：当前开发版 `com.github.Electron` ad-hoc Electron 完成凭据往返；Developer ID 包在两个 Bundle ID、Hardened Runtime 开/关组合中都超时。故单独关闭 Hardened Runtime或匹配 Bundle ID 不足以修复。候选差异仍包括 Developer ID 签名身份、`_electron.launch` 直接启动打包可执行文件与开发版启动方式、Keychain 对签名代码的访问/提示呈现；这些因素尚未被隔离，不能断言证书缺陷或系统授权失败。
 - 截图仍使用正式 Corvid Bundle ID + Hardened Runtime 包的恢复状态（见本节前项）；另两份 fixture 截图留在 `/tmp/corvid-issue110-no-hardened-screenshots/` 与 `/tmp/corvid-issue110-same-bundle-screenshots/`，UI 呈现同类安全存储超时。测试结束后未见 Corvid/Electron 遗留进程。CI 未启动原因仍为 GitHub 付款/支出门禁。Issue #110 开放，PR #157 草稿。
+
+
+## 2026-11-04 修正安全存储超时的恢复提示（Issue #110）
+
+- 背景：此前 `secure-storage-timeout` 的中文/英文 UI 文案直接要求检查并解锁钥匙串/密码管理器。超时只能证明 Electron 安全存储 API 在 15 秒内没有响应，不能证明钥匙串处于锁定状态；即使用户已允许本次访问，重复提示仍会把诊断工作错误地交回给用户。
+- 修改：超时状态改为“系统安全存储未及时响应、现有凭据与文件已保留、可稍后重试”，移除要求再次解锁的指令。其他明确报告 `secure-storage-unavailable` 的提示仍保留检查/解锁建议。
+- 验证：`node --check desktop/locales.js`、`node --check tests/pi-models-e2e.cjs`、`node tests/pi-models-e2e.cjs` 和 `git diff --check` 全部通过。纯 Node locale 合同验证 zh-CN/en 错误映射，并断言超时文案不含“解锁/unlock”。这不是签名包的 UI 复验；已归档的签名包截图反映本次文案修正前的状态。
+- 限制：Developer ID 签名包内 safeStorage API 仍有 15 秒超时；此修复降低无依据的重复用户指引，不代表签名包凭据读写已通过，也不关闭 Issue #110。
