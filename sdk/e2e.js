@@ -146,6 +146,23 @@ try {
   await page.press(input.ref, 'Control+a');
   assert.equal(await page.evaluate(() => document.querySelector('input').value), 'Hellox');
   assert.ok((await page.evaluate(() => window.events)).some(event => event.type === 'keydown' && event.key === 'a' && event.ctrl && event.trusted));
+  const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.fill(input.ref, 'select all');
+  await page.press(input.ref, `${primaryModifier}+a`);
+  assert.deepEqual(await page.evaluate(() => {
+    const input = document.querySelector('input');
+    return [input.selectionStart, input.selectionEnd];
+  }), [0, 'select all'.length], 'primary+A selects the whole input');
+  await page.fill(input.ref, 'one two');
+  await page.press(input.ref, 'End');
+  await page.keyboard.press(`${primaryModifier}+Shift+ArrowLeft`);
+  const selectedRange = await page.evaluate(() => {
+    const input = document.querySelector('input');
+    return input.value.slice(input.selectionStart, input.selectionEnd);
+  });
+  assert.equal(selectedRange, process.platform === 'darwin' ? 'one two' : 'two');
+  await page.keyboard.type('X');
+  assert.equal(await page.evaluate(() => document.querySelector('input').value), process.platform === 'darwin' ? 'X' : 'one X');
   assert.deepEqual(await page.selectOption('#choice', {label:'Two'}), ['two']);
   assert.deepEqual(await page.select('#choice', 'disabled'), ['disabled']);
   assert.deepEqual(await page.selectOption('#multi', [{index:0},{value:'three'}]), ['one','three']);

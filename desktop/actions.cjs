@@ -434,7 +434,8 @@ async function trustedInput(contents, operation, args, run) {
     }
     const keypress = async event => {
       await send('Input.dispatchKeyEvent',{type:'keyDown',...event});
-      await send('Input.dispatchKeyEvent',{type:'keyUp',...event,text:undefined});
+      const {commands,...keyUpEvent}=event;
+      await send('Input.dispatchKeyEvent',{type:'keyUp',...keyUpEvent,text:undefined});
     };
     if (operation === 'press') {
       await run('verify-focus',{target:args.target});
@@ -442,6 +443,15 @@ async function trustedInput(contents, operation, args, run) {
     }
     return {ok:true};
   }
+}
+
+function editingCommands(key, modifiers) {
+  if (process.platform !== 'darwin' || !(modifiers & 4)) return [];
+  const shift = Boolean(modifiers & 8);
+  if (!shift && key.toLowerCase() === 'a') return ['selectAll'];
+  if (key === 'ArrowLeft') return [shift ? 'moveToLeftEndOfLineAndModifySelection' : 'moveToLeftEndOfLine'];
+  if (key === 'ArrowRight') return [shift ? 'moveToRightEndOfLineAndModifySelection' : 'moveToRightEndOfLine'];
+  return [];
 }
 
 function parseKey(value) {
@@ -457,7 +467,8 @@ function parseKey(value) {
   else if (/^[0-9]$/.test(key)) {code=`Digit${key}`;vk=key.charCodeAt(0);}
   else throw new Error('Unsupported key; use letters, digits, space, or documented named keys');
   const printable=key.length===1 && !(modifiers & (1|2|4));
-  return {key,code,windowsVirtualKeyCode:vk,modifiers,...(printable ? {text:key} : {})};
+  const commands=editingCommands(key,modifiers);
+  return {key,code,windowsVirtualKeyCode:vk,modifiers,...(printable ? {text:key} : {}),...(commands.length ? {commands} : {})};
 }
 
 const keyboardStates = new WeakMap();
@@ -546,7 +557,8 @@ async function keyboardAction(contents, operation, args) {
     return {ok:true};
   }
   const text=spec.text!==undefined && !(base.modifiers & (1|2|4)) ? ((base.modifiers&8) ? spec.text.toUpperCase() : spec.text) : undefined;
-  if (operation!=='keyboardUp') await send('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text===undefined?{}:{text})});
+  const commands=editingCommands(spec.key,base.modifiers);
+  if (operation!=='keyboardUp') await send('Input.dispatchKeyEvent',{type:'keyDown',...base,...(text===undefined?{}:{text}),...(commands.length?{commands}:{})});
   if (operation!=='keyboardDown') await send('Input.dispatchKeyEvent',{type:'keyUp',...base});
   return {ok:true};
 }
