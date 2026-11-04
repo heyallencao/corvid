@@ -11,6 +11,8 @@
 - 启动选择“打开一个新标签页”时保留上次恢复的页面，在活动空间复用已有用户空白标签，避免每次重启累积标签；新标签页偏好只影响用户创建的 `about:blank`，不改变 Agent 页面。
 - 设置中心按当前活动标签显示 HTTP(S) 来源；其他页面、空标签与非网页协议下禁用站点操作。可用时沿用现有权限查看及清理数据确认流程。
 - 分类按钮同步 `aria-current` 并把焦点移到对应分区。宽屏使用分类侧栏，窄窗切为上下布局；内容区独立滚动，保存与取消操作固定。
+- 从设置打开模型管理或 Agent 授权前，检查待保存的启动、新标签与下载偏好；用户可继续编辑、放弃后继续，或保存后继续。继续编辑恢复原分类、草稿和焦点；Escape 返回设置，不隐式丢弃。语言与主题即时生效并保存，双语界面明确说明 Cancel 不回滚这些即时项。
+- 700×420 窄窗会压缩设置留白，确保下载路径及文件夹操作首屏可见；其它下载选项继续在独立内容区滚动查看，保存/取消固定可见。
 
 ## 数据与边界
 
@@ -23,6 +25,7 @@
 - 首个设置切片的 `tests/localization-e2e.cjs` 曾检查 zh-CN/en 资源、分类选择与焦点、无当前网页时站点操作禁用、主题即时应用、0600 持久化和重启恢复。单独重放到当时主线后复跑时，在 Agent 模型管理入口 `.pi-model-manage` 等待超时，尚未到达设置断言；随后在 #172 head `08aee4a` 与 #187 head `a49c6cf` 的隔离组合 worktree 中重跑，本地化与两项设置 E2E 均通过。组合结果和边界见 [PR #187 联调记录](https://github.com/heyallencao/corvid/pull/187)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 已通过，覆盖 schemaVersion 1 迁移、设置保存/重启、空白页注入开关、启动新标签复用、下载取消与自动保存、失效目录中英文错误，以及 700×420 设置布局；更新的中英文截图见[视觉检查记录](../qa/ui-visual-check.md)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-site-e2e.cjs` 已通过：空白页禁用站点操作；活动 HTTP(S) 来源显示与操作启用；合成通知权限获准后可在设置中取消审查并保留授权、确认撤销；取消站点数据清理保持 fixture localStorage，确认后清除且不改变独立权限；确认默认选择为非破坏项；语言切换后动态来源仍正确。Electron 权限/清理确认框用替身控制结果。测试截图在 700×420 需滚动内容区，并验证范围说明、当前来源、两个操作按钮及固定底部动作可完整显示。
+- 2026-11-04 增量：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 通过，增加低高度下载控件首屏几何断言、键盘可见焦点、保留/放弃/保存草稿路径及模型/Agent 管理导航。截图与视觉限制见 [设置中心 QA](../qa/ui-visual-check.md#issue-285-离开设置时的草稿与窄窗首屏2026-11-04)。该脚本由本地 HTTP fixture、临时数据目录和本机 Electron 驱动，没有登录 OAuth 或发起模型请求。
 - 系统文件夹/保存对话框由测试替身覆盖；真实桌面对话框还需单独验收。
 
 ## 尚未覆盖

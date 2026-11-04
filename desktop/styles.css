@@ -604,6 +604,13 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 .settings-actions #settings-error { min-width: 0; flex: 1; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 .settings-actions button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }
 .settings-actions button[type="submit"] { background: var(--accent-solid); color: white; }
+.settings-leave-content { display: grid; gap: 12px; }
+#settings-leave-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); box-shadow: 0 18px 52px rgb(18 24 40 / 22%); }
+.settings-leave-content h2 { margin: 0; font-size: 18px; }
+.settings-leave-content p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.settings-leave-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.settings-leave-actions button { min-height: 36px; padding: 7px 11px; }
+#settings-leave-save { border-color: transparent; background: var(--accent-solid); color: white; }
 @media (max-width: 760px) {
   #settings { width: calc(100vw - 20px); height: min(700px, 92vh); max-height: 92vh; padding: 14px; }
   #settings-form { gap: 10px; }
@@ -683,6 +690,24 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 .profile-deletion-actions .danger-button { border-color: transparent; background: var(--danger); color: white; }
 #profile-deletion .profile-deletion-actions .danger-button:disabled { opacity: 1; border-color: var(--line); background: var(--surface-neutral); color: var(--text-muted); cursor: not-allowed; }
 @media (max-height: 520px) {
+  #settings { height: min(700px, 96vh); max-height: 96vh; }
+  #settings { padding: 10px; }
+  #settings-form { gap: 7px; }
+  .settings-center-header { padding-bottom: 6px; }
+  .settings-center-header h2 { font-size: 18px; }
+  .settings-center-header p { display: none; }
+  .settings-center-body { gap: 5px; }
+  .settings-nav { gap: 2px; padding-bottom: 4px; }
+  .settings-nav button { min-height: 28px; padding: 4px 6px; font-size: 11px; }
+  .settings-section { gap: 6px; padding-bottom: 8px; }
+  .settings-scope { display: none; }
+  .settings-section-header { gap: 6px; }
+  .settings-section-header p { font-size: 10px; line-height: 1.35; }
+  .settings-actions { padding-top: 6px; }
+  #download-directory { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #settings-leave-dialog { padding: 16px; }
+  .settings-leave-actions { justify-content: stretch; }
+  .settings-leave-actions button { flex: 1 1 auto; }
   #profile-deletion { padding: 14px; max-height: 94vh; }
   .profile-deletion-form { gap: 8px; }
   .profile-deletion-heading h2 { font-size: 18px; }

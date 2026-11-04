@@ -1451,3 +1451,12 @@
 - 环境：独立 worktree `/private/tmp/corvid-sdk-keyboard-chord`，基于 `origin/main` `20502ea`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 `CORVID_DATA_DIR`、SDK 测试本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
 - 验证：`node --check desktop/actions.cjs`、`node --check sdk/e2e.js`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` EXIT 0。覆盖文本框与 `contenteditable` 中 Meta+A 的全文/宿主内选区、Meta+Shift+Left 实际扩展选区并替换为期望文本、既有 Control+A 按键路径和 SDK 输入回归。测试使用临时 `node_modules` 链接并在结束后移除；Electron 与 fixture 已退出。
 - 限制：未运行全量 `npm test`、正式打包、Windows/Linux；只覆盖 Chromium 文本框和 contenteditable 上列出的 macOS 命令映射，不证明网页对快捷键的自定义拦截、所有编辑命令或其他 OS 键盘绑定。
+
+## 2026-11-04 设置中心未保存决策与低高度布局（Issue #285）
+
+- 运行环境：隔离 worktree `/private/tmp/corvid-review-172-latest`，macOS arm64、Electron 45.2.1、Node.js v24.22.1；真实 Electron 使用脚本创建并清理的临时数据目录及本地 HTTP fixture。未使用真实模型、OAuth 或用户浏览数据。
+- 验证通过：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 与 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-site-e2e.cjs`。偏好覆盖 schema 迁移、保存/重启、700×420 下载路径与文件夹操作首屏几何、中英文、Tab 可见焦点、草稿继续/放弃/保存、模型/Agent 管理跳转与恢复；站点用例回归来源绑定、权限与数据清理合同。
+- 静态检查：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/settings-preferences-e2e.cjs`、`node --check tests/settings-site-e2e.cjs`、`node -e "JSON.parse(require('fs').readFileSync('package.json'))"` 与 `git diff --check` 均通过。
+- 截图：双语 700×420 下载页及中文未保存决策框已重新采集并目视检查，像素尺寸、SHA-256 和直接观察边界见[QA 视觉记录](../qa/ui-visual-check.md#issue-285-离开设置时的草稿与窄窗首屏2026-11-04)。下载前询问及辅助说明需滚动查看；设置留白压缩不等于整个设置页已适配所有短窗内容。
+- REA/CUA 边界：CUA 在解锁后的本机原生窗口直接查看设置中心截图与 AX 树，但没有保留该截图文件；REA `observe_native_ui` 因 provider 缺少可验证的进程启动时间而 `capability_unavailable`，不声称 REA 原生观察。已有 EasyUI 与 Aceternity REA 证据仅用于有限的分类/状态灵感，本轮未重新采集站点；详见 QA 记录。
+- 未覆盖：没有运行全量 `npm test`；没有验证真实 macOS 文件夹选择器、VoiceOver、签名包、Windows/Linux 或屏幕截图中的 WebContentsView 像素。
