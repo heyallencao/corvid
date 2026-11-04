@@ -1489,3 +1489,10 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过，覆盖 zh-CN/en、设置窄窗、模型/Agent 面板标签、Intl 格式、locale 持久化与重启；`git diff --check` 通过。另在同一验证 worktree 中临时叠加 Issue #303–#306 各自的未提交 E2E 修正后，`env -u ELECTRON_RUN_AS_NODE npm test` 完整跑至最后一个脚本并逐项输出 PASS。该全量结果是组合门禁证据，不能单独归因于 #288 分支。
 - 截图：由本地 fixture 生成，状态为默认标签页和浏览器 chrome，尺寸 1024×700；无个人数据。英文 `docs/qa/screenshots/corvid-localization-en-1024x700.png` SHA-256 `6bcef31fb8e2627ecabfabcf2c5f5de6c93bfef739301851ce29746a4e09593f`；简体中文 `docs/qa/screenshots/corvid-localization-zh-CN-1024x700.png` SHA-256 `ad53063e0b70175de6bb531db0279662d08089219959ddf1cf4fe42763742425`。
 - 限制：此切片只修复测试与现行 UI 合同不一致，不改变产品行为。全量组合门禁还依赖 #303–#306 的独立测试修正；未验证 Windows、打包版或真实站点。
+
+## 2026-11-05 默认窗口适配当前显示 workArea（Issue #303）
+
+- 缺陷：测试把默认窗口高度固定为 850px；本机主屏 workArea 高度为 843–845px，Electron 正确约束窗口后测试却失败。
+- 修正：断言默认宽高分别为 `min(1280, workArea.width)` 与 `min(850, workArea.height)`；保留最小窗口、恢复、损坏状态回退和离屏位置断言；新增可选的默认窗口截图，并更新 E2E 索引。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；workArea 由测试运行态读取；隔离临时 `CORVID_DATA_DIR`。
+- 验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1；`env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 通过。最新主线 `e46cc39` 加 #303–#306 测试修正的组合 worktree 上，`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（Node 合同 30/30，串行 Electron E2E 全部通过）。`CORVID_WINDOW_MIN_SIZE_QA_DIR=docs/qa/screenshots` 生成默认窗口截图（PNG 2560×1630，即本机 2× backing scale）；SHA-256 `2e804e002cb081d5116dc2d7928b8772e9367b13d071c19ffbacf5871ee930da`。未覆盖 Windows、打包版、超小屏幕和热插拔显示器。
