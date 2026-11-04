@@ -91,3 +91,8 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 - 已安装 BrowserMCP 来源目录固定在本地干净检出 commit `847790e4e57b5d3de137829bf51e20c5fb357d73`。REA 对 `src/mcp/server.ts`、`src/api/commands.ts`、`src/launcher/stdio.ts`、`src/host/doctor.ts` 做精确选择分析：Evidence `ev_97f8675045ebadba960eefa677e358507fa90a6936a813cab03c6e62360f145b`，父图谱 `ev_c8bfe027d960d704b5fc6a16158ce7c7561b0b177436c18276935fb58ff34dbf`。该分析只证明所选源码声明，不证明实际 BrowserMCP runtime 或 Chrome 行为。
 - Corvid MCP 当前包含五个只读工具与四个写工具：`page_navigate`（只允许 HTTP/HTTPS 且禁止 URL 内嵌账号密码）、`page_click`、`page_fill`、`page_press`。每个动作要求显式 `roomId`/`tabId`、managed page 和 Agent 控制；待用户接管或 execution risk 时拒绝。所有动作工具声明 `readOnlyHint:false`、`destructiveHint:true`、`openWorldHint:true`；结果不等于网站操作已成功，Agent 需要再取 Snapshot 验证。
 - `node tests/mcp-e2e.cjs` 使用隔离 Electron 与本地 HTTP 页面验证工具清单、操作副作用、HTTP(S) URL 范围、操作后状态、用户接管拒绝和离线错误。仍未连接真实 MCP host、真实网站或打包应用；仍不提供任意 `evaluate`/CDP、文件上传或 tab 生命周期控制。
+
+## 2026-11-04 页面历史导航实现补充
+
+- Corvid SDK Page 通过受控 `back` / `forward` API 路由调用浏览器历史；Browser MCP 新增 `page_back`、`page_forward`、`page_reload`，仍适配现有 SDK，不增加端口、凭据或任意代码执行能力。
+- 本轮隔离 Electron + 本地 HTTP fixture 的 MCP E2E 证明空历史不导航、同一 managed Tab 的前进/后退与重新请求、用户接管后拒绝操作、后台 Agent 动作不切换前台 Room。该证据只覆盖 Corvid 当前实现，不验证参考 BrowserMCP 的对应行为、真实 MCP host 或真实网站。

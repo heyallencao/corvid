@@ -114,6 +114,8 @@ class Page {
   async action(operation, args = {}) { if(this.popupArm)await this.popupArm;if(this.downloadArm)await this.downloadArm;return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/action`, { method: 'POST', body: { operation, args, pageLabel:this.label } }); }
   async navigate(url) { return this.action('navigate', { url }); }
   async goto(url) { return this.navigate(url); }
+  async back() { await this.currentTab(); return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/back`,{method:'POST',body:{pageLabel:this.label}}); }
+  async forward() { await this.currentTab(); return this.client.api(`/tabs/${encodeURIComponent(await this.resolveId())}/forward`,{method:'POST',body:{pageLabel:this.label}}); }
   async currentTab() {
     const id=await this.resolveId(),room=await this.client.room(this.roomId),info=room.info;
     if(info.ownership!=='agent' || info.userResumePending)throw new CorvidError(CODES.CONTROL_LOST,'Room is under user control or resumeControl is pending');
