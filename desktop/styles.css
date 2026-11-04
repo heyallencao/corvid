@@ -400,12 +400,23 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-message-queue-form button { justify-self: end; border-color: var(--line-accent); background: var(--surface-accent); color: var(--accent-ink); }
 .pi-message-queue-item .pi-context { max-height: 112px; margin: 0; overflow: auto; }
 .pi-message-queue-item label { display: flex; align-items: flex-start; gap: 7px; color: var(--text-secondary); font-size: var(--font-size-micro); line-height: 1.4; }
+.pi-message-queue-item { padding: 8px 0 0; border: 0; border-top: 1px solid var(--line-subtle); background: transparent; }
+.pi-message-queue-item:first-child { padding-top: 0; border-top: 0; }
+.pi-message-queue-primary { display: flex; }
+.pi-message-queue-actions { gap: 6px; padding-top: 3px; }
+.pi-message-queue-actions button,.pi-message-queue-item > button,.pi-message-queue-form button { min-height: 32px; padding: 5px 9px; }
+.pi-message-queue-more > summary { width: fit-content; min-height: 32px; padding: 5px 8px; border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--font-size-micro); cursor: pointer; }
+.pi-message-queue-more > summary::marker { color: var(--text-muted); }
+.pi-message-queue-more > summary:hover,.pi-message-queue-more[open] > summary { color: var(--text); background: var(--surface-hover); }
+.pi-message-queue-more > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.pi-message-queue-primary .pi-message-queue-send { min-height: 34px; padding: 6px 11px; border: 1px solid var(--line-accent); border-radius: var(--radius-sm); background: var(--surface-accent); color: var(--accent-ink); font-size: var(--font-size-small); font-weight: 600; }
+.pi-message-queue-primary .pi-message-queue-send:hover:not(:disabled) { background: var(--surface-accent-hover); }
 .pi-message-queue-item .pi-primary-action { justify-self: end; border: 0; background: var(--accent-solid); color: white; }
 .pi-message-queue-item .pi-secondary-action { justify-self: end; }
 @media (max-height: 540px) {
   .pi-message-queue { gap: 5px; margin-top: 6px; padding: 7px; }
   .pi-message-queue-list { max-height: 70px; }
-  .pi-message-queue-item { gap: 4px; padding: 6px; }
+  .pi-message-queue-item { gap: 4px; padding: 6px 0 0; }
   .pi-message-queue-item textarea,.pi-message-queue-form textarea { min-height: 36px; max-height: 64px; }
   .pi-message-queue-heading span { display: none; }
 }
