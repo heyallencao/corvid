@@ -436,10 +436,8 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #pi-task-form .pi-context { max-height: 100px; margin: 0; padding: 8px; border: 1px solid var(--line-subtle); border-radius: 8px; background: var(--surface-elevated); font-size: var(--font-size-micro); }
 #pi-task-form .pi-consent { padding: 2px 1px; }
 .pi-task-entry { gap: 9px; padding: 10px 8px; border: 0; border-radius: 0; background: transparent; }
-.pi-task-output { max-width: 94%; padding: 9px 11px; border-radius: 13px; font-size: 12px; line-height: 1.6; }
 .pi-task-output.from-user { border-bottom-right-radius: 5px; }
-.pi-task-output.from-pi { border: 1px solid var(--line-subtle); border-bottom-left-radius: 5px; background: var(--surface-soft); color: var(--text-agent); }
-.pi-task-event { padding: 5px 8px; border-left: 2px solid var(--line-strong); color: var(--text-muted); font-size: var(--font-size-micro); }
+.pi-task-output.from-pi { border: 1px solid var(--line-subtle); border-bottom-left-radius: 5px; color: var(--text-agent); }
 .pi-chat-empty { margin: 12px 2px; color: var(--text-muted); font-size: var(--font-size-small); text-align: center; }
 
 @media (max-height: 520px) {
@@ -503,7 +501,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-task-output::before { content: attr(aria-label); display: block; margin-bottom: 3px; color: var(--text-muted); font-size: var(--font-size-micro); font-weight: 600; letter-spacing: .05em; }
 .pi-task-output.from-pi { justify-self: start; background: var(--surface-message); }
 .pi-task-output.from-user { justify-self: end; background: var(--accent-soft); color: var(--text-user-message); }
-.pi-task-event { padding: 2px 3px; color: var(--text-muted); font-size: var(--font-size-micro); line-height: 1.5; }
+.pi-task-event { padding: 2px 3px; border-left: 2px solid var(--line-strong); color: var(--text-muted); font-size: var(--font-size-micro); line-height: 1.5; }
 .pi-task-event[data-type="error"] { color: var(--danger); }
 .pi-task-event[data-type="waiting_for_user"] { color: var(--warning); }
 .pi-task-error { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid var(--line-error); border-radius: var(--radius-sm); background: var(--surface-error); color: var(--danger); font-size: var(--font-size-small); line-height: 1.45; overflow-wrap: anywhere; }
