@@ -243,9 +243,9 @@ function draw(value) {
   profileAction(extensionMessages.t('renameCurrentProfile'),async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profileDisplayName(profile);document.querySelector('#rename-profile-error').textContent='';await openShellDialog('#rename-profile','#renamed-profile-name');document.querySelector('#renamed-profile-name').select();});
   profileAction(extensionMessages.t('manageProfileDeletion'),openProfileDeletionDialog);
   const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
-  const roomAction=(label,fn)=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');roomMenu.append(item);};
+  const roomAction=(label,fn,{destructive=false}={})=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');if(destructive)item.classList.add('menu-item-danger');roomMenu.append(item);};
   roomAction(extensionMessages.t('createSpace'),async()=>{await openShellDialog('#new-room','#room-name');});
-  if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
+  if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}},{destructive:true});
   const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
   const newWindow=button('',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
   newWindow.append(createShellIcon('plus'),document.createTextNode(extensionMessages.t('newWindow')));
@@ -1170,13 +1170,13 @@ function openTabMenu(event,tab,trigger){
     {label:extensionMessages.t('reload'),action:()=>api.invoke('reload',{id:tab.id})},
     {label:extensionMessages.t('copyLink'),action:()=>api.invoke('copyTabUrl',{id:tab.id})},
     {separator:true},
-    {label:extensionMessages.t('closeTab'),action:()=>api.invoke('closeTabFromUser',{id:tab.id})},
-    {label:extensionMessages.t('closeOtherTabs'),action:()=>api.invoke('closeOtherTabs',{id:tab.id})}
+    {label:extensionMessages.t('closeTab'),action:()=>api.invoke('closeTabFromUser',{id:tab.id}),destructive:true},
+    {label:extensionMessages.t('closeOtherTabs'),action:()=>api.invoke('closeOtherTabs',{id:tab.id}),destructive:true}
   ];
   menu.replaceChildren();
   for(const item of items){
     if(item.separator){const rule=document.createElement('div');rule.className='menu-separator';menu.append(rule);continue;}
-    const entry=document.createElement('button');entry.type='button';entry.className='menu-item';entry.textContent=item.label;entry.setAttribute('role','menuitem');
+    const entry=document.createElement('button');entry.type='button';entry.className=`menu-item${item.destructive?' menu-item-danger':''}`;entry.textContent=item.label;entry.setAttribute('role','menuitem');
     entry.onclick=async()=>{closeTabMenu({restoreFocus:true});controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}finally{const focusTarget=document.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"] .tab-main`)||document.querySelector('.tab[data-active="true"] .tab-main')||document.querySelector('#new-tab');focusTarget?.focus();}};
     menu.append(entry);
   }

@@ -6,6 +6,17 @@
 - 维护更新：Issue #211 已移除仅对应已修复新标签按钮问题的本机截图路径；保留的 CSS 级联问题与截图边界已重新说明。该截图没有上传，因为它不能证明当前仍开放的缺陷。
 - 限制：上述只读盘点不能证明图片内容安全或 GitHub 页面渲染。所有活动 PR 描述本轮均未更改；PR #247 私有仓库页面仍未取得登录态渲染证据。
 
+## 2026-11-04 菜单破坏性动作语义（Issue #203 子项）
+
+- 实现：在 tab、Room 与站点工具菜单中为关闭标签、关闭其他标签、关闭当前空间、清理此站点数据标记 `menu-item-danger`；文字使用 `--danger`，hover 使用 `--surface-error`。保留既有操作处理、二次确认、控制权检查；历史/书签删除与 Profile 删除保持现有危险样式。
+- 静态检查：`node --check desktop/renderer.js`、`node --check tests/tab-pin-menu-e2e.cjs`、`node --check tests/room-close-e2e.cjs`、`node --check tests/permissions-e2e.cjs` 与 `git diff --check` 通过。
+- 运行态验证（以下命令均 EXIT 0）：
+  - `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_ISSUE203_QA_DIR=docs/qa/screenshots/issue-203 node tests/tab-pin-menu-e2e.cjs`
+  - `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_ISSUE203_QA_DIR=docs/qa/screenshots/issue-203 node tests/room-close-e2e.cjs`
+  - `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_ISSUE203_QA_DIR=docs/qa/screenshots/issue-203 node tests/permissions-e2e.cjs`
+  - 覆盖浅/深主题下菜单文字/hover token、关闭空间的取消/竞态/重启回归，以及站点工具的键盘菜单与 scoped permissions 回归。测试按 `prefers-color-scheme` 切换后轮询 computed style，直到危险色与 hover surface 到达主题 token，避免固定延时误读过渡中间色。一次既有 tab 恢复断言在 UI DOM 尚未跟上 API 状态时失败；补充等待 `.tab.pinned` 实际渲染，之后连续复跑两次通过。
+- 环境与边界：隔离 worktree `/private/tmp/corvid-issue203-overlay`，基于最新 `origin/main` `20502ea`；Node.js v24.22.1、Electron 45.2.1、Playwright Core 1.64.1；本地 HTTP fixture 与临时数据目录。截图见 `docs/qa/screenshots/issue-203/`。未访问用户数据、真实网站、OAuth 或模型；未启动签名包或触发钥匙串。未运行全量 `npm test`、打包应用、macOS 原生合成验收或 Windows/Linux；#203 的弹层体系统一尚不在本子项范围内。
+
 ## 2026-11-04 Issue #244 PR 描述截图链接门禁
 
 - 变更：新增 PR 描述图片链接检查器和 `pull_request` 工作流；工作流从目标分支检出受信任检查器，权限仅为 `contents: read` 与 `pull-requests: read`。开放 PR 允许引用自身分支的截图供评审；禁止本机路径、相对图片目标、其他分支图片；合并事件要求图片已迁移到 `main` 或 GitHub 附件。

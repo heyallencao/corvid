@@ -748,3 +748,7 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* 关闭动作保持危险语义，但继续使用现有确认与控制权流程。 */
+#room-menu .menu-item-danger, #site-tools .menu-item-danger, #tab-menu .menu-item-danger { color: var(--danger); }
+#room-menu .menu-item-danger:hover, #site-tools .menu-item-danger:hover, #tab-menu .menu-item-danger:hover { background: var(--surface-error); color: var(--danger); }
