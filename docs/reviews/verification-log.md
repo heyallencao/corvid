@@ -1434,3 +1434,10 @@
 - 环境：独立 worktree `/private/tmp/corvid-sdk-keyboard-chord`，基于 `origin/main` `20502ea`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 `CORVID_DATA_DIR`、SDK 测试本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
 - 验证：`node --check desktop/actions.cjs`、`node --check sdk/e2e.js`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` EXIT 0。覆盖文本框与 `contenteditable` 中 Meta+A 的全文/宿主内选区、Meta+Shift+Left 实际扩展选区并替换为期望文本、既有 Control+A 按键路径和 SDK 输入回归。测试使用临时 `node_modules` 链接并在结束后移除；Electron 与 fixture 已退出。
 - 限制：未运行全量 `npm test`、正式打包、Windows/Linux；只覆盖 Chromium 文本框和 contenteditable 上列出的 macOS 命令映射，不证明网页对快捷键的自定义拦截、所有编辑命令或其他 OS 键盘绑定。
+
+## 2026-11-04 Agent 未连接默认模型名（Issue #200，PR 前验证）
+
+- 实现：未连接时，默认模型选择保留原始 provider/model 值与 `agent-model.json` 持久化，但收起选择器改显示双语中性状态；连接成功后仍显示具体已配置模型。连接状态 `已连接`、`未连接`、`无需密钥` 根据 zh-CN/en 资源呈现，避免英文界面残留主进程中文状态。
+- 环境：独立 worktree `/private/tmp/corvid-issue200-unconnected-model`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、合成本地 HTTP 页面。为 ESM 动态导入临时链接现有 `node_modules`，测试后已删除链接。未调用真实模型、Provider、OAuth、API Key 或系统凭据存储；未构建/运行签名包。
+- 验证：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/pi-workbench-e2e.cjs`、`node --check tests/pi-unconnected-model-label-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/private/tmp/corvid-issue200-evidence node tests/pi-unconnected-model-label-e2e.cjs` EXIT 0。覆盖中英状态、选择值持久化、键盘模型管理入口与 704×420 滚动后的状态/CTA 可达；记录三张本地合成截图，见 [QA 记录](../qa/issue-200-unconnected-model.md)。
+- 限制：未运行包含安全凭据写入段的 `pi-workbench-e2e.cjs`、全量 `npm test`、真实登录、打包版或 Windows/Linux；已配置 Provider 的模型名路径通过现有 E2E 新增断言，但本轮未执行该凭据写入验收。另尝试 `tests/localization-e2e.cjs`，在 704×420 设置对话框可见性断言处失败，未运行到 Agent 资源断言，因此不计为通过；本轮聚焦 E2E 已独立验证新文案的中英切换。浅/深主题与屏幕阅读器未覆盖。
