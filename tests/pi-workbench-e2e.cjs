@@ -8,6 +8,14 @@ const path = require('node:path');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
+const saveScreenshot = async (page, fileName) => {
+  const directory = evidenceDirectory || os.tmpdir();
+  fs.mkdirSync(directory, { recursive: true });
+  const outputPath = path.join(directory, fileName);
+  await page.screenshot({ path: outputPath });
+  return outputPath;
+};
 const readSavedTasks = dataDir => {
   const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
   return Array.isArray(saved) ? saved : saved.tasks;
@@ -32,6 +40,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
   try {
     app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, PI_CODING_AGENT_DIR: legacyPiDir, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
     const shell = await app.firstWindow();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 850));
     let control = await (async () => {
       for (let i = 0; i < 200; i++) { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'control.json'), 'utf8')); } catch { await delay(25); } }
       throw new Error('Corvid control service did not start');
@@ -46,12 +55,16 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'Agent workbench');
+    assert.equal(await shell.locator('#library[data-kind="pi-workbench"] .panel-eyebrow').isVisible(), false, 'the Agent workbench uses its product title without a redundant eyebrow');
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
     const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
-    await modelSelect.waitFor();
+    await modelSelect.waitFor({timeout:5_000}).catch(async error=>{
+      const diagnostic=await shell.evaluate(()=>({panelKind:document.querySelector('#library')?.dataset.kind,panelHidden:document.querySelector('#library')?.hidden,workbench:Boolean(document.querySelector('#pi-workbench-content')),form:Boolean(document.querySelector('#pi-task-form')),controls:document.querySelector('.pi-model-controls')?.innerText,modelLabel:document.querySelector('.pi-model-select')?.getAttribute('aria-label'),status:document.querySelector('.pi-model-status')?.textContent,libraryText:document.querySelector('#library')?.innerText}));
+      throw new Error(`${error.message}; workbench state: ${JSON.stringify(diagnostic)}`);
+    });
     assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
-    await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
+    await shell.getByRole('button', { name: '管理模型', exact: true }).click();
     await shell.locator('#pi-model-settings[open]').waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
     await shell.getByRole('button', { name: '关闭', exact: true }).click();
@@ -75,11 +88,21 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-model.json'),'utf8')),{providerId:'openai-codex',modelId:'gpt-6-luna'});
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     await shell.getByText(/任务页面：Corvid Agent 对话/).waitFor();
+    const disconnectedModelState=await shell.locator('.pi-model-controls').evaluate(control=>({connected:control.dataset.connected,status:control.querySelector('.pi-model-status').textContent,fontSize:parseFloat(getComputedStyle(control.querySelector('.pi-model-status')).fontSize),actionVisible:control.querySelector('.pi-model-connection > .pi-model-action').getBoundingClientRect().height>0}));
+    assert.deepEqual({connected:disconnectedModelState.connected,status:disconnectedModelState.status,actionVisible:disconnectedModelState.actionVisible},{connected:'false',status:'未连接',actionVisible:true},'the disconnected provider is visible with a direct connection action');
+    assert.ok(disconnectedModelState.fontSize>=12,`the blocking connection state uses readable status text: ${JSON.stringify(disconnectedModelState)}`);
+    await saveScreenshot(shell, 'issue-200-agent-first-task-1280x850.png');
     const taskPrompt=shell.getByRole('textbox', { name: '描述要完成的浏览任务' });
     await taskPrompt.fill('总结当前页面内容 [fixture:stream-and-tool-events]');
     await taskPrompt.focus();
     await shell.keyboard.press('Tab');
-    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'检查并预览页面上下文','Tab reaches the page-context preview action from the task prompt');
+    assert.equal(await shell.evaluate(()=>document.activeElement.className),'pi-model-select','Tab reaches the model choice after the user can enter a task');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.getAttribute('aria-label')),'管理模型','model management follows the compact model choice');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'连接账号','the visible disconnected state has a direct account connection action');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'检查并预览页面上下文','page context review follows the task and model controls');
     await shell.keyboard.press('Enter');
     await shell.getByText(/将分享给 Agent：/).waitFor();
     assert.equal(await shell.evaluate(()=>document.activeElement.id),'pi-context-consent','preview rerender moves keyboard focus to the required consent checkbox');
@@ -99,6 +122,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(startFeedback.disabled, true, 'starting a task immediately disables repeat submissions');
     assert.equal(startFeedback.busy, 'true', 'the pending start is announced as busy');
     assert.equal(startFeedback.text, '正在启动 Agent 任务…', 'the send action gives immediate localized progress feedback');
+    await saveScreenshot(shell, 'issue-200-agent-task-sending-1280x850.png');
     const firstTaskCard=shell.locator('.pi-task-entry').first();
     await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
     await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor();
@@ -165,7 +189,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const elapsedState=await runningElapsed.evaluate(element=>({startedAt:element.dataset.startedAt,finishedAt:element.dataset.finishedAt,live:element.dataset.live,now:new Date().toISOString()}));
     assert.notEqual(elapsedAfter,elapsedBefore,`the running turn elapsed duration updates while the task runs: ${JSON.stringify(elapsedState)}`);
     assert.match(elapsedAfter,/本轮已用时/);
-    await shell.screenshot({path:path.join(project,'docs/qa/screenshots/issue-186-agent-task-duration-1280x850.png')});
+    await saveScreenshot(shell, 'issue-186-agent-task-duration-1280x850.png');
     const queueForm=queuedTask.locator('.pi-message-queue-form');
     const queueInput=queueForm.getByRole('textbox',{name:'添加后续消息'});
     await queueInput.fill('检查来源');
@@ -198,14 +222,12 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await queuedTask.getByText('Follow-up queue',{exact:false}).waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell,'English follow-up queue');
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
-    const queueScreenshot=path.join(project,'docs/qa/screenshots/issue-180-agent-message-queue-1280x850.png');
-    await shell.screenshot({path:queueScreenshot});
+    await saveScreenshot(shell, 'issue-180-agent-message-queue-1280x850.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(700,420));await delay(150);
     await queueInput.focus();
     const narrowQueueVisible=await queueInput.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-list').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
     assert.equal(narrowQueueVisible,true,'the queue composer remains reachable inside the task history scroller at short height');
-    const narrowQueueScreenshot=path.join(project,'docs/qa/screenshots/issue-180-agent-message-queue-700x420.png');
-    await shell.screenshot({path:narrowQueueScreenshot});
+    await saveScreenshot(shell, 'issue-180-agent-message-queue-700x420.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));await delay(100);
     await queuedTask.locator('.pi-message-queue-send').first().click();
     await queuedTask.getByRole('button',{name:'检查页面内容'}).click();
@@ -237,14 +259,18 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.screenshot({path:path.join(os.tmpdir(),'corvid-pi-workbench-history.png')});
     await shell.getByRole('button',{name:/新建对话/}).click();
     await shell.getByRole('button',{name:'连接当前页面'}).click();
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(700,420));
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704,420));
     await delay(150);
+    await saveScreenshot(shell, 'issue-200-agent-first-task-704x420-input-first-view.png');
     const narrowModelControls=await shell.locator('#pi-task-form').evaluate(form=>{
       const visible=element=>{const box=element.getBoundingClientRect(),clip=form.getBoundingClientRect();return box.height>0&&box.top>=clip.top&&box.bottom<=clip.bottom;};
-      const controls=form.querySelector('.pi-model-controls'),controlsBox=controls.getBoundingClientRect(),prompt=form.querySelector('#pi-task-prompt'),promptBox=prompt.getBoundingClientRect();
-      return {page:visible(form.querySelector('.pi-page-binding')),select:visible(form.querySelector('.pi-model-select')),status:visible(form.querySelector('.pi-model-status')),action:visible(form.querySelector('.pi-model-action')),clearance:Math.round(promptBox.top-controlsBox.bottom),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
+      const reachable=element=>{element.scrollIntoView({block:'nearest'});return visible(element);};
+      const pageVisibleAtStart=visible(form.querySelector('.pi-page-binding')),prompt=form.querySelector('#pi-task-prompt'),promptVisibleAtStart=visible(prompt),controls=form.querySelector('.pi-model-controls'),controlsBox=controls.getBoundingClientRect(),promptBox=prompt.getBoundingClientRect();
+      return {pageVisibleAtStart,promptVisibleAtStart,order:promptBox.bottom<=controlsBox.top,select:reachable(form.querySelector('.pi-model-select')),status:reachable(form.querySelector('.pi-model-status')),manage:reachable(form.querySelector('.pi-model-manage')),action:reachable(form.querySelector('.pi-model-connection > .pi-model-action')),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
     });
-    assert.ok(narrowModelControls.page&&narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.action&&narrowModelControls.clearance>=1&&narrowModelControls.formScrollHeight>narrowModelControls.formHeight,`short-height composer keeps page/model state visible and scrollable without overlap: ${JSON.stringify(narrowModelControls)}`);
+    assert.ok(narrowModelControls.pageVisibleAtStart&&narrowModelControls.promptVisibleAtStart&&narrowModelControls.order&&narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.manage&&narrowModelControls.action&&narrowModelControls.formScrollHeight>narrowModelControls.formHeight,`short-height composer shows the page and prompt first, then keeps model state and account recovery reachable by scrolling: ${JSON.stringify(narrowModelControls)}`);
+    await saveScreenshot(shell, 'issue-200-agent-first-task-704x420-controls-scroll.png');
+    await shell.locator('#pi-task-form').evaluate(form=>{form.scrollTop=0;});
     const shortPrompt=shell.getByRole('textbox',{name:'描述要完成的浏览任务'});
     await shortPrompt.focus();
     const promptVisible=await shortPrompt.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-form').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
@@ -259,6 +285,11 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const apiKeyAction=shell.locator('#pi-task-form .pi-model-action').last();await apiKeyAction.focus();
     const apiKeyActionVisible=await apiKeyAction.evaluate(button=>{const box=button.getBoundingClientRect(),clip=button.closest('#pi-task-form').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
     assert.ok(apiKeyFieldVisible&&apiKeyActionVisible,'API Key entry and save action remain reachable in the short workspace');
+    await apiKeyField.fill('corvid-isolated-ui-fixture-key');
+    await apiKeyAction.click();
+    await shell.waitForFunction(()=>document.querySelector('.pi-model-controls')?.dataset.connected==='true',{timeout:5_000});
+    assert.equal(await shell.locator('.pi-model-status').textContent(),'已连接','a locally configured provider shows the connected state');
+    await saveScreenshot(shell, 'issue-200-agent-first-task-connected-704x420.png');
     await modelSelect.selectOption(codexModelValue);
     const narrowPrompt='窄窗口中启动 Pi 任务';
     await shell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill(narrowPrompt);
@@ -267,7 +298,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button',{name:'发送',exact:true}).click();
     await shell.locator('.pi-task-title').getByText(narrowPrompt).waitFor();
-    await shell.screenshot({path:path.join(os.tmpdir(),'corvid-pi-workbench-narrow.png')});
+    await saveScreenshot(shell, 'corvid-pi-workbench-narrow.png');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280,850));
     await app.close(); app=null;
     afterFollowup.status='running';afterFollowup.conversation[3].status='running';delete afterFollowup.conversation[3].finishedAt;afterFollowup.events.push({type:'tool',text:'正在使用浏览器工具：corvid_page_snapshot',at:new Date().toISOString()});fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify([afterFollowup]),{mode:0o600});
