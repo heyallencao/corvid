@@ -116,16 +116,18 @@ async function openApiKeyProvider(app) {
     console.log(`PASS ${process.platform} Electron safeStorage availability, encrypted persistence, restart read, and logout deletion`);
   } finally {
     if (app) {
+      let appProcess;
+      try { appProcess = app.process(); } catch {}
       let closeTimer;
       await Promise.race([
         app.close().catch(() => {}),
         new Promise(resolve => { closeTimer = setTimeout(resolve, 3_000); }),
       ]);
       clearTimeout(closeTimer);
-      if (app.process()?.exitCode === null) {
-        app.process()?.kill('SIGTERM');
+      if (appProcess?.exitCode === null) {
+        appProcess.kill('SIGTERM');
         await Promise.race([
-          new Promise(resolve => app.process()?.once('exit', resolve)),
+          new Promise(resolve => appProcess.once('exit', resolve)),
           new Promise(resolve => setTimeout(resolve, 2_000)),
         ]);
       }
