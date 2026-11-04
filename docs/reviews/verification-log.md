@@ -1272,3 +1272,9 @@
 - 签名包状态：此前 `c880f1d` 的本机 Developer ID 签名包在允许钥匙串访问后重试，模型设置仍显示系统安全存储等待超时；该轮没有写入合成凭据，因此未验证保存、重启读取或登出删除。现有证据仍不能确定 Keychain 调用未返回的原因。重放后尚未重建/重跑签名应用验收。
 - 并发边界：重放后的复验前检查到另一隔离工作树 `/private/tmp/corvid-issue193-conversation-identities` 的 Electron 主进程和 renderer 仍在运行。为避免争用桌面焦点，本轮没有启动、关闭或附加任何 Electron 进程；需在该进程退出后继续签名构建和 `npm run test:packaged:signed:mac`。
 - 未覆盖：当前仍没有签名包凭据往返证据；CI 付款限制期间也没有新的跨平台 runner 结果。Issue #110 与 PR #157 均保持开放/草稿。
+
+## 2026-11-04 最新主线签名包凭据往返复验（Issue #110）
+
+- 构建：在 `codex/issue110-signed-package` 重放头执行 `CORVID_MAC_SIGNING_IDENTITY='ANFU CAO (37HP972H37)' npm run package:mac:signed:dir`，EXIT 0，Electron 45.2.1、macOS arm64。`npm run test:packaged:signed:mac` 第一阶段签名 `.app` 启动/退出 smoke test 通过；`codesign --verify --deep --strict`、Developer ID authority、TeamIdentifier `37HP972H37` 和 Hardened Runtime 检查通过。`app.asar` SHA-256 为 `05698190786bade2b43fdc401097f37188c10ce9a0993c58942e9490445e88b4`，包内不含 docs/tests。electron-builder 因未配置 notarize 跳过公证。
+- 凭据往返：同命令第二阶段以 EXIT 1 结束。允许钥匙串访问后，签名包仍在 Agent 模型目录等待系统安全存储时超时 15 秒；UI 明确展示“等待系统安全存储响应超时，现有账号授权和文件已保留”。本轮没有写入合成 API Key，重启读取和登出删除未到达。截图为隔离数据目录与本地 fixture，2560×1636，SHA-256 `0502ced8a7fde157b87e0c7502f1e686529b0a7b6cbf7f82a7acdf5961c5c3c9`，见[截图](../qa/screenshots/issue-110-secure-storage-timeout.png)。
+- 对照与限制：纯 Node `node tests/pi-models-e2e.cjs`、修改文件 `node --check`、签名检查 helper 与 `git diff --check` 通过；这些合同测试不代替签名包凭据往返。当前主进程已清理。失败仍直接证明 async `safeStorage` 响应超时，但不能证明是 Keychain 权限提示、签名身份、Hardened Runtime 或 Electron 缺陷；本轮读取的 App/Helper entitlements 均只有 JIT/未签名内存/library-validation 项，无 App Sandbox entitlement。CI 重放后仍因 GitHub 付款/支出上限没有启动 runner。Issue #110 继续开放，PR #157 保持草稿。
