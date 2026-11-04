@@ -539,6 +539,7 @@ async function renderPiModelControls(target){
   const version=(piModelControlVersions.get(target)||0)+1;piModelControlVersions.set(target,version);
   target.replaceChildren();
   const status=document.createElement('span');status.className='pi-model-status';status.setAttribute('role','status');status.textContent=extensionMessages.t('modelCatalogLoading');
+  target.append(status);
   try{
     const catalog=await api.invoke('piModels');if(piModelControlVersions.get(target)!==version)return;const choice=document.createElement('div');choice.className='pi-model-choice';const select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label',extensionMessages.t('agentModel'));
     for(const provider of catalog.providers){

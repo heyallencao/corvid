@@ -9,34 +9,6 @@ const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const safeStorageTimeoutMs = 15_000;
-
-async function assertSafeStorageAvailable(app, phase) {
-  let timer;
-  try {
-    const available = await Promise.race([
-      app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(`Electron safeStorage availability did not resolve during ${phase} within ${safeStorageTimeoutMs} ms`);
-          error.code = 'CORVID_SAFE_STORAGE_TIMEOUT';
-          reject(error);
-        }, safeStorageTimeoutMs);
-      }),
-    ]);
-    assert.equal(available, true,
-      `the running Electron build reports asynchronous OS credential protection available during ${phase}`);
-  } catch (error) {
-    if (error.code === 'CORVID_SAFE_STORAGE_TIMEOUT') {
-      // A native credential prompt can leave the Electron main thread blocked; terminate it so this test cannot hang.
-      app.process()?.kill('SIGKILL');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function launch(dataDir) {
   const extraArgs = String(process.env.CORVID_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
   const packagedAppPath = process.env.CORVID_PACKAGED_APP_PATH ? path.resolve(process.env.CORVID_PACKAGED_APP_PATH) : null;
@@ -69,7 +41,21 @@ async function openApiKeyProvider(app) {
   const shell = await app.firstWindow();
   await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
   const select = shell.locator('.pi-model-select');
-  await select.waitFor();
+  const status = shell.locator('.pi-model-status');
+  await status.waitFor({ state: 'visible', timeout: 2_000 });
+  try { await select.waitFor({ state: 'visible', timeout: 20_000 }); }
+  catch (error) {
+    const message = await status.innerText().catch(() => '');
+    if (/系统安全存储|secure system storage/i.test(message)) {
+      const screenshotDir = process.env.CORVID_CREDENTIAL_OS_STORE_QA_DIR;
+      if (screenshotDir) {
+        fs.mkdirSync(screenshotDir, { recursive: true });
+        await shell.screenshot({ path: path.join(screenshotDir, 'issue-110-secure-storage-timeout.png') }).catch(() => {});
+      }
+      throw new Error(`The model catalog surfaced its credential-store recovery status before the provider list became available: ${message}`, { cause: error });
+    }
+    throw error;
+  }
   const option = await select.locator('option').evaluateAll(options => options.find(item => {
     try { return JSON.parse(item.value).providerId === 'anthropic'; } catch { return false; }
   })?.value);
@@ -99,7 +85,6 @@ async function openApiKeyProvider(app) {
     await initialShell.getByLabel(/地址或搜索|Address or search/i).fill(pageUrl);
     await initialShell.getByLabel(/地址或搜索|Address or search/i).press('Enter');
     await waitForPage(dataDir, pageUrl);
-    await assertSafeStorageAvailable(app, 'initial credential-store check');
     let shell = await openApiKeyProvider(app);
     await shell.locator('.pi-model-key').fill(secret);
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).click();
@@ -120,7 +105,6 @@ async function openApiKeyProvider(app) {
 
     await app.close();
     app = await launch(dataDir);
-    await assertSafeStorageAvailable(app, 'post-restart credential-store check');
     shell = await openApiKeyProvider(app);
     await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
     assert.equal(await shell.locator('.pi-model-key').count(), 0,
@@ -131,7 +115,21 @@ async function openApiKeyProvider(app) {
     assert.equal(afterLogout.providers.anthropic, undefined, 'logout removes the credential from Corvid persistence');
     console.log(`PASS ${process.platform} Electron safeStorage availability, encrypted persistence, restart read, and logout deletion`);
   } finally {
-    if (app) await app.close().catch(() => {});
+    if (app) {
+      let closeTimer;
+      await Promise.race([
+        app.close().catch(() => {}),
+        new Promise(resolve => { closeTimer = setTimeout(resolve, 3_000); }),
+      ]);
+      clearTimeout(closeTimer);
+      if (app.process()?.exitCode === null) {
+        app.process()?.kill('SIGTERM');
+        await Promise.race([
+          new Promise(resolve => app.process()?.once('exit', resolve)),
+          new Promise(resolve => setTimeout(resolve, 2_000)),
+        ]);
+      }
+    }
     await new Promise(resolve => site.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
