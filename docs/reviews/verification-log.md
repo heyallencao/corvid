@@ -1402,3 +1402,11 @@
 - 环境：独立 worktree `/private/tmp/corvid-issue268-page-scroll`，基于 PR #267 合并后的 `origin/main` `92f0615`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture，复用主工作区已安装依赖的临时软链接并在运行后移除。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
 - 验证通过：`node --check desktop/actions.cjs`、`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖 MCP action annotation、默认中心滚动长页、指定坐标滚动嵌套面板、视口越界拒绝、SDK 归零/超界/单坐标拒绝与有效调用、后台 Room 不抢前台、用户接管后拒绝滚动，以及现有 MCP 授权和离线错误回归。Electron 与 fixture 已退出。
 - 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实 MCP host 或真实站点；本地合成页面不验证触控输入、平台差异、各站点对滚动输入的自定义处理或懒加载兼容性。
+
+## 2026-11-04 contenteditable 网页输入（Issue #271，PR 前验证）
+
+- 实现：SDK `Page.fill()` 与现有 MCP `page_fill` 支持 `contenteditable="true"`、空属性和 `plaintext-only` 编辑宿主；Snapshot 与 role locator 把最近编辑宿主映射为 textbox。locator 可指向宿主或其后代，Selection Range 只选中最近宿主内容，再由可信 Backspace 和 Chromium `Input.insertText` 替换；不直接写 DOM/HTML，传入 HTML 作为字面文本。富文本宿主可能保留插入点原有行内样式；多行由 Chromium 以编辑段落语义呈现。
+- 运行态发现：本机 macOS Electron 中 `Meta+A` 虽触发可信按键事件，但没有选择 contenteditable 文本；采用 DOM Selection Range 限定范围后再走浏览器可信删除/输入路径。测试中 `beforeinput`/`input` 都为 `isTrusted:true`。
+- 环境：独立 worktree `/private/tmp/corvid-issue271-contenteditable`，基于 PR #270 合并后的 `origin/main` `f99b763`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；SDK/MCP E2E 各使用隔离临时 Corvid 数据目录和本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证通过：`node --check desktop/actions.cjs`、`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check sdk/e2e.js`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 均 EXIT 0。覆盖原生 input/textarea 回归、Snapshot/role textbox 发现、含格式与后代定位的编辑宿主、`plaintext-only`、空宿主、多行、HTML 字面量、可信 beforeinput/input、`contenteditable=false` 与隐藏目标拒绝、MCP 页面填充，以及用户接管后拒绝写入。
+- 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实网站或真实 MCP host；跨文档编辑器、IME、站点自定义编辑快捷键及所有 Chromium 编辑器差异未验证。

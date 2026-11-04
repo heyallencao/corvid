@@ -8,6 +8,12 @@ const pointers = new WeakMap();
 // current document. Its registry disappears automatically on navigation.
 function pageOperation(operation, args, seed) {
   const registry = globalThis.__corvidRegistry ||= {documentId: seed, next: 1, nodes: new Map(), refs: new WeakMap()};
+  const editingHostFor=node=>{
+    if(!node?.isContentEditable)return null;
+    let host=node;
+    while(host.parentElement?.isContentEditable && !host.hasAttribute('contenteditable'))host=host.parentElement;
+    return host;
+  };
   const refKey = value => {
     const match = /^(?:@(\d+)|ref=(\d+)|ref:[^:]+:(\d+))$/.exec(value);
     return match ? '@'+(match[1] || match[2] || match[3]) : null;
@@ -73,7 +79,7 @@ function pageOperation(operation, args, seed) {
       const normalized=s=>(s||'').replace(/\s+/g,' ').trim();
       const same=(actual,wanted,exact)=>exact ? normalized(actual)===normalized(wanted) : normalized(actual).toLowerCase().includes(normalized(wanted).toLowerCase());
       const name=el=>el.getAttribute('aria-label') || el.getAttribute('title') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || '';
-      const role=el=>el.getAttribute('role') || ({button:'button',a:el.hasAttribute('href')?'link':'',select:'combobox',textarea:'textbox',input:el.type==='checkbox'?'checkbox':el.type==='radio'?'radio':['button','submit','reset'].includes(el.type)?'button':'textbox'})[el.localName] || '';
+      const role=el=>el.getAttribute('role') || (editingHostFor(el)===el?'textbox':({button:'button',a:el.hasAttribute('href')?'link':'',select:'combobox',textarea:'textbox',input:el.type==='checkbox'?'checkbox':el.type==='radio'?'radio':['button','submit','reset'].includes(el.type)?'button':'textbox'})[el.localName] || '');
       for(const root of roots) for(const el of root.querySelectorAll('*')) {
         if (query.by==='href' && el.localName==='a' && el.getAttribute('href')===query.value) matches.push(el);
         if (query.by==='role' && role(el)===query.value && (query.name===undefined || same(name(el),query.name,query.exact!==false))) matches.push(el);
@@ -104,7 +110,7 @@ function pageOperation(operation, args, seed) {
     if (!['page','viewport','subtree'].includes(scope)) throw new Error('Invalid snapshot scope');
     if (scope==='subtree' && (typeof options.root!=='string' || !options.root)) throw new Error('Subtree snapshot requires a root reference');
     const all=[]; let inaccessibleFrames=0;
-    const interactive='a,button,input,textarea,select,[role],[contenteditable="true"]';
+    const interactive='a,button,input,textarea,select,[role],[contenteditable]:not([contenteditable="false"])';
     const frameLabel=el=>{ if(el.id) return '#'+el.id; const name=el.getAttribute('name'); return name ? `${el.localName}[name="${name}"]` : el.localName; };
     const absoluteRect=el=>{
       let rect=el.getBoundingClientRect(), view=el.ownerDocument.defaultView;
@@ -135,7 +141,7 @@ function pageOperation(operation, args, seed) {
         if (root.shadowRoot) collect(root.shadowRoot,null);
       }
     } else collect(document,null);
-    const items=all.slice(0,200).map(({el,frame})=>({ref:refFor(el),role:el.getAttribute('role') || (el.tagName || '').toLowerCase(),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || '',frame:frame ?? null}));
+    const items=all.slice(0,200).map(({el,frame})=>({ref:refFor(el),role:el.getAttribute('role') || (editingHostFor(el)===el?'textbox':(el.tagName || '').toLowerCase()),name:el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.getAttribute('placeholder') || '',frame:frame ?? null}));
     return {url:location.href,title:document.title,scope,items,truncated:all.length>200,total:all.length,limitations:['Accessible names are approximate; closed shadow roots and cross-origin iframe contents are not included.'],inaccessibleFrames};
   }
   if(operation==='viewport')return {width:innerWidth,height:innerHeight,devicePixelRatio:devicePixelRatio};
@@ -217,13 +223,21 @@ function pageOperation(operation, args, seed) {
     if (args.kind==='fill') {
       const win=element.ownerDocument.defaultView;
       const supported=element instanceof win.HTMLTextAreaElement || (element instanceof win.HTMLInputElement && ['text','search','url','tel','password'].includes(element.type));
-      if (!supported || element.readOnly) throw new Error('Fill supports editable text inputs and textareas only');
+      if ((!supported && !editingHostFor(element)) || (supported && element.readOnly)) throw new Error('Fill supports editable text inputs, textareas, and contenteditable hosts only');
     }
     return {x,y};
   }
   if (operation==='select-text') {
+    const host=editingHostFor(element);
+    if(host) {
+      if(element.getRootNode().activeElement!==host)throw new Error('Input focus was not acquired');
+      // Scope selection to the editing host; Meta+A did not reliably select contenteditable in Electron on macOS.
+      const selection=host.ownerDocument.getSelection(),range=host.ownerDocument.createRange();
+      range.selectNodeContents(host);selection.removeAllRanges();selection.addRange(range);
+      return {ok:true,contentEditable:true};
+    }
     if (!(element instanceof element.ownerDocument.defaultView.HTMLInputElement || element instanceof element.ownerDocument.defaultView.HTMLTextAreaElement) || element.getRootNode().activeElement!==element) throw new Error('Input focus was not acquired');
-    element.select(); return {ok:true};
+    element.select(); return {ok:true,contentEditable:false};
   }
   if (operation==='focus-target') {
     if (!element.isConnected || element.disabled) throw new Error('Element is unavailable');
@@ -416,7 +430,7 @@ async function trustedInput(contents, operation, args, run) {
       }
       await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
       await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
-      if (args.value) await send('Input.insertText',{text:args.value});
+      if(args.value)await send('Input.insertText',{text:args.value});
     }
     const keypress = async event => {
       await send('Input.dispatchKeyEvent',{type:'keyDown',...event});
