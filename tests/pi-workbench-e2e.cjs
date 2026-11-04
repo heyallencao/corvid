@@ -55,6 +55,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'Agent workbench');
+    assert.equal(await shell.locator('#library[data-kind="pi-workbench"] .panel-eyebrow').isVisible(), false, 'the Agent workbench uses its product title without a redundant eyebrow');
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
     const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
@@ -260,6 +261,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await shell.getByRole('button',{name:'连接当前页面'}).click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704,420));
     await delay(150);
+    await saveScreenshot(shell, 'issue-200-agent-first-task-704x420-input-first-view.png');
     const narrowModelControls=await shell.locator('#pi-task-form').evaluate(form=>{
       const visible=element=>{const box=element.getBoundingClientRect(),clip=form.getBoundingClientRect();return box.height>0&&box.top>=clip.top&&box.bottom<=clip.bottom;};
       const reachable=element=>{element.scrollIntoView({block:'nearest'});return visible(element);};
@@ -267,7 +269,8 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       return {pageVisibleAtStart,promptVisibleAtStart,order:promptBox.bottom<=controlsBox.top,select:reachable(form.querySelector('.pi-model-select')),status:reachable(form.querySelector('.pi-model-status')),manage:reachable(form.querySelector('.pi-model-manage')),action:reachable(form.querySelector('.pi-model-connection > .pi-model-action')),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
     });
     assert.ok(narrowModelControls.pageVisibleAtStart&&narrowModelControls.promptVisibleAtStart&&narrowModelControls.order&&narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.manage&&narrowModelControls.action&&narrowModelControls.formScrollHeight>narrowModelControls.formHeight,`short-height composer shows the page and prompt first, then keeps model state and account recovery reachable by scrolling: ${JSON.stringify(narrowModelControls)}`);
-    await saveScreenshot(shell, 'issue-200-agent-first-task-704x420.png');
+    await saveScreenshot(shell, 'issue-200-agent-first-task-704x420-controls-scroll.png');
+    await shell.locator('#pi-task-form').evaluate(form=>{form.scrollTop=0;});
     const shortPrompt=shell.getByRole('textbox',{name:'描述要完成的浏览任务'});
     await shortPrompt.focus();
     const promptVisible=await shortPrompt.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-form').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
