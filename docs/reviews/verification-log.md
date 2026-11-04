@@ -1452,4 +1452,10 @@
 - 在干净的旧 GitHub `main` 快照（commit `2a03e99`，之后 main 已推进）完成 `npm ci`：375 packages，npm 报告 0 vulnerabilities。该快照上全量 `env -u ELECTRON_RUN_AS_NODE npm test` 两次均失败：第一次 `download-e2e.cjs` 等待 `#show-downloads` 30 秒超时；该用例单独重跑通过。第二次在 `browser-print-e2e.cjs` 等待 `#address` 30 秒超时。该结果支持旧快照存在 UI 启动/定位间歇风险；最新 `main` `48cfea6` 尚未运行测试。未运行安装器构建。
 - 未创建 GitHub Release、tag、安装包或协作者邀请。GitHub main `48cfea6` 的树中没有打包器/安装器配置，因此源码归档不能称为桌面安装器。用户将自行邀请协作者。参考：[版本与 Release 流程](../records/releases/release-policy.md)、[GitHub 图片证据规则](../qa/github-image-evidence.md)。
 
+## 2026-11-04 圆角与浮层层级 token 收敛（Issue #210，接管复核）
 
+- 变更：在 `desktop/styles.css` 建立共享 radius 与六档 elevation token，并迁移当前浏览器壳层的圆角和浮层投影；浅/深主题原有色彩保持不变。扩展 `interaction-states-e2e` 检查两主题下的 token 计算样式，D26、UI 架构、E2E 索引与 QA 记录同步更新。此 PR 是完整 token 治理中的独立子切片，Issue 保持开放。
+- 环境：隔离原 PR worktree `/private/tmp/corvid-issue210-design-tokens`，合并当日 `origin/main` 后；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时数据目录、`about:blank` 与合成书签状态，shell viewport 1024×700 CSS px。测试进程已退出。
+- 验证：接管复跑 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue210-takeover-captures node tests/interaction-states-e2e.cjs` EXIT 0，覆盖浅/深主题的 radius/elevation、profile/address/new-tab/menu/site-tools/findbar/library/dialog 计算样式及原有 selected/hover/press、滚动条/选区和 reduced-motion 合同。一次先前运行在窗口 resize 等待时超时；短探针确认窗口实际尺寸可变，随后完整复跑通过。`node --check tests/interaction-states-e2e.cjs` 与 `git diff --check` 通过。浅/深主题合成截图的窗口状态、尺寸和 SHA-256 见[Issue #210 QA 记录](../qa/issue-210-token-consolidation.md#截图证据)。完整 `npm test` 未运行。
+- UI 参考：REA 捕获 Kobra Input OTP 页面（Evidence `ev_b0061997e9ffbc39f967e8a14fdb42242d400edb6458f7d5b02132840b458e74`），直接观察仅限 1280×800 浅色静态截图与 AX；场景因 wait action 失败标记 incomplete。它只提供细分隔线、克制表面与轻投影的视觉线索，不证明组件交互或 token 行为，未复制代码/素材。详见 QA 记录。
+- 限制：Issue 正文的“无深色主题”已由当前源码 `prefers-color-scheme: dark` 规则证伪；本次也只复核开发版 macOS Electron renderer viewport，未验跨平台、打包版、VoiceOver 或原生 `WebContentsView` 合成像素。颜色、近似灰、状态色、hover 灰和对比度审计仍开放。本轮没有运行代码签名、钥匙串或 notarization 诊断；该 Issue 不涉及签名行为。
