@@ -1462,3 +1462,9 @@
 - 方法：从 13 个开放 PR 正文提取 33 个 Markdown 图片链接；使用 GitHub Contents API 获取每张图片并逐张检查画面，图片只存放在 `/tmp/corvid-issue244-pr-image-audit/` 临时目录，未加入仓库或重新上传。
 - 结果：33/33 图片路径存在。画面为 Corvid 产品 UI、`about:blank` 或本地合成 fixture（包括 loopback URL、合成浏览历史和任务/队列内容）。PR #163 图中可见 Cookie 导入说明及显式同意勾选状态，但不含 Cookie 值。未发现个人网页主体、账号、凭据或真实浏览数据。
 - 限制：视觉检查不能证明采集时的数据隔离，也不能证明 GitHub PR 页面中的图片实际渲染；13 个活动 PR 分支都有独立 worktree，本轮未修改其正文或图片。页面渲染仍受私有仓库浏览器登录态限制。此次为文档审计，没有运行代码测试。
+
+## 2026-11-04 PR #284 远端检查状态复核
+
+- 操作：将开放 PR 图片画面复核结果同步到 PR #284，推送提交 `43cf2a8815f28b9faa80c865f7a07cd961fb8bba`；刷新 `gh pr checks 284` 并检查 GitHub Actions job 与 annotation。
+- 结果：`git diff --check` 通过，PR head 与推送提交一致。截图链接检查 job 结论为 failure，但运行时间约 2 秒，`steps=[]`，且没有 job log。GitHub annotation 表示近期账户付款失败或支出限额不足，runner 未启动。
+- 限制：远端代码检查没有执行，不能记为通过或测试失败；全量代码测试未运行。PR 分支相对当前 `origin/main` 不落后（fetch 后 ahead 4）。
