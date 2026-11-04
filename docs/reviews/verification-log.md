@@ -1468,3 +1468,9 @@
 - 操作：将开放 PR 图片画面复核结果同步到 PR #284，推送提交 `43cf2a8815f28b9faa80c865f7a07cd961fb8bba`；刷新 `gh pr checks 284` 并检查 GitHub Actions job 与 annotation。
 - 结果：`git diff --check` 通过，PR head 与推送提交一致。截图链接检查 job 结论为 failure，但运行时间约 2 秒，`steps=[]`，且没有 job log。GitHub annotation 表示近期账户付款失败或支出限额不足，runner 未启动。
 - 限制：远端代码检查没有执行，不能记为通过或测试失败；全量代码测试未运行。PR 分支相对当前 `origin/main` 不落后（fetch 后 ahead 4）。
+
+## 2026-11-04 清理 Issue #244 正文中的本机路径
+
+- 操作：将 Issue #244 现状段中的本机临时目录/文件示例改为概括性描述，保留用户影响、验收条件和范围边界；用 `gh issue edit 244 --body-file` 更新正文。
+- 验证：重新读取 GitHub Issue 正文并扫描当前开放 Issue 列表；Issue #244 正文已不含本机绝对路径，仍提及本机路径的开放 Issue 数从 9（含 #244）降为 8，具体为 #218、#217、#214、#208、#205、#203、#202、#165。
+- 限制：本轮只去除 #244 正文中的易失路径示例；未移动、上传或替换其他 Issue 的截图，也未验证 GitHub 私有页面图片渲染。
