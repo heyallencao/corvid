@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-04 网页区域上下文菜单（Issue #214 部分范围）
+
+- 环境：独立 worktree `/private/tmp/corvid-issue214-page-context-menu`，基于本轮 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。真实 Electron E2E 使用临时 `CORVID_DATA_DIR` 与 `127.0.0.1` 合成网页 fixture；不读取用户浏览数据、不访问外网、不使用模型或 OAuth。本轮未运行签名应用、钥匙串或公证诊断。
+- 验证：`node --test tests/page-context-menu.test.mjs` 3/3 通过；`node tests/page-context-menu-e2e.cjs` EXIT 0，覆盖菜单生成、中文链接操作、同 Room/Profile 新标签及 Agent Room 权限门禁；`node --check` 对主进程、菜单模块与 E2E 通过；package.json JSON 解析及 `git diff --check` 通过。首次 E2E 错误地通过 Agent HTTP 路由导航初始用户 Room，触发预期的“Room is under user control”；测试改用真实地址栏流程后通过。全量 `npm test` 未运行。
+- GitHub Actions：PR #246 触发“Chrome 导入类别隔离跨平台验收”和“凭据系统存储跨平台集成”两条 workflow；六个作业均在约 2 秒后失败且 `steps=[]`。GitHub annotation 明确说明近期账户付款失败或支出上限需提高，runner 未启动；macOS arm64 另有容量提示。这不是代码测试执行失败，不能计为跨平台通过。
+- 证据边界：原生 `Menu.popup` 由测试捕获器替换，故未验证系统菜单绘制、原生键盘焦点/无障碍或人工视觉效果；没有附截图，避免用缺少原生菜单和网页画布合成的 renderer 截图代替真实菜单证据。结构/动作合同和本地 Electron 运行态不能推断打包版或其他平台结果。
+- UI/UE 参考：项目历史 REA 记录中 EGO `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e` 与 Kaze `ev_fdb1ec28706c6b2401549b230199346e86c42a50c2e12ce04b0a06f7073563b3`（2026-11-02）只观察到浏览器 chrome/导航与网页画布，没有打开网页上下文菜单；本轮没有重新操作竞品，竞品菜单行为未知。Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 未用于此实现；没有复制代码、图标或素材。详细范围与限制见[网页右键菜单 QA](../qa/issue-214-page-context-menu.md)。
+
 ## 2026-11-04 Issue #216 交互状态与主题浏览器表面
 
 - 交付状态：PR #243 已于 2026-11-04 squash 合并到 `main`，合并提交 `48cfea63366ed83f14b34eb3174ff6ea76161d8a`；Issue #216 已关闭。此切片交付不代表 D07 整体完成。
