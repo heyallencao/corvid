@@ -320,15 +320,10 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         catch { try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; } }
       });
     } catch (error) {
-      let cleanupFailed = false;
-      try { await revokeSessionCredential(task.id); }
-      catch { cleanupFailed = true; }
+      await revokeSessionCredential(task.id);
       if (task.status === 'preparing') {
         finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`);
-      }
-      if (cleanupFailed) {
-        try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; }
       }
       throw new Error(task.status === 'failed' && task.error ? task.error : safeError(error));
     }

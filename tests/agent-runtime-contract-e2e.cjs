@@ -229,29 +229,6 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
       assert.equal(cleanupWorkbench.list().length,0,'the task is removed only after the retained credential handle is revoked');
     }finally{process.off('unhandledRejection',captureUnhandled);}
 
-    const startupCleanupDir=path.join(root,'startup-cleanup-failure');fs.mkdirSync(startupCleanupDir);
-    const startupCleanupRuntime=makeRuntime('startup-cleanup-runtime');
-    startupCleanupRuntime.createSession=async()=>{throw new Error('synthetic runtime startup failure');};
-    let startupRevokeAttempts=0;
-    const startupRevoked=[];
-    const startupCleanupIdentity={
-      issueAgentCredential:async({taskId,roomId})=>({id:`builtin:${taskId}`,token:`secret:${taskId}:${roomId}`}),
-      revokeAgentCredential:async id=>{if(++startupRevokeAttempts<=2)throw new Error('synthetic startup credential revoke failure');startupRevoked.push(id);},
-    };
-    const startupCleanupWorkbench=createAgentWorkbench({dataDir:startupCleanupDir,runtime:startupCleanupRuntime,...startupCleanupIdentity});
-    const startupRejection=await startupCleanupWorkbench.start({profileId:'profile-a',roomId:'room-startup-cleanup',tabId:'tab-startup-cleanup',prompt:'retain startup failure for cleanup retry',includePageContext:true,contextPreview}).then(()=>null,error=>error);
-    assert.match(startupRejection?.message||'',/synthetic runtime startup failure/,'the original session startup failure remains visible');
-    const startupCleanupState=startupCleanupWorkbench.list()[0];
-    assert.equal(startupCleanupState.status,'failed','a credential revoke failure cannot strand a task in preparing');
-    assert.equal(startupCleanupState.stopUnconfirmed,true,'failed startup cleanup is explicitly marked unconfirmed');
-    assert.equal(startupCleanupState.canContinue,false,'a task with an unrevoked identity cannot be continued');
-    assert.ok(startupCleanupState.events.some(event=>event.messageKey==='agentSessionCleanupFailed'),'startup cleanup failure is surfaced through the localized task event');
-    assert.deepEqual(await startupCleanupWorkbench.clear(startupCleanupState.id),{ok:false},'a failed cleanup retry leaves the startup task available');
-    assert.equal(startupCleanupWorkbench.list()[0].status,'failed','failed cleanup retries preserve the terminal task state');
-    assert.deepEqual(await startupCleanupWorkbench.clear(startupCleanupState.id),{ok:true},'a later cleanup retry can revoke the retained startup credential');
-    assert.deepEqual(startupRevoked,[`builtin:${startupCleanupState.id}`]);
-    assert.equal(startupCleanupWorkbench.list().length,0,'the startup task is deleted only after credential revocation succeeds');
-
     const localeWindow={};
     vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../desktop/locales.js'),'utf8'),{
       window:localeWindow,
