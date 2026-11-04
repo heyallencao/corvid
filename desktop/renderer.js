@@ -1,4 +1,15 @@
 const api = window.browserShell;
+const browserShellElement=document.querySelector('#browser-shell');
+let reportedBrowserChromeHeight=null;
+function reportBrowserChromeHeight(){
+  const height=Math.ceil(browserShellElement.getBoundingClientRect().height);
+  if(!Number.isFinite(height)||height<1||height>600||height===reportedBrowserChromeHeight)return;
+  reportedBrowserChromeHeight=height;
+  document.documentElement.style.setProperty('--browser-chrome-height',`${height}px`);
+  api.reportBrowserChromeHeight(height);
+}
+new ResizeObserver(reportBrowserChromeHeight).observe(browserShellElement);
+window.addEventListener('resize',reportBrowserChromeHeight,{passive:true});
 function userFacingAgentError(error, fallback=null) {
   const message=String(error?.message||error||'').trim();
   const localizedMessage=extensionMessages?.userFacingError?.(message);
