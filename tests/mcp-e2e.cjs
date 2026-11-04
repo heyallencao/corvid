@@ -89,6 +89,10 @@ class McpProcess {
         setTimeout(() => response.end('<p>Document finished</p>'), 500);
         return;
       }
+      if (pathname === '/dynamic') {
+        response.end('<!doctype html><title>Dynamic MCP fixture</title><body><p>Single-page fixture</p><script>const target=document.createElement("button");target.id="dynamic-target";target.textContent="Dynamic result";target.hidden=true;document.body.append(target);setTimeout(()=>target.hidden=false,180);setTimeout(()=>target.hidden=true,480);setTimeout(()=>target.remove(),780)</script></body>');
+        return;
+      }
       response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
@@ -147,8 +151,8 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url']);
-    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
     assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
@@ -180,6 +184,22 @@ class McpProcess {
     assert.ok(home?.visible, 'the foreground browser home remains visible after the screenshot');
     const snapshot = await mcp.callTool('page_snapshot', { roomId: room.id, tabId: tab.id, scope: 'page' });
     assert.ok(snapshot.value && typeof snapshot.value === 'object');
+    const waitPage = await mcp.callTool('page_new', { roomId: room.id });
+    const waitTabId = waitPage.value.targetId;
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: waitTabId, url: `${fixtureUrl}dynamic` });
+    const attachedWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'attached', timeoutMs: 3000 });
+    assert.equal(attachedWait.value.waitedFor.state, 'attached');
+    const visibleWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, timeoutMs: 3000 });
+    assert.equal(visibleWait.value.waitedFor.state, 'visible', 'visible is the default selector state');
+    const hiddenWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'hidden', timeoutMs: 3000 });
+    assert.equal(hiddenWait.value.waitedFor.state, 'hidden');
+    const detachedWait = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#dynamic-target' }, state: 'detached', timeoutMs: 3000 });
+    assert.equal(detachedWait.value.waitedFor.state, 'detached');
+    const selectorTimeout = await mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: waitTabId, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 150 });
+    assert.equal(selectorTimeout.result.isError, true);
+    assert.equal(selectorTimeout.value.code, 'CORVID_TIMEOUT');
+    assert.equal((await mcp.callTool('page_close', { roomId: room.id, tabId: waitTabId })).result.isError, undefined);
+    assert.equal((await call('/rooms')).activeRoomId, foregroundRoomId, 'selector waits on a background page do not activate its Room');
 
     const emptyBack = await mcp.callTool('page_back', { roomId: room.id, tabId: tab.id });
     const emptyForward = await mcp.callTool('page_forward', { roomId: room.id, tabId: tab.id });
@@ -315,21 +335,26 @@ class McpProcess {
     assert.equal(missingProfile.value.code, 'CORVID_NOT_FOUND');
 
     const waitingDuringHandoff = mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 5000 });
+    const waitingForSelectorDuringHandoff = mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 5000 });
     await delay(150);
     await call(`/rooms/${room.id}/yieldControl`, 'POST', {});
     const interruptedWait = await waitingDuringHandoff;
     assert.equal(interruptedWait.result.isError, true, 'an in-flight wait stops when the user takes Room control');
     assert.equal(interruptedWait.value.code, 'CORVID_CONTROL_LOST');
+    const interruptedSelectorWait = await waitingForSelectorDuringHandoff;
+    assert.equal(interruptedSelectorWait.result.isError, true, 'an in-flight selector wait stops when the user takes Room control');
+    assert.equal(interruptedSelectorWait.value.code, 'CORVID_CONTROL_LOST');
     const denied = await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id });
     assert.equal(denied.result.isError, true);
     assert.equal(denied.value.code, 'CORVID_CONTROL_LOST');
     const deniedAction = await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'button', name: 'Toggle' } });
     assert.equal(deniedAction.result.isError, true);
     assert.equal(deniedAction.value.code, 'CORVID_CONTROL_LOST');
-    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_select_option', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
+    for (const name of ['page_back', 'page_forward', 'page_hover', 'page_reload', 'page_screenshot', 'page_select_option', 'page_wait_for_selector', 'page_wait_for_url', 'page_wait_for_load', 'page_close', 'page_new']) {
       const args = { roomId: room.id, tabId: tab.id };
       if (name === 'page_hover') Object.assign(args, { target: { by: 'role', value: 'button', name: 'Hover menu' } });
       if (name === 'page_select_option') Object.assign(args, { target: { by: 'css', value: '#category' }, choices: 'books' });
+      if (name === 'page_wait_for_selector') Object.assign(args, { target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 100 });
       if (name === 'page_wait_for_url') Object.assign(args, { url: fixtureUrl, timeoutMs: 100 });
       if (name === 'page_wait_for_load') Object.assign(args, { state: 'load', timeoutMs: 100 });
       if (name === 'page_new') delete args.tabId;
