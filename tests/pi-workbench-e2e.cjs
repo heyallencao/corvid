@@ -63,7 +63,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       throw new Error(`${error.message}; workbench state: ${JSON.stringify(diagnostic)}`);
     });
     assert.equal(fs.statSync(ownedPiDir).mode & 0o777,0o700,'Pi runtime configuration is stored in Corvid application data');
-    await shell.getByRole('button', { name: '管理 Corvid Agent 模型', exact: true }).click();
+    await shell.getByRole('button', { name: '管理模型', exact: true }).click();
     await shell.locator('#pi-model-settings[open]').waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell, 'model management dialog');
     await shell.getByRole('button', { name: '关闭', exact: true }).click();
