@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 书签即时反馈与窄窗布局（Issue #195）
+
+- 环境与截图：macOS arm64、Electron 45.2.1；隔离 `CORVID_DATA_DIR` 和本地 HTTP fixture，页面标题为 `Fixture Page`，没有个人浏览数据、账号信息或外网请求。Playwright shell 视口为 1280×800 CSS px 与 704×420 CSS px。[中文添加状态](screenshots/issue-195-bookmark-added-zh-CN.png)，SHA-256 `d4510280f878ff11e580fd258e06ca41561461ebe54cb01df73dfe6f7cddaf22`；[英文添加状态](screenshots/issue-195-bookmark-added-en.png)，SHA-256 `71f025a9b0faaa62d6d104961f26386a96b1d0a7f7d24dfb46b562e5f0ca094a`；[英文 704×420 状态](screenshots/issue-195-bookmark-added-en-704x420.png)，SHA-256 `3f9092dc4b9b5af45b6eca2b6ff5e9ea39bdd5ea507d4b39d015e6a9f0eec8cf`。
+- Corvid 直接观察与视觉判断：星标空心/填充对应 `aria-pressed=false/true`，并把辅助名称切换为“将此页加入书签 / 从书签中移除”及 “Bookmark this page / Remove bookmark”。操作完成后，地址栏下方既有状态区显示简短的成功/失败消息 2.5 秒；消息不覆盖输入控件，也不拼接网页标题，避免超长或站点提供的文字挤压工具栏。704×420 截图中地址栏和状态栏均保持单行，E2E 检查了各自没有水平溢出。静态代码显示状态区重绘时会保留提示并与现有加载、错误、控制权和站点提示并列；本轮没有在这些混合状态下逐项做 E2E。成功色与状态底色按当前 CSS token 计算的对比度为浅色 5.46:1、深色 7.88:1，深色主题仅作静态颜色核算、未截图验证。视觉继续使用 Corvid 原有 SVG 线框图标、强调色和状态区底色，不引入卡片、弹窗或外部图标素材。
+- UI/UE 参考与 REA 证据：本判断使用项目已有 EGO 原生窗口观察 `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02，EGO 0.6.2.5，窗口 18761，截图 1450×833）。直接观察只支持“日常浏览 chrome 与书签入口处于常规浏览器布局”这一产品语境；当时没有操作书签按钮，因此不把它当作星标切换、反馈气泡或成功文案的证据。已安装 EGO 当前进程仍在运行，本轮未读取或操作其个人页面。Kaze 的本地工具栏快照和 Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 均未用于该交互细节；本切片按 Corvid 现有组件体系实现，不移植第三方样式或资产。REA 证据不支持对竞品书签反馈行为作本轮结论。
+- 证据分类：**直接观察**为本轮隔离真实 Electron 的 zh-CN/en 添加/移除操作、可访问名称与星标状态、两种窗口视口及截图；**静态证据**为 renderer 按活动标签 URL 和 Profile 查询现有书签记录，add/remove 使用 Profile 显式参数，操作期间禁用按钮，提示文案取自双语 locale 资源；**推断/设计判断**为短消息沿用浏览器既有状态区，比 toast/modal 更少遮挡页面并适合浏览器 chrome；**未知**包括 VoiceOver 实播、其他平台、深色模式和打包版表现。
+- 未覆盖：本地 fixture，不验证真实网站或实际网页画布像素；仅本机开发版 Electron，不代表全量 `npm test`；没有读取 EGO/Kaze 的个人页面，也没有验证它们的书签按钮行为、慢磁盘下的响应时间或平台差异。
+
 ## 2026-11-04 最小窗口与紧凑工具栏（Issue #219）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；窗口逻辑尺寸 704×420，Retina PNG 1408×776。[中文最小窗口截图](screenshots/issue-219-window-minimum-zh-CN-704x420.png)，SHA-256 `04a78147606bb0b9a4ae8fb5d12c1af5d3324227469451cc22463e9170666487`。窗口显示合成的 `about:blank`，不含个人浏览数据或账号信息。
