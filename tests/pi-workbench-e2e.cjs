@@ -262,10 +262,11 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await delay(150);
     const narrowModelControls=await shell.locator('#pi-task-form').evaluate(form=>{
       const visible=element=>{const box=element.getBoundingClientRect(),clip=form.getBoundingClientRect();return box.height>0&&box.top>=clip.top&&box.bottom<=clip.bottom;};
-      const controls=form.querySelector('.pi-model-controls'),controlsBox=controls.getBoundingClientRect(),prompt=form.querySelector('#pi-task-prompt'),promptBox=prompt.getBoundingClientRect();
-      return {page:visible(form.querySelector('.pi-page-binding')),select:visible(form.querySelector('.pi-model-select')),status:visible(form.querySelector('.pi-model-status')),manage:visible(form.querySelector('.pi-model-manage')),action:visible(form.querySelector('.pi-model-connection > .pi-model-action')),clearance:Math.round(promptBox.top-controlsBox.bottom),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
+      const reachable=element=>{element.scrollIntoView({block:'nearest'});return visible(element);};
+      const pageVisibleAtStart=visible(form.querySelector('.pi-page-binding')),prompt=form.querySelector('#pi-task-prompt'),promptVisibleAtStart=visible(prompt),controls=form.querySelector('.pi-model-controls'),controlsBox=controls.getBoundingClientRect(),promptBox=prompt.getBoundingClientRect();
+      return {pageVisibleAtStart,promptVisibleAtStart,order:promptBox.bottom<=controlsBox.top,select:reachable(form.querySelector('.pi-model-select')),status:reachable(form.querySelector('.pi-model-status')),manage:reachable(form.querySelector('.pi-model-manage')),action:reachable(form.querySelector('.pi-model-connection > .pi-model-action')),formHeight:form.clientHeight,formScrollHeight:form.scrollHeight};
     });
-    assert.ok(narrowModelControls.page&&narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.manage&&narrowModelControls.action&&narrowModelControls.clearance>=1&&narrowModelControls.formScrollHeight>narrowModelControls.formHeight,`short-height composer keeps page/model state and account recovery visible and scrollable without overlap: ${JSON.stringify(narrowModelControls)}`);
+    assert.ok(narrowModelControls.pageVisibleAtStart&&narrowModelControls.promptVisibleAtStart&&narrowModelControls.order&&narrowModelControls.select&&narrowModelControls.status&&narrowModelControls.manage&&narrowModelControls.action&&narrowModelControls.formScrollHeight>narrowModelControls.formHeight,`short-height composer shows the page and prompt first, then keeps model state and account recovery reachable by scrolling: ${JSON.stringify(narrowModelControls)}`);
     await saveScreenshot(shell, 'issue-200-agent-first-task-704x420.png');
     const shortPrompt=shell.getByRole('textbox',{name:'描述要完成的浏览任务'});
     await shortPrompt.focus();

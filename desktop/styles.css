@@ -355,7 +355,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 @media (max-height: 480px) {
   #library[data-kind="pi-workbench"] .panel-header { min-height: 52px; padding: 8px 12px; }
   #library[data-kind="pi-workbench"] #pi-workbench-content { gap: 6px; padding: 8px 12px; }
-  #pi-task-form { max-height: 52%; gap: 3px; padding: 5px; }
+  #pi-task-form { max-height: 76%; gap: 3px; padding: 5px; }
   #pi-task-form .pi-page-binding { min-height: 0; padding: 4px 6px; font-size: 10px; line-height: 1.2; }
   #pi-task-form { grid-template-columns: minmax(0, 1fr) auto; }
   #pi-task-form .pi-create-room { grid-column: 2; grid-row: 1; min-height: 24px; max-width: 100%; padding: 4px 6px !important; white-space: nowrap; font-size: 10px; }
@@ -379,7 +379,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   .pi-chat-welcome p { max-width: none; font-size: 10px; line-height: 1.2; }
 }
 @media (max-height: 440px) {
-  #pi-task-form { max-height: 34%; }
+  #pi-task-form { max-height: 76%; }
 }
 .pi-create-room, .pi-primary-action { min-height: 36px; padding: 7px 12px; border: 1px solid transparent; background: var(--accent-solid); color: #fff; font-weight: 600; }
 .pi-create-room:hover:not(:disabled), .pi-primary-action:hover:not(:disabled) { background: var(--accent-solid-hover); }
