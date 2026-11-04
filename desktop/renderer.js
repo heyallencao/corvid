@@ -158,7 +158,7 @@ function draw(value) {
   newWindow.className='new-window-button';
   roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {document.querySelector('#tabs').replaceChildren();tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
   updateNewTabSurface(active);
@@ -934,28 +934,31 @@ document.querySelector('#show-agent-rooms').onclick=async event=>{if(libraryKind
 document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKind==='pi-workbench'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('pi-workbench',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
-const FALLBACK_FAVICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#8a94a6" stroke-width="1.4"/><path d="M1.5 7h11M7 1.5c2 2 2 9 0 11M7 1.5c-2 2-2 9 0 11" stroke="#8a94a6" stroke-width="1.2" fill="none"/></svg>');
 const PIN_ICON='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 16 16"><path d="M6 1.5h4l-.6 4.2 2.1 2.1v1.2H8.9V15h-1.8V9H4.5V7.8l2.1-2.1L6 1.5Z" fill="#4a5568"/></svg>');
 let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
 function createTabPinIcon(){const pin=document.createElement('img');pin.className='pin-icon';pin.alt=extensionMessages.t('pinned');pin.title=extensionMessages.t('pinned');pin.draggable=false;pin.src=PIN_ICON;return pin;}
-function createTabFavicon(tab){const icon=document.createElement('img');icon.className='favicon';icon.alt='';icon.draggable=false;icon.src=tab.faviconUrl||FALLBACK_FAVICON;icon.onerror=()=>{icon.onerror=null;icon.src=FALLBACK_FAVICON;};return icon;}
+function tabFallbackFavicon(tab){let host='corvid';try{host=new URL(tab.url).hostname||host;}catch{}const initial=[...host][0]?.toLocaleUpperCase()||'C';let hash=0;for(const char of host)hash=(hash*31+char.codePointAt(0))>>>0;const hue=hash%360;return {key:`domain:${host}`,src:'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="8" fill="hsl(${hue} 48% 42%)"/><text x="16" y="21" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="600" fill="#fff">${initial.replace(/[<>&"']/g,'')}</text></svg>`)};}
+function tabFaviconSource(tab){return tab.faviconUrl?{key:`url:${tab.faviconUrl}`,src:tab.faviconUrl}:tabFallbackFavicon(tab);}
+function syncTabFavicon(icon,tab){const source=tabFaviconSource(tab);if(icon.dataset.source===source.key)return;icon.dataset.source=source.key;icon.onerror=()=>{if(icon.dataset.source!==source.key)return;icon.onerror=null;icon.src=tabFallbackFavicon(tab).src;};icon.src=source.src;}
+function createTabFavicon(tab){const icon=document.createElement('img');icon.className='favicon';icon.alt='';icon.draggable=false;syncTabFavicon(icon,tab);return icon;}
 function syncTabElement(el,tab,room){
   el.className=tab.pinned?'tab pinned':'tab';el.dataset.active=String(tab.active);el.dataset.tabId=tab.id;
   if(tab.pinned)el.dataset.pinned='true';else delete el.dataset.pinned;
   const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close'),titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  main.title=titleText;main.setAttribute('aria-label',titleText);
   if(tab.active)main.setAttribute('aria-current','page');else main.removeAttribute('aria-current');
   let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('img.favicon'),pin=main.querySelector(':scope > img.pin-icon');
   if(tab.isLoading){
     if(!loading){loading=document.createElement('span');loading.className='tab-loading-indicator';loading.setAttribute('aria-hidden','true');if(tab.pinned){loading.dataset.pinned='true';pin ||= createTabPinIcon();loading.append(pin);pin=null;}if(favicon)favicon.replaceWith(loading);else main.insertBefore(loading,main.querySelector('.tab-title'));}
     main.setAttribute('aria-label',extensionMessages.t(tab.pinned?'pinnedTabLoadingLabel':'tabLoadingLabel',{tab:titleText}));
   }else{
-    main.removeAttribute('aria-label');
+    main.setAttribute('aria-label',titleText);
     if(loading){const retainedPin=loading.querySelector('.pin-icon');favicon=createTabFavicon(tab);loading.replaceWith(favicon);if(tab.pinned)main.insertBefore(retainedPin||createTabPinIcon(),favicon);}
     else{
       if(tab.pinned&&!pin){pin=createTabPinIcon();main.insertBefore(pin,favicon||main.querySelector('.tab-title'));}
       if(!tab.pinned)pin?.remove();
       if(!favicon){favicon=createTabFavicon(tab);main.insertBefore(favicon,main.querySelector('.tab-title'));}
-      else if(favicon.getAttribute('src')!==(tab.faviconUrl||FALLBACK_FAVICON))favicon.src=tab.faviconUrl||FALLBACK_FAVICON;
+      else syncTabFavicon(favicon,tab);
     }
   }
   main.querySelector('.tab-title').textContent=titleText;
@@ -970,6 +973,12 @@ function syncTabElement(el,tab,room){
 }
 function tabElement(tab,room){const el=document.createElement('div');const main=document.createElement('button');main.type='button';main.className='tab-main';main.tabIndex=0;main.setAttribute('aria-haspopup','menu');main.setAttribute('aria-expanded','false');main.setAttribute('aria-controls','tab-menu');const title=document.createElement('span');title.className='tab-title';main.append(title);const close=document.createElement('button');close.type='button';close.className='tab-close';close.textContent='×';close.setAttribute('aria-label',extensionMessages.t('closeTab'));el.append(main,close);return syncTabElement(el,tab,room);}
 let tabsStructureSignature='';
+function updateTabScrollControls(){const tabs=document.querySelector('#tabs'),left=document.querySelector('#tab-scroll-left'),right=document.querySelector('#tab-scroll-right');if(!tabs||!left||!right)return;const overflow=tabs.scrollWidth>tabs.clientWidth+1;left.hidden=right.hidden=!overflow;left.disabled=!overflow||tabs.scrollLeft<=1;right.disabled=!overflow||tabs.scrollLeft+tabs.clientWidth>=tabs.scrollWidth-1;}
+function scrollTabStrip(direction){const tabs=document.querySelector('#tabs');if(!tabs)return;tabs.scrollBy({left:direction*Math.max(120,tabs.clientWidth*.7),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});}
+document.querySelector('#tabs')?.addEventListener('scroll',updateTabScrollControls,{passive:true});
+document.querySelector('#tab-scroll-left')?.addEventListener('click',()=>scrollTabStrip(-1));
+document.querySelector('#tab-scroll-right')?.addEventListener('click',()=>scrollTabStrip(1));
+window.addEventListener('resize',updateTabScrollControls);
 function renderTabs(room){
   // Rebuild only when the room or its tabs actually changed: frequent state
   // updates (download progress, agent activity) must not tear down the tab bar
@@ -979,6 +988,7 @@ function renderTabs(room){
   const tabs=document.querySelector('#tabs');
   if(signature===tabsStructureSignature && existing && existing.parentElement?.id==='tabs'){
     for(const tab of room.tabs){const el=tabs.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"]`);if(el)syncTabElement(el,tab,room);}
+    requestAnimationFrame(updateTabScrollControls);
     return;
   }
   tabsStructureSignature=signature;
@@ -986,6 +996,7 @@ function renderTabs(room){
   for(const tab of room.tabs) tabs.append(tabElement(tab,room));
   const add=button('+',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
   add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton')); tabs.append(add);
+  requestAnimationFrame(updateTabScrollControls);
 }
 async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTabFromUser',{id:tabId});}catch(error){controlError=error.message;draw(state);}}
 function tabMenuElement(){return document.querySelector('#tab-menu');}

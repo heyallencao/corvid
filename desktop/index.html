@@ -54,7 +54,11 @@
   </aside>
 
   <main id="browser-shell">
-    <div id="tabs" role="group" aria-label="标签页" data-i18n-aria-label="tabs"></div>
+    <div id="tab-strip">
+      <button id="tab-scroll-left" class="tab-scroll-control" type="button" aria-label="向左滚动标签页" title="向左滚动标签页" data-i18n-aria-label="scrollTabsLeft" data-i18n-title="scrollTabsLeft" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4-6 6 6 6"/></svg></button>
+      <div id="tabs" role="group" aria-label="标签页" data-i18n-aria-label="tabs"></div>
+      <button id="tab-scroll-right" class="tab-scroll-control" type="button" aria-label="向右滚动标签页" title="向右滚动标签页" data-i18n-aria-label="scrollTabsRight" data-i18n-title="scrollTabsRight" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 4 6 6-6 6"/></svg></button>
+    </div>
     <div id="chrome-tools">
       <button class="icon-button" data-action="back" aria-label="后退" title="后退" data-i18n-aria-label="back" data-i18n-title="back"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M11.8 4.5 6.2 10l5.6 5.5M6.5 10h8"/></svg></button>
       <button class="icon-button" data-action="forward" aria-label="前进" title="前进" data-i18n-aria-label="forward" data-i18n-title="forward"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8.2 4.5 5.6 5.5-5.6 5.5m5.3-5.5h-8"/></svg></button>

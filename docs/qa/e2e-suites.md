@@ -79,6 +79,7 @@
 | 62 | `tests/chrome-import-categories.test.mjs` | Node 模块合同：书签/历史分别读取；某类失败仅排除该类别；提交只读取用户勾选的类别，未选中且损坏的 History 不阻断书签导入；macOS 预览中损坏的 Cookies 数据库只标记 Cookie 类别，不阻断可读书签/历史。 | 不启动 Electron；Cookie 计数路径仅在 macOS 验证；真实 zh-CN/en UI 路径由 `CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 覆盖。 |
 | 63 | `tests/history-panel-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：访问两页后核对历史记录按本地日历分为今天、昨天与较早日期；两种语言的分组标题及 `Intl` 时间格式；显示主机/路径并隐藏 URL 查询与片段；保持完整 URL 搜索、单条删除；700×420 窄窗中时间与删除操作不溢出。 | 使用隔离临时 `CORVID_DATA_DIR`、合成旧历史及本地 fixture；不读取真实浏览记录或访问互联网；系统时区用于日分组，时间显示为本地化小时/分钟；设置 `CORVID_HISTORY_QA_DIR` 时保存[常规窗口截图](screenshots/issue-196-history-zh-CN-1024x700.png)与[短高窗口截图](screenshots/issue-196-history-zh-CN-700x420.png)。 |
 | 64 | `tests/address-suggestions-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：当前 Profile 历史匹配、重复 URL 去重、查询参数/片段不显示、其他 Profile 不泄漏；地址候选与自定义搜索模板候选；方向键/Enter/Esc、清空关闭、zh-CN/en 可访问名称；704×420 窄窗边界。 | 使用隔离临时 `CORVID_DATA_DIR`、合成历史与本地搜索模板，不访问真实网站、搜索服务、模型或 OAuth；`CORVID_ADDRESS_SUGGESTIONS_QA_DIR` 保存[常规截图](screenshots/issue-191-suggestions-zh-CN-1024x700.png)和[短窗截图](screenshots/issue-191-suggestions-zh-CN-704x420.png)。
+| 65 | `tests/tab-overflow-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：1/5/14 个标签分别在常规窗与 704×420 窄窗的身份标题；常规窗 170px 优先宽度/120px 最小标签宽、窄窗 44px 图标模式；14 标签左右滚动箭头及边界禁用、焦点/Enter 切换、新建标签入口固定可达、无 favicon 时本地域名首字母回退、zh-CN/en 滚动控件可访问名称、页面主体无横向溢出。 | 临时 `CORVID_DATA_DIR` 与本地合成标题页面；不读真实浏览数据，不访问互联网，不调用模型/OAuth；`CORVID_TAB_OVERFLOW_QA_DIR` 可保存合成窗口截图。
 ## 工作块与测试的映射
 
 | 工作块 | 主要测试入口 |
@@ -88,8 +89,8 @@
 | D03 权限与浏览器提示 | `permissions-e2e`、`dialogs.e2e`、`dialogs-ui-e2e` |
 | D04 执行风险与清理 | `evaluation-risk-e2e`、`sdk-e2e`、`browser.e2e` |
 | D05 浏览数据边界 | `site-data-e2e`、`profiles-e2e`、`permissions-e2e`、`browser.e2e` |
-| D06 标签、窗口与导航 | `browser-shortcuts-e2e`、`room-close-e2e`、`beforeunload-e2e`、`popup-events-e2e`、`tab-ux-e2e`、`tab-pin-menu-e2e`、`window-state-e2e`、`fullscreen-e2e`、`multi-window-e2e` |
-| D07 用户界面与导航 | `library-e2e`、`library-search-e2e`、`browser-shortcuts-e2e`、`claim-e2e`、`tab-ux-e2e`、`tab-pin-menu-e2e` |
+| D06 标签、窗口与导航 | `browser-shortcuts-e2e`、`room-close-e2e`、`beforeunload-e2e`、`popup-events-e2e`、`tab-ux-e2e`、`tab-overflow-e2e`、`tab-pin-menu-e2e`、`window-state-e2e`、`fullscreen-e2e`、`multi-window-e2e` |
+| D07 用户界面与导航 | `library-e2e`、`library-search-e2e`、`browser-shortcuts-e2e`、`claim-e2e`、`tab-ux-e2e`、`tab-overflow-e2e`、`tab-pin-menu-e2e` |
 | D08 历史、书签与下载 | `library-e2e`、`library-search-e2e`、`download-e2e`、`download-retry-boundaries-e2e`、`download-file-ops-e2e` |
 | D09 浏览身份管理 | `profiles-e2e`、`profile-deletion-services`、`profile-deletion-e2e` |
 | D10 Page 与 SDK 合同 | `sdk-e2e`、`rpc-e2e`、`cli-e2e`、`page-lifecycle-e2e`、`claim-e2e`、`contract-e2e`、`snapshot-e2e` |
@@ -108,7 +109,7 @@
 - 如桌面锁屏导致原生父窗口激活检查无法通过，可用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 运行 Chrome 导入完整流程；该模式只直接关闭测试扩展弹窗以继续导入验收，不验证原生点外/失焦关闭，不能替代解锁桌面下的默认 E2E。
 - 如 macOS 锁屏导致原生菜单焦点不可用，可用 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1` 运行 `application-menu-e2e.cjs`，验证菜单语言切换与重启持久化；该模式显式跳过 Window 菜单原生焦点及动作路由，不能替代默认模式或 Issue #167 的现场验收。
 - 8 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs`，共 31 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件及 `application-menu.test.mjs` 使用纯 Node 合同测试。
-- 56 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
+- 57 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 中顺序运行。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
 - 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。
 

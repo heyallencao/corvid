@@ -1251,3 +1251,9 @@
 - 静态检查：`node --check desktop/main.cjs`、`node --check tests/window-state-e2e.cjs`、`git diff --check` 均通过。
 - REA 参考：Aceternity UI Sidebar 文档页在 704×420 的受控浏览器证据为 `ev_162bfcf637c7995af8504348a1df4b65eb03da2bee0010a657df75c2f1662181`；仅作窄视口排布参考，不据此声称组件交互或 Corvid 行为，限制见[视觉记录](../qa/ui-visual-check.md#2026-11-04-最小窗口与紧凑工具栏-issue-219)。
 - 未覆盖：仅在当前 macOS 桌面验证；未测小于最小尺寸的显示区域、Windows/Linux、深色主题、网页内容场景、辅助技术或其他语言的手动外观。本轮未运行完整 `npm test`。
+
+## 2026-11-04 标签页身份与溢出（Issue #201）
+
+- 变更：常规标签以 170px 为优先宽度、空间不足时缩到 120px；窄于 760px 时切换到 44px favicon 模式；标签栏显示有名称的左右滚动控制并在边界禁用，新建标签按钮滚动时保持可达。网页未提供 favicon 或 favicon 加载失败时，使用本地生成的域名首字母；标签按钮提供完整标题 tooltip 和 aria-label。`package.json`、E2E 索引、执行板与截图索引已同步。
+- 验证：`node --check desktop/renderer.js`、`node --check tests/tab-overflow-e2e.cjs`、`git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；设置 `CORVID_TAB_OVERFLOW_QA_DIR=docs/qa/screenshots` 重跑也 EXIT 0。真实隔离 Electron 覆盖常规与窄窗各 1/5/14 标签、滚动和边界、键盘 Enter 切换、无 favicon 回退、zh-CN/en 滚动名称与窄窗无页面横向溢出。截图与 REA 证据边界见 [桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-标签页身份与溢出-issue-201)。Electron 测试进程已清理；全量 `npm test` 未运行。中间一次窄窗回归误点了处于禁用态的左箭头，已修正用例顺序（先验证起点禁用，再向右滚动并返回起点）后重新运行通过。
+- 限制：仅 macOS 开发版 Electron 与合成本地页面；截图来自 shell renderer，不包含原生 `WebContentsView` 网页画布；未覆盖其他平台、打包版、屏幕阅读器实播、暗色主题或真实站点 favicon 异常。
