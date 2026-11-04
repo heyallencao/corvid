@@ -1480,3 +1480,12 @@
 - 门禁政策（#289 公告）：逐入口对照同机同态 main 基线；豁免集=已立案环境敏感入口（#293/#288/#295/#300）；PR 链失败集超集部分须隔离复跑通过且属环境族，否则拒绝。
 - 首次应用：#252（radius/elevation token）三方合并无 styles.css 冲突，全链失败集与同态基线一致，3 个超集失败隔离 1/1 全过，squash 合并为 `afc4899`；merge 依据留 PR 评论。#298 的同源修法 issue 已关闭（与 02244ff 逐条一致）。
 - 边界：豁免集入口在 lane:infra 修复（#303/#304/#305/#300）落地前无法在本机达成 63/63 全绿；本记录不将豁免通过表述为全量通过。
+
+## 2026-11-05 localization E2E 旧工作区 eyebrow 断言（Issue #288）
+
+- 发现：`tests/localization-e2e.cjs` 在中英文步骤都断言 `#library .panel-eyebrow`。当前 `desktop/index.html` 的 `#library` 已没有 eyebrow 节点；工作区打开后实际可访问名称由 `setLibraryPanel()` 按当前面板设置。原断言等待一个不存在的节点并超时。
+- 修正：删除两处过期装饰标签断言；在真实打开 Agent 工作区后验证 `#library` 的中英文 `aria-label`（`Agent workspace` / `Agent 工作区`），并保留标题、内容和窄窗等现有检查。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 worktree `infra/issue-288-localization-panel-assertion`，基于 `origin/main` `1ee45ed`；隔离临时 `CORVID_DATA_DIR` 与本地 Electron fixture。`npm ci` 安装 375 packages，npm 报告 0 vulnerabilities。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过，覆盖 zh-CN/en、设置窄窗、模型/Agent 面板标签、Intl 格式、locale 持久化与重启；`git diff --check` 通过。另在同一验证 worktree 中临时叠加 Issue #303–#306 各自的未提交 E2E 修正后，`env -u ELECTRON_RUN_AS_NODE npm test` 完整跑至最后一个脚本并逐项输出 PASS。该全量结果是组合门禁证据，不能单独归因于 #288 分支。
+- 截图：由本地 fixture 生成，状态为默认标签页和浏览器 chrome，尺寸 1024×700；无个人数据。英文 `docs/qa/screenshots/corvid-localization-en-1024x700.png` SHA-256 `6bcef31fb8e2627ecabfabcf2c5f5de6c93bfef739301851ce29746a4e09593f`；简体中文 `docs/qa/screenshots/corvid-localization-zh-CN-1024x700.png` SHA-256 `ad53063e0b70175de6bb531db0279662d08089219959ddf1cf4fe42763742425`。
+- 限制：此切片只修复测试与现行 UI 合同不一致，不改变产品行为。全量组合门禁还依赖 #303–#306 的独立测试修正；未验证 Windows、打包版或真实站点。
