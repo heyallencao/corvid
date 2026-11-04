@@ -259,8 +259,12 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .extension-toolbar-button:hover, .extension-toolbar-button[aria-expanded="true"] { background: var(--surface-address); color: var(--text); }
 .extension-toolbar-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .extension-toolbar-button img { width: 20px; height: 20px; object-fit: contain; }
-.address-action { width: 27px; height: 27px; flex: none; padding: 0; color: var(--text-address-icon); font-size: 18px; }
+.address-action { width: 27px; height: 27px; flex: none; padding: 0; color: var(--text-address-icon); }
 .address-action:hover { color: var(--accent); }
+.address-action[aria-pressed="true"] { color: var(--accent-ink); }
+.bookmark-star { width: 17px; height: 17px; }
+.bookmark-star path { fill: none; }
+.address-action[aria-pressed="true"] .bookmark-star path { fill: currentColor; }
 #bookmarks-bar { min-height: 31px; display: flex; align-items: center; gap: 4px; overflow: auto; padding: 2px 12px; border-bottom: 1px solid var(--line); background: var(--surface); white-space: nowrap; }
 #bookmarks-bar:empty { display: none; }
 #bookmarks-bar[hidden] { display: none; }
@@ -272,6 +276,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #status:empty { display: none; }
 #status:not(:empty) { min-height: 30px; border-bottom: 1px solid var(--line-strong-warm); background: var(--surface-status); }
 #status button { padding: 4px 7px; color: var(--accent-ink); font-size: 12px; }
+.bookmark-feedback { min-width: 0; overflow: hidden; color: var(--success); text-overflow: ellipsis; white-space: nowrap; }
 .navigation-loading { display: inline-flex; align-items: center; gap: 7px; }
 .navigation-loading::before { width: 11px; height: 11px; border: 1.5px solid var(--line); border-top-color: var(--accent); border-radius: 50%; content: ''; animation: navigation-spin .8s linear infinite; }
 

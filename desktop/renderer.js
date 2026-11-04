@@ -28,6 +28,7 @@ const piModelControlVersions=new WeakMap();
 let agentRoomRenderVersion=0;
 let lastAgentRoomAnnouncementStates=new Map();
 let hasAgentRoomAnnouncementSnapshot=false;
+let currentBookmarkId=null, bookmarkButtonRequest=0, bookmarkMutationPending=false, bookmarkFeedbackKey=null, bookmarkFeedbackTimer=null;
 const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 async function openShellDialog(selector, focusSelector) {
   await api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
@@ -39,7 +40,7 @@ for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener(
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function profileDisplayName(profile) { return profile.isDefault && profile.name === '默认' ? extensionMessages.t('defaultProfile') : profile.name; }
 let profileDeletionPreviewVersion=0;
-document.addEventListener('corvid-locale-changed',()=>{closeAddressSuggestions();if(libraryKind==='pi-workbench')renderPiWorkbench();});
+document.addEventListener('corvid-locale-changed',()=>{closeAddressSuggestions();if(libraryKind==='pi-workbench')renderPiWorkbench();renderBookmarkFeedback();updateBookmarkActionLabel();});
 function formatTaskElapsed(milliseconds) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   const minutes = Math.floor(seconds / 60), remainingSeconds = seconds % 60;
@@ -126,6 +127,31 @@ function updateNewTabSurface(active) {
   const isNewTab=Boolean(active && active.url==='about:blank' && !active.isLoading && !active.navigationError);
   document.querySelector('#bookmarks-bar').toggleAttribute('hidden',isNewTab);
 }
+function updateBookmarkActionLabel() {
+  const button=document.querySelector('#bookmark-current'),key=currentBookmarkId?'bookmarkRemove':'bookmarkAdd';
+  button.title=extensionMessages.t(key);button.setAttribute('aria-label',extensionMessages.t(key));
+  button.setAttribute('aria-pressed',String(Boolean(currentBookmarkId)));
+}
+function syncCurrentBookmarkButton(tab=activeTab(),profileId=state?.activeProfileId) {
+  const button=document.querySelector('#bookmark-current'),request=++bookmarkButtonRequest;
+  const supported=Boolean(tab&&/^https?:/i.test(tab.url));
+  currentBookmarkId=null;button.disabled=!supported||bookmarkMutationPending;updateBookmarkActionLabel();
+  if(!supported||!profileId)return Promise.resolve();
+  return api.invoke('bookmarks',{profileId}).then(result=>{
+    if(request!==bookmarkButtonRequest||state?.activeProfileId!==profileId||activeTab()?.id!==tab.id||activeTab()?.url!==tab.url)return;
+    currentBookmarkId=result.bookmarks.find(item=>item.url===tab.url)?.id||null;
+    button.disabled=bookmarkMutationPending;updateBookmarkActionLabel();
+  }).catch(()=>{if(request===bookmarkButtonRequest)button.disabled=!supported||bookmarkMutationPending;});
+}
+function renderBookmarkFeedback() {
+  const status=document.querySelector('#status');status.querySelector('.bookmark-feedback')?.remove();
+  if(!bookmarkFeedbackKey)return;
+  const message=document.createElement('span');message.className='bookmark-feedback';message.textContent=extensionMessages.t(bookmarkFeedbackKey);status.append(message);
+}
+function showBookmarkFeedback(key) {
+  bookmarkFeedbackKey=key;clearTimeout(bookmarkFeedbackTimer);renderBookmarkFeedback();
+  bookmarkFeedbackTimer=setTimeout(()=>{bookmarkFeedbackKey=null;renderBookmarkFeedback();},2_500);
+}
 function loadAgentTaskSummaries(profileId) {
   if(agentTaskSummaryProfileId===profileId)return;
   agentTaskSummaryProfileId=profileId;
@@ -197,9 +223,10 @@ function draw(value) {
   newWindow.className='new-window-button';
   roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
+  void syncCurrentBookmarkButton(active,state.activeProfileId);
   updateNewTabSurface(active);
   // 对话框关闭后的状态事件可能晚于输入和失焦到达；同标签草稿应保留到提交。
   if(addressDraftDirty && (addressDraftTabId!==active?.id || addressDraftBaseUrl!==active?.url)){addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;}
@@ -216,6 +243,7 @@ function draw(value) {
   } else if(room.yielded) {const label=document.createElement('span');label.textContent=extensionMessages.t('userInControl');status.append(label);if(!room.executionRisk)status.append(button(extensionMessages.t('returnControl'),async()=>{controlError='';try{await api.invoke('returnUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}}));}
   if(controlError){const note=document.createElement('span');note.setAttribute('role','alert');note.textContent=controlError;status.append(note);}
   if(siteDataNotice?.tabId===active?.id){const note=document.createElement('span');note.setAttribute('role','status');note.textContent=siteDataNotice.message;status.append(note);}
+  renderBookmarkFeedback();
 }
 function renderExtensionToolbar(){
   const host=document.querySelector('#extension-toolbar');
@@ -962,7 +990,25 @@ document.querySelector('#address').addEventListener('keydown',event=>{if(!addres
 document.querySelector('#address').addEventListener('blur',()=>setTimeout(()=>{if(!document.querySelector('#address-suggestions').contains(document.activeElement))closeAddressSuggestions();},0));
 document.querySelector('#address-form').onsubmit = event => { event.preventDefault(); const tab=activeTab(),url=document.querySelector('#address').value;closeAddressSuggestions();addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;if(tab) api.invoke('navigate',{id:tab.id,url}); };
 document.querySelectorAll('[data-action]').forEach(el => el.onclick = () => {const tab=activeTab();if(tab) api.invoke(el.dataset.action,{id:tab.id});});
-document.querySelector('#bookmark-current').onclick = async () => {const tab=activeTab();if(!tab || !/^https?:/i.test(tab.url)) return;await api.invoke('addBookmark',{url:tab.url,title:tab.title});void renderBookmarksBar();};
+document.querySelector('#bookmark-current').onclick = async () => {
+  const tab=activeTab(),profileId=state?.activeProfileId,button=document.querySelector('#bookmark-current');
+  if(!tab||!/^https?:/i.test(tab.url)||bookmarkMutationPending)return;
+  const bookmarkId=currentBookmarkId;
+  bookmarkMutationPending=true;button.disabled=true;
+  try{
+    if(bookmarkId){const result=await api.invoke('removeBookmark',{id:bookmarkId,profileId});if(!result.removed)throw new Error('Bookmark was already removed');}
+    else await api.invoke('addBookmark',{url:tab.url,title:tab.title,profileId});
+    void renderBookmarksBar();
+    if(state?.activeProfileId===profileId&&activeTab()?.id===tab.id&&activeTab()?.url===tab.url){
+      await syncCurrentBookmarkButton(tab,profileId);
+      showBookmarkFeedback(bookmarkId?'bookmarkRemoved':'bookmarkAdded');
+    }
+  }catch(error){
+    if(state?.activeProfileId===profileId&&activeTab()?.id===tab.id&&activeTab()?.url===tab.url){
+      await syncCurrentBookmarkButton(tab,profileId);showBookmarkFeedback('bookmarkActionFailed');
+    }
+  }finally{bookmarkMutationPending=false;button.disabled=!/^https?:/i.test(activeTab()?.url||'');updateBookmarkActionLabel();}
+};
 document.querySelector('#show-bookmarks').onclick = event => showLibrary('bookmarks',event.currentTarget);
 document.querySelector('#show-history').onclick = event => {if(libraryKind==='history')closeLibraryPanel();else void showLibrary('history',event.currentTarget);};
 document.querySelector('#show-downloads').onclick = event => showLibrary('downloads',event.currentTarget);
