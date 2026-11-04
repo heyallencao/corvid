@@ -39,11 +39,16 @@ async function openApiKeyProvider(app) {
   await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
   const select = shell.locator('.pi-model-select');
   await select.waitFor();
-  const option = await select.locator('option').evaluateAll(options => options.find(item => {
-    try { return JSON.parse(item.value).providerId === 'anthropic'; } catch { return false; }
-  })?.value);
-  assert.ok(option, 'the catalog contains an API Key provider');
-  await select.selectOption(option);
+  const modelId = await shell.evaluate(async () => {
+    const catalog = await window.browserShell.invoke('piModels');
+    return catalog.providers.find(provider => provider.id === 'anthropic')?.models[0]?.id;
+  });
+  assert.ok(modelId, 'the catalog contains an API Key provider');
+  await select.click();
+  const search = shell.getByRole('combobox', { name: /搜索模型|Search models/ });
+  await search.fill(modelId);
+  await shell.locator(`[role="option"][data-provider-id="anthropic"][data-model-id="${modelId}"]`).waitFor();
+  await search.press('Enter');
   return shell;
 }
 

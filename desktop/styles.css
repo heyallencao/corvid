@@ -348,7 +348,25 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #pi-task-form { display: grid; flex: none; max-height: 58%; gap: 8px; margin: 0; padding: 10px; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-inset); box-shadow: 0 3px 12px var(--shadow-soft); }
 #pi-task-form .pi-model-controls { display: grid; gap: 7px; padding-top: 1px; }
 #pi-task-form .pi-model-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-#pi-task-form .pi-model-select { width: 100%; min-width: 0; min-height: 34px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-elevated); color: var(--text); font: inherit; font-size: 12px; }
+#pi-task-form .pi-model-picker { min-width: 0; }
+#pi-task-form .pi-model-select { width: 100%; min-width: 0; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-elevated); color: var(--text); font: inherit; font-size: 12px; text-align: left; }
+#pi-task-form .pi-model-select:hover { border-color: var(--line-strong-warm); background: var(--surface-hover); }
+#pi-task-form .pi-model-select:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
+#pi-task-form .pi-model-select-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pi-task-form .pi-model-caret { width: 7px; height: 7px; flex: none; transform: translateY(-2px) rotate(45deg); border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; color: var(--text-muted); transition: transform 140ms ease; }
+#pi-task-form .pi-model-picker.is-open .pi-model-caret { transform: translateY(2px) rotate(225deg); }
+#pi-task-form .pi-model-picker-panel { display: grid; gap: 6px; margin-top: 6px; padding: 7px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-elevated); box-shadow: 0 6px 20px var(--shadow-soft); }
+#pi-task-form .pi-model-picker-panel.is-fixed { position: fixed; z-index: 40; margin: 0; box-sizing: border-box; }
+#pi-task-form .pi-model-picker-panel[hidden] { display: none; }
+#pi-task-form .pi-model-search { width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid var(--line-input); border-radius: 7px; background: var(--surface); color: var(--text); font: inherit; font-size: 11px; }
+#pi-task-form .pi-model-search:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 1px; }
+#pi-task-form .pi-model-options { max-height: 190px; display: grid; gap: 2px; overflow: auto; overscroll-behavior: contain; }
+#pi-task-form .pi-model-option { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+#pi-task-form .pi-model-option[data-active="true"], #pi-task-form .pi-model-option:hover { background: var(--surface-hover); }
+#pi-task-form .pi-model-option[aria-selected="true"] .pi-model-option-name { color: var(--accent-ink); font-weight: 650; }
+#pi-task-form .pi-model-option-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+#pi-task-form .pi-model-option-provider { flex: none; color: var(--text-muted); font-size: 11px; }
+#pi-task-form .pi-model-empty { padding: 10px 8px; color: var(--text-secondary); font-size: 11px; text-align: center; }
 #pi-task-form .pi-model-connection { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 7px; padding: 7px 9px; border: 1px solid var(--line-subtle); border-radius: 9px; background: var(--surface-elevated); }
 #pi-task-form .pi-model-controls[data-connected="false"] .pi-model-connection { border-color: var(--line-accent); background: var(--surface-accent); }
 #pi-task-form .pi-model-status { min-width: 0; flex: 1; color: var(--text-secondary); font-size: 12px; font-weight: 600; line-height: 1.4; }

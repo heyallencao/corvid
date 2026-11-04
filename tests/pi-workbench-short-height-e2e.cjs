@@ -123,6 +123,26 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.connectionStatusVisible && composerAccess.connectActionVisible && composerAccess.modelManagementVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
       'model, account recovery, prompt, management, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
 
+    const modelPickerTrigger = shell.getByRole('button', { name: 'Corvid Agent model' });
+    await modelPickerTrigger.scrollIntoViewIfNeeded();
+    await modelPickerTrigger.click();
+    const modelSearch = shell.getByRole('combobox', { name: 'Search models' });
+    await modelSearch.fill('gpt-6-luna');
+    await shell.locator('[role="option"][data-provider-id="openai-codex"][data-model-id="gpt-6-luna"]').waitFor();
+    const pickerSearchVisible = await modelSearch.evaluate(input => {
+      const bounds = input.getBoundingClientRect();
+      const panel = input.closest('.pi-model-picker-panel').getBoundingClientRect();
+      return bounds.height > 0 && bounds.top >= 0 && bounds.bottom <= window.innerHeight && bounds.left >= 0 && bounds.right <= window.innerWidth
+        && panel.top >= 0 && panel.bottom <= window.innerHeight && panel.left >= 0 && panel.right <= window.innerWidth;
+    });
+    assert.ok(pickerSearchVisible, 'the model picker opens as a viewport-bounded menu at short height');
+    const pickerEvidencePath = process.env.CORVID_MODEL_PICKER_EVIDENCE_PATH;
+    if (pickerEvidencePath) {
+      fs.mkdirSync(path.dirname(pickerEvidencePath), { recursive: true });
+      await shell.screenshot({ path: pickerEvidencePath });
+    }
+    await modelSearch.press('Escape');
+
     console.log('PASS Corvid Agent welcome remains readable in zh-CN/en at short window height: ' + JSON.stringify({ zh: zhLayout, en: enLayout }));
   } finally {
     if (app) await app.close().catch(() => {});

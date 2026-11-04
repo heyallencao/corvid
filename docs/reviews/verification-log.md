@@ -1315,3 +1315,13 @@
 - 验证：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/typography-e2e.cjs`、`node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"` 与 `git diff --check` 通过。首次 `node tests/typography-e2e.cjs` 因 worktree 尚无 `playwright-core` 未启动；安装依赖后首次真实 Electron 运行暴露零字号图标按钮隐藏文字误计为可见字，调整采样条件后完整重跑：`CORVID_TYPOGRAPHY_QA_DIR=docs/qa/screenshots/issue-212 node tests/typography-e2e.cjs` EXIT 0。覆盖 zh-CN/en、1024×700 书签面板、704×420 Agent 工作区与横向边界。未运行完整 `npm test`。
 - UI 检查：Impeccable detector 对所选 `desktop/styles.css`、`desktop/index.html`、`desktop/locales.js` 报告 side-tab warning、hairline-border/wide-shadow advisory 和 flat-type-hierarchy warning；这些扫描结果涉及已有多处组件，须结合页面场景复核，未作为本切片新增功能或验收门槛。具体视觉判断、截图 SHA-256 与 REA/EGO/Kaze 覆盖限制见[字体与中文排版视觉检查](../qa/ui-visual-check.md#2026-11-04-字体与中文排版-issue-212)。
 - 范围限制：四张截图是 Electron renderer viewport，不证明原生窗口合成或网页 WebContentsView 像素；未验 Windows/Linux、打包版、深色主题、VoiceOver、真实模型与 OAuth。跨平台 GitHub Actions 尚未由本记录启动或验证。
+
+## 2026-11-04 Agent 模型搜索选择器（Issue #208 部分）
+
+- 变更：Agent 模型原生 select 改为可搜索 listbox，按模型名、模型 ID、提供方名称/ID 过滤；展示当前模型与提供方、选中和活动候选，支持方向键、Enter、Escape、Tab、点击和无结果状态。弹层按触发控件定位并在可滚动任务卡移动或窗口 resize 时重算，窄高视口优先向上展开。新增 zh-CN/en 资源，并将模型选择相关旧 E2E 改为 listbox 操作。其余 Issue #208 控件不在本 PR 范围，Issue 保持开放。
+- 环境：独立 worktree `/private/tmp/corvid-issue208-model-picker`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；每次 Electron E2E 使用临时 `CORVID_DATA_DIR`，本切片未读写用户浏览数据、OAuth、真实模型或凭据。
+- 验证：`node tests/pi-model-picker-ui-e2e.cjs` EXIT 0；运行时目录 1,599 项，覆盖过滤、ArrowUp/ArrowDown/Enter、模型偏好隔离持久化、双语空结果、Escape 焦点恢复、Tab 到下一控件及 704×420 视口内弹层。`node tests/pi-workbench-short-height-e2e.cjs` EXIT 0，覆盖中英短窗和模型弹层。`node --check` 覆盖 renderer、locale、新增 UI E2E 与已更新选择器测试；package JSON 解析和 `git diff --check` 通过。`node tests/pi-workbench-e2e.cjs` 后续在既有 Anthropic API Key 保存路径等待 connected 状态失败；本轮不把该凭据步骤记为通过，也不以此推断签名/系统钥匙串原因。全量 `npm test` 未运行。
+- UI/UE 参考：项目已有 Aceternity UI Search REA controlled replay（打开控件 Evidence `ev_9367e9f54ba0a032a62be6dd7b34e22040be41ae2cd7cc73cfc5fa1270817677`；过滤后方向键与 Enter Evidence `ev_643bb90ebc8795e05341a5e84e970dcbc956fd69e74a58594539b513534f02c5`），只借鉴 combobox/listbox 反馈，不照搬页面外观或素材。Corvid 四张脱敏截图、覆盖范围、视口和 SHA-256 见[QA 记录](../qa/issue-208-model-picker.md)。
+- Impeccable：Skill 随附 `impeccable detect --json desktop/index.html desktop/renderer.js desktop/styles.css desktop/locales.js` EXIT 2，报告现有全局排版/组件提示；针对 `desktop/styles.css` 的命中仅在未修改的 438 与 577 行，与本切片新增样式无关。未扩展处理其他 Issue 的视觉问题。
+- 限制：只验证 macOS 开发版、隔离数据和模型目录 fixture；未覆盖 VoiceOver 实播、深色主题、打包应用及 Windows/Linux；API Key 安全存储 E2E 未通过，签名包诊断未运行。
+- GitHub CI：PR #242 首次推送触发的六个 macOS、Windows、Linux job 均在启动前失败，全部 `steps=[]`。GitHub annotation 明确表示近期付款失败或支出上限导致 job 未启动；macOS arm64 另有 runner 容量提示。这不是代码测试执行结果，跨平台 CI 未通过或证明；未使用管理员绕过。

@@ -66,10 +66,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const selection = shell.getByLabel('Corvid Agent 模型', { exact: true });
     await shell.waitForTimeout(500);
     const latestCatalog = await shell.evaluate(() => window.browserShell.invoke('piModels'));
-    const customOption = await selection.locator('option').evaluateAll(options => options.filter(option => option.value.includes('corvid-fixture-endpoint')).map(option => ({ value: option.value, text: option.textContent })));
-    assert.equal(customOption.length, 1, `custom model missing from selector; status=${await shell.locator('.pi-model-status').textContent()}`);
+    const customOption = latestCatalog.providers.find(provider => provider.id === 'corvid-fixture-endpoint')?.models.find(model => model.id === 'fixture-model');
+    assert.ok(customOption, `custom model missing from selector; status=${await shell.locator('.pi-model-status').textContent()}`);
     assert.ok(latestCatalog.providers.some(provider => provider.id === 'corvid-fixture-endpoint'), 'custom provider appears in the model catalog');
-    await selection.selectOption(customOption[0].value);
+    await selection.click();
+    const modelSearch = shell.getByRole('combobox', { name: '搜索模型' });
+    await modelSearch.fill('fixture-model');
+    await shell.locator('[role="option"][data-provider-id="corvid-fixture-endpoint"][data-model-id="fixture-model"]').waitFor();
+    await modelSearch.press('Enter');
     await shell.getByText('已连接').waitFor();
     await shell.getByRole('button', { name: '关闭', exact: true }).click();
 
