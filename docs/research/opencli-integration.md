@@ -131,3 +131,8 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - Issue #268 将 SDK `Page.scroll(deltaX, deltaY, {x, y})` 暴露为 `page_scroll`：位移每轴限制 -2000..2000，至少一个非零；坐标必须成对且落在主视口内，缺省使用视口中心。主进程使用单次 Room 序列化的 CDP `Input.synthesizeScrollGesture`（mouse source）定位并滚动页面或嵌套容器，不运行网页脚本、不激活后台 Room。
 - 验收发现直接对后台 WebContentsView 派发 CDP `mouseWheel` 未产生页面滚动；改用 mouse-source scroll gesture 后，隔离 Electron fixture 中长文档和坐标命中的内部滚动面板都实际滚动。该差异只在当前 macOS/Electron 运行态观测，不推断其他平台或所有 Chromium 版本相同。
+
+## 2026-11-04 Browser SDK 与 MCP 的 contenteditable 输入
+
+- Issue #271 将 `Page.fill()` / `page_fill` 扩展到 `contenteditable="true"`、空属性与 `plaintext-only` 编辑宿主。Snapshot 和 role locator 将编辑宿主识别为 textbox；目标可以是宿主或其后代，但 Selection Range 只选中最近编辑宿主。实际输入使用可信 Backspace 与 Chromium `Input.insertText`，HTML 字符按文本处理，不直接写入 DOM/HTML。原有首字符的行内格式可能保留；换行遵循 Chromium 编辑器段落语义。
+- 运行态观察：macOS Electron 中 `Meta+A` 会产生可信按键事件却没有选中编辑内容，因此以内部 Selection Range 限定选择范围；之后的删除与文本输入仍验证 `beforeinput` / `input` 为 `isTrusted`。
