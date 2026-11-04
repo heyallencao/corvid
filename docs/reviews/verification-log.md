@@ -23,6 +23,13 @@
 - REA/UI 参考与边界：项目既有研究文档记录 EGO `observe_native_ui` Evidence `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 与 Kaze `observe_native_ui` Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02）。本轮用 REA 查询这两个 ID 时，当前 Evidence store 均返回 0 条匹配记录，因此没有新鲜打开或重新分析这两份证据。项目文档记载的直接观察仅包括浏览器 chrome、标签/空间入口和网页画布；两份快照都没有打开历史面板，竞品时间分组与条目交互仍未知。样式取舍基于 Corvid 现有 Library 面板及 Issue #196 的可见差距：补足识别页面所需的时间和主机/路径，不引入另一套卡片或导航模型。
 - 未覆盖：跨时区切换后的历史分组、远端竞品历史面板、VoiceOver/Narrator/Orca 实播、Windows/Linux 窗口布局和真实用户历史数据。
 
+## 2026-11-04 书签与历史列表行（Issue #220）
+
+- 实现：书签/历史条目使用本地 hostname 首字母标识、标题、仅含主机与路径的副标题以及带可访问名称的删除图标；历史保留 #196 的日期分组/时间。书签、历史空态分别提供说明，并按当前 Profile 是否有活动空间提供打开新标签页或新建空间动作；无匹配空态可清除搜索。Profile 变化会清空旧搜索词，避免筛选残留跨身份显示。标识不请求远程 favicon；query/hash 不显示。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE CORVID_LIBRARY_ROWS_QA_DIR="$PWD/docs/qa/screenshots" node tests/library-search-e2e.cjs` 与同环境 `node tests/history-panel-e2e.cjs` 均通过；覆盖标识尺寸/删除 SVG、URL 查询片段隐藏、空态和操作 zh-CN/en、Profile 搜索重置、书签搜索清除、空间/标签动作、历史日期组、删除、重启持久化及 700×420 窄窗。测试使用隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture，没有访问真实网站、账号、浏览记录、模型或 OAuth。`node --check` 覆盖 renderer/locales/两项 E2E，`git diff --check` 通过；未运行完整 `npm test`。
+- 截图与目视：书签行 [issue-220-bookmarks-zh-CN-1024x700.png](../qa/screenshots/issue-220-bookmarks-zh-CN-1024x700.png)，SHA-256 `1357d6d7ce3f3595b7e24509660cee04f93a2e9fffa70baaaa1a26ae7f0cc5e6`；书签空态 [issue-220-bookmarks-empty-zh-CN-1024x700.png](../qa/screenshots/issue-220-bookmarks-empty-zh-CN-1024x700.png)，SHA-256 `7865f0488110264ed76b91dbf99c9d686e8d9910afdf18628d64f31677afcc8e`；历史空态 [issue-220-history-empty-zh-CN-1024x700.png](../qa/screenshots/issue-220-history-empty-zh-CN-1024x700.png)，SHA-256 `114548cee1e56648377643e7aad88c9fa5f943315bcf0b85a331f280b59be694`；历史常规窗 [issue-220-history-zh-CN-1024x700.png](../qa/screenshots/issue-220-history-zh-CN-1024x700.png)，SHA-256 `df638f893b4d1f018dada7c34a9330e5008d905a10b4af2b86336962c9605c81`；历史窄窗 [issue-220-history-zh-CN-700x420.png](../qa/screenshots/issue-220-history-zh-CN-700x420.png)，SHA-256 `037507755007724f15fecb5f2dafc75086cdfa22d142a9ebcc29c813f7f8c57a`。首次视觉复核发现通用 `.entry > span` 将站点标识拉伸为色块、历史删除按钮仍显示文本；两项已修正并重新截图/回归。无个人数据。
+- UI/UE 参考与 REA：Kobra `components/empty` 与 `components/item` 受控重放 Evidence 和覆盖限制见[视觉记录](../qa/ui-visual-check.md#2026-11-04-书签与历史列表行-issue-220)。直接观察仅用于空态结构和列表信息层级；未观察生产浏览器的书签/历史面板行为，也没有复制素材。Impeccable detector 本轮对改动文件输出两条 `side-tab` 警告，定位到 `styles.css` 既有行 380 与 513，均非此次新增 CSS；未扩展修整无关组件。
+
 ## 2026-11-04 标签页加载反馈（Issue #197）
 
 - 实现：导航进行中在对应标签的 favicon 槽位显示 15px CSS spinner；完成或失败后恢复 favicon。将 `isLoading` 加入标签栏渲染签名，避免状态变化被跳过；加载状态的按钮可访问名称提供 `zh-CN`/`en` 双语，动画沿用现有 `prefers-reduced-motion` 全局策略。没有增加第二条进度条，避免重复表达同一加载状态和挤压标签栏。

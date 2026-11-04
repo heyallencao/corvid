@@ -14,7 +14,9 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-history-panel-'));
   const qaDir = process.env.CORVID_HISTORY_QA_DIR;
+  const rowQaDir = process.env.CORVID_LIBRARY_ROWS_QA_DIR;
   if (qaDir) fs.mkdirSync(qaDir, { recursive: true });
+  if (rowQaDir) fs.mkdirSync(rowQaDir, { recursive: true });
   const fixture = http.createServer((request, response) => {
     const title = request.url.startsWith('/today-one') ? 'Alpha Today' : 'Beta Today';
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -82,6 +84,9 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
     assert.equal(await items.locator('.history-group').count(), 3, 'history is separated into local-day groups');
     assert.deepEqual(await items.locator('.history-group').evaluateAll(groups => groups.map(group => group.dataset.historyGroup)), ['today', 'yesterday', dayKey(older)], 'groups are ordered from newest to oldest');
     assert.equal(await todayGroup.locator('.history-entry').count(), 2, 'both visited pages appear under today');
+    assert.equal(await todayGroup.locator('.library-site-badge').count(), 2, 'each history item has a local domain identity badge');
+    assert.equal(await todayGroup.locator('.library-site-badge').first().evaluate(element => Math.round(element.getBoundingClientRect().width)), 30, 'domain identity badges remain compact instead of stretching across the row');
+    assert.equal(await todayGroup.locator('.library-remove svg').count(), 2, 'history rows use icon delete actions');
     assert.equal(await todayGroup.locator('.history-group-title').textContent(), '今天');
     assert.equal(await yesterdayGroup.locator('.history-group-title').textContent(), '昨天');
     assert.equal(await olderGroup.locator('.history-group-title').textContent(), await shell.evaluate(date => window.corvidI18n.formatDate(date, { dateStyle: 'full' }), older.toISOString()));
@@ -118,6 +123,11 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
       await items.evaluate(element => { element.scrollTop = 0; });
       await shell.screenshot({ path: path.join(qaDir, 'issue-196-history-zh-CN-1024x700.png') });
     }
+    if (rowQaDir) {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 700));
+      await items.evaluate(element => { element.scrollTop = 0; });
+      await shell.screenshot({ path: path.join(rowQaDir, 'issue-220-history-zh-CN-1024x700.png') });
+    }
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(700, 420));
     await items.evaluate(element => { element.scrollTop = 0; });
     await items.getByRole('button', { name: '删除 Alpha Today' }).waitFor();
@@ -131,6 +141,7 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
     assert.ok(geometry.width > 0 && geometry.urlWidth > 0, `narrow layout keeps the URL and time visible: ${JSON.stringify(geometry)}`);
     assert.ok(geometry.scrollWidth <= geometry.width + 1 && geometry.timeRight <= geometry.rowRight + 1 && geometry.removeRight <= geometry.rowRight + 1, `narrow layout does not overflow: ${JSON.stringify(geometry)}`);
     if (qaDir) await shell.screenshot({ path: path.join(qaDir, 'issue-196-history-zh-CN-700x420.png') });
+    if (rowQaDir) await shell.screenshot({ path: path.join(rowQaDir, 'issue-220-history-zh-CN-700x420.png') });
 
     console.log('PASS history dates, local-time groups, sanitized URLs, bilingual labels, search, deletion and narrow layout');
   } finally {
