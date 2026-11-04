@@ -35,19 +35,20 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const shell=firstLaunch.shell;
     config=await waitForControl(app,dataDir,{label:'fullscreen-e2e'});
     const firstWindow=(await api('/windows')).windows[0];
+    const firstNativeWindow=await app.browserWindow(shell);
     const externalFullscreen=await fetch(`${config.baseUrl}/windows/${firstWindow.id}/fullscreen`,{method:'POST',headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},body:'{}'});
     assert.equal(externalFullscreen.status,404,'the external control API must not expose a browser-window fullscreen action');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
-    await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),'maximized window before full screen');
+    await firstNativeWindow.evaluate(window=>window.maximize());
+    await until(()=>firstNativeWindow.evaluate(window=>window.isMaximized()),'maximized window before full screen');
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
     const toggle=shell.getByRole('menuitemcheckbox',{name:'全屏模式'});
     assert.equal(await toggle.getAttribute('aria-checked'),'false');
     assert.equal(await shell.locator('#fullscreen-shortcut').textContent(),process.platform==='darwin'?'⌃⌘F':'F11');
     await toggle.click();
     await until(async()=>{const state=await api('/rooms');return state.windows[0]?.fullscreen===true;},'app full-screen state');
-    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen()),true);
+    assert.equal(await firstNativeWindow.evaluate(window=>window.isFullScreen()),true);
     assert.equal(await shell.locator('#rooms').isVisible(),true,'browser navigation remains visible in app full screen');
     assert.equal(await shell.locator('#library[data-kind="pi-workbench"]').isVisible(),true,'Corvid Agent workspace remains visible in app full screen');
 
@@ -55,8 +56,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await shell.getByRole('menuitemcheckbox',{name:'全屏模式'}).getAttribute('aria-checked'),'true');
     await shell.getByRole('menuitemcheckbox',{name:'全屏模式'}).click();
     await until(async()=>{const state=await api('/rooms');return state.windows[0]?.fullscreen===false;},'app window returns from full screen');
-    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen()),false);
-    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),true,'full screen restores the prior maximized state');
+    assert.equal(await firstNativeWindow.evaluate(window=>window.isFullScreen()),false);
+    assert.equal(await firstNativeWindow.evaluate(window=>window.isMaximized()),true,'full screen restores the prior maximized state');
 
     const shortcut=process.platform==='darwin'?'Control+Meta+F':'F11';
     await sendShortcut(shortcut);
@@ -119,6 +120,12 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(()=>app.evaluate(({webContents},url)=>!webContents.getAllWebContents().some(contents=>contents.getURL()===url),fixtureUrl),'fullscreen page closes');
     await until(async()=>{const state=await api('/rooms');return state.windows.every(item=>!item.pageFullscreen);},'page full-screen state clears');
     await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().every(window=>!window.isFullScreen())),'native full-screen state exits after page close');
+    await until(async()=>{
+      const state=await api('/rooms');
+      const native=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().every(window=>!window.isFullScreen()));
+      const restored=await firstNativeWindow.evaluate(window=>window.isMaximized());
+      return native&&restored&&state.windows.every(window=>!window.fullscreen&&!window.pageFullscreen);
+    },'page full-screen exit event completes and restores the original maximized window');
     const windowStateBeforeRestart=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(window=>({maximized:window.isMaximized(),bounds:window.getNormalBounds()})));
     assert.ok(windowStateBeforeRestart.some(window=>window.maximized),'fixture includes a window that was maximized before full screen');
     const previousToken=config.token;

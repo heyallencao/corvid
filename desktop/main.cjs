@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -7,8 +7,16 @@ const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
+const { createStartupProgress } = require('./startup-progress.cjs');
+const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
+const { createMainLocale } = require('./main-locales.cjs');
+const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
+// Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
+const INITIAL_BROWSER_CHROME_HEIGHT = 90;
+let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
+const startupProgress = createStartupProgress({ dataDir, enabled: process.env.CORVID_TEST_MODE === '1', onError: error => console.error(`Corvid test startup progress could not be saved: ${error.message}`) });
 let dataDirectoryError = null;
 try {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -24,13 +32,14 @@ try {
     try { fs.unlinkSync(probe); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
 } catch (error) {
-  dataDirectoryError = new Error(`Corvid 无法使用数据目录：${dataDir}\n请检查当前用户是否有读取、写入和执行权限，然后重试。\n系统错误：${error.message}`);
+  dataDirectoryError = new Error(mainMessages.t('dataDirectoryFailure', {path:dataDir,error:error.message}));
 }
 
+if (!dataDirectoryError) startupProgress('main-module-loaded');
 if (dataDirectoryError) {
   console.error(dataDirectoryError.message);
   void app.whenReady().then(() => {
-    if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox('Corvid 启动失败', dataDirectoryError.message);
+    if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'), dataDirectoryError.message);
     app.exit(1);
   });
 } else {
@@ -110,8 +119,13 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
+let applicationMenu = null;
 const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
 const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
+  canReadPageContext: ({profileId,roomId,tabId}) => {
+    const room=rooms.find(item=>item.id===roomId),tab=tabs.get(tabId);
+    return Boolean(room&&tab&&room.profileId===profileId&&room.tabIds.includes(tabId)&&tab.roomId===roomId&&room.ownership==='agent'&&!room.userResumePending&&!room.executionRisk&&!tab.view.webContents.isDestroyed());
+  },
   issueAgentCredential: ({taskId,roomId}) => {
     const room=rooms.find(item=>item.id===roomId);
     if(typeof taskId!=='string'||!taskId||!room||room.ownership!=='agent'||room.userResumePending||room.executionRisk)throw Object.assign(new Error('Corvid Agent 只能获得仍由 Agent 控制且没有待处理风险的任务空间授权'),{code:'CORVID_CONTROL_LOST'});
@@ -121,6 +135,7 @@ const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
   revokeAgentCredential: credentialId => agentClients.revokeInternal(credentialId),
   onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
+  for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('agent-task-summary-state', {profileId:record.activeProfileId,tasks:agentWorkbench.listSummaries(record.activeProfileId)});
 } });
 let panelOpen = false;
 const selectedChromeSources = new Map();
@@ -171,6 +186,67 @@ function focusWindow(record) {
   frontView = record.frontView;
   activeRoomId = record.activeRoomId;
   activeProfileId = record.activeProfileId;
+  syncApplicationMenu();
+}
+function applicationMenuContext() {
+  const record=activeRecord(),room=record&&rooms.find(item=>item.id===record.activeRoomId),tab=room&&tabs.get(room.activeTabId);
+  const canUseActiveTab=Boolean(record&&room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk&&tab&&!tab.view.webContents.isDestroyed());
+  const history=canUseActiveTab?tab.view.webContents.navigationHistory:null;
+  return {record,room,tab,canUseActiveTab,canCreateTab:Boolean(record&&room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk),canCloseTab:canUseActiveTab,canGoBack:Boolean(history?.canGoBack()),canGoForward:Boolean(history?.canGoForward()),fullscreen:Boolean(record?.appFullscreen),focusedWindowId:record?.id??null};
+}
+function showApplicationMenuError(record) {
+  if(!record||record.browserWindow.isDestroyed())return;
+  void dialog.showMessageBox(record.browserWindow,{type:'warning',message:applicationMenuText(uiLocale).actionUnavailable});
+}
+function runApplicationMenuAction(action) {
+  const record=activeRecord();
+  if(!record||record.browserWindow.isDestroyed())return;
+  try{Promise.resolve(action(record)).catch(error=>{console.error('Corvid application menu action failed:',error.message);showApplicationMenuError(record);});}
+  catch(error){console.error('Corvid application menu action failed:',error.message);showApplicationMenuError(record);}
+}
+function applicationMenuHandlers() {
+  const active=()=>applicationMenuContext();
+  const dispatchActive=method=>{const current=active();if(current.canUseActiveTab)return dispatchQueued(method,{id:current.tab.id});};
+  const adjustZoom=delta=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;const settings=profileSettings(current.record.activeProfileId);const zoom=delta===null?1:Math.round(Math.min(3,Math.max(0.5,settings.zoom+delta))*10)/10;saveSettings(current.record.activeProfileId,{zoom});applyZoom(current.record.activeProfileId);update(current.record);});
+  return {
+    canCreateTab:()=>applicationMenuContext().canCreateTab,
+    canCloseTab:()=>applicationMenuContext().canCloseTab,
+    canUseActiveTab:()=>applicationMenuContext().canUseActiveTab,
+    canGoBack:()=>applicationMenuContext().canGoBack,
+    canGoForward:()=>applicationMenuContext().canGoForward,
+    isFullscreen:()=>applicationMenuContext().fullscreen,
+    newTab:()=>runApplicationMenuAction(()=>{const current=active();if(current.canCreateTab)return dispatchQueued('createTab',{id:current.room.id});}),
+    newWindow:()=>runApplicationMenuAction(()=>dispatchQueued('createWindow',{})),
+    closeTab:()=>runApplicationMenuAction(()=>{const current=active();if(current.canCloseTab)return dispatchQueued('closeTab',{id:current.tab.id});}),
+    closeWindow:()=>runApplicationMenuAction(current=>{
+      if(windowRecords.size<=1){current.browserWindow.close();return;}
+      return dispatchQueued('closeWindow',{id:current.id});
+    }),
+    back:()=>runApplicationMenuAction(()=>dispatchActive('back')),
+    forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
+    reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
+    find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
+    fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
+    zoomIn:()=>adjustZoom(0.1),
+    zoomOut:()=>adjustZoom(-0.1),
+    resetZoom:()=>adjustZoom(null),
+    focusWindow:id=>{const target=windowRecords.get(id);if(target&&!target.browserWindow.isDestroyed())target.browserWindow.focus();},
+    showShortcuts:()=>{
+      const text=applicationMenuText(uiLocale),owner=activeRecord()?.browserWindow,options={type:'info',message:text.shortcutsTitle,detail:text.shortcutsDetail};
+      if(owner&&!owner.isDestroyed())void dialog.showMessageBox(owner,options);else void dialog.showMessageBox(options);
+    },
+  };
+}
+function rebuildApplicationMenu() {
+  const windows=[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(record=>({id:record.id,focused:record.browserWindow.isFocused()}));
+  applicationMenu=Menu.buildFromTemplate(createApplicationMenuTemplate({locale:uiLocale,platform:process.platform,handlers:applicationMenuHandlers(),windows}));
+  Menu.setApplicationMenu(applicationMenu);
+  syncApplicationMenu();
+}
+function syncApplicationMenu() {
+  if(!applicationMenu)return;
+  syncApplicationMenuState(applicationMenu,applicationMenuContext());
 }
 function syncRecordFromAliases(record) {
   if (!record) return;
@@ -186,15 +262,6 @@ function requireFocusedRecord() {
   return record;
 }
 const id = () => crypto.randomUUID();
-function navigationFailureMessage(errorCode,detail=''){
-  const source=`${errorCode} ${detail}`.toUpperCase();
-  if(errorCode===-105||source.includes('ERR_NAME_NOT_RESOLVED'))return '找不到服务器';
-  if(errorCode===-106||source.includes('ERR_INTERNET_DISCONNECTED'))return '网络连接已断开';
-  if(errorCode===-102||source.includes('ERR_CONNECTION_REFUSED'))return '服务器拒绝连接';
-  if(errorCode===-118||source.includes('ERR_TIMED_OUT'))return '连接超时';
-  if(errorCode<=-200&&errorCode>=-299||source.includes('ERR_CERT_'))return '安全连接失败';
-  return '无法加载此页面';
-}
 function navigationWasCancelled(error){return /ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/i.test(String(error?.message||error||''));}
 const SCHEMA_VERSION = 2;
 const dbPath = path.join(dataDir, 'rooms.json');
@@ -208,11 +275,14 @@ try {
 } catch (error) {
   if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
 }
+mainMessages.setLocale(uiLocale);
 function saveUiLocale(locale) {
   const temporaryPath = `${uiPreferencesPath}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify({schemaVersion:1,uiLocale:locale}), {mode:0o600});
   fs.renameSync(temporaryPath, uiPreferencesPath);
   uiLocale = locale;
+  rebuildApplicationMenu();
+  mainMessages.setLocale(locale);
 }
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
@@ -225,6 +295,8 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
+const MIN_WINDOW_WIDTH = 704;
+const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
   const roomIds=args.roomIds;
@@ -235,8 +307,9 @@ function createAgentClientGrant(args = {}) {
 function normalizeBounds(saved) {
   if (!saved || typeof saved !== 'object') return null;
   const { x, y, width, height, maximized } = saved;
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width < 600 || height < 400) return null;
-  const size = { width: Math.round(width), height: Math.round(height), maximized: Boolean(maximized) };
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  // Saved states may predate BrowserWindow's minimum; keep the saved position and clamp its size.
+  const size = { width: Math.max(MIN_WINDOW_WIDTH, Math.round(width)), height: Math.max(MIN_WINDOW_HEIGHT, Math.round(height)), maximized: Boolean(maximized) };
   if (!Number.isFinite(x) || !Number.isFinite(y)) return size;
   const bounds = { x: Math.round(x), y: Math.round(y), ...size };
   // A saved position can belong to a monitor that is no longer attached; fall
@@ -293,6 +366,7 @@ const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
+const { createProfileDeletion, extensionProfileRoot } = require('./profile-deletion.cjs');
 const extensionIconCache = new Map();
 function closeExtensionPopup(record,{restoreFocus=false,focusTrigger=false}={}) {
   const popup=record?.extensionPopup;
@@ -377,15 +451,52 @@ const extensionLoadErrors = new Map();
 const activeDownloads = new Map();
 const activeDownloadRetries = new Map();
 const pendingDownloadRetries = new Map();
+let failProfileDeleteStorageClearOnce=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PROFILE_DELETE_STORAGE_FAIL_ONCE==='1';
 const downloadPartitions = new Set();
 const permissionGrants = new Map();
 let profiles;
 try { profiles=JSON.parse(fs.readFileSync(profilesPath,'utf8')); }
 catch(error) { if(error.code!=='ENOENT') throw error; profiles=[{id:'default',name:'默认',isDefault:true}]; }
 if(!Array.isArray(profiles) || !profiles.some(p=>p.id==='default')) throw new Error('Invalid profile data');
-const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');return profile; };
+function saveProfiles(next){
+  const temporary=`${profilesPath}.tmp`;
+  fs.writeFileSync(temporary,JSON.stringify(next),{mode:0o600});fs.chmodSync(temporary,0o600);fs.renameSync(temporary,profilesPath);profiles=next;
+  for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+}
+const findProfile = profileId => { const profile=profiles.find(p=>p.id===profileId);if(!profile) throw new Error('Profile not found');if(profile.deletionPending)throw Object.assign(new Error('该浏览身份正在清理，完成前不能使用'),{code:'CORVID_PROFILE_DELETING'});return profile; };
+const displayProfileName = profile => profile.id === 'default' && profile.isDefault ? mainMessages.t('defaultProfileName') : profile.name;
 const partitionFor = profileId => profileId==='default' ? 'persist:corvid' : `persist:corvid-profile-${profileId}`;
+const profileDeletion = createProfileDeletion({
+  getProfiles:()=>profiles,
+  saveProfiles,
+  getReferences:profileId=>({
+    windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()&&record.activeProfileId===profileId).map(record=>({id:record.id,activeProfileId:record.activeProfileId})),
+    rooms:rooms.filter(room=>room.profileId===profileId).map(room=>({id:room.id,name:room.name,profileId:room.profileId})),
+    downloads:[
+      ...[...activeDownloads.entries()].filter(([,item])=>item.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'progressing'})),
+      ...[...pendingDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'starting'})),
+      ...[...activeDownloadRetries.entries()].filter(([,context])=>context.profileId===profileId).map(([downloadId])=>({id:downloadId,status:'retrying'})),
+    ],
+  }),
+  agentWorkbench,
+  getSession:partition=>{
+    const browserSession=session.fromPartition(partition);
+    if(!failProfileDeleteStorageClearOnce)return browserSession;
+    failProfileDeleteStorageClearOnce=false;
+    return new Proxy(browserSession,{get(target,key){if(key==='clearStorageData')return async()=>{await new Promise(resolve=>setTimeout(resolve,4000));throw new Error('测试注入：Session 存储清理首次失败');};const value=Reflect.get(target,key,target);return typeof value==='function'?value.bind(target):value;}});
+  },
+  partitionFor,
+  library,
+  managedExtensions,
+  extensionRoot:extensionProfileRoot,
+  dataDir,
+  onDeleted:profileId=>{
+    const partition=partitionFor(profileId);permissionGrants.delete(partition);downloadPartitions.delete(partition);
+    for(const key of [...extensionLoadErrors.keys()])if(key.startsWith(`${profileId}:`))extensionLoadErrors.delete(key);
+  },
+});
 async function loadProfileExtensions(profileId){
+  startupProgress('tab-profile-extensions');
   const browserSession=session.fromPartition(partitionFor(profileId));
   for(const extension of managedExtensions.list(profileId).filter(item=>item.enabled)){
     if(browserSession.extensions.getExtension(extension.id))continue;
@@ -509,6 +620,7 @@ function update(record = activeRecord()) {
     }
   }
   record.browserWindow.webContents.send('shell-state', describe(record,true));
+  syncApplicationMenu();
   if (!restoring) persist();
 }
 function notifyDownloads() {
@@ -541,9 +653,9 @@ function installDownloads(partition,profileId) {
     if(room.ownership==='agent') {for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);pageDebugger.cancelChooser(findTab(tabId).view.webContents).catch(()=>{});}room.ownership='user';room.yielded=true;room.manualControl=Boolean(room.userResumePending);update();}
     const requestedUrl=details.requestingUrl;
     const profile=findProfile(room.profileId);
-    const permissionName=permissionDisplayName(permission,details.mediaTypes);
-    const scope=rememberable.has(permission) ? '允许后，本次运行期间此浏览身份的同来源页面可使用该权限。' : '此选择仅针对当前请求。';
-    dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许'],defaultId:0,cancelId:0,title:'网站权限请求',message:`${origin} 请求以下权限：${permissionName}`,detail:`浏览身份：${profile.name}；空间：${room.name}。${scope}系统或设备限制仍可能阻止访问。`})
+    const permissionName=permissionDisplayName(permission,details.mediaTypes,mainMessages);
+    const scope=mainMessages.t(rememberable.has(permission)?'permissionAllowedThisSession':'permissionCurrentRequestOnly');
+    dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('permissionRefuse'),mainMessages.t('permissionAllow')],defaultId:0,cancelId:0,title:mainMessages.t('sitePermissionTitle'),message:mainMessages.t('permissionRequestMessage',{origin,permission:permissionName}),detail:mainMessages.t('permissionRequestDetail',{profile:displayProfileName(profile),room:room.name,scope,deviceLimit:mainMessages.t('permissionDeviceLimit')})})
       .then(({response})=>{const allowed=response===1 && !contents.isDestroyed() && contents.getURL()===requestedUrl;if(allowed && rememberable.has(permission))grants.add(grantKey(origin,permission));callback(allowed);},()=>callback(false));
   });
   browserSession.on('will-download',(event,item,contents) => {
@@ -562,7 +674,7 @@ function installDownloads(partition,profileId) {
     let destination;
     try {
       if (process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR) destination=path.join(process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
-      else destination=dialog.showSaveDialogSync(window,{title:'保存下载',defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
+      else destination=dialog.showSaveDialogSync(window,{title:mainMessages.t('saveDownloadDialog'),defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
       if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       let exists=false;try {fs.lstatSync(destination);exists=true;} catch(error) {if(error.code!=='ENOENT') throw error;}
       if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
@@ -590,7 +702,7 @@ function layout(record = activeRecord()) {
   const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
-  const top = 112;
+  const top = record.browserChromeHeight ?? INITIAL_BROWSER_CHROME_HEIGHT;
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
@@ -653,8 +765,13 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
     return tab.homeInjection;
   };
-  view.webContents.on('did-navigate',()=>{
+  // HTTP 4xx/5xx documents still navigate successfully; report their response status without replacing the page.
+  view.webContents.on('did-navigate',(event,url,httpResponseCode)=>{
     tab.domReady=false;tab.loadComplete=false;tab.faviconUrl=null;
+    if(Number.isInteger(httpResponseCode)&&httpResponseCode>=400){
+      tab.navigationError={url,...navigationHttpStatusFailure(httpResponseCode,mainMessages),kind:'http-status'};
+      changed();
+    }
     clearPageFullscreen(windowRecords.get(s.windowId),tabId,describe);
   });
   // Keep HTML fullscreen ownership scoped to this tab; BrowserWindow events lack a tab identity.
@@ -670,7 +787,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('will-prevent-unload',event=>{
     if(!tabs.has(tabId))return;
     if(s.ownership==='agent'){for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
-    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:['留在页面','离开页面'],defaultId:0,cancelId:0,title:'离开此页面？',message:'此页面提示有未保存的更改。',detail:`空间：${s.name}。离开可能导致这些更改丢失。`});
+    const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:[mainMessages.t('stayOnPage'),mainMessages.t('leavePage')],defaultId:0,cancelId:0,title:mainMessages.t('leavePageTitle'),message:mainMessages.t('unsavedChangesMessage'),detail:mainMessages.t('unsavedChangesDetail',{room:s.name})});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
   installShortcuts(view.webContents,()=>{const currentRoom=rooms.find(room=>room.id===s.id);return currentRoom&&windowRecords.get(currentRoom.windowId);});
@@ -682,13 +799,17 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('did-finish-load',()=>{if(view.webContents.getURL()==='about:blank'&&s.ownership==='user'&&openedBy==='user')void installHomeSurface().catch(error=>console.error('Corvid start page failed to load:',error.message));else{tab.homeSurfaceInstalled=false;changed();}});
   view.webContents.on('did-fail-load',(_event,errorCode,_errorDescription,validatedURL,isMainFrame)=>{
     if(!isMainFrame || errorCode===-3)return;
-    tab.isLoading=false;tab.navigationError={url:validatedURL || tab.pendingNavigationUrl || view.webContents.getURL(),message:navigationFailureMessage(errorCode,_errorDescription)};changed();
+    const failure=navigationFailureDetails(errorCode,_errorDescription,mainMessages);
+    tab.isLoading=false;tab.navigationError={url:validatedURL || tab.pendingNavigationUrl || view.webContents.getURL(),...failure};changed();
   });
   tab.bootstrap=(async()=>{
   // A newly created WebContents does not answer Page.enable until its first
   // document exists. Bind the debugger before navigating to the requested URL.
+  startupProgress('tab-bootstrap-first-document');
   await view.webContents.loadURL('about:blank');
+  startupProgress('tab-bootstrap-page-debugger');
   await pageDebugger.ensure(view.webContents,changed);
+  startupProgress('tab-bootstrap-start-page');
   await installHomeSurface();
   view.webContents.on('page-title-updated',(_event,title) => { if (tab.visitId) library.title(tab.visitId,title); changed(); });
   view.webContents.on('page-favicon-updated',(_event,favicons) => { if (!Array.isArray(favicons) || !favicons.length) return; tab.faviconUrl=favicons[0]; changed(); });
@@ -795,20 +916,21 @@ function installShortcuts(contents, getWindowRecord = activeRecord) {
     const primary=process.platform==='darwin' ? input.meta : input.control;
     if(input.alt || (process.platform==='darwin' && input.control && primary) || (process.platform!=='darwin' && input.meta)) return;
     const key=input.key.toLowerCase(); const room=rooms.find(s=>s.id===activeRoomId),tab=room && tabs.get(room.activeTabId);
+    const userControlsRoom=Boolean(room?.ownership==='user'&&!room.userResumePending&&!room.executionRisk);
     const cycle=input.control && !input.meta && key==='tab';let action;
     if(cycle && room?.tabIds.length){const index=room.tabIds.indexOf(room.activeTabId),step=input.shift?-1:1;action=()=>dispatchQueued('activateTab',{id:room.tabIds[(index+step+room.tabIds.length)%room.tabIds.length]});}
-    else if(primary && key==='t' && !input.shift && room) action=()=>dispatchQueued('createTab',{id:room.id});
+    else if(primary && key==='t' && !input.shift && userControlsRoom) action=()=>dispatchQueued('createTab',{id:room.id});
     else if(primary && key==='n' && !input.shift) action=()=>dispatchQueued('createWindow',{});
-    else if(primary && key==='w' && !input.shift && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
-    else if(primary && key==='l' && !input.shift) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
-    else if(primary && key==='r' && !input.shift && tab) action=()=>dispatchQueued('reload',{id:tab.id});
-    else if(primary && key==='p' && !input.shift && tab) action=()=>{window.webContents.focus();window.webContents.send('shell-print-page',{id:tab.id});};
-    else if(primary && key==='f' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
-    else if(primary && key==='g' && !input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
-    else if(primary && key==='g' && input.shift) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
-    else if(primary && !input.shift && ['[',']'].includes(key) && tab) action=()=>dispatchQueued(key==='['?'back':'forward',{id:tab.id});
+    else if(primary && key==='w' && !input.shift && userControlsRoom && tab) action=()=>dispatchQueued('closeTab',{id:tab.id});
+    else if(primary && key==='l' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();void window.webContents.executeJavaScript("document.querySelector('#address').focus();document.querySelector('#address').select()");};
+    else if(primary && key==='r' && !input.shift && userControlsRoom && tab) action=()=>dispatchQueued('reload',{id:tab.id});
+    else if(primary && key==='p' && !input.shift && userControlsRoom && tab) action=()=>{window.webContents.focus();window.webContents.send('shell-print-page',{id:tab.id});};
+    else if(primary && key==='f' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-open');};
+    else if(primary && key==='g' && !input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:false});};
+    else if(primary && key==='g' && input.shift && userControlsRoom) action=()=>{window.webContents.focus();window.webContents.send('shell-find-next',{backward:true});};
+    else if(primary && !input.shift && ['[',']'].includes(key) && userControlsRoom && tab) action=()=>dispatchQueued(key==='['?'back':'forward',{id:tab.id});
     else if(primary && !input.shift && /^[1-9]$/.test(key) && room?.tabIds.length) {const index=key==='9'?room.tabIds.length-1:Number(key)-1;const target=room.tabIds[index];if(target) action=()=>dispatchQueued('activateTab',{id:target});}
-    else if(primary && ['+','=','-','0'].includes(key)) action=()=>{const current=profileSettings(activeProfileId).zoom;const zoom=key==='0'?1:Math.round(Math.min(3,Math.max(0.5,current+(key==='-'?-0.1:0.1)))*10)/10;saveSettings(activeProfileId,{zoom});applyZoom(activeProfileId);update();};
+    else if(primary && userControlsRoom && ['+','=','-','0'].includes(key)) action=()=>{const current=profileSettings(activeProfileId).zoom;const zoom=key==='0'?1:Math.round(Math.min(3,Math.max(0.5,current+(key==='-'?-0.1:0.1)))*10)/10;saveSettings(activeProfileId,{zoom});applyZoom(activeProfileId);update();};
     if(action){event.preventDefault();Promise.resolve(action()).catch(error=>console.error('Shortcut failed:',error));}
   });
 }
@@ -829,6 +951,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
     case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'agentTaskSummaries': {if(fromApi)throw new Error('Agent task summaries are available only from Corvid UI');const profileId=findProfile(args.profileId ?? activeProfileId).id;return {profileId,tasks:agentWorkbench.listSummaries(profileId)};}
     case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
     case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
     case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }
@@ -842,6 +965,10 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'preparePiTask': return agentWorkbench.prepare(args);
     case 'startPiTask': return agentWorkbench.start(args);
     case 'continuePiTask': return agentWorkbench.continueTask(args);
+    case 'queuePiTaskMessage': return agentWorkbench.queueMessage(args);
+    case 'updatePiTaskMessage': return agentWorkbench.updateQueuedMessage(args);
+    case 'movePiTaskMessage': return agentWorkbench.moveQueuedMessage(args);
+    case 'removePiTaskMessage': return agentWorkbench.removeQueuedMessage(args);
     case 'stopPiTask': return agentWorkbench.stop(args.taskId);
     case 'clearPiTask': return agentWorkbench.clear(args.taskId);
     case 'createPiRoom': {
@@ -855,6 +982,16 @@ async function dispatch(method, args = {}, fromApi = false) {
       catch(error) { await closeRoom(room.id).catch(()=>{}); throw error; }
     }
     case 'profiles': return {profiles};
+    case 'previewProfileDeletion': {
+      if(fromApi)throw new Error('浏览身份删除预览必须由用户在桌面查看');
+      return profileDeletion.preview(args.id);
+    }
+    case 'deleteProfile': {
+      if(fromApi)throw new Error('浏览身份删除必须由用户在桌面确认');
+      const result=await profileDeletion.remove(args.id);
+      for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
+      return result;
+    }
     case 'settings': return profileSettings(args.profileId ?? activeProfileId);
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
@@ -867,7 +1004,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
       const home=app.getPath('home');
       const suggested=process.platform==='darwin'?path.join(home,'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(home,'.config','google-chrome');
-      const result=await dialog.showOpenDialog(window,{title:'选择 Google Chrome 用户资料目录',defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
+      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseChromeDirectoryDialog'),defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
       if(result.canceled || !result.filePaths[0]) return {canceled:true};
       const root=result.filePaths[0];
       try { const sources=chromeImport.profiles(root);if(!sources.length)throw new Error('所选目录中没有找到可导入的 Chrome Profile');const sourceToken=id();selectedChromeSources.set(sourceToken,root);return {canceled:false,sourceToken,sources}; }
@@ -884,9 +1021,9 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(typeof args.sourceId!=='string')throw new Error('请选择 Chrome Profile');
       const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
       if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const content=chromeImport.readProfilePreview(selectedRoot,args.sourceId);
       const extensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId)).map(({sourcePath,...extension})=>extension);
-      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,canImportCookies:process.platform==='darwin',extensions};
+      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,errors:content.errors,canImportCookies:process.platform==='darwin',extensions};
     }
     case 'importChromeData': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
@@ -897,7 +1034,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       chromeImport.assertCookieConsent(args.categories,args.cookieConsent);
       const sources=chromeImport.profiles(selectedRoot);
       if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readProfile(selectedRoot,args.sourceId);
+      const content=chromeImport.readSelectedProfile(selectedRoot,args.sourceId,args.categories);
       const sourceExtensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId));
       const chosenExtensionIds=args.extensionIds;
       if(args.categories.includes('extensions')){
@@ -1011,18 +1148,19 @@ async function dispatch(method, args = {}, fromApi = false) {
       for(const record of windowRecords.values()) update(record);
       return {uiLocale};
     }
-    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const profile={id:id(),name:args.name.trim(),isDefault:false};const next=[...profiles,profile];const tmp=`${profilesPath}.tmp`;fs.writeFileSync(tmp,JSON.stringify(next),{mode:0o600});fs.renameSync(tmp,profilesPath);profiles=next;update();return profile;}
+    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const name=args.name.trim();if(profiles.some(profile=>profile.deletionPending&&profile.name===name))throw Object.assign(new Error('同名浏览身份仍在清理中，请先重试清理'),{code:'CORVID_PROFILE_DELETING'});const profile={id:id(),name,isDefault:false};saveProfiles([...profiles,profile]);update();return profile;}
     case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');
       const room=findRoom(target),tabIds=[...room.tabIds],ownership=room.ownership,profileId=room.profileId;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭空间'],defaultId:0,cancelId:0,title:'关闭空间',message:`关闭“${room.name}”？`,detail:`此空间有 ${tabIds.length} 个标签${ownership==='agent' ? '，当前由 Agent 控制' : ''}。关闭会结束这些页面，未保存的内容可能丢失；浏览身份、书签、历史和下载记录会保留。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('closeSpaceAction')],defaultId:0,cancelId:0,title:mainMessages.t('closeSpaceTitle'),message:mainMessages.t('closeSpaceMessage',{room:room.name}),detail:mainMessages.t('closeSpaceDetails',{tabs:mainMessages.plural('tabs',tabIds.length),ownership:mainMessages.t(ownership==='agent'?'agentOwnsSpace':'userOwnsSpace')})});
       if(choice.response!==1)return {closed:false};
       if(!rooms.includes(room) || room.ownership!==ownership || room.profileId!==profileId || room.userResumePending || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('确认期间空间已改变，请重新操作');
       await dispatch('closeRoom',{id:room.id},false);return {closed:true};
     }
     case 'activateProfile': {findProfile(target);const record=requireFocusedRecord();closeExtensionPopup(record);record.activeProfileId=target;record.activeRoomId=rooms.find(s=>s.profileId===target && s.windowId===record.id)?.id || rooms.find(s=>s.profileId===target)?.id || null;const room=rooms.find(s=>s.id===record.activeRoomId);if(room && room.windowId!==record.id) moveRoomToWindow(room,record);update(record);return describe(record);}
     case 'history': return {history:library.history(findProfile(args.profileId ?? activeProfileId).id)};
+    case 'historySuggestions': {if(fromApi)throw new Error('地址栏建议只能在 Corvid 界面读取');return {suggestions:library.historySuggestions(findProfile(args.profileId ?? activeProfileId).id,args.query)};}
     case 'bookmarks': return {bookmarks:library.bookmarks(findProfile(args.profileId ?? activeProfileId).id)};
     case 'downloads': return {downloads:library.downloads(findProfile(args.profileId ?? activeProfileId).id).map(item=>({...item,retrying:activeDownloadRetries.has(item.id)}))};
     case 'retryDownload': {
@@ -1108,7 +1246,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const tab=findTab(target);
       if(tab.pinned){
         const title=tab.view.webContents.getTitle() || tab.view.webContents.getURL() || '固定标签';
-        const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','关闭固定标签'],defaultId:0,cancelId:0,title:'关闭固定标签',message:`“${title}”是固定标签`,detail:'固定标签用于长期保留的页面；关闭后该标签的固定状态一并移除，其他固定标签不受影响。'});
+        const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('closePinnedTabTitle')],defaultId:0,cancelId:0,title:mainMessages.t('closePinnedTabTitle'),message:mainMessages.t('closePinnedTabMessage',{title}),detail:mainMessages.t('closePinnedTabDetails')});
         if(choice.response!==1) return {closed:false};
         if(tabs.get(target)!==tab || !tab.pinned) throw new Error('确认期间标签已改变，请重新操作');
       }
@@ -1181,8 +1319,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       const s=findRoom(target);if(!s.executionRisk) return describe();
       if(s.ownership!=='user') {s.ownership='user';s.yielded=true;s.manualControl=true;}
       update();
-      const message=s.executionRisk.status==='unknown_after_restart' ? '上次执行或接管未完成，之前的操作结果未知。' : '此前的页面代码已超时，可能仍在运行或在稍后产生效果。';
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['保留提示','了解并继续'],defaultId:0,cancelId:0,title:'页面代码执行状态未知',message,detail:'接管或确认不会撤销已发送的请求、定时器或其他页面活动。你可以选择重新加载或关闭页面；这些操作可能丢失页面状态。'});
+      const message=s.executionRisk.status==='unknown_after_restart' ? mainMessages.t('executionUnknownAfterRestart') : mainMessages.t('executionTimedOut');
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('keepNotice'),mainMessages.t('understandAndContinue')],defaultId:0,cancelId:0,title:mainMessages.t('executionUnknownTitle'),message,detail:mainMessages.t('executionUnknownDetails')});
       if(choice.response===1) {s.executionRisk=null;update();}
       return describe();
     }
@@ -1191,7 +1329,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       const tab=findTab(target),room=findRoom(tab.roomId),profile=findProfile(room.profileId);
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可清理的 HTTP(S) 站点');}
       const affected=rooms.filter(item=>item.profileId===profile.id).length;
-      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:['取消','清理站点数据'],defaultId:0,cancelId:0,title:'清理站点数据',message:`清理 ${origin} 的站点数据？`,detail:`浏览身份：${profile.name}，共有 ${affected} 个空间共享此身份。将清理此来源的站点存储、Service Worker 和 Cache Storage，以及该站点可用的 Cookie；Cookie 可能跨子域、端口或协议共享，相关页面可能退出登录。不会清理站点权限、浏览历史或整个浏览身份的 HTTP 缓存。清理不可撤销，打开的页面可能再次写入数据。`});
+      const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('cancelClose'),mainMessages.t('clearSiteDataAction')],defaultId:0,cancelId:0,title:mainMessages.t('clearSiteDataTitle'),message:mainMessages.t('clearSiteDataMessage',{origin}),detail:mainMessages.t('clearSiteDataDetails',{profile:displayProfileName(profile),spaces:affected})});
       if(choice.response!==1)return {cleared:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
       if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
@@ -1204,8 +1342,8 @@ async function dispatch(method, args = {}, fromApi = false) {
       let origin;try {const url=new URL(tab.view.webContents.getURL());if(!['http:','https:'].includes(url.protocol))throw new Error();origin=url.origin;}catch{throw new Error('当前页面不是可管理权限的 HTTP(S) 站点');}
       const grants=permissionGrants.get(partitionFor(profile.id));if(!grants)throw new Error('浏览身份权限状态不可用');
       const allowed=[...grants].map(key=>JSON.parse(key)).filter(([site])=>site===origin).map(([,permission])=>permission);
-      const allowedNames=allowed.map(permission=>permissionDisplayName(permission));
-      const choice=await dialog.showMessageBox(window,{type:'question',buttons:['关闭','撤销这些权限'],defaultId:0,cancelId:0,title:'站点权限',message:`${origin} 在本次运行中已获权限`,detail:`浏览身份：${profile.name}。${allowedNames.length ? allowedNames.join('、') : '暂无已记录的允许权限'}。同一浏览身份的同来源页面共享这些权限。其他权限按单次请求处理；应用退出后本次授权不保留。`});
+      const allowedNames=allowed.map(permission=>permissionDisplayName(permission,[],mainMessages));
+      const choice=await dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('closeDialog'),mainMessages.t('revokePermissions')],defaultId:0,cancelId:0,title:mainMessages.t('sitePermissionsTitle'),message:mainMessages.t('permissionsGrantedMessage',{origin}),detail:mainMessages.t('permissionsDetails',{profile:displayProfileName(profile),permissions:allowedNames.length?mainMessages.formatList(allowedNames):mainMessages.t('noGrantedPermissions')})});
       if(choice.response!==1)return {revoked:false,origin};
       const current=tabs.get(target);let currentOrigin;try{currentOrigin=new URL(current?.view.webContents.getURL()).origin;}catch{}
       if(current!==tab || currentOrigin!==origin || findRoom(tab.roomId).profileId!==profile.id)throw new Error('确认期间页面或浏览身份已改变，请重新操作');
@@ -1218,7 +1356,7 @@ async function dispatch(method, args = {}, fromApi = false) {
       if(!fromApi) return closeTabFromBrowserUi(tab);
       await runAction.releasePointer(tab.view.webContents);await closeTab(target);return {ok:true};
     }
-    case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError)t.navigationError={url,message:navigationFailureMessage(error.errno,error.message)};update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
+    case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError){const failure=navigationFailureDetails(error.errno,error.message,mainMessages);t.navigationError={url,...failure};}update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
     case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);const beforePopup=t.popupSequence;const result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground}); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}
     case 'getPopupEvents': {const tab=findTab(target);if(args.after===undefined)return {cursor:tab.popupSequence,event:null};const after=Number(args.after);if(!Number.isSafeInteger(after) || after<0 || after>tab.popupSequence)throw new Error('Invalid popup cursor');if(tab.popupEvents.length && after<tab.popupEvents[0].sequence-1)throw new Error('Popup event history expired');const event=tab.popupEvents.find(item=>item.sequence>after);if(!event)return {cursor:tab.popupSequence,event:null};const popup=tabs.get(event.tabId);return {cursor:tab.popupSequence,event:{...event,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}: {})}};}
@@ -1258,7 +1396,7 @@ async function claimRoom(room) {
   if(room.ownership!=='user')throw new Error('Only a user-controlled room can be claimed');
   if(room.executionRisk || room.userResumePending)throw new Error('Resolve the pending execution or resumeControl before claiming this room');
   const profile=findProfile(room.profileId),tabIds=[...room.tabIds];
-  const choice=await dialog.showMessageBox(window,{type:'question',buttons:['拒绝','允许 Agent 使用'],defaultId:0,cancelId:0,title:'Agent 请求使用空间',message:`允许 Agent 使用空间“${room.name}”？`,detail:`浏览身份：${profile.name}；当前有 ${tabIds.length} 个标签。Agent 可以接管并操作这些页面，页面可能包含登录状态和私人数据。用户创建或来源不明的标签不会因此变成 Agent 创建。`});
+  const choice=await dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('permissionRefuse'),mainMessages.t('allowAgentToUseSpace')],defaultId:0,cancelId:0,title:mainMessages.t('claimSpaceTitle'),message:mainMessages.t('allowAgentToUseSpaceMessage',{room:room.name}),detail:mainMessages.t('allowAgentToUseSpaceDetails',{profile:displayProfileName(profile),tabs:mainMessages.plural('tabs',tabIds.length)})});
   if(choice.response!==1)throw new Error('User declined room claim');
   if(!rooms.includes(room) || room.ownership!=='user' || room.executionRisk || room.userResumePending || room.profileId!==profile.id || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('Room changed while awaiting approval; request it again');
   room.ownership='agent';room.finished=false;room.yielded=false;room.manualControl=false;update();
@@ -1357,6 +1495,7 @@ function errorCode(message) {
   return 'CORVID_DESKTOP_ERROR';
 }
 async function startServer() {
+  startupProgress('control-server-listen');
   server=http.createServer(async (req,res) => {
     res.setHeader('Content-Type','application/json');
     try {
@@ -1395,18 +1534,20 @@ async function startServer() {
   await new Promise((resolve,reject) => {server.once('error',reject);server.listen(Number(process.env.CORVID_PORT || 0),'127.0.0.1',resolve);});
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};
   fs.writeFileSync(connectionPath,JSON.stringify(connection),{mode:0o600}); fs.chmodSync(connectionPath,0o600);
+  startupProgress('control-file-written');
 }
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
-  const minimumWidth=Math.min(704,area.width),minimumHeight=Math.min(420,area.height);
+  const minimumWidth=Math.min(MIN_WINDOW_WIDTH,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
-  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
+  rebuildApplicationMenu();
   focusWindow(record);
   browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record))scheduleWindowStateSave();layout(record);});
   browserWindow.on('move',()=>{if(!isTransientFullscreen(record))scheduleWindowStateSave();});
@@ -1433,9 +1574,11 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   });
   browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
-  browserWindow.on('closed',()=>{windowRecords.delete(recordId);if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
+  browserWindow.on('closed',()=>{windowRecords.delete(recordId);rebuildApplicationMenu();if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents,()=>record);
+  startupProgress('shell-window-load-file');
   await browserWindow.loadFile(path.join(__dirname,'index.html'));
+  startupProgress('shell-window-ready');
   return record;
 }
 async function closeWindowRecord(record) {
@@ -1453,11 +1596,23 @@ async function closeWindowRecord(record) {
   saveWindowState();
 }
 app.whenReady().then(async () => {
+  startupProgress('app-ready-handler');
+  app.setAboutPanelOptions({applicationName:'Corvid',applicationVersion:app.getVersion()});
+  rebuildApplicationMenu();
   fs.mkdirSync(dataDir,{recursive:true});
   ipcMain.handle('shell-action',(event,method,args) => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
     if (record) { focusWindow(record); syncRecordFromAliases(record); }
     return dispatchQueued(method,args);
+  });
+  // Native page bounds follow each trusted shell window's measured chrome; remote page renderers have no sender match.
+  ipcMain.on('shell-browser-chrome-height',(event,value)=>{
+    const record=[...windowRecords.values()].find(item=>!item.browserWindow.isDestroyed()&&item.browserWindow.webContents===event.sender);
+    if(!record||typeof value!=='number'||!Number.isFinite(value)||value<1||value>600)return;
+    const height=Math.ceil(value);
+    if(record.browserChromeHeight===height)return;
+    record.browserChromeHeight=height;
+    layout(record);
   });
   ipcMain.handle('browser-home-action',(event,action,value)=>{
     const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);
@@ -1478,6 +1633,7 @@ app.whenReady().then(async () => {
     if(!tab || typeof message!=='string' || typeof defaultPrompt!=='string') {event.returnValue=null;return;}
     try {pageDebugger.openPrompt(event.sender,message,defaultPrompt,value=>{event.returnValue=value;});} catch {event.returnValue=null;}
   });
+  startupProgress('read-session-state');
   const saved=readSavedRooms();
   const savedStates=readWindowStates();
   const savedWindows=Array.isArray(saved?.windows) ? saved.windows : null;
@@ -1489,6 +1645,7 @@ app.whenReady().then(async () => {
     const savedState=savedStates.find(entry=>entry.id===plan.id) || savedStates[index];
     const stateBounds=savedState?.bounds;
     const bounds=stateBounds ? (stateBounds.x!==undefined?{x:stateBounds.x,y:stateBounds.y,width:stateBounds.width,height:stateBounds.height}:{width:stateBounds.width,height:stateBounds.height}) : {width:1280,height:850};
+    startupProgress('restore-shell-window');
     const record=await createWindowRecord(bounds,plan.id);
     if(stateBounds?.maximized) record.browserWindow.maximize();
     record.plan=plan;
@@ -1509,7 +1666,10 @@ app.whenReady().then(async () => {
       focusWindow(ownerRecord);
       const s={id:old.id,name:old.name,profileId,windowId:ownerRecord.id,ownership:pending?'user':old.ownership,finished:Boolean(old.finished),yielded:pending||Boolean(old.yielded),manualControl:pending||Boolean(old.manualControl),executionRisk,nextPageNumber,usedLabels,tabIds:[],activeTabId:null};
       rooms.push(s);
-      for (const t of old.tabs || []) await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true});
+      for (const t of old.tabs || []) {
+        startupProgress('restore-session-tab');
+        await createTab(s.id,t.url,t.id,{label:t.label ?? null,openedBy:t.openedBy ?? 'unknown',pinned:Boolean(t.pinned),restored:true});
+      }
       s.activeTabId=s.tabIds.includes(old.activeTabId)?old.activeTabId:s.tabIds[0] || null;
     }
     for (const record of windowRecords.values()) {
@@ -1527,13 +1687,15 @@ app.whenReady().then(async () => {
   // least one user room in the focused window.
   const primary=activeRecord();
   focusWindow(primary);
-  if (!rooms.length) await createRoom('我的空间','user');
+  if (!rooms.length) { startupProgress('create-initial-room'); await createRoom('我的空间','user'); }
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
   restoring = false;
   for (const record of windowRecords.values()) update(record);
+  startupProgress('restoration-complete');
   await startServer();
+  startupProgress('startup-complete');
   console.log(`Corvid control: ${connectionPath}`);
-}).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox('Corvid 启动失败',error.message);app.exit(1);});
+}).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'),error.message);app.exit(1);});
 app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
 app.on('window-all-closed',() => app.quit());
 app.on('will-quit',()=>{try{agentDownloads.cleanup();}catch(error){console.error('Agent download cleanup failed:',error.message);}});

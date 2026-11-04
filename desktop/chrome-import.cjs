@@ -182,9 +182,31 @@ function assertCookieConsent(categories,consent,platform=process.platform){
   if(consent!==true)throw new Error('请先确认 Cookie 导入说明，再读取 macOS 钥匙串中的 Chrome Safe Storage。');
 }
 
-function readProfile(root, relative) {
+function readSelectedProfile(root, relative, categories) {
   const directory=profilePath(root,relative);
-  return {bookmarks:readBookmarks(directory),history:readHistory(directory),cookieCount:process.platform==='darwin'?cookieCount(directory):null};
+  const selected=new Set(categories);
+  return {
+    bookmarks:selected.has('bookmarks')?readBookmarks(directory):[],
+    history:selected.has('history')?readHistory(directory):[],
+    cookieCount:selected.has('cookies')&&process.platform==='darwin'?cookieCount(directory):null,
+  };
 }
 
-module.exports={profiles,readProfile,readCookies,readCookiesWithKey,assertCookieConsent};
+function readProfile(root, relative) {
+  return readSelectedProfile(root,relative,['bookmarks','history','cookies']);
+}
+
+function readProfilePreview(root, relative) {
+  const directory=profilePath(root,relative),result={bookmarks:[],history:[],cookieCount:null,errors:{}};
+  for(const category of ['bookmarks','history']){
+    try{result[category]=category==='bookmarks'?readBookmarks(directory):readHistory(directory);}
+    catch{result.errors[category]=true;}
+  }
+  if(process.platform==='darwin'){
+    result.cookieCount=cookieCount(directory);
+    if(result.cookieCount===null)result.errors.cookies=true;
+  }
+  return result;
+}
+
+module.exports={profiles,readProfile,readSelectedProfile,readProfilePreview,readCookies,readCookiesWithKey,assertCookieConsent};

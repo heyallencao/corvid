@@ -87,7 +87,8 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(migrated.tasks[0].id, legacyTask.id);
     assert.equal(migrated.tasks[0].output, legacyTask.output);
     assert.deepEqual(migrated.tasks[0].conversation, legacyTask.conversation);
-    assert.deepEqual(migrated.tasks[0].sessionRef, { runtimeId: 'pi', runtimeVersion: '1.4.0', data: { sessionFile: legacyTranscript } });
+    assert.deepEqual(migrated.tasks[0].sessionRef, { runtimeId: 'pi', runtimeVersion: 'unknown', data: { sessionFile: legacyTranscript } }, 'legacy records without runtime version provenance cannot claim current-version compatibility');
+    assert.equal(piCompatibleRuntime.canResume(migrated.tasks[0].sessionRef), false, 'unknown legacy checkpoint versions use the Corvid transcript fallback');
     assert.equal(Object.hasOwn(migrated.tasks[0], 'piSessionFile'), false);
     assert.equal(Object.hasOwn(migrated.tasks[0], 'runtime'), false);
     assert.equal(migratedWorkbench.list()[0].canContinue, true, 'Corvid transcript remains continuable even when the adapter cannot resume its checkpoint');
@@ -114,7 +115,8 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     await resumableWorkbench.continueTask({ taskId: 'legacy-task', message: 'continue', includePageContext: true, contextPreview });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(piCompatibleRuntime.sessions.length, 1);
-    assert.deepEqual(piCompatibleRuntime.sessions[0].checkpoint, migrated.tasks[0].sessionRef);
+    assert.equal(piCompatibleRuntime.sessions[0].checkpoint, null, 'legacy checkpoint provenance is unknown and must use the Corvid transcript');
+    assert.deepEqual(piCompatibleRuntime.sessions[0].priorConversation, legacyTask.conversation.map(({ role, text }) => ({ role, text })));
     assert.deepEqual(piCompatibleRuntime.sessions[0].agentCredential,{id:'builtin:legacy-task',token:'secret:legacy-task:room-a'},'the runtime receives a task-scoped identity rather than an administrator token');
     assert.ok(resumableIdentity.revoked.includes('builtin:legacy-task'),'the task identity is revoked after the session ends');
     assert.equal(fs.readFileSync(taskFile(migratedDir),'utf8').includes('secret:legacy-task'),false,'the scoped token never enters the persisted task transcript');
@@ -163,6 +165,7 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     const failedTransitionWorkbench=createAgentWorkbench({dataDir:failedTransitionDir,runtime:failingRuntime,...failedIdentity});
     await assert.rejects(failedTransitionWorkbench.continueTask({taskId:failedTransitionTask.id,message:'retry after startup failure',includePageContext:true,contextPreview}),/temporary session startup failure/);
     const failedTransition=JSON.parse(fs.readFileSync(taskFile(failedTransitionDir),'utf8')).tasks[0];
+    assert.ok(Date.parse(failedTransition.conversation.at(-1).finishedAt)>=Date.parse(failedTransition.conversation.at(-1).at),'a startup failure persists the end timestamp for its failed turn');
     assert.ok(failedIdentity.revoked.includes('builtin:failed-transition-task'),'credential creation is rolled back if the runtime cannot start');
     assert.deepEqual(failedTransition.sessionRef,failedTransitionTask.sessionRef,'failed runtime replacement preserves the old opaque checkpoint');
     assert.equal(failedTransition.conversation[0].text,failedTransitionTask.conversation[0].text,'failed runtime replacement preserves prior Corvid messages');
@@ -183,11 +186,13 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     const stopTask=await handoffWorkbench.start({profileId:'profile-a',roomId:'room-stop',tabId:'tab-stop',prompt:'stop this task',includePageContext:true,contextPreview});
     assert.equal(handoffWorkbench.list()[0].status,'running');
     await handoffWorkbench.stop(stopTask.id);
+    assert.ok(Date.parse(handoffWorkbench.list().find(task=>task.id===stopTask.id).conversation.at(-1).finishedAt)>=Date.parse(handoffWorkbench.list().find(task=>task.id===stopTask.id).conversation.at(-1).at),'stopping a running turn persists the end timestamp');
     assert.ok(handoffIdentity.revoked.includes(`builtin:${stopTask.id}`),'stopping a running task revokes its scoped identity before abort completes');
     const pauseTask=await handoffWorkbench.start({profileId:'profile-a',roomId:'room-pause',tabId:'tab-pause',prompt:'pause for user control',includePageContext:true,contextPreview});
     await handoffWorkbench.pauseRoom(pauseTask.roomId);
     assert.ok(handoffIdentity.revoked.includes(`builtin:${pauseTask.id}`),'user takeover revokes the scoped identity for the paused Agent');
     assert.equal(handoffWorkbench.list().find(task=>task.id===pauseTask.id).status,'waiting_for_user');
+    assert.ok(Date.parse(handoffWorkbench.list().find(task=>task.id===pauseTask.id).conversation.at(-1).finishedAt)>=Date.parse(handoffWorkbench.list().find(task=>task.id===pauseTask.id).conversation.at(-1).at),'a user takeover freezes the current turn duration');
     for(const finish of pendingPrompts)finish({stopReason:'aborted'});
 
     const preparingDir=path.join(root,'identity-preparation-handoff');fs.mkdirSync(preparingDir);
@@ -201,11 +206,78 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(preparingWorkbench.list()[0].status,'preparing','the fixture keeps runtime session creation pending');
     await preparingWorkbench.pauseRoom('room-preparing');
     assert.equal(preparingWorkbench.list()[0].status,'interrupted','a handoff during preparation cancels the pending Agent turn');
+    assert.ok(Date.parse(preparingWorkbench.list()[0].conversation.at(-1).finishedAt)>=Date.parse(preparingWorkbench.list()[0].conversation.at(-1).at),'a handoff during preparation freezes the cancelled turn duration');
     assert.ok(preparingIdentity.revoked.includes('builtin:'+preparingWorkbench.list()[0].id),'a handoff during preparation immediately revokes the issued identity');
     finishSessionCreation({checkpoint:()=>null,subscribe:()=>()=>{},prompt:()=>{preparingPromptCount++;return Promise.resolve();},dispose(){preparingDisposeCount++;}});
     await assert.rejects(preparingStart,/空间已交给用户；Agent 会话尚未就绪/,'a takeover during session preparation rejects the cancelled start attempt');
     assert.equal(preparingPromptCount,0,'a late-created runtime session never sends the task to a model after user takeover');
     assert.equal(preparingDisposeCount,1,'a late-created runtime session is disposed after user takeover');
+
+    const delayedCheckpointDir=path.join(root,'delayed-checkpoint-transition');
+    fs.mkdirSync(delayedCheckpointDir);
+    const delayedCheckpointTask={...futureTask,id:'delayed-checkpoint-task'};
+    fs.writeFileSync(taskFile(delayedCheckpointDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[delayedCheckpointTask]}),{mode:0o600});
+    const delayedCheckpointRuntime=makeRuntime('delayed-checkpoint-runtime');
+    let delayedCheckpointPromptAttempts=0;
+    delayedCheckpointRuntime.createSession=async()=>{
+      const attempt=++delayedCheckpointPromptAttempts;
+      const initialCheckpoint=attempt===1?{runtimeId:'delayed-checkpoint-runtime',runtimeVersion:'1.0.0',data:{token:'empty-session'}}:null;
+      return {
+        checkpoint:()=>initialCheckpoint,
+        async prompt(){if(attempt===1)throw new Error('first message failed before a new checkpoint was saved');},
+        async abort(){},dispose(){},
+      };
+    };
+    const delayedCheckpointIdentity=testAgentIdentity();
+    const delayedCheckpointWorkbench=createAgentWorkbench({dataDir:delayedCheckpointDir,runtime:delayedCheckpointRuntime,...delayedCheckpointIdentity});
+    await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry with a new runtime',includePageContext:true,contextPreview});
+    for(let attempt=0;attempt<20&&delayedCheckpointWorkbench.list()[0].status!=='failed';attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+    const delayedCheckpoint=JSON.parse(fs.readFileSync(taskFile(delayedCheckpointDir),'utf8')).tasks[0];
+    assert.deepEqual(delayedCheckpoint.sessionRef,delayedCheckpointTask.sessionRef,'an uncommitted checkpoint from the new runtime must not erase the old opaque checkpoint before its first successful turn');
+    assert.equal(delayedCheckpoint.conversation[0].text,delayedCheckpointTask.conversation[0].text,'a first-message failure preserves prior Corvid messages');
+    assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','the failed replacement remains continuable from the saved transcript');
+    await delayedCheckpointWorkbench.continueTask({taskId:delayedCheckpointTask.id,message:'retry after transient failure',includePageContext:true,contextPreview});
+    for(let attempt=0;attempt<20&&delayedCheckpointWorkbench.list()[0].status!=='completed';attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+    const completedCheckpoint=JSON.parse(fs.readFileSync(taskFile(delayedCheckpointDir),'utf8')).tasks[0];
+    assert.equal(completedCheckpoint.status,'completed','the transcript retry must complete');
+    assert.equal(completedCheckpoint.sessionRef,null,'after a successful transcript turn without a new checkpoint, the obsolete runtime checkpoint must be cleared');
+    assert.equal(delayedCheckpointWorkbench.list()[0].continuationMode,'saved-conversation','clearing the old reference leaves transcript continuation available');
+
+    const fallbackHandoffDir=path.join(root,'fallback-handoff');fs.mkdirSync(fallbackHandoffDir);
+    const fallbackHandoffTask={...futureTask,id:'fallback-handoff-task'};
+    fs.writeFileSync(taskFile(fallbackHandoffDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[fallbackHandoffTask]}),{mode:0o600});
+    const fallbackHandoffRuntime=makeRuntime('fallback-handoff-runtime');
+    let finishFallbackPrompt;
+    fallbackHandoffRuntime.createSession=async()=>({
+      checkpoint:()=>({runtimeId:'fallback-handoff-runtime',runtimeVersion:'1.0.0',data:{token:'unfinished-session'}}),
+      prompt:()=>new Promise(resolve=>{finishFallbackPrompt=resolve;}),
+      async abort(){finishFallbackPrompt?.({stopReason:'aborted'});},dispose(){},
+    });
+    const fallbackHandoffIdentity=testAgentIdentity();
+    const fallbackHandoffWorkbench=createAgentWorkbench({dataDir:fallbackHandoffDir,runtime:fallbackHandoffRuntime,...fallbackHandoffIdentity});
+    await fallbackHandoffWorkbench.continueTask({taskId:fallbackHandoffTask.id,message:'pause before transcript migration commits',includePageContext:true,contextPreview});
+    await fallbackHandoffWorkbench.pauseRoom(fallbackHandoffTask.roomId);
+    const pausedFallback=JSON.parse(fs.readFileSync(taskFile(fallbackHandoffDir),'utf8')).tasks[0];
+    assert.deepEqual(pausedFallback.sessionRef,fallbackHandoffTask.sessionRef,'a transcript fallback paused before a successful turn preserves the old opaque checkpoint');
+    assert.equal(pausedFallback.status,'waiting_for_user');
+
+    const fallbackStopDir=path.join(root,'fallback-stop');fs.mkdirSync(fallbackStopDir);
+    const fallbackStopTask={...futureTask,id:'fallback-stop-task'};
+    fs.writeFileSync(taskFile(fallbackStopDir),JSON.stringify({schemaVersion:TASKS_SCHEMA_VERSION,tasks:[fallbackStopTask]}),{mode:0o600});
+    const fallbackStopRuntime=makeRuntime('fallback-stop-runtime');
+    let finishStoppedFallbackPrompt;
+    fallbackStopRuntime.createSession=async()=>({
+      checkpoint:()=>({runtimeId:'fallback-stop-runtime',runtimeVersion:'1.0.0',data:{token:'stopped-session'}}),
+      prompt:()=>new Promise(resolve=>{finishStoppedFallbackPrompt=resolve;}),
+      async abort(){finishStoppedFallbackPrompt?.({stopReason:'aborted'});},dispose(){},
+    });
+    const fallbackStopIdentity=testAgentIdentity();
+    const fallbackStopWorkbench=createAgentWorkbench({dataDir:fallbackStopDir,runtime:fallbackStopRuntime,...fallbackStopIdentity});
+    await fallbackStopWorkbench.continueTask({taskId:fallbackStopTask.id,message:'stop before transcript migration commits',includePageContext:true,contextPreview});
+    await fallbackStopWorkbench.stop(fallbackStopTask.id);
+    const stoppedFallback=JSON.parse(fs.readFileSync(taskFile(fallbackStopDir),'utf8')).tasks[0];
+    assert.deepEqual(stoppedFallback.sessionRef,fallbackStopTask.sessionRef,'stopping a transcript fallback before a successful turn preserves the old opaque checkpoint');
+    assert.equal(stoppedFallback.status,'interrupted');
 
     const unknownDir = path.join(root, 'unknown-schema');
     fs.mkdirSync(unknownDir);
