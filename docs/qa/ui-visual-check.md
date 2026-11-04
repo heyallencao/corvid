@@ -1,5 +1,13 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-04 导航错误提示与窄窗布局（Issue #198）
+
+- 环境与截图：macOS arm64，Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture；页面内容是合成数据。常规窗口逻辑尺寸与 PNG 图像均为 1024×700：[中文 HTTP 500](screenshots/issue-198-http-500-zh-CN-1024x700.png)，SHA-256 `474b737a957a6ef3a420779d395ae3d8edbe2d8d6999b9910e20d7a147c049be`。窄窗逻辑尺寸与 PNG 图像均为 700×420：[英文 HTTP 500](screenshots/issue-198-http-500-en-700x420.png)，SHA-256 `9829d563fd384803488c04652e2a887085513e129ec0cbe480d8c885bfce78f2`。
+- 直接观察：HTTP 500 的网页主体仍显示，Corvid 既有状态行解释服务器状态，并提供可展开的 HTTP 状态代码与重试操作；不会把 HTTP 响应误报成网页主体未加载。700×420 下侧栏折叠，提示、代码入口和重试仍可见且没有横向溢出。E2E 还覆盖连接拒绝、HTTP 408、代码展开、双语文案、原 URL 重试和恢复后状态清除。
+- 视觉判断：沿用工具栏下方既有状态行，让失败说明接近导航控件并保留网页画布；错误码默认收起，避免技术细节抢占主层级，用户需要诊断时再展开。主说明和次级代码各自保持明确层级，重试仍作为直接恢复操作。参考 Kobra Alert 页的具名 alert 与简洁状态示例只支持“状态信息应明确可辨”的方向；Corvid 采用自身工具栏位置、双语词句和代码展开行为，没有复制其代码、样式、图标或素材。
+- UI/UE 参考与 REA 证据：Kobra Alert，<https://kobra.systems/components/alert>，REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`，记录的观察时间为 2026-11-03 09:20 Asia/Shanghai。本轮通过 REA evidence bundle 确认该既有记录仍保留；其覆盖是 controlled replay 的单条观察。**直接观察**：可访问树中存在命名 alert 区域，页面展示 Error/Warning/Success/Info 示例。**静态证据**：没有检查 Kobra 源码或脚本。**推断**：错误文字应能被快速识别，Corvid 将其放在用户现有浏览流程中的状态区；这是产品设计判断，不是 Kobra 的导航错误交互。**未知**：Kobra 键盘、读屏实际播报和窄窗交互不在该证据范围；本轮未扫描 Rare UI、EasyUI、Pin UI、Aceternity UI。
+- 未覆盖：真实网络黑洞触发的 Chromium `ERR_TIMED_OUT` 仅有分类映射断言，未做网络层集成模拟；没有覆盖原生证书错误页、全部 Chromium 错误码、真实网站、其他平台、深色主题或 VoiceOver/Narrator/Orca 实播。HTTP 408 是本地服务器返回的 HTTP 响应，不代表浏览器网络超时。
+
 ## 2026-11-04 历史面板信息层级与窄窗布局（Issue #196）
 
 - 环境与截图：macOS arm64，隔离真实 Electron 与 `CORVID_DATA_DIR`，页面来自本地 HTTP fixture，历史记录为合成数据。常规窗口逻辑尺寸 1024×700、截图 2048×1336：[历史面板](screenshots/issue-196-history-zh-CN-1024x700.png)，SHA-256 `9a9e9a9b93b65b4a716efa5ac6d7365de8cc89fb01550667944464ad1522c427`。短高窗口逻辑尺寸 700×420、截图 1408×776：[历史面板窄窗](screenshots/issue-196-history-zh-CN-700x420.png)，SHA-256 `8c65db9b902f25c443e090e7536ae7870c1fd95dfd14b432b2d1fa5629c0573a`。
