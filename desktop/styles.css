@@ -182,6 +182,15 @@ button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a[href]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 input[type="checkbox"]:not(:disabled), select:not(:disabled) { cursor: pointer; }
 input, select, textarea { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
+/* 原生控件统一自绘外观：select 自绘 caret、checkbox 自绘勾选框，选项弹层仍由系统提供。 */
+select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e7786' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 10px 6px; padding-right: 26px; }
+input[type="checkbox"] { appearance: none; flex: none; width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-xs); background: var(--surface); }
+input[type="checkbox"]:checked { border-color: var(--accent-solid); background: var(--accent-solid) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6.4l2.2 2.2 4-4.8' fill='none' stroke='%23ffffff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center no-repeat; background-size: 10px 10px; }
+input[type="checkbox"]:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+@media (prefers-color-scheme: dark) {
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a4afbf' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--address-focus-line); }
 input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke-width); stroke-linecap: round; stroke-linejoin: round; }
 
@@ -197,8 +206,9 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .brand-name { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
 .brand-caption { margin-left: auto; min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--font-size-micro); letter-spacing: .08em; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .profile-switcher { position: relative; display: flex; align-items: center; gap: 8px; height: 42px; margin: 4px 0 2px; padding: 5px 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--elevation-card); }
+.profile-switcher:focus-within { border-color: var(--address-focus-line); box-shadow: 0 0 0 3px var(--address-focus-glow); }
 .profile-avatar { width: 27px; height: 27px; display: grid; place-items: center; flex: none; border-radius: var(--radius-sm); background: var(--avatar-surface); color: var(--accent-ink); font-weight: 700; }
-#profile-select { min-width: 0; width: 100%; border: 0; padding: 3px 18px 3px 0; outline: 0; background: transparent; font-weight: 600; appearance: none; }
+#profile-select { min-width: 0; width: 100%; min-height: 28px; border: 0; padding: 3px 26px 3px 0; outline: 0; background-color: transparent; font-weight: 600; appearance: none; }
 #profile-menu, #room-menu { position: absolute; z-index: 80; min-width: 190px; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--elevation-menu); }
 #profile-menu { top: 48px; left: 0; width: 100%; }
 #room-menu { top: 56px; right: 8px; }
@@ -381,7 +391,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #pi-task-form .pi-model-controls { display: grid; gap: 7px; padding-top: 1px; }
 #pi-task-form .pi-model-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 #pi-task-form .pi-model-picker { min-width: 0; }
-#pi-task-form .pi-model-select { width: 100%; min-width: 0; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text); font: inherit; font-size: 12px; text-align: left; }
+#pi-task-form .pi-model-select { width: 100%; min-width: 0; min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 9px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text); font: inherit; font-size: 12px; text-align: left; }
 #pi-task-form .pi-model-select:hover { border-color: var(--line-strong-warm); background: var(--surface-hover); }
 #pi-task-form .pi-model-select:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
 #pi-task-form .pi-model-select-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -612,7 +622,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 body.tab-dragging { cursor: grabbing; }
 #findbar { position: fixed; z-index: 90; top: 12px; right: 18px; display: flex; align-items: center; gap: 6px; padding: 7px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--elevation-popover); }
 #findbar[hidden] { display: none; }
-#findbar input { width: 220px; min-width: 100px; padding: 6px 8px; }
+#findbar input { width: 220px; min-width: 100px; min-height: 32px; padding: 6px 8px; }
 #find-count { min-width: 42px; color: var(--text-muted); font-size: var(--font-size-small); text-align: right; }
 #findbar button { width: 28px; height: 28px; padding: 0; color: var(--text-secondary); }
 #findbar button svg { width: var(--icon-size-small); height: var(--icon-size-small); }
@@ -721,6 +731,7 @@ dialog::backdrop { background: var(--dialog-backdrop); backdrop-filter: blur(3px
 dialog form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 dialog :where(label) { display: grid; flex: 1 1 100%; gap: 6px; color: var(--text-secondary); }
 dialog input, dialog select { min-height: 36px; padding: 7px 9px; }
+dialog select { padding-right: 26px; }
 dialog form > button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }
 dialog form > button[type="submit"] { background: var(--accent-solid); color: white; }
 .profile-deletion-form { display: grid; align-items: stretch; gap: 13px; }
@@ -829,7 +840,7 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 #chrome-import-onboarding .import-limitation { color: var(--text-muted); font-size: 12px; }
 .onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; margin-top: 6px; }
 .onboarding-actions button { min-height: 36px; padding: 8px 12px; }
-.onboarding-actions button:last-child { background: var(--accent-solid); color: var(--accent-contrast); }
+.onboarding-actions .primary-action { background: var(--accent-solid); color: var(--accent-contrast); }
 #chrome-import-onboarding-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
 dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: var(--disabled-opacity); }
 

@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-06 Issue #208 原生控件统一自绘外观
+
+- 基线：隔离 worktree，候选基于 `origin/main` `3820e19`（含 PR #323），分支 `ui/issue-208-native-controls`。改动：`desktop/styles.css`（全局 select 自绘 caret、checkbox 自绘、`.profile-switcher:focus-within` 焦点环、`#profile-select` 28px 三档收敛、`.pi-model-select` 触发器 34→32px、`#findbar input` 32px、`dialog select` 右内边距、focus-visible 边框融入 accent 线）、`desktop/index.html`（onboarding 主按钮加 `primary-action` class）、新增 `tests/native-controls-e2e.cjs` 并入 `npm test` 链。
+- 范围口径：模型搜索式 listbox 由 PR #242（`926a9e1`）交付，本轮不重复；本轮覆盖 issue 剩余静态项（caret/焦点/checkbox/高度/class 选择器），select 弹开后的系统弹层与身份切换自绘菜单（issue 第 3 项）不在本轮，#208 保持开放。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/native-controls-e2e.cjs` EXIT 0，zh-CN/en × 浅/深四轮断言：select `appearance:none` + caret SVG 随主题换色、onboarding 主按钮 class 标注 + accent 表面、`.profile-switcher:focus-within` 焦点环、checkbox 选中态 accent 底、28/32/36 三档实测。相关回归：`chrome-import-e2e`、`settings-preferences-e2e`、`dialogs-ui-e2e`、`button-hover-contrast-e2e` 均 EXIT 0。
+- 测试实现边界：focus 伪类断言依赖窗口持有 OS 焦点，套件先 `BrowserWindow.focus()` 并等待 `document.hasFocus()`；checkbox 断言在同一 JS 轮内点击并读取计算样式，避开 `applySettingsDraft` 异步重置；onboarding 为 showModal 模态，对话框外控件焦点断言在关闭后执行。
+- 全量门禁：见 PR 描述（结果记录于合并前最后一轮）。
+- 边界：仅 macOS 开发版；未覆盖 Windows/Linux、打包版、VoiceOver 实播。
+
 ## 2026-11-06 Issue #204 低对比文字与过小字号系统清理
 
 - 基线：隔离 worktree，候选基于 `origin/main` `d1ab9c2` 开发；分支 `ui/issue-204-contrast-fonts`。环境：macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1；worktree 复用主克隆 `node_modules`（符号链接）。改动仅 `desktop/styles.css`（2 个浅色对比 token、en 字号 token、字面字号归 token、死 token 修正）与 `tests/typography-e2e.cjs`（en 断言 12px/11px + en ≥11px 下限）。
