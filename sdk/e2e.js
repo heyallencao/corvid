@@ -225,7 +225,6 @@ try {
   await room.close(); room = null;
   const popupRoom=await client.createRoom('popup events');
   const opener=await popupRoom.open(url);
-  const another=await popupRoom.newPage();
   await opener.evaluate(()=>{const button=document.createElement('button');button.id='open-popup';button.textContent='Open popup';button.onclick=()=>window.open('/popup','_blank');document.body.append(button);return true;});
   const waitingPopup=opener.waitForEvent('popup',{timeout:2000});
   await opener.click('#open-popup');
@@ -233,7 +232,9 @@ try {
   assert.ok(popup.label);
   assert.equal(popup.openedBy,'unknown');
   assert.equal(await popup.text('h1'),'Welcome');
+  if(process.env.CORVID_SDK_POPUP_QA_SCREENSHOT_PATH)await popup.screenshot({path:process.env.CORVID_SDK_POPUP_QA_SCREENSHOT_PATH});
   await assert.rejects(()=>popup.close(),/unknown-origin/);
+  const another=await popupRoom.newPage();
   await assert.rejects(()=>opener.waitForEvent('popup',{timeout:150}),/timed out/);
   const unrelated=opener.waitForEvent('popup',{timeout:250}).then(()=>null,error=>error);
   await another.evaluate(target=>{window.open(target,'_blank');return true;},url);
