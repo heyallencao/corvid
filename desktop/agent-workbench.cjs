@@ -35,6 +35,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   const sessions = new Map();
   const transcriptFallbackSessions = new Set();
   const sessionCredentialIds = new Map();
+  const disposalAttempts = new WeakSet();
   const continuationClaims = new Set();
   const taskStartClaims = new Set();
   const startingProfiles = new Map();
@@ -144,8 +145,28 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   async function revokeSessionCredential(taskId) {
     const credentialId = sessionCredentialIds.get(taskId);
     if (!credentialId) return;
-    sessionCredentialIds.delete(taskId);
     await revokeAgentCredential(credentialId);
+    if (sessionCredentialIds.get(taskId) === credentialId) sessionCredentialIds.delete(taskId);
+  }
+  function reportSessionCleanupFailure(task) {
+    task.stopUnconfirmed = true;
+    if (task.events?.some(event => event.messageKey === 'agentSessionCleanupFailed')) return;
+    addEvent(task, 'error', '', 'agentSessionCleanupFailed');
+  }
+  async function disposeSession(task, session) {
+    if (!session || (typeof session === 'object' && disposalAttempts.has(session))) return;
+    if (typeof session === 'object') disposalAttempts.add(session);
+    try { await Promise.resolve(session.dispose?.()); }
+    catch { reportSessionCleanupFailure(task); }
+  }
+  async function finalizeSession(task, session) {
+    await disposeSession(task, session);
+    try { await revokeSessionCredential(task.id); }
+    catch { reportSessionCleanupFailure(task); }
+  }
+  async function revokeOrReport(task) {
+    try { await revokeSessionCredential(task.id); }
+    catch { reportSessionCleanupFailure(task); }
   }
   async function start({ profileId, roomId, tabId, prompt, includePageContext, contextPreview }) {
     if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
@@ -255,7 +276,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const session = await runtime.createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, agentCredential: { id: credential.id, token: credential.token }, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(task.selectedModel ? { selectedModel: task.selectedModel } : {}), checkpoint, ...(priorConversation ? { priorConversation } : {}) });
       if (!session || typeof session.checkpoint !== 'function' || typeof session.prompt !== 'function') throw new TypeError('Agent runtime returned an invalid session');
       if (task.status !== 'preparing') {
-        session.dispose?.();
+        await disposeSession(task, session);
         throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
       if (priorConversation) transcriptFallbackSessions.add(task.id);
@@ -277,23 +298,39 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         transcriptFallbackSessions.delete(task.id);
         finishAssistantTurn(task, 'completed');
         task.status = 'completed'; addEvent(task, 'completed', 'Agent 已完成本轮回复'); sessions.delete(task.id);
-        try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
+        await finalizeSession(task, session);
       }, async error => {
         if (task.status !== 'running') return;
         task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
         transcriptFallbackSessions.delete(task.id);
         finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Agent 未能完成：${task.error}`); sessions.delete(task.id);
-        try { session.dispose?.(); } finally { await revokeSessionCredential(task.id); }
+        await finalizeSession(task, session);
+      }).catch(async error => {
+        sessions.delete(task.id);
+        if (task.status === 'running') {
+          const assistantTurn = task.conversation?.at(-1);
+          if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
+          task.status = 'failed'; task.error = safeError(error);
+          try { addEvent(task, 'error', `Agent 未能完成：${task.error}`); } catch {}
+        }
+        try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; }
+        try { await disposeSession(task, session); } catch {}
+        try { await revokeSessionCredential(task.id); }
+        catch { try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; } }
       });
     } catch (error) {
-      await revokeSessionCredential(task.id);
+      let credentialCleanupFailed = false;
+      try { await revokeSessionCredential(task.id); }
+      catch { credentialCleanupFailed = true; }
       if (task.status === 'preparing') {
         finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`);
-        throw new Error(task.error);
       }
-      throw new Error(safeError(error));
+      if (credentialCleanupFailed) {
+        try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; }
+      }
+      throw new Error(task.status === 'failed' && task.error ? task.error : safeError(error));
     }
   }
   async function stop(taskId) {
@@ -305,19 +342,14 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     finishAssistantTurn(task, 'interrupted');
     addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
     sessions.delete(taskId);
-    await revokeSessionCredential(taskId);
+    await revokeOrReport(task);
     try { await session.abort?.(); }
     catch (error) {
       task.stopUnconfirmed = true;
       task.error = `无法确认 Agent 已停止：${safeError(error)}`;
       addEvent(task, 'error', task.error);
     }
-    try { session.dispose?.(); }
-    catch (error) {
-      task.stopUnconfirmed = true;
-      task.error = `Agent 会话清理失败：${safeError(error)}`;
-      addEvent(task, 'error', task.error);
-    }
+    await disposeSession(task, session);
     return copy(present(task));
   }
   async function pauseRoom(roomId) {
@@ -327,7 +359,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         task.status = 'interrupted';
         finishAssistantTurn(task, 'interrupted');
         addEvent(task, 'interrupted', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
-        await revokeSessionCredential(task.id);
+        await revokeOrReport(task);
         continue;
       }
       task.status = 'waiting_for_user';
@@ -335,7 +367,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       finishAssistantTurn(task, 'waiting_for_user');
       addEvent(task, 'waiting_for_user', '你已接管此空间；Agent 已暂停，交还后可检查页面并继续。');
       sessions.delete(task.id);
-      await revokeSessionCredential(task.id);
+      await revokeOrReport(task);
       try {
         await session.abort?.();
         if (!transcriptFallbackSessions.has(task.id)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
@@ -345,15 +377,20 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         addEvent(task, 'error', task.error);
       } finally {
         transcriptFallbackSessions.delete(task.id);
-        session.dispose?.();
+        await disposeSession(task, session);
         changed();
       }
     }
   }
-  function clear(taskId) {
+  async function clear(taskId) {
     const task = taskById(taskId);
     if(profileDeletionClaims.has(task.profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能清理 Agent 对话'),{code:'CORVID_PROFILE_DELETING'});
     if (['running', 'preparing'].includes(task.status)) throw new Error('请先停止运行中的任务');
+    try { await revokeSessionCredential(taskId); }
+    catch {
+      reportSessionCleanupFailure(task);
+      return { ok: false };
+    }
     runtime.removeTaskData(task.id.replaceAll('-', '_'), task.sessionRef);
     tasks = tasks.filter(item => item.id !== taskId); changed(); return { ok: true };
   }

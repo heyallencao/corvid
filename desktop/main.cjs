@@ -70,6 +70,7 @@ const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDi
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-auth-event', event);
 } });
 let failNextPiFixtureInitialization = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_INIT_FAILURE_ONCE === '1';
+let failNextPiFixtureDisposal = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_DISPOSE_FAILURE_ONCE === '1';
 const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(failNextPiFixtureInitialization){failNextPiFixtureInitialization=false;throw new Error('本地 fixture 模拟 Pi Session 初始化失败');}
   const directory=path.join(dataDir,'agent-sessions',taskId);
@@ -78,12 +79,14 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(sessionFile && !path.resolve(sessionFile).startsWith(`${path.resolve(directory)}${path.sep}`))throw new Error('Fixture transcript must remain inside the task directory');
   const listeners=new Set();
   let abortActive;
+  let failDispose=false;
   const session={
     sessionFile:transcript,
     subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
     async prompt(message){
       const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;
       fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});
+      if(message.includes('[fixture:dispose-failure]')&&failNextPiFixtureDisposal){failDispose=true;failNextPiFixtureDisposal=false;}
       if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');
       if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('pi runtime could not be resumed');
       if(message.includes('[fixture:hold-stop-late]'))return new Promise(resolve=>{abortActive=async()=>{
@@ -104,10 +107,11 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
         for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'页面要点已整理。'}});
         return {stopReason:'stop'};
       }
-      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});
+      const reply=message.includes('[fixture:dispose-failure]')?'这是已生成且保留的回复。':`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`;
+      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:reply}});
       return {stopReason:'stop'};
     },
-    dispose(){},
+    dispose(){if(failDispose)throw new Error('本地 fixture 模拟会话清理失败');},
     async abort(){await abortActive?.();}
   };
   return {session,sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
@@ -226,6 +230,8 @@ function applicationMenuHandlers() {
     forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
     reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
     find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    findNext:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:false});}),
+    findPrevious:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:true});}),
     print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
     fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
     zoomIn:()=>adjustZoom(0.1),
