@@ -1597,6 +1597,32 @@
 - E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
 
 - 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
+## 2026-11-04 侧栏右键第二入口（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-sidebar-context`（基于 `main` `02244ff`），改动仅 `desktop/renderer.js`（+1 行，零新 IPC、零新 locale key）。
+- 改动：右键 `.profile-switcher` / `.sidebar-section-heading`（空间标题） / `#room-strip` 时，打开既有的 profile-menu / room-menu 并同步触发器 `aria-expanded`——右键作为既有菜单动作的第二入口，菜单动作语义不变（空间菜单仍作用于当前空间）。
+- 行为探针矩阵（真实 Electron）：右键打开（hidden=false + aria-expanded=true）、Escape 关闭并复位、点击外部关闭并复位、标题区右键打开、从右键打开的菜单点「新建浏览身份」对话框正常弹出——7/7 项通过。
+- 截图：`docs/qa/screenshots/issue-214-sidebar-context-menu.png`（SHA-256 前 16 位 `aeff9ca880c16ed3`，隔离数据目录，菜单为「创建空间/关闭当前空间」既有动作）。
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`node --check`、`git diff --check` 通过。
+- 兼容性：新增行为基于 main 现行菜单机制；PR #178（菜单键盘重构，重写同区域触发器行）合并时本切片为新增独立行，预期无冲突。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；键盘等价入口已由既有触发器按钮承担（Tab 可达）。本轮未运行全量 `npm test`。
+## 2026-11-04 Issue #96 Agent Room 授权权限复验
+
+- 最新主线复验：基于 `origin/main` `9399642` 重放 PR #159 的跨平台验收切片后，在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-access-e2e.cjs`，EXIT 0，输出 `Agent access authorization E2E passed`。使用测试自建临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；没有读取用户资料、访问外网、使用 OAuth 或调用模型；测试退出后无残留 Electron。
+- 历史跨平台证据：PR #159 的 `agent-access-e2e` 在提交 `46a6e7f` 上通过 GitHub Actions [运行 #41633898145](https://github.com/heyallencao/corvid/actions/runs/41633898145)，macOS、Windows、Ubuntu 原生 runner 全部成功。Windows 用 PowerShell 检查授权文件 owner 与允许 ACL 主体；POSIX 检查 0600。此 Actions 运行早于当前主线与本次修订，不能代替当前提交的 Windows 验证。
+- 本次变更后检查：`node --check tests/agent-access-e2e.cjs` 与 `git diff --check` 通过。PR 切片增加跨平台文件权限断言与验证记录；依据仓库 CI 红线，已删除 PR 触发的 Actions workflow。Windows ACL 断言仍待 Windows 环境执行。当前授权服务端文件和路由未随本切片修改。
+- 覆盖边界：确定性 Agent 客户端与 Room 的并发授权、越权拒绝、凭据摘要/权限、撤销和重启状态；不连接真实 Provider/OAuth，不验证真实 MCP host，也不提供同一 OS 用户恶意进程隔离。
+
+
+- 改动：删除被完全遮蔽的死规则 `.pi-task-output`（旧 :439，全部属性被 :502 覆盖）；`.pi-task-output.from-pi` 移除被 :504 覆盖的死 `background`（保留 border、左下圆角与 color）；`.pi-task-event` 两处基础声明合并为一条（保留存活的 `border-left` 与后者的 padding/line-height）。
+
+- 计算样式矩阵：真实 Electron 注入 renderer 同构节点，读取 `.pi-task-output.from-pi`/`.from-user`/`.pi-task-event` 的 max-width、padding、border-radius、color、background、border-left、line-height——`origin/main` 与本分支 JSON 逐字节一致（实测 maxWidth 92% 等，证明被删规则确为死规则）。
+
+- 截图：注入节点元素截图 `docs/qa/screenshots/issue-211-b-branch-workbench-synthetic.png`（SHA-256 前 16 位 `9ea7d00faa8082d0`）与 main 对照逐字节相同；为合成注入节点，非真实会话内容。
+
+- E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
 
 
 
