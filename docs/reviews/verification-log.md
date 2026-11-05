@@ -1354,6 +1354,11 @@
 - 跳过范围：测试在扩展弹窗重开后通过 Playwright 直接关闭合成弹窗，绕过锁屏导致的原生父窗口激活/点外关闭步骤；除此之外脚本继续执行完整导入场景。该结果证明导入功能路径通过，不证明原生弹窗失焦行为。
 - 限制：默认无环境变量模式仍需在已解锁桌面验收原生扩展弹窗失焦关闭；未读取本机 Chrome、未使用系统钥匙串、OAuth 或真实模型。全量 `npm test` 未运行。
 
+## 2026-11-05 PR #242 模型选择器集成准备
+
+- 按 PR #242 live head `3046f5ceabb498fd758a78f5a5988888702a0662` 向 main `266418fc27217e86b51994efdada92702ed899da` 普通 merge；picker 定向入口为 `env -u ELECTRON_RUN_AS_NODE node tests/pi-model-picker-ui-e2e.cjs`，并可配合 `node tests/pi-workbench-short-height-e2e.cjs`。
+- PR 原分支记录的定向 E2E 与静态检查结果见 [模型选择器 QA 记录](../qa/issue-208-model-picker.md)。本次集成准备只执行 `node --check` 和 `git diff --check`；没有运行定向 E2E 或全量门禁。credential E2E 与 main 的并行改动冲突，本次保留 main 版本，PR 原报告的 Key 保存失败结论仍然适用。
+
 ## 2026-11-04 原生菜单焦点测试边界复核（Issue #130）
 
 - 变更：快捷键 E2E 改为向唯一隔离 Electron 窗口发送输入，不再依赖 `BrowserWindow.getFocusedWindow()`；纯 Node 菜单合同增加断言，确认 Window 菜单项回调将选中窗口 ID 交给焦点处理器。
