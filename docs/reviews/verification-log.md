@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-05 Issue #204 onboarding 主要操作 hover 对比（PR #255 前向集成复验）
+
+- 变更：基于当前 GitHub main `9a0068857462117af44b2164ec00300fb4a2bb6b`，从 PR #255 精确 head 仅重放 `desktop/styles.css` 的 hover 默认选择器、`tests/button-hover-contrast-e2e.cjs` 与对应 QA 记录/合成截图，未引入陈旧 PR 分支中的其他主线文件。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/button-hover-contrast-e2e.cjs` PASS；macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`，1024×700 CSS px。浅/深主题主要按钮 hover 对比度均 4.88:1，次要操作维持中性 hover。`node --check tests/button-hover-contrast-e2e.cjs` 与 `git diff --check` PASS。
+- 全量门禁：候选首次 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0。之后将定向用例纳入默认 npm test 链并登记为 suite 76；该链尾变更后的最终完整门禁待重跑。
+- 限制：只覆盖 zh-CN、1024×700 和开发版 Electron；未验证英文、窄窗、辅助技术、Windows/Linux、签名打包版或网页合成像素。完整 issue 中其他对比度/字号事项仍开放。测试刷新的八张既有 QA 截图已恢复；PR 中附带的两张新截图来自隔离旧 head，保留为该状态证据，不宣称是当前完整门禁新采集。
+
 ## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
 
 - 变更：基于 PR #172 精确 head `11abfb56dbfda818a4f5b53f08d31392b0a3b1a6` 前向集成 main `f443531b2cc6553b69f1677f1aae3b8431817d04`；解决 `package.json` 与本记录冲突并保留两侧历史。修正两阶段设置保存第二步失败时的部分保存反馈，明确主题立即保存且取消不回滚；设置分类下补齐 Chrome 导入、Agent 访问和本地化窄窗测试所需分类入口。
