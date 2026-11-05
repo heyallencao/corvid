@@ -4,8 +4,9 @@
 
 - 改动：macOS `lipo` 的 `x86_64`/`aarch64` 架构名先归一为 Node/Electron 的 `x64`/`arm64` 再断言；手动 Release workflow 的 arm64 全量回归现在允许完整链失败后重跑一次，仍需某一整轮全链成功，不跳过失败项。
 - Hosted runner 对照：原 run `41995765574` 的 x64 smoke 复跑仍命中旧架构断言；arm64 复跑未重现 socket 失败，而在 `window-state-e2e.cjs:37` 状态文件等待超时。两项复跑均使用 main SHA `06ca32b`，不含本修复。
-- 本机先前验证：node:test 37/37 通过；两轮全量分别失败于 `multi-window-e2e.cjs:56` 和 `pi-workbench-e2e.cjs:647`，对应脚本单独复跑曾通过。失败轮与其他 worktree 的 Electron E2E 并发，不能将这些失败归因于本修改，也未取得当时的全量通过结果。
-- 本轮最新主线复验待完成；合并后还须手动 dispatch Release workflow，验证 x64 packaged smoke 与 arm64 重试门禁。不得把旧 SHA 的复跑当成本修复验收。
+- 全量稳定性补强：复跑定位到 `pi-workbench-e2e.cjs:642` 的元素在 `loadAgentTaskSummaries()` 完成时随 `draw()` 重建 room strip，导致 scroll action 短暂拿到已脱离节点。测试只对这一 detached locator 错误有界重取（最多 4 次、50ms 间隔），其他错误直接失败；Pi Workbench 定向 E2E 连续 2 次 EXIT 0。
+- 最新主线全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，37/37 `node:test` 与其后完整串行 Electron/合同链全部通过。运行中刷新生成的 Issue #129/#18/#205/#279 截图已恢复到提交版本；未调用 OAuth 或真实模型服务。
+- Hosted runner 限制：目前两项 runner 复跑均在旧 main SHA `06ca32b`，不能验收本修复。合并后仍须手动 dispatch Release workflow，验证 x64 packaged smoke 和 arm64 全量重试门禁。
 
 ## 2026-11-06 Issue #130 子切片 A1：新标签起始页双语
 
