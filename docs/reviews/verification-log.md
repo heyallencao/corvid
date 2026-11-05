@@ -1755,3 +1755,11 @@
 - 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
 - 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
 - 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。\n\n\n
+
+## 2026-11-05 Issue #202 当前 main 集成验收
+
+- 候选：`9555ea6`（PR #238 原 head `f8e4289` 的功能与测试，重放到 `origin/main` `e7f528e`）；文档记录和任务板随后只作同步。环境：macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1；`npm ci` 安装 375 个包，审计 0 vulnerabilities。所有 Electron 用例使用隔离临时数据目录和本地 HTTP fixture；未调用真实模型、OAuth 或凭据服务。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/navigation-error-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均 EXIT 0；覆盖拒绝连接、HTTP 408/500、错误恢复、原 URL 保留、替代导航、双语 chrome 与窄窗。
+- 全量验证：`env -u ELECTRON_RUN_AS_NODE npm test` 最终 EXIT 0，34 项 node:test 与全部串行 Electron/契约脚本通过。第一次全量运行在 `interaction-states-e2e.cjs:175` 等待 hover 超时；该用例独立复跑通过。第二次全量运行在 `chrome-import-e2e.cjs:754` 等待扩展弹窗关闭超时；该用例独立复跑通过。第三次完整重跑通过，包括上述两项。运行中更新的 Issue #129/#18/#279 QA 截图已恢复为仓库原始文件。
+- `node --check` 与 `git diff --check` 通过。截图状态、窗口尺寸、脱敏范围及 SHA-256 见[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-导航状态区与恢复issue-202)。
+- 限制：仅 macOS 开发版与合成本地 fixture；未覆盖 Windows、签名包、真实网络、真实网站、读屏实播或暗色主题人工检查。PR 上旧 GitHub Actions 检查均无 runner steps，不能作为通过证据；按仓库约束不新增 PR CI，以上本地全量结果是当前验收依据。
