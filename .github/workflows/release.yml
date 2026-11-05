@@ -7,6 +7,11 @@ on:
         description: Version in package.json (0.x.x)
         required: true
         type: string
+      publish:
+        description: Publish a public GitHub Release after all builds pass
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -129,6 +134,7 @@ jobs:
 
   publish:
     needs: [preflight, build]
+    if: inputs.publish
     runs-on: ubuntu-24.04
     permissions:
       contents: write
