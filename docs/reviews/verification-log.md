@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-05 PR #273 Release workflow 前向重放（候选，未合并）
+
+- 候选基线：GitHub `main` `266418fc27217e86b51994efdada92702ed899da`；从 PR #273 精确差异重放发布 workflow、macOS x64/Windows 打包设置与跨平台打包 smoke 支持，保留 main 的签名打包路径、完整 npm test 链及更新后的窗口/Agent E2E 断言。
+- 安全与来源修正：workflow 仅 `workflow_dispatch`；preflight 拒绝非 `refs/heads/main` 触发，checkout main 并取完整 tag history；首个版本仅允许无历史 release tag 时使用 `0.2.0`，之后要求同一 major/minor 下 patch 连续递增；build 与 publish 固定使用 preflight 输出的同一 main SHA。重复 tag 检查保留。publish 独占 `contents: write`，校验五个精确资产名及无额外安装资产，再生成 SHA-256 清单。
+- 可见性修正：GitHub 仓库 API 返回 `PUBLIC`。架构和 Release notes 改为明确下载公开可见；workflow 未启用签名/公证。Windows smoke 实际启动 `win-unpacked` 应用，不验证 NSIS 安装交互。
+- 静态验证：Ruby YAML parser 解析 workflow 成功；`node --check scripts/package-mac-dir.cjs`、`node --check tests/packaged-app-e2e.cjs`、`git diff --check` 通过；尚未运行 workflow、打包或全量 E2E。
+- 阻塞与限制：检查时 `/private/tmp/corvid-integrate-pr172-support` 的 Electron 主进程仍运行（PID 78990，另有 renderer helpers）。为避免并发 Electron 验收相互干扰，本候选定向/全量 E2E 暂缓，未终止其他会话进程。macOS Intel 和 Windows hosted runner、公开 Release 真实发布、签名/公证、NSIS 安装器安装交互均未验证；本记录不构成通过或合并结论。
+
 ## 2026-11-05 Issue #204 onboarding 主要操作 hover 对比（PR #255 前向集成复验）
 
 - 变更：基于当前 GitHub main `9a0068857462117af44b2164ec00300fb4a2bb6b`，从 PR #255 精确 head 仅重放 `desktop/styles.css` 的 hover 默认选择器、`tests/button-hover-contrast-e2e.cjs` 与对应 QA 记录/合成截图，未引入陈旧 PR 分支中的其他主线文件。
