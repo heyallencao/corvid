@@ -57,6 +57,13 @@
 - 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，Node 阶段 34 项中 31 PASS、3 FAIL：`browser.e2e.mjs:99` 输入焦点 HTTP 400，`dialogs.e2e.mjs:26` renderer alert 超时，`uploads.e2e.mjs:40` file chooser 超时。三项在干净 `origin/main` `fe77898` 以相同签名复现，归于 Issue #289；本 PR 未观察到特有失败。运行时临时借用主工作区已安装依赖，测试后移除链接。
 - 限制：未通过原生 popup blur 子场景、未运行真实 Chrome 用户资料/系统钥匙串、真实网站、Windows/Linux 或打包版；全量命令未通过，Issue #18 仍开放跟踪其余跨平台与窄窗验收。
 
+## 2026-11-04 Issue #205 扩展提示文案复核
+
+- 现状核对：`desktop/renderer.js` 中的「页面上下文」错字已在当前主分支修复；不重复改动。扩展工具栏弹窗也已实现：`desktop/main.cjs` 的 `openExtensionPopup` 与 `tests/chrome-import-e2e.cjs` 覆盖弹窗打开、隔离和关闭；能力记录见 `docs/execution/feature-board.md` D14 及 PR #131。
+- 修复：删除设置与导入提示中“工具栏弹窗未集成”的过时陈述；将扩展兼容边界改写为用户可理解的 API 支持限制；移除每个扩展条目上重复的旧 warning。`zh-CN`、`en` 与 `desktop/index.html` 回退文案保持一致。
+- UI/UE 范围：只改用户可见文案，不改布局、色彩、组件或交互；因此没有套用 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的视觉细节。截图用于展示修改后的中文文案，没有声称前后视觉对比。
+- 验证：隔离 `zh-CN` / `en` 资源 smoke check、`node --check`（`desktop/locales.js`、`desktop/renderer.js`、`desktop/chrome-extensions.cjs`）、旧文案 `rg` 搜索和 `git diff --check` 均通过。`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过，覆盖完整合成 Chrome 导入、扩展启停/移除/重启恢复、中文和英文设置说明、两种语言的导入兼容性提示；macOS 原生父窗口外点分支按测试现有开关跳过。GitHub Actions 的凭据矩阵与 Chrome 导入矩阵未启动 runner，GitHub 报告账户付款失败或支出限额，未执行测试。截图：[issue-205-extension-settings-zh-CN.png](../qa/screenshots/issue-205-extension-settings-zh-CN.png)，2560×1626，SHA-256 `d61b6a1e8ef6b3484ff481160500dfd65969edd79bfb78420becad7e1f4f7252`。截图来自隔离临时 Profile 与本地扩展夹具，无真实账号或浏览数据。
+- 2026-11-05 重放与全量门禁：PR 净差异重放到 `origin/main`（重放期间主线先后含 `ec9effa`、#238（#202）合并，最终基线 `374c262`，与本 PR 在 `desktop/index.html`、QA 共享文档冲突并按上述方式解决）。`tests/chrome-import-e2e.cjs` 新增断言段按现行设置中心导航模式适配：`#show-settings` 会把分区重置回「常规」，需再点 `#settings-nav-profile` 切回浏览身份分区（与该用例其他段落既有模式一致）。重放环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离临时 Profile 与本地 fixture；截图因主线窗口 chrome 变化重新生成（2560×1626，SHA 见上）。定向 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` EXIT 0。在 `e7f528e` 基线上：全量 `npm test` 第 1、2 次串行链分别中止于 `pi-workbench-e2e.cjs` 清理失败提示断言与 `fullscreen-e2e.cjs` 全屏状态等待（两用例隔离复跑均 EXIT 0，失败断言文案与本 PR 无关，与 Issue #289 链内环境敏感失败同型），第 3 次完整链 EXIT 0（34/34 与全部串行 E2E）；#238（#202）合入后在最终基线 `374c262` 重跑：定向 chrome-import E2E EXIT 0，全量 `env -u ELECTRON_RUN_AS_NODE npm test` 完整链 EXIT 0（node:test 34/34 与全部串行 E2E 通过，截图字节与上一基线一致）。未覆盖：Windows/Linux、打包版、屏幕阅读器、原生弹窗外点。
 ## 2026-11-04 Issue #279 Chrome 导入对话框布局（PR 前验证）
 
 - 问题：Chrome 导入长预览时，整个 dialog 随内容滚动，初始窗口内可能找不到取消与主操作。实现将内容区设为唯一滚动区，标题和底部操作常驻；底部取消复用原 dialog 关闭/来源清理路径，Cookie 同意和类别启用规则不变。
