@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
+
+- 截图：[Profile 菜单首项聚焦，2560×1636 PNG](screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)。来自隔离 Electron、本地确定性 fixture；仅 shell UI，无个人网页、浏览身份数据或凭据。截图展示 Profile 菜单打开及首项焦点状态。
+- 交互验收：真实 Electron 定向 E2E 覆盖触发按钮 Enter/Space/方向键与 Profile、空间标题、空间列表的 contextmenu 入口，确认菜单首项获得焦点、方向键可继续导航、Escape 关闭并将焦点还给对应触发器。详细基线与门禁状态见[验证记录](../reviews/verification-log.md#2026-11-05-profile-与空间菜单键盘交互-issue-16)。
+- 视觉判断：沿用当前主线图标、尺寸、颜色与菜单表面；本切片只补足焦点交接和 ARIA 关联，不改变菜单视觉样式。竞品参考不作为验收依据，本轮未执行 REA；布局与样式沿用已存在的 Corvid chrome。
+- 未覆盖：VoiceOver 实播、其他平台与打包版；截图是 shell renderer，不代表 macOS 原生标题栏或网页 WebContentsView 合成画面。
+
 ## 2026-11-04 对话框提交按钮悬停状态（Issue #211 子项）
 
 - 当前 Corvid 运行态：隔离 Electron 中打开“新建空间”原生 HTML dialog；鼠标悬停提交按钮时，浅色和深色主题都保留 `--accent-solid`。截图显示输入框焦点、主/次操作层级与 backdrop；没有个人网页或 Profile 数据。[实施与测试记录](issue-211-submit-hover.md)
