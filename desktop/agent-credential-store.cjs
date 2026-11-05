@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 
 const LEGACY_SCHEMA_VERSION = 1;
 const SCHEMA_VERSION = 2;
+const DEFAULT_SAFE_STORAGE_TIMEOUT_MS = 15_000;
 // Electron 45.2.1 / Chromium 156 async tags: v10 is the fixed-key POSIX fallback;
 // v11 is Secret Service and v12 is the Portal provider. Re-review on Electron upgrades.
 const SECURE_LINUX_ASYNC_PROVIDER_TAGS = new Set(['v11', 'v12']);
@@ -81,9 +82,10 @@ function decodeLegacy(value) {
   return providers;
 }
 
-function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorage, platform = process.platform }) {
+function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorage, platform = process.platform, safeStorageTimeoutMs = DEFAULT_SAFE_STORAGE_TIMEOUT_MS }) {
   if (typeof dataDir !== 'string' || !dataDir) throw new TypeError('dataDir is required for Corvid Agent credential storage');
   if (!safeStorage || typeof safeStorage.encryptStringAsync !== 'function' || typeof safeStorage.decryptStringAsync !== 'function' || typeof safeStorage.isAsyncEncryptionAvailable !== 'function') throw new TypeError('Electron asynchronous safeStorage is required for Corvid Agent credentials');
+  if (!Number.isSafeInteger(safeStorageTimeoutMs) || safeStorageTimeoutMs < 1) throw new TypeError('safeStorageTimeoutMs must be a positive safe integer');
   const file = path.join(dataDir, 'agent-credentials.json');
   const migrationBackup = `${file}.migration-backup`;
   const queues = new Map();
@@ -111,6 +113,23 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     return error;
   }
 
+  async function callSafeStorage(operation, unavailableMessage) {
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(storageError('等待系统安全存储响应超时。', undefined, 'secure-storage-timeout')), safeStorageTimeoutMs);
+        }),
+      ]);
+    } catch (error) {
+      if (error?.code?.startsWith('secure-storage-')) throw error;
+      throw storageError(unavailableMessage, error);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   function migrationBackupCleanupError(cause) {
     const code = 'credential-migration-backup-cleanup-failed';
     const marker = `[[corvid-error:${code}]] `;
@@ -128,9 +147,7 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   }
 
   async function ensureSecureStorage() {
-    let available;
-    try { available = await safeStorage.isAsyncEncryptionAvailable(); }
-    catch (error) { throw storageError('无法访问系统安全存储。', error); }
+    const available = await callSafeStorage(() => safeStorage.isAsyncEncryptionAvailable(), '无法访问系统安全存储。');
     if (!available) throw storageError('系统安全存储当前不可用。');
   }
 
@@ -145,9 +162,7 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   async function encryptCredential(credential) {
     await ensureSecureStorage();
     const plainRecord = credentialToRecord(credential);
-    let encrypted;
-    try { encrypted = await safeStorage.encryptStringAsync(JSON.stringify(plainRecord)); }
-    catch (error) { throw storageError('系统安全存储无法加密账号授权。', error); }
+    const encrypted = await callSafeStorage(() => safeStorage.encryptStringAsync(JSON.stringify(plainRecord)), '系统安全存储无法加密账号授权。');
     if (!Buffer.isBuffer(encrypted) || !encrypted.length) throw storageError('系统安全存储没有返回有效的加密结果。');
     ensureSecureLinuxCiphertext(encrypted);
     return { kind: plainRecord.kind, encryptedCredential: encrypted.toString('base64') };
@@ -157,9 +172,7 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
     await ensureSecureStorage();
     const encrypted = Buffer.from(record.encryptedCredential, 'base64');
     ensureSecureLinuxCiphertext(encrypted);
-    let result;
-    try { result = await safeStorage.decryptStringAsync(encrypted); }
-    catch (error) { throw storageError('系统安全存储无法解密已保存的账号授权。', error); }
+    const result = await callSafeStorage(() => safeStorage.decryptStringAsync(encrypted), '系统安全存储无法解密已保存的账号授权。');
     if (!result || typeof result.result !== 'string') {
       throw storageError('系统安全存储返回了无效响应，现有账号授权和文件已保留。', undefined, 'secure-storage-response-invalid');
     }
@@ -336,7 +349,13 @@ function createAgentCredentialStore({ dataDir, legacyAuthPath = null, safeStorag
   }
 
   async function initialize() {
-    if (!initializationPromise) initializationPromise = Promise.resolve().then(migrateLegacyCredentials);
+    if (!initializationPromise) {
+      const attempt = Promise.resolve().then(migrateLegacyCredentials);
+      initializationPromise = attempt;
+      attempt.catch(() => {
+        if (initializationPromise === attempt) initializationPromise = null;
+      });
+    }
     return initializationPromise;
   }
 

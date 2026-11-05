@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { PI_RUNTIME_ID, PI_RUNTIME_VERSION } = require('./agent-runtime.cjs');
+const { PI_RUNTIME_ID } = require('./agent-runtime.cjs');
 
 const TASKS_SCHEMA_VERSION = 3;
 const MAX_QUEUED_MESSAGES = 20;
@@ -20,7 +20,9 @@ function normalizeQueue(queue) {
 function migrateLegacyTask(task) {
   const migrated = { ...task };
   if (!migrated.sessionRef && typeof migrated.piSessionFile === 'string' && migrated.piSessionFile) {
-    migrated.sessionRef = { runtimeId: PI_RUNTIME_ID, runtimeVersion: PI_RUNTIME_VERSION, data: { sessionFile: migrated.piSessionFile } };
+    // Legacy records store a session path but no runtime version. Do not claim
+    // compatibility with the currently installed runtime without provenance.
+    migrated.sessionRef = { runtimeId: PI_RUNTIME_ID, runtimeVersion: 'unknown', data: { sessionFile: migrated.piSessionFile } };
   }
   delete migrated.piSessionFile;
   delete migrated.runtime;

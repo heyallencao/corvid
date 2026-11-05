@@ -8,7 +8,7 @@ import {join} from 'node:path';
 
 const server = createServer((_request, response) => {
   response.setHeader('content-type', 'text/html');
-  response.end(`<!doctype html><title>Corvid SDK test</title><h1>Welcome</h1><input placeholder="Name"><button onclick="document.querySelector('#out').textContent=document.querySelector('input').value">Submit</button><p id="out"></p><a href="/example">A link</a><span class="dupe">Duplicate</span><span class="dupe">Duplicate</span><input id="swap" onfocus="this.replaceWith(this.cloneNode())"><div id="shadow-host"></div><iframe id="child" srcdoc="&lt;button onclick=&quot;this.textContent='Clicked frame'&quot;&gt;Frame action&lt;/button&gt;&lt;input placeholder='Frame input' oninput='window.inputTrusted=event.isTrusted'&gt;"></iframe><select id="choice"><option value="one">One</option><option value="disabled" disabled>Disabled</option><option value="two">Two</option></select><select id="multi" multiple><option value="one">One</option><option value="two">Two</option><option value="three">Three</option></select><select id="blocked" disabled><option value="one">One</option></select><script>const b=document.createElement('button');b.textContent='Shadow action';b.onclick=()=>b.textContent='Clicked shadow';const r=document.querySelector('#shadow-host').attachShadow({mode:'open'});r.append(b);const f=document.createElement('input');f.placeholder='Shadow input';f.oninput=e=>window.shadowInputTrusted=e.isTrusted;r.append(f);window.events=[];for(const type of ['click','input','change','keydown','keyup'])document.addEventListener(type,e=>events.push({type,trusted:e.isTrusted,key:e.key,target:e.target.tagName,ctrl:e.ctrlKey}));</script>`);
+  response.end(`<!doctype html><title>Corvid SDK test</title><h1>Welcome</h1><input placeholder="Name"><button onclick="document.querySelector('#out').textContent=document.querySelector('input').value">Submit</button><p id="out"></p><div id="rich-editor" contenteditable="true" aria-label="Rich editor" style="min-height:60px"><p><strong>Old format</strong></p><p><span id="editable-child">nested old text</span></p></div><div id="plain-editor" contenteditable="plaintext-only" aria-label="Plain editor" style="min-height:40px">Original plain text</div><div id="empty-editor" contenteditable aria-label="Empty editor" style="min-height:32px"></div><div id="locked-editor" contenteditable="false" aria-label="Locked editor">Keep locked text</div><div id="hidden-editor" contenteditable="true" aria-label="Hidden editor" style="display:none">Hidden text</div><a href="/example">A link</a><span class="dupe">Duplicate</span><span class="dupe">Duplicate</span><input id="swap" onfocus="this.replaceWith(this.cloneNode())"><div id="shadow-host"></div><iframe id="child" srcdoc="&lt;button onclick=&quot;this.textContent='Clicked frame'&quot;&gt;Frame action&lt;/button&gt;&lt;input placeholder='Frame input' oninput='window.inputTrusted=event.isTrusted'&gt;"></iframe><select id="choice"><option value="one">One</option><option value="disabled" disabled>Disabled</option><option value="two">Two</option></select><select id="multi" multiple><option value="one">One</option><option value="two">Two</option><option value="three">Three</option></select><select id="blocked" disabled><option value="one">One</option></select><script>const b=document.createElement('button');b.textContent='Shadow action';b.onclick=()=>b.textContent='Clicked shadow';const r=document.querySelector('#shadow-host').attachShadow({mode:'open'});r.append(b);const f=document.createElement('input');f.placeholder='Shadow input';f.oninput=e=>window.shadowInputTrusted=e.isTrusted;r.append(f);window.events=[];for(const type of ['click','beforeinput','input','change','keydown','keyup'])document.addEventListener(type,e=>events.push({type,trusted:e.isTrusted,key:e.key,target:e.target.tagName,id:e.target.id,inputType:e.inputType,data:e.data,ctrl:e.ctrlKey,meta:e.metaKey}));</script>`);
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let client, room;const screenshotDir=await mkdtemp(join(tmpdir(),'corvid-screenshot-'));
@@ -111,6 +111,25 @@ try {
   const input = snapshot.items.find(item => item.name === 'Name');
   const button = snapshot.items.find(item => item.name === 'Submit');
   assert.ok(input && button, 'snapshot contains form controls');
+  assert.ok(snapshot.items.some(item => item.role === 'textbox' && item.name === 'Rich editor'), 'Snapshot exposes rich contenteditable hosts as textboxes');
+  await page.fill('#editable-child', '<b>Safe text</b>\nSecond line');
+  const richEditor = await page.evaluate(() => ({text:document.querySelector('#rich-editor').innerText,html:document.querySelector('#rich-editor').innerHTML,heading:document.querySelector('h1').textContent}));
+  assert.equal(richEditor.text.replace(/\n\n/g, '\n'), '<b>Safe text</b>\nSecond line', 'Chromium paragraph boundaries preserve the requested line break');
+  assert.equal(richEditor.html.includes('Old format'), false, 'fill replaces existing content');
+  assert.equal(richEditor.html.includes('nested old text'), false, 'fill replaces content when the locator targets a descendant');
+  assert.equal(richEditor.html.includes('<b>Safe text</b>'), false, 'fill treats input as text rather than HTML');
+  assert.equal(richEditor.heading, 'Welcome', 'select-all remains inside the nearest editing host');
+  await page.fill({by:'role',value:'textbox',name:'Plain editor'}, 'Plain replacement');
+  await page.fill('#empty-editor', 'Filled from empty');
+  assert.equal(await page.text('#plain-editor'), 'Plain replacement');
+  assert.equal(await page.text('#empty-editor'), 'Filled from empty');
+  await assert.rejects(() => page.fill('#locked-editor', 'must remain'), /contenteditable hosts only/);
+  await assert.rejects(() => page.fill('#hidden-editor', 'must remain'), /visible or is covered/);
+  const editorEvents = (await page.evaluate(() => window.events)).filter(event => event.id === 'rich-editor' || event.id === 'editable-child');
+  assert.ok(editorEvents.some(event => event.type === 'beforeinput' && event.trusted), 'contenteditable beforeinput is trusted');
+  assert.ok(editorEvents.some(event => event.type === 'input' && event.trusted), 'contenteditable input is trusted');
+  assert.ok(editorEvents.some(event => event.type === 'beforeinput' && event.inputType === 'deleteContentBackward' && event.trusted), 'replacement deletes the selected editable content through trusted input');
+  assert.ok(editorEvents.some(event => event.type === 'beforeinput' && event.inputType === 'insertText' && event.data === '<b>Safe text</b>\nSecond line' && event.trusted), 'replacement inserts literal multiline text through a trusted input path');
   await page.fill(input.ref, 'Hello');
   assert.equal(await page.evaluate(() => document.activeElement.placeholder), 'Name');
   await page.press(input.ref, 'ArrowLeft');
@@ -127,6 +146,27 @@ try {
   await page.press(input.ref, 'Control+a');
   assert.equal(await page.evaluate(() => document.querySelector('input').value), 'Hellox');
   assert.ok((await page.evaluate(() => window.events)).some(event => event.type === 'keydown' && event.key === 'a' && event.ctrl && event.trusted));
+  const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+  await page.press('#plain-editor', `${primaryModifier}+a`);
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), 'Plain replacement');
+  await page.keyboard.type('Plain selected');
+  assert.equal(await page.text('#plain-editor'), 'Plain selected');
+  await page.fill(input.ref, 'select all');
+  await page.press(input.ref, `${primaryModifier}+a`);
+  assert.deepEqual(await page.evaluate(() => {
+    const input = document.querySelector('input');
+    return [input.selectionStart, input.selectionEnd];
+  }), [0, 'select all'.length], 'primary+A selects the whole input');
+  await page.fill(input.ref, 'one two');
+  await page.press(input.ref, 'End');
+  await page.keyboard.press(`${primaryModifier}+Shift+ArrowLeft`);
+  const selectedRange = await page.evaluate(() => {
+    const input = document.querySelector('input');
+    return input.value.slice(input.selectionStart, input.selectionEnd);
+  });
+  assert.equal(selectedRange, process.platform === 'darwin' ? 'one two' : 'two');
+  await page.keyboard.type('X');
+  assert.equal(await page.evaluate(() => document.querySelector('input').value), process.platform === 'darwin' ? 'X' : 'one X');
   assert.deepEqual(await page.selectOption('#choice', {label:'Two'}), ['two']);
   assert.deepEqual(await page.select('#choice', 'disabled'), ['disabled']);
   assert.deepEqual(await page.selectOption('#multi', [{index:0},{value:'three'}]), ['one','three']);
@@ -185,7 +225,6 @@ try {
   await room.close(); room = null;
   const popupRoom=await client.createRoom('popup events');
   const opener=await popupRoom.open(url);
-  const another=await popupRoom.newPage();
   await opener.evaluate(()=>{const button=document.createElement('button');button.id='open-popup';button.textContent='Open popup';button.onclick=()=>window.open('/popup','_blank');document.body.append(button);return true;});
   const waitingPopup=opener.waitForEvent('popup',{timeout:2000});
   await opener.click('#open-popup');
@@ -193,7 +232,9 @@ try {
   assert.ok(popup.label);
   assert.equal(popup.openedBy,'unknown');
   assert.equal(await popup.text('h1'),'Welcome');
+  if(process.env.CORVID_SDK_POPUP_QA_SCREENSHOT_PATH)await popup.screenshot({path:process.env.CORVID_SDK_POPUP_QA_SCREENSHOT_PATH});
   await assert.rejects(()=>popup.close(),/unknown-origin/);
+  const another=await popupRoom.newPage();
   await assert.rejects(()=>opener.waitForEvent('popup',{timeout:150}),/timed out/);
   const unrelated=opener.waitForEvent('popup',{timeout:250}).then(()=>null,error=>error);
   await another.evaluate(target=>{window.open(target,'_blank');return true;},url);

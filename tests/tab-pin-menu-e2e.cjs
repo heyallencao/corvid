@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const http=require('node:http');
-const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms)),qaDir=process.env.CORVID_ISSUE203_QA_DIR;if(qaDir)fs.mkdirSync(qaDir,{recursive:true});
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-tab-pin-'));
   const page=title=>`<!doctype html><meta charset="utf-8"><title>${title}</title><body><p>${title}</p></body>`;
@@ -25,6 +25,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     return {shell,call,tabs};
   };
   const stop=async()=>{await app.close();app=undefined;};
+  const assertDangerMenuItem=async item=>{
+    assert.equal(await item.evaluate(element=>element.classList.contains('menu-item-danger')),true);
+    const expected=await item.evaluate(element=>{const probe=document.createElement('span');probe.style.color='var(--danger)';probe.style.backgroundColor='var(--surface-error)';document.body.append(probe);const value={color:getComputedStyle(probe).color,background:getComputedStyle(probe).backgroundColor};probe.remove();return value;});
+    await until(async()=>await item.evaluate(element=>getComputedStyle(element).color)===expected.color,'menu danger text transition');
+    await item.hover();
+    try{await until(async()=>await item.evaluate(element=>getComputedStyle(element).backgroundColor)===expected.background,'menu danger hover transition');}catch(error){const actual=await item.evaluate(element=>({matchesHover:element.matches(':hover'),color:getComputedStyle(element).color,background:getComputedStyle(element).backgroundColor,token:getComputedStyle(document.documentElement).getPropertyValue('--surface-error').trim(),rect:(()=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()}));throw new Error(`${error.message}; expected=${JSON.stringify(expected)}, actual=${JSON.stringify(actual)}`);}
+    const hover=await item.evaluate(element=>({color:getComputedStyle(element).color,background:getComputedStyle(element).backgroundColor}));
+    assert.equal(hover.color,expected.color);
+    assert.equal(hover.background,expected.background);
+  };
   try{
     let {shell,tabs}=await start();
     const navigate=async (url,expectedCount)=>{await until(async()=>(await tabs()).length===expectedCount,`tab count ${expectedCount}`);await shell.locator('#address').fill(url);await shell.locator('#address').press('Enter');await until(async()=>(await tabs()).some(tab=>tab.url===url&&tab.active&&tab.ready),`load ${url}`);};
@@ -56,6 +66,13 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await thirdMain.getAttribute('aria-expanded'),'false');
     await third.click({button:'right'});
     await tabMenu.waitFor({state:'visible'});
+    for(const colorScheme of ['light','dark']){
+      await shell.emulateMedia({colorScheme});
+      await assertDangerMenuItem(shell.getByRole('menuitem',{name:'关闭标签'}));
+      await assertDangerMenuItem(shell.getByRole('menuitem',{name:'关闭其他标签'}));
+      if(qaDir)await shell.screenshot({path:path.join(qaDir,`tab-menu-destructive-${colorScheme}-1280x850.png`)});
+    }
+    await shell.emulateMedia({colorScheme:'light'});
     assert.equal(await thirdMain.getAttribute('aria-expanded'),'true');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'固定标签','opening the context menu moves focus to the first item');
     await shell.keyboard.press('ArrowDown');assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'重新加载');
@@ -146,6 +163,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await stop();
     ({shell,tabs}=await start());
     await until(async()=>(await tabs()).length===1,'tab restored');
+    await until(async()=>await shell.locator('.tab.pinned').count()===1,'pinned tab indicator restored');
     assert.equal((await tabs())[0].pinned,true,'pinned survives restart');
     assert.equal(await shell.locator('.tab.pinned').count(),1);
     await shell.locator('.tab.pinned').click({button:'right'});

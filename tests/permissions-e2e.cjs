@@ -52,6 +52,16 @@ const siteToolsTrigger=shell.getByRole('button',{name:'更多浏览工具'}),sit
 await siteToolsTrigger.press('ArrowDown');
 assert.equal(await siteToolsTrigger.getAttribute('aria-expanded'),'true');
 assert.equal(await shell.evaluate(()=>document.activeElement.id),'clear-site','opening the menu moves focus to its first action');
+const clearSiteItem=shell.locator('#clear-site');assert.equal(await clearSiteItem.evaluate(element=>element.classList.contains('menu-item-danger')),true);
+const clearSiteDanger=await clearSiteItem.evaluate(element=>{const probe=document.createElement('span');probe.style.color='var(--danger)';probe.style.backgroundColor='var(--surface-error)';document.body.append(probe);const value={color:getComputedStyle(probe).color,background:getComputedStyle(probe).backgroundColor};probe.remove();return value;});
+await shell.waitForFunction(color=>getComputedStyle(document.querySelector('#clear-site')).color===color,clearSiteDanger.color);
+await clearSiteItem.hover();
+await shell.waitForFunction(color=>getComputedStyle(document.querySelector('#clear-site')).backgroundColor===color,clearSiteDanger.background);
+await shell.emulateMedia({colorScheme:'dark'});
+const darkClearSite=await clearSiteItem.evaluate(element=>{const probe=document.createElement('span');probe.style.color='var(--danger)';probe.style.backgroundColor='var(--surface-error)';document.body.append(probe);const value={color:getComputedStyle(probe).color,background:getComputedStyle(probe).backgroundColor};probe.remove();return value;});
+await shell.waitForFunction(color=>getComputedStyle(document.querySelector('#clear-site')).color===color,darkClearSite.color);await clearSiteItem.hover();await shell.waitForFunction(color=>getComputedStyle(document.querySelector('#clear-site')).backgroundColor===color,darkClearSite.background);
+await shell.emulateMedia({colorScheme:'light'});
+if(process.env.CORVID_ISSUE203_QA_DIR){fs.mkdirSync(process.env.CORVID_ISSUE203_QA_DIR,{recursive:true});await shell.screenshot({path:path.join(process.env.CORVID_ISSUE203_QA_DIR,'site-tools-destructive-1280x850.png')});}
 await shell.screenshot({path:path.join(os.tmpdir(),'corvid-site-tools-menu.png')});
 await shell.keyboard.press('ArrowDown');assert.equal(await shell.evaluate(()=>document.activeElement.id),'toggle-fullscreen');
 await shell.keyboard.press('Home');assert.equal(await shell.evaluate(()=>document.activeElement.id),'clear-site');
