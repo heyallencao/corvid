@@ -19,7 +19,7 @@
     <section class="profile-switcher" aria-label="浏览身份切换" data-i18n-aria-label="profileSwitcher">
       <span class="profile-avatar" aria-hidden="true">A</span>
       <select id="profile-select" aria-label="浏览身份" data-i18n-aria-label="profile"></select>
-      <button type="button" id="profile-menu-trigger" class="subtle-icon-button" aria-label="浏览身份选项" title="浏览身份选项" data-i18n-aria-label="profileOptions" data-i18n-title="profileOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg></button>
+      <button type="button" id="profile-menu-trigger" class="subtle-icon-button" aria-haspopup="menu" aria-controls="profile-menu" aria-label="浏览身份选项" title="浏览身份选项" data-i18n-aria-label="profileOptions" data-i18n-title="profileOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg></button>
       <div id="profile-menu" role="menu" aria-label="浏览身份选项" data-i18n-aria-label="profileOptions" hidden></div>
     </section>
 
@@ -27,7 +27,7 @@
       <span id="spaces-heading" data-i18n="spaces">空间</span>
       <span class="sidebar-heading-actions">
         <button type="button" id="create-room-trigger" class="subtle-icon-button" aria-label="新建空间" title="新建空间" data-i18n-aria-label="createSpace" data-i18n-title="createSpace"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
-        <button type="button" id="room-menu-trigger" class="subtle-icon-button" aria-label="空间选项" title="空间选项" data-i18n-aria-label="spaceOptions" data-i18n-title="spaceOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></button>
+        <button type="button" id="room-menu-trigger" class="subtle-icon-button" aria-haspopup="menu" aria-controls="room-menu" aria-label="空间选项" title="空间选项" data-i18n-aria-label="spaceOptions" data-i18n-title="spaceOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></button>
       </span>
       <div id="room-menu" role="menu" aria-label="空间选项" data-i18n-aria-label="spaceOptions" hidden></div>
     </div>
@@ -83,7 +83,7 @@
     <button type="button" id="find-next" aria-label="下一个匹配" data-i18n-aria-label="nextMatch"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 8 5 5 5-5"/></svg></button>
     <button type="button" id="find-close" aria-label="关闭查找" data-i18n-aria-label="closeFind"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button>
   </div>
-  <div id="site-tools" role="menu" aria-label="更多浏览工具" data-i18n-aria-label="moreTools" hidden><button type="button" id="clear-site" role="menuitem" data-i18n="clearSiteData">清理此站点数据</button><button type="button" id="toggle-fullscreen" role="menuitemcheckbox" aria-checked="false"><span data-i18n="fullscreenMode">全屏模式</span><kbd id="fullscreen-shortcut">F11</kbd></button><button type="button" id="site-permissions" role="menuitem" data-i18n="manageSitePermissions">管理站点权限</button><button type="button" id="print-page" role="menuitem" data-i18n="printPage">打印网页…</button></div>
+  <div id="site-tools" role="menu" aria-label="更多浏览工具" data-i18n-aria-label="moreTools" hidden><button type="button" id="clear-site" class="menu-item-danger" role="menuitem" data-i18n="clearSiteData">清理此站点数据</button><button type="button" id="toggle-fullscreen" role="menuitemcheckbox" aria-checked="false"><span data-i18n="fullscreenMode">全屏模式</span><kbd id="fullscreen-shortcut">F11</kbd></button><button type="button" id="site-permissions" role="menuitem" data-i18n="manageSitePermissions">管理站点权限</button><button type="button" id="print-page" role="menuitem" data-i18n="printPage">打印网页…</button></div>
   <div id="tab-menu" role="menu" aria-label="标签页操作" data-i18n-aria-label="tabActions" hidden></div>
 
   <section id="library" hidden aria-label="工作区面板" data-i18n-aria-label="libraryPanel">

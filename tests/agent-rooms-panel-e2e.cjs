@@ -130,6 +130,64 @@ async function readContrastPalette(shell) {
     await shell.getByRole('button', { name: '新建空间' }).waitFor();
     await shell.getByRole('button', { name: '我的空间 · 用户空间', exact: true }).waitFor();
     assert.equal(await shell.locator('#spaces-heading').textContent(), '空间');
+
+    const profileMenuTrigger=shell.locator('#profile-menu-trigger'),profileMenu=shell.locator('#profile-menu');
+    assert.equal(await profileMenuTrigger.getAttribute('aria-haspopup'),'menu');
+    assert.equal(await profileMenuTrigger.getAttribute('aria-controls'),'profile-menu');
+    assert.equal(await profileMenu.getAttribute('aria-label'),'浏览身份选项');
+    await profileMenuTrigger.press('Enter');
+    await profileMenu.waitFor({state:'visible'});
+    const profileItems=profileMenu.getByRole('menuitem');
+    await shell.waitForFunction(()=>document.activeElement===document.querySelector('#profile-menu [role="menuitem"]'));
+    assert.equal(await profileMenuTrigger.getAttribute('aria-expanded'),'true');
+    await shell.keyboard.press('ArrowDown');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.nth(1).textContent());
+    await shell.keyboard.press('Home');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.first().textContent());
+    await shell.keyboard.press('End');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.last().textContent());
+    await shell.keyboard.press('Escape');
+    await profileMenu.waitFor({state:'hidden'});
+    assert.equal(await profileMenuTrigger.getAttribute('aria-expanded'),'false');
+    assert.equal(await shell.evaluate(()=>document.activeElement.id),'profile-menu-trigger');
+    await profileMenuTrigger.press('Space');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.first().textContent(),'Space opens on the first menu action');
+    await shell.keyboard.press('Escape');
+    await profileMenuTrigger.press('ArrowUp');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await profileItems.last().textContent(),'ArrowUp opens on the final menu action');
+    await shell.keyboard.press('Escape');
+
+    const roomMenuTrigger=shell.locator('#room-menu-trigger'),roomMenu=shell.locator('#room-menu');
+    assert.equal(await roomMenuTrigger.getAttribute('aria-haspopup'),'menu');
+    assert.equal(await roomMenuTrigger.getAttribute('aria-controls'),'room-menu');
+    assert.equal(await roomMenu.getAttribute('aria-label'),'空间选项');
+    await roomMenuTrigger.press('ArrowDown');
+    await roomMenu.waitFor({state:'visible'});
+    const roomItems=roomMenu.getByRole('menuitem');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.first().textContent());
+    await shell.keyboard.press('End');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.last().textContent());
+    await shell.keyboard.press('ArrowDown');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.first().textContent(),'ArrowDown wraps to the first menu action');
+    for(const [selector,triggerId,menuId] of [['.profile-switcher','profile-menu-trigger','profile-menu'],['#spaces-heading','room-menu-trigger','room-menu'],['#room-strip','room-menu-trigger','room-menu']]){
+      const trigger=shell.locator(`#${triggerId}`),menu=shell.locator(`#${menuId}`);
+      await shell.locator(selector).evaluate(element=>element.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
+      await menu.waitFor({state:'visible'});
+      assert.equal(await trigger.getAttribute('aria-expanded'),'true',`${selector} context menu updates expanded state`);
+      await shell.waitForFunction(menuId=>document.activeElement===document.querySelector(`#${menuId} [role="menuitem"]`),menuId);
+      await shell.keyboard.press('ArrowDown');
+      assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await menu.getByRole('menuitem').nth(1).textContent(),`${selector} context menu supports arrow navigation`);
+      await shell.keyboard.press('Escape');
+      await menu.waitFor({state:'hidden'});
+      assert.equal(await trigger.getAttribute('aria-expanded'),'false',`${selector} context menu closes accessibly`);
+      assert.equal(await shell.evaluate(()=>document.activeElement.id),triggerId,`${selector} context menu restores trigger focus`);
+    }
+    if(process.env.CORVID_POPUP_MENU_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_POPUP_MENU_SCREENSHOT_PATH});
+    await shell.keyboard.press('Tab');
+    await roomMenu.waitFor({state:'hidden'});
+    assert.equal(await roomMenuTrigger.getAttribute('aria-expanded'),'false');
+    assert.equal(await shell.evaluate(()=>document.activeElement.closest('#room-menu')===null),true,'Tab moves focus out of the menu');
+
     await shell.emulateMedia({colorScheme:'light'});
     assertPaletteContrast(await readContrastPalette(shell), 'light');
     if (process.env.CORVID_CONTRAST_SCREENSHOT_PATH) await shell.screenshot({path:process.env.CORVID_CONTRAST_SCREENSHOT_PATH});
@@ -279,17 +337,18 @@ async function readContrastPalette(shell) {
     await agentRoomsTrigger.click();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(640,600));
-    await shell.waitForFunction(()=>window.innerWidth<=710);
+    await shell.waitForFunction(()=>window.innerWidth<=725);
     const taskViewport=await shell.evaluate(()=>({width:window.innerWidth,height:window.innerHeight,deviceScaleFactor:window.devicePixelRatio}));
     const taskRowLayouts=await shell.locator('.agent-room-entry').evaluateAll(rows=>rows.map(row=>{const tasks=row.querySelector('.agent-room-tasks');return{width:row.clientWidth,scrollWidth:row.scrollWidth,taskWidth:tasks?.clientWidth,taskScrollWidth:tasks?.scrollWidth,taskActions:[...(tasks?.querySelectorAll('button')||[])].map(action=>({left:action.getBoundingClientRect().left,right:action.getBoundingClientRect().right}))};}));
-    assert.equal(taskViewport.width>=704&&taskViewport.width<=710,true,`704px minimum viewport applies: ${JSON.stringify(taskViewport)}`);
+    assert.equal(taskViewport.width>=719&&taskViewport.width<=725,true,`719px minimum viewport applies: ${JSON.stringify(taskViewport)}`);
     assert.equal(await shell.locator('.agent-room-task-state').count(),4,'all parallel and terminal task states remain present in the narrow Agent Room list');
     assert.ok(taskRowLayouts.every(row=>row.scrollWidth<=row.width&&(!row.taskWidth||row.taskScrollWidth<=row.taskWidth)&&row.taskActions.every(action=>action.left>=0&&action.right<=taskViewport.width)),JSON.stringify({taskViewport,taskRowLayouts}));
     const minimumViewportLayout=await Promise.all([
       app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return{width:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
       shell.locator('#library').evaluate(panel=>panel.querySelector('.agent-room-entry')?.getBoundingClientRect().width||0),
     ]);
-    assert.ok(minimumViewportLayout[0].width>=704&&minimumViewportLayout[0].pageWidths.every(width=>width>=320)&&minimumViewportLayout[1]>=280,JSON.stringify({taskViewport,minimumViewportLayout}));
+    assert.ok(minimumViewportLayout[0].width>=719&&minimumViewportLayout[0].pageWidths.every(width=>width>=320)&&minimumViewportLayout[1]>=280,JSON.stringify({taskViewport,minimumViewportLayout}));
+    if(process.env.CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH});
 
     const otherProfile = await call('/profiles', 'POST', { name: 'Work profile' });
     const otherRoom = await call('/rooms', 'POST', { name: 'Work agent room', profileId: otherProfile.id });
@@ -303,7 +362,7 @@ async function readContrastPalette(shell) {
     assert.equal(await shell.locator('.agent-room-task-state').count(),0,'other Profile cannot see the active Profile task state');
 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(640, 600));
-    await shell.waitForFunction(() => window.innerWidth <= 710);
+    await shell.waitForFunction(() => window.innerWidth <= 725);
     const panelLayout = await shell.locator('#library').evaluate(panel => {
       const row = panel.querySelector('.agent-room-entry');
       return { width: panel.clientWidth, scrollWidth: row.scrollWidth, rowWidth: row.clientWidth };
@@ -312,7 +371,7 @@ async function readContrastPalette(shell) {
     assert.ok(panelLayout.scrollWidth <= panelLayout.rowWidth, JSON.stringify(panelLayout));
 
     const responsiveLayouts=[];
-    for(const requestedWidth of [704,720,721,800,860,873,874,900,972,983,984,1024,1280]){
+    for(const requestedWidth of [719,720,721,800,860,873,874,900,972,983,984,1024,1280]){
       await app.evaluate(({BrowserWindow},width)=>BrowserWindow.getAllWindows()[0].setSize(width,600),requestedWidth);
       await shell.waitForFunction(width=>window.innerWidth===width,requestedWidth);
       const layout=await Promise.all([
@@ -325,7 +384,7 @@ async function readContrastPalette(shell) {
       assert.ok(agentWidth>=280,`Agent panel content must retain 280px at ${requestedWidth}px: ${JSON.stringify({browser,agentWidth})}`);
     }
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(640,600));
-    await shell.waitForFunction(()=>window.innerWidth<=710);
+    await shell.waitForFunction(()=>window.innerWidth<=725);
 
     const view = shell.getByRole('button', { name: '查看 Work agent room' });
     await view.focus();

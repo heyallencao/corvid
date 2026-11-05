@@ -53,7 +53,7 @@ async function saveScreenshot(page, name) {
     await search.press('ArrowDown');
     assert.equal(await search.evaluate(input => document.getElementById(input.getAttribute('aria-activedescendant'))?.dataset.modelId), 'gpt-6-luna', 'both arrow keys move the active option');
     await search.press('Enter');
-    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent.includes('GPT-6 Luna'));
+    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent === '当前选择尚未连接');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-model.json'), 'utf8')),
       { providerId: 'openai-codex', modelId: 'gpt-6-luna' }, 'keyboard selection persists the expected model');
 
@@ -68,6 +68,7 @@ async function saveScreenshot(page, name) {
 
     await shell.evaluate(() => window.browserShell.invoke('setUiLocale', { locale: 'en' }));
     trigger = shell.getByRole('button', { name: 'Corvid Agent model' });
+    assert.equal(await trigger.innerText(), 'Current selection is not connected', 'the unconnected selection remains private in English');
     await trigger.click();
     search = shell.getByRole('combobox', { name: 'Search models' });
     await search.fill('corvid-no-such-model');

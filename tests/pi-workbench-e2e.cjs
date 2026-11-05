@@ -43,7 +43,15 @@ const chooseModel = async (page, providerId, modelId) => {
   await search.fill(modelId);
   const option = page.locator(`[role="option"][data-provider-id="${providerId}"][data-model-id="${modelId}"]`);
   await option.waitFor();
+  const targetIndex = await option.evaluate(element => [...element.parentElement.children].indexOf(element));
+  const activeIndex = await search.evaluate(input => {
+    const active = document.getElementById(input.getAttribute('aria-activedescendant'));
+    return active ? [...active.parentElement.children].indexOf(active) : 0;
+  });
+  const count = await page.locator('[role="option"]').count();
+  for (let step = 0; step < (targetIndex - activeIndex + count) % count; step++) await search.press('ArrowDown');
   await search.press('Enter');
+  await page.waitForFunction(() => document.querySelector('.pi-model-select')?.getAttribute('aria-expanded') === 'false');
   return trigger;
 };
 
@@ -74,7 +82,7 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.equal(await shell.locator('#library[data-kind="pi-workbench"] .panel-eyebrow').isVisible(), false, 'the Agent workbench uses its product title without a redundant eyebrow');
     const ownedPiDir=path.join(dataDir,'pi-agent');
     assert.equal(fs.existsSync(legacyPiDir),false,'Corvid ignores a legacy Pi CLI directory environment variable');
-    const modelSelect=shell.getByLabel('Corvid Agent 模型', { exact: true });
+    const modelSelect=shell.locator('.pi-model-select');
     await modelSelect.waitFor({timeout:5_000}).catch(async error=>{
       const diagnostic=await shell.evaluate(()=>({panelKind:document.querySelector('#library')?.dataset.kind,panelHidden:document.querySelector('#library')?.hidden,workbench:Boolean(document.querySelector('#pi-workbench-content')),form:Boolean(document.querySelector('#pi-task-form')),controls:document.querySelector('.pi-model-controls')?.innerText,modelLabel:document.querySelector('.pi-model-select')?.getAttribute('aria-label'),status:document.querySelector('.pi-model-status')?.textContent,libraryText:document.querySelector('#library')?.innerText}));
       throw new Error(`${error.message}; workbench state: ${JSON.stringify(diagnostic)}`);
@@ -111,8 +119,9 @@ const chooseModel = async (page, providerId, modelId) => {
     const activeIndex=await modelSearch.evaluate(input=>{const active=document.getElementById(input.getAttribute('aria-activedescendant'));return active?[...active.parentElement.children].indexOf(active):0;});
     for(let index=0;index<(targetIndex-activeIndex+filteredModelCount)%filteredModelCount;index++)await modelSearch.press('ArrowDown');
     await modelSearch.press('Enter');
-    await shell.waitForFunction(()=>document.querySelector('.pi-model-select')?.textContent.includes('GPT-6 Luna'));
+    await shell.waitForFunction(()=>document.querySelector('.pi-model-select')?.textContent==='当前选择尚未连接');
     await shell.waitForFunction(()=>document.querySelector('.pi-model-status')?.textContent.includes('未连接'),{timeout:5_000});
+    assert.equal(await modelSelect.innerText(),'当前选择尚未连接','an unconfigured model is not presented as the active model');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir,'agent-model.json'),'utf8')),{providerId:'openai-codex',modelId:'gpt-6-luna'});
     await modelSelect.click();
     await shell.getByRole('combobox',{name:'搜索模型'}).fill('corvid-no-such-model');
@@ -123,6 +132,7 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.equal(await shell.evaluate(()=>document.activeElement.className),'pi-model-select','Escape restores focus to the model trigger');
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
     const englishModelSelect=shell.getByRole('button',{name:'Corvid Agent model'});
+    assert.equal(await englishModelSelect.innerText(),'Current selection is not connected','the unconnected selection label is localized in English');
     await englishModelSelect.click();
     const englishModelSearch=shell.getByRole('combobox',{name:'Search models'});
     await englishModelSearch.fill('corvid-no-such-model');
@@ -136,6 +146,7 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.deepEqual({connected:disconnectedModelState.connected,status:disconnectedModelState.status,actionVisible:disconnectedModelState.actionVisible},{connected:'false',status:'未连接',actionVisible:true},'the disconnected provider is visible with a direct connection action');
     assert.ok(disconnectedModelState.fontSize>=12,`the blocking connection state uses readable status text: ${JSON.stringify(disconnectedModelState)}`);
     await saveScreenshot(shell, 'issue-200-agent-first-task-1280x850.png');
+    await saveScreenshot(shell, 'issue-200-unconnected-model-zh-CN-1280x850.png');
     const taskPrompt=shell.getByRole('textbox', { name: '描述要完成的浏览任务' });
     await taskPrompt.fill('总结当前页面内容 [fixture:stream-and-tool-events]');
     await taskPrompt.focus();
@@ -356,6 +367,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await apiKeyAction.click();
     await shell.waitForFunction(()=>document.querySelector('.pi-model-controls')?.dataset.connected==='true',{timeout:5_000});
     assert.equal(await shell.locator('.pi-model-status').textContent(),'已连接','a locally configured provider shows the connected state');
+    assert.notEqual(await modelSelect.innerText(),'当前选择尚未连接','a configured provider exposes its actual selected model');
     await saveScreenshot(shell, 'issue-200-agent-first-task-connected-704x420.png');
     await chooseModel(shell,'openai-codex','gpt-6-luna');
     const narrowPrompt='窄窗口中启动 Pi 任务';

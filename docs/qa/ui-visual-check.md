@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
+
+- 截图：[Profile 菜单首项聚焦，2560×1636 PNG](screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)。来自隔离 Electron、本地确定性 fixture；仅 shell UI，无个人网页、浏览身份数据或凭据。截图展示 Profile 菜单打开及首项焦点状态。
+- 交互验收：真实 Electron 定向 E2E 覆盖触发按钮 Enter/Space/方向键与 Profile、空间标题、空间列表的 contextmenu 入口，确认菜单首项获得焦点、方向键可继续导航、Escape 关闭并将焦点还给对应触发器。详细基线与门禁状态见[验证记录](../reviews/verification-log.md#2026-11-05-profile-与空间菜单键盘交互-issue-16)。
+- 视觉判断：沿用当前主线图标、尺寸、颜色与菜单表面；本切片只补足焦点交接和 ARIA 关联，不改变菜单视觉样式。竞品参考不作为验收依据，本轮未执行 REA；布局与样式沿用已存在的 Corvid chrome。
+- 未覆盖：VoiceOver 实播、其他平台与打包版；截图是 shell renderer，不代表 macOS 原生标题栏或网页 WebContentsView 合成画面。
+
 ## 2026-11-04 对话框提交按钮悬停状态（Issue #211 子项）
 
 - 当前 Corvid 运行态：隔离 Electron 中打开“新建空间”原生 HTML dialog；鼠标悬停提交按钮时，浅色和深色主题都保留 `--accent-solid`。截图显示输入框焦点、主/次操作层级与 backdrop；没有个人网页或 Profile 数据。[实施与测试记录](issue-211-submit-hover.md)
@@ -544,3 +551,19 @@
 - UI/UE 参考与 REA：延用 EasyUI 首页有限的分区/命名状态参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`（站点 `https://easyui.site/`、首页；2026-11-03；具体观察限制见本节上方“设置中心首个切片”）。本轮没有重新访问参考页或创建新 REA Evidence；站点分类、焦点、滚动与状态只依据 Corvid 隔离运行态直接观察。EasyUI 没有被当作浏览器权限或清理流程证据，也未复制其代码/素材。
 - 未知与限制：通知权限请求与站点清理确认由 Electron `dialog.showMessageBox` 替身驱动；本地 fixture 已通过设置分类完成授权后保留/撤销检查，不证明原生系统权限/确认对话框的焦点与像素表现，也未覆盖屏幕阅读器、真实鼠标、Windows/Linux、打包版或全产品键盘顺序。
 
+
+
+## 2026-11-04 菜单破坏性动作语义（Issue #203）
+
+- 局部调整：`#tab-menu` 的关闭标签/关闭其他标签、`#room-menu` 的关闭当前空间、`#site-tools` 的清理此站点数据使用 `--danger`，hover 使用 `--surface-error`。历史/书签行删除按钮已使用同一语义色，Profile 删除确认继续使用现有 `.danger-button`；普通菜单动作保持中性。语义提示不替代既有确认、站点/Room 控制权检查。
+- 运行态证据：隔离 Electron、临时 Corvid 数据目录、本地 HTTP fixture；默认窗口 1280×850 CSS px，Playwright renderer 截图栅格 2560×1622。`tab-pin-menu-e2e.cjs` 对浅/深主题分别核对实际文字色与 hover 背景和 CSS tokens；`room-close-e2e.cjs` 验证空间关闭菜单危险态及取消/页面变化/关闭恢复回归；`permissions-e2e.cjs` 验证清理站点数据菜单危险态并保留焦点/键盘菜单回归。三项 EXIT 0。截图：![浅色标签菜单](screenshots/issue-203/tab-menu-destructive-light-1280x850.png)、![深色标签菜单](screenshots/issue-203/tab-menu-destructive-dark-1280x850.png)、![空间菜单](screenshots/issue-203/room-menu-destructive-1280x850.png)、![站点工具菜单](screenshots/issue-203/site-tools-destructive-1280x850.png)。均来自本地 fixture，不含用户浏览内容。
+- 设计参照：REA 在 Kobra `https://kobra.systems/components/command-menu` 读取页面可见的命令菜单源码面板，其中展示 `role=dialog`、`aria-modal=true`、Escape 关闭与减少动态效果；这是静态源码展示，不是该菜单完整运行行为。REA Evidence `ev_d72a8b14c30d4f87fbad13f3247133180bbadd80fb2c160e7ecc4fc386a4efe6`。该命令菜单是模态搜索；Corvid 此处是轻量上下文菜单，因此仅用于区分覆盖层类别，不移植模态语义。另一次开启参考菜单的运行态尝试未成功，不作为行为证据。
+- 验证环境：Node.js v24.22.1、Electron 45.2.1、Playwright Core 1.64.1；通过共享只读依赖目录 `NODE_PATH` 启动隔离 worktree。未启动签名包或触发钥匙串流程；未访问用户资料、真实站点、OAuth 或模型。
+- 剩余范围：此 Issue 还有覆盖体系一致性等更大议题，本子项只交付明确的破坏性菜单动作样式。截图来自 shell renderer，不覆盖上层 WebContentsView 的网页合成像素，也不代表 macOS 原生窗口/Windows/Linux验收。对 `desktop/index.html`、`desktop/renderer.js`、`desktop/styles.css` 的最终 Impeccable detector 扫描退出码为 2：报告 3 条侧边强调线 warning（其中 1 条来自既有 inline CSS，另 2 条指向其他组件的既有 CSS）、1 条层级 warning 和 11 条细描边/宽阴影 advisory；这些是跨页面启发式结果，均未指向本子项新增的菜单规则，因此不能表述为全站通过。
+
+## 2026-11-04 导航状态区与恢复（Issue #202）
+
+- 环境与截图：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 `CORVID_DATA_DIR`、合成空间与本地 HTTP fixture。HTTP 错误行分别覆盖 1024×700 / 1280×850 和 700×420 逻辑视口；慢加载时工具栏底边细进度线和标签 spinner 截图为 1280×850。截图仅显示本地 `127.0.0.1` fixture，无个人浏览数据、账号、凭据或外网内容：中文常规[截图](screenshots/issue-202/issue-202-http-500-zh-CN-1024x700.png)，SHA-256 `62ccd77eb4545eafd78264d23e112fcde004329993aff8e0d91fde46a157a823`；中文窄窗[截图](screenshots/issue-202/issue-202-http-500-zh-CN-700x420.png)，SHA-256 `84ebd193a8df92dd9ab026fbf4104ebc96e3dce808490101a6d2a4c21e903a89`；英文常规[截图](screenshots/issue-202/issue-202-http-500-en-1280x850.png)，SHA-256 `f7ee988b95313f482cbaa10f390b530f8168da09ee451a895a34b19ad895e751`；英文窄窗[截图](screenshots/issue-202/issue-202-http-500-en-700x420.png)，SHA-256 `0c5525e15b469ea1a407a4a8c8657718b9480025af5fd5bf825847ec8a62266d`；英文慢加载[截图](screenshots/issue-202/issue-202-loading-tab-spinner-en-1280x850.png)，SHA-256 `aa8294513a59278e30fefc9e241ada7c0f268596f15cf1a78c54a9bfb7f76bda`。
+- Corvid 直接观察与视觉判断：真实 Electron 中，慢加载同时显示在工具栏底边的 2px 进度线与标签 spinner，前者不改变 50px 工具栏高度，状态条保持隐藏，避免每次导航插入/移除整行提示；减少动态效果时进度线和 spinner 保持静态可辨；失败态保留清楚的 HTTP/连接原因、可展开技术代码、“重试”和“复制链接”，标签以 `127.0.0.1:<port>` host 识别，地址栏保留完整 URL 供编辑。窄窗状态行没有水平溢出，两个恢复动作及技术细节入口均可见。info/warning/danger/success 分别使用既有 `surface-running`、`surface-warning`、`surface-error`、`surface-success` 和线条 token；错误文本仍使用既有 `danger` 色，未引入新的色彩体系。截图显示错误横幅仍占据一行，减少布局扰动的本轮变化针对高频加载态；错误恢复行的进一步非侵入布局需要单独评审，不能声称所有状态变化均零位移。
+- UI/UE 参考及 REA：Kobra Alert `https://kobra.systems/components/alert`，采用项目已有 REA controlled replay Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（已记录的观察时间 2026-11-03 09:20 Asia/Shanghai；本轮未重新采集）。**直接观察**限于公开组件页可访问树中的具名 alert 区域及 Error/Warning/Success/Info 展示预览，没有触发交互。**静态证据**为 Corvid 现有状态 token、`#status` 渲染和真实 Electron 截图。**推断/设计判断**是保留浏览器标签 spinner 作为高频过程反馈，并用低高度语义状态面表达罕见错误和可恢复动作；Kobra 只支持状态命名/区分的参考，不证明浏览器导航行为或 toast 布局。Rare UI、EasyUI、Pin UI 与 Aceternity UI 本轮未扫描；没有复制代码、样式或素材。
+- 未知与限制：未做深色主题截图、VoiceOver 实播、Windows/Linux、签名打包运行、真实网站、真实网络超时或 HTTP 代理环境验收；HTTP 408 是 fixture 返回码，连接拒绝使用本地关闭端口。没有成对修改前截图，以上为隔离 fixture 的修改后证据。Impeccable 机械 detector 仅报告未改动的既有 `styles.css:426`/`:565` 两处 side-tab 警告。

@@ -23,16 +23,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-303-window-default-workarea.png')});}
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:130,y:150,width:600,height:400}));
     const minimum=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getBounds());
-    assert.deepEqual({width:minimum.width,height:minimum.height},{width:704,height:420},`requested undersized bounds must respect the product minimum: ${JSON.stringify(minimum)}`);
+    assert.deepEqual({width:minimum.width,height:minimum.height},{width:719,height:420},`requested undersized bounds must respect the product minimum: ${JSON.stringify(minimum)}`);
     const compactLayout=await shell.evaluate(()=>({iconWidth:getComputedStyle(document.querySelector('#chrome-tools .icon-button')).width,documentWidth:document.documentElement.scrollWidth,viewportWidth:innerWidth}));
     assert.equal(compactLayout.iconWidth,'28px','the compact chrome breakpoint is reachable at the minimum window width');
     assert.ok(compactLayout.documentWidth<=compactLayout.viewportWidth,`minimum window has no horizontal overflow: ${JSON.stringify(compactLayout)}`);
-    if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-219-window-minimum-zh-CN-704x420.png')});}
-    await until(()=>{try{const state=readStates()[0];return state?.width>=704&&state?.height>=420;}catch{return false;}},'minimum window state persistence');
+    if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-219-window-minimum-zh-CN-719x420.png')});}
+    await until(()=>{try{const state=readStates()[0];return state?.width>=719&&state?.height>=420;}catch{return false;}},'minimum window state persistence');
     await stop();
     fs.writeFileSync(statePath,JSON.stringify([{x:130,y:150,width:600,height:400}]));
     const restoredMinimum=await start();
-    assert.deepEqual({width:restoredMinimum.bounds.width,height:restoredMinimum.bounds.height},{width:704,height:420},'legacy undersized persisted bounds are normalized before restore');
+    assert.deepEqual({width:restoredMinimum.bounds.width,height:restoredMinimum.bounds.height},{width:719,height:420},'legacy undersized persisted bounds are normalized before restore');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:130,y:150,width:1010,height:720}));
     await until(()=>{try{const states=readStates();return states[0]?.x===130&&states[0]?.y===150&&states[0]?.width===1010&&states[0]?.height===720;}catch{return false;}},'window state file');
     await stop();
@@ -62,7 +62,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.ok(Math.abs(legacy.bounds.x-160)<=4,`expected x near 160, got ${legacy.bounds.x}`);
     assert.ok(Math.abs(legacy.bounds.y-170)<=24,`expected y near 170, got ${legacy.bounds.y}`);
     await stop();
-    console.log('PASS window bounds enforce and restore the 704x420 minimum, compact CSS is reachable, corrupt state falls back, detached-monitor position is clamped, legacy single-window state is read');
+    console.log('PASS window bounds enforce and restore the 719x420 minimum, compact CSS is reachable, corrupt state falls back, detached-monitor position is clamped, legacy single-window state is read');
   }finally{
     if(app)await app.close().catch(()=>{});
     fs.rmSync(dataDir,{recursive:true,force:true});

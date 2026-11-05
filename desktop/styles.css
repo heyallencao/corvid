@@ -280,7 +280,9 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   .tab.pinned { width: 44px; min-width: 44px; flex: 0 0 44px; }
   #tab-scroll-left, #tab-scroll-right { width: 22px; }
 }
-#chrome-tools { height: 50px; display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+#chrome-tools { position: relative; height: 50px; display: flex; align-items: center; gap: 5px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+#chrome-tools::after { position: absolute; z-index: 2; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--accent); content: ''; opacity: 0; pointer-events: none; }
+#browser-shell:has(#tabs .tab[data-active="true"][data-loading="true"]) #chrome-tools::after { opacity: 1; animation: navigation-progress 1.5s ease-in-out infinite; }
 .icon-button { width: 32px; height: 32px; display: inline-grid; place-items: center; flex: none; padding: 0; color: var(--text-icon); }
 .icon-button:hover { color: var(--text); }
 .icon-button svg { width: 18px; height: 18px; }
@@ -336,7 +338,10 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .bookmark-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #status { min-height: 0; display: flex; align-items: center; gap: 7px; overflow: hidden; padding: 0 13px; color: var(--text-secondary); font-size: 12px; }
 #status:empty { display: none; }
-#status:not(:empty) { min-height: 30px; border-bottom: 1px solid var(--line-strong-warm); background: var(--surface-status); }
+#status:not(:empty) { min-height: 30px; border-bottom: 1px solid var(--line-accent); background: var(--surface-running); }
+#status[data-tone="warning"]:not(:empty) { border-color: var(--line-strong); background: var(--surface-warning); }
+#status[data-tone="danger"]:not(:empty) { border-color: var(--line-error); background: var(--surface-error); }
+#status[data-tone="success"]:not(:empty) { border-color: var(--line-strong); background: var(--surface-success); }
 #status button { padding: 4px 7px; color: var(--accent-ink); font-size: 12px; }
 .bookmark-feedback { min-width: 0; overflow: hidden; color: var(--success); text-overflow: ellipsis; white-space: nowrap; }
 .navigation-loading { display: inline-flex; align-items: center; gap: 7px; }
@@ -348,6 +353,11 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .navigation-error-details summary { cursor: pointer; }
 .navigation-error-details code { margin-left: 4px; color: var(--text-secondary); font-size: 12px; }
 @keyframes navigation-spin { to { transform: rotate(360deg); } }
+@keyframes navigation-progress { 0% { clip-path: inset(0 100% 0 0); } 55% { clip-path: inset(0 15% 0 0); } 100% { clip-path: inset(0 0 0 100%); } }
+@media (prefers-reduced-motion: reduce) {
+  #browser-shell:has(#tabs .tab[data-active="true"][data-loading="true"]) #chrome-tools::after { animation: none; clip-path: none; }
+  .tab-loading-indicator { animation: none; border-top-color: var(--accent); }
+}
 
 /* Pi workspace and browser library panels. */
 #library { position: fixed; z-index: 20; top: calc(var(--browser-chrome-height) + var(--browser-chrome-overlay-gap)); right: 12px; bottom: 12px; width: var(--workspace-width); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elevation-panel); }
@@ -868,3 +878,7 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* 关闭动作保持危险语义，但继续使用现有确认与控制权流程。 */
+#room-menu .menu-item-danger, #site-tools .menu-item-danger, #tab-menu .menu-item-danger { color: var(--danger); }
+#room-menu .menu-item-danger:hover, #site-tools .menu-item-danger:hover, #tab-menu .menu-item-danger:hover { background: var(--surface-error); color: var(--danger); }

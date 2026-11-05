@@ -240,14 +240,14 @@ function draw(value) {
     roomStrip.append(item);
   }
   const profileMenu=document.querySelector('#profile-menu');profileMenu.replaceChildren();
-  const profileAction=(label,fn)=>{const item=button(label,()=>{profileMenu.hidden=true;fn();});item.setAttribute('role','menuitem');profileMenu.append(item);};
+  const profileAction=(label,fn)=>{const item=button(label,()=>{closePopupMenu(profileMenu,{restoreFocus:true});fn();});item.setAttribute('role','menuitem');item.tabIndex=-1;profileMenu.append(item);};
   profileAction(extensionMessages.t('newProfile'),async()=>{await openShellDialog('#new-profile','#profile-name');});
   profileAction(extensionMessages.t('renameCurrentProfile'),async()=>{renameProfileId=state.activeProfileId;const profile=state.profiles.find(item=>item.id===renameProfileId);document.querySelector('#renamed-profile-name').value=profileDisplayName(profile);document.querySelector('#rename-profile-error').textContent='';await openShellDialog('#rename-profile','#renamed-profile-name');document.querySelector('#renamed-profile-name').select();});
   profileAction(extensionMessages.t('manageProfileDeletion'),openProfileDeletionDialog);
   const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
-  const roomAction=(label,fn)=>{const item=button(label,()=>{roomMenu.hidden=true;fn();});item.setAttribute('role','menuitem');roomMenu.append(item);};
+  const roomAction=(label,fn,{destructive=false}={})=>{const item=button(label,()=>{closePopupMenu(roomMenu,{restoreFocus:true});fn();});item.setAttribute('role','menuitem');item.tabIndex=-1;if(destructive)item.classList.add('menu-item-danger');roomMenu.append(item);};
   roomAction(extensionMessages.t('createSpace'),async()=>{await openShellDialog('#new-room','#room-name');});
-  if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}});
+  if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}},{destructive:true});
   const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
   const newWindow=button('',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
   newWindow.append(createShellIcon('plus'),document.createTextNode(extensionMessages.t('newWindow')));
@@ -265,8 +265,12 @@ function draw(value) {
   if(!addressDraftDirty && document.activeElement!==address)address.value=active?.navigationError?.url || (active?.url === 'about:blank' ? '' : active?.url || '');
   if(findOpen && (!active || active.id!==findTabId)) closeFindBar();
   const status=document.querySelector('#status');status.setAttribute('role','status');status.replaceChildren();
-  if(active?.isLoading){const loading=document.createElement('span');loading.className='navigation-loading';loading.textContent=extensionMessages.t('loading');status.append(loading);}
-  if(active?.navigationError){const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=active.navigationError.kind==='http-status'?active.navigationError.message:extensionMessages.t('pageLoadFailed',{message:active.navigationError.message});status.append(error);if(active.navigationError.code){const details=document.createElement('details');details.className='navigation-error-details';const summary=document.createElement('summary');summary.textContent=extensionMessages.t('navigationErrorCode');const code=document.createElement('code');code.textContent=active.navigationError.code;details.append(summary,code);status.append(details);}if(room.ownership!=='agent'&&!room.userResumePending)status.append(button(extensionMessages.t('retry'),()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));}
+  if(active?.navigationError){
+    const error=document.createElement('span');error.className='navigation-error';error.setAttribute('role','alert');error.textContent=active.navigationError.kind==='http-status'?active.navigationError.message:extensionMessages.t('pageLoadFailed',{message:active.navigationError.message});status.append(error);
+    if(active.navigationError.code){const details=document.createElement('details');details.className='navigation-error-details';const summary=document.createElement('summary');summary.textContent=extensionMessages.t('navigationErrorCode');const code=document.createElement('code');code.textContent=active.navigationError.code;details.append(summary,code);status.append(details);}
+    if(room.ownership!=='agent'&&!room.userResumePending)status.append(button(extensionMessages.t('retry'),()=>api.invoke('navigate',{id:active.id,url:active.navigationError.url})));
+    status.append(button(extensionMessages.t('copyLink'),()=>api.invoke('copyTabUrl',{id:active.id})));
+  }
   if(room.executionRisk) status.append(button(extensionMessages.t('pageExecutionUnknown'),()=>api.invoke('reviewExecutionRisk',{id:room.id})));
   if(active?.dialog) status.append(button(extensionMessages.t('pageDialogReview'),()=>showPageDialog(active)));
   if(room.ownership==='agent') {
@@ -275,6 +279,7 @@ function draw(value) {
   } else if(room.yielded) {const label=document.createElement('span');label.textContent=extensionMessages.t('userInControl');status.append(label);if(!room.executionRisk)status.append(button(extensionMessages.t('returnControl'),async()=>{controlError='';try{await api.invoke('returnUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}}));}
   if(controlError){const note=document.createElement('span');note.setAttribute('role','alert');note.textContent=controlError;status.append(note);}
   if(siteDataNotice?.tabId===active?.id){const note=document.createElement('span');note.setAttribute('role','status');note.textContent=siteDataNotice.message;status.append(note);}
+  status.dataset.tone=active?.navigationError?'danger':controlError?'danger':room.executionRisk?'warning':siteDataNotice?.tabId===active?.id||bookmarkFeedbackKey?'success':'info';
   renderBookmarkFeedback();
 }
 function renderExtensionToolbar(){
@@ -666,7 +671,7 @@ async function renderPiModelControls(target){
     const models=catalog.providers.flatMap(provider=>provider.models.map(model=>({provider,model})));let selected=catalog.selection,activeIndex=0,filtered=[];
     const selectedRecord=models.find(item=>item.provider.id===selected.providerId&&item.model.id===selected.modelId);if(!selectedRecord)models.unshift({provider:{id:selected.providerId,name:selected.providerId,configured:false},model:{id:selected.modelId,name:extensionMessages.t('modelNotFound',{model:`${selected.providerId}/${selected.modelId}`})},missing:true});
     if(!models.length)throw new Error(extensionMessages.t('noChatModels'));
-    const currentLabel=()=>{const item=models.find(entry=>entry.provider.id===selected.providerId&&entry.model.id===selected.modelId);return item?`${item.model.name} · ${item.provider.name}`:`${selected.providerId}/${selected.modelId}`;};
+    const currentLabel=()=>{const item=models.find(entry=>entry.provider.id===selected.providerId&&entry.model.id===selected.modelId);return item?.provider.configured?`${item.model.name} · ${item.provider.name}`:extensionMessages.t('selectedModelNotConnected');};
     // Keep the list out of the composer's clipped scroll area and reposition it as that area moves.
     const positionPanel=()=>{const anchor=select.getBoundingClientRect(),width=Math.min(anchor.width,window.innerWidth-16);panel.style.left=`${Math.max(8,Math.min(anchor.left,window.innerWidth-width-8))}px`;panel.style.width=`${width}px`;panel.style.maxHeight=`${Math.max(128,window.innerHeight-24)}px`;list.style.maxHeight=`${Math.min(190,Math.max(72,window.innerHeight-96))}px`;const height=panel.getBoundingClientRect().height,spaceBelow=window.innerHeight-anchor.bottom-12,placeAbove=spaceBelow<height&&anchor.top>height+12;panel.dataset.placement=placeAbove?'above':'below';panel.style.top=`${Math.max(8,placeAbove?anchor.top-height-6:Math.min(anchor.bottom+6,window.innerHeight-height-8))}px`;};
     const outsidePointer=event=>{if(!picker.contains(event.target)&&!panel.contains(event.target))setPickerOpen(false);};
@@ -685,7 +690,8 @@ function renderPiModelActions(target,catalog,selection,status){
   const connection=target.querySelector('.pi-model-connection');target.querySelectorAll('.pi-model-action:not(.pi-model-manage),.pi-model-key').forEach(node=>node.remove());
   const provider=catalog.providers.find(item=>item.id===selection.providerId);if(!provider)return;
   target.dataset.connected=String(Boolean(provider.configured));target.dataset.customEndpoint=String(Boolean(provider.customEndpoint));
-  status.textContent=userFacingAgentError(provider.authStatus,provider.configured?extensionMessages.t('connected'):extensionMessages.t('notConnected'));status.setAttribute('aria-label',`${provider.name} ${status.textContent}`);status.title=`${provider.name} · ${status.textContent}`;
+  const authStatus=provider.authStatus==='已连接'?extensionMessages.t('connected'):provider.authStatus==='未连接'?extensionMessages.t('notConnected'):provider.authStatus==='无需密钥'?extensionMessages.t('modelNoCredentialRequired'):userFacingAgentError(provider.authStatus,provider.configured?extensionMessages.t('connected'):extensionMessages.t('notConnected'));
+  status.textContent=authStatus;status.setAttribute('aria-label',`${provider.name} ${status.textContent}`);status.title=`${provider.name} · ${status.textContent}`;
   if(provider.configured&&!provider.customEndpoint){const logout=button(extensionMessages.t('logout'),async()=>{logout.disabled=true;try{await api.invoke('logoutPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){logout.disabled=false;status.textContent=extensionMessages.t('logoutFailed',{message:userFacingAgentError(error)});}});logout.className='pi-model-action';connection.append(logout);return;}
   if(provider.customEndpoint)return;
   if(provider.supportsOAuth){const connect=button(extensionMessages.t('connectAccount'),async()=>{connect.disabled=true;status.textContent=extensionMessages.t('openingSignIn');try{await api.invoke('loginPiProvider',{providerId:provider.id});await renderPiModelControls(target);}catch(error){connect.disabled=false;status.textContent=extensionMessages.t('signInIncomplete',{message:userFacingAgentError(error)});}});connect.className='pi-model-action';connection.append(connect);}
@@ -804,10 +810,14 @@ api.onPiAuthPrompt(async request=>{
   if(input.tagName==='SELECT'){const replacement=document.createElement('input');replacement.id='pi-auth-input';replacement.autocomplete='off';input.replaceWith(replacement);}
   try{await api.invoke('resolvePiAuthPrompt',{id:request.id,value,cancelled});}catch(error){const status=document.querySelector('.pi-model-status');if(status)status.textContent=extensionMessages.t('authorizationStepFailed',{message:userFacingAgentError(error)});}
 }); api.invoke('state').then(draw);
-for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);trigger.onclick=()=>{const next=menu.hidden;for(const item of document.querySelectorAll('#profile-menu,#room-menu'))item.hidden=true;menu.hidden=!next;trigger.setAttribute('aria-expanded',String(!menu.hidden));};}
-for(const [contextSelector,menuId] of [['.profile-switcher','profile-menu'],['.sidebar-section-heading','room-menu'],['#room-strip','room-menu']]){const container=document.querySelector(contextSelector),menu=document.querySelector(`#${menuId}`),trigger=document.querySelector(menuId==='profile-menu'?'#profile-menu-trigger':'#room-menu-trigger');container.oncontextmenu=event=>{event.preventDefault();for(const item of document.querySelectorAll('#profile-menu,#room-menu'))item.hidden=true;menu.hidden=false;trigger.setAttribute('aria-expanded','true');};}
-document.addEventListener('pointerdown',event=>{for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}}});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')for(const [triggerId,menuId] of [['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']]){const trigger=document.querySelector(`#${triggerId}`),menu=document.querySelector(`#${menuId}`);if(!menu.hidden){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}}});
+const popupMenuBindings=[['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']].map(([triggerId,menuId])=>({trigger:document.querySelector(`#${triggerId}`),menu:document.querySelector(`#${menuId}`)}));
+function popupMenuItems(menu){return [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
+function closePopupMenu(menu,{restoreFocus=false}={}){if(menu.hidden)return;menu.hidden=true;const binding=popupMenuBindings.find(item=>item.menu===menu);binding?.trigger.setAttribute('aria-expanded','false');if(restoreFocus)binding?.trigger.focus();}
+function openPopupMenu(binding,last=false){for(const item of popupMenuBindings)if(item!==binding)closePopupMenu(item.menu);binding.menu.hidden=false;binding.trigger.setAttribute('aria-expanded','true');const items=popupMenuItems(binding.menu);(last?items.at(-1):items[0])?.focus();}
+for(const binding of popupMenuBindings){binding.trigger.onclick=()=>{if(binding.menu.hidden)openPopupMenu(binding);else closePopupMenu(binding.menu);};binding.trigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openPopupMenu(binding,event.key==='ArrowUp');}else if(event.key==='Escape'&&!binding.menu.hidden){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});}};binding.menu.onkeydown=event=>{const items=popupMenuItems(binding.menu),index=items.indexOf(document.activeElement);let next=null;if(event.key==='ArrowDown')next=(index+1)%items.length;else if(event.key==='ArrowUp')next=(index-1+items.length)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else if(event.key==='Escape'){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});return;}if(next!==null&&items.length){event.preventDefault();items[next].focus();}};}
+for(const [contextSelector,menuId] of [['.profile-switcher','profile-menu'],['.sidebar-section-heading','room-menu'],['#room-strip','room-menu']]){const container=document.querySelector(contextSelector),binding=popupMenuBindings.find(item=>item.menu.id===menuId);container.oncontextmenu=event=>{event.preventDefault();if(binding)openPopupMenu(binding);};}
+document.addEventListener('pointerdown',event=>{for(const {trigger,menu} of popupMenuBindings)if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target))closePopupMenu(menu);});
+document.addEventListener('keydown',event=>{if(event.key==='Tab')for(const {menu} of popupMenuBindings)if(!menu.hidden)setTimeout(()=>{if(!menu.contains(document.activeElement))closePopupMenu(menu);},0);});
 document.querySelector('#new-room-form').onsubmit = async event => { event.preventDefault(); const input=document.querySelector('#room-name'); const name=input.value.trim(); if(!name) return; await api.invoke('createRoom',{name,ownership:'user'}); input.value=''; document.querySelector('#new-room').close(); };
 document.querySelector('#create-room-trigger').onclick=async()=>{await openShellDialog('#new-room','#room-name');};
 document.querySelector('#cancel-room').onclick = () => document.querySelector('#new-room').close();
@@ -1165,8 +1175,10 @@ function syncTabFavicon(icon,tab){const sourceKey=tab.faviconUrl?`url:${tab.favi
 function createTabFavicon(tab){if(!tab.faviconUrl)return createFallbackFavicon(tab);const icon=document.createElement('img'),sourceKey=`url:${tab.faviconUrl}`;icon.className='favicon';icon.alt='';icon.draggable=false;icon.dataset.source=sourceKey;icon.onerror=()=>{if(icon.dataset.source!==sourceKey)return;icon.onerror=null;icon.replaceWith(createFallbackFavicon(tab,sourceKey));};icon.src=tab.faviconUrl;return icon;}
 function syncTabElement(el,tab,room){
   el.className=tab.pinned?'tab pinned':'tab';el.dataset.active=String(tab.active);el.dataset.tabId=tab.id;
+  el.dataset.loading=String(Boolean(tab.isLoading));
   if(tab.pinned)el.dataset.pinned='true';else delete el.dataset.pinned;
-  const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close'),titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  const main=el.querySelector('.tab-main'),close=el.querySelector('.tab-close');let titleText=tab.title||tab.url||extensionMessages.t('newTab');
+  if(tab.navigationError){try{titleText=new URL(tab.navigationError.url||tab.url).host||extensionMessages.t('navigationErrorTabTitle');}catch{titleText=extensionMessages.t('navigationErrorTabTitle');}}
   main.title=titleText;main.setAttribute('aria-label',titleText);
   if(tab.active)main.setAttribute('aria-current','page');else main.removeAttribute('aria-current');
   let loading=main.querySelector('.tab-loading-indicator'),favicon=main.querySelector('.favicon'),pin=main.querySelector(':scope > .pin-icon');
@@ -1243,13 +1255,13 @@ function openTabMenu(event,tab,trigger){
     {label:extensionMessages.t('reload'),action:()=>api.invoke('reload',{id:tab.id})},
     {label:extensionMessages.t('copyLink'),action:()=>api.invoke('copyTabUrl',{id:tab.id})},
     {separator:true},
-    {label:extensionMessages.t('closeTab'),action:()=>api.invoke('closeTabFromUser',{id:tab.id})},
-    {label:extensionMessages.t('closeOtherTabs'),action:()=>api.invoke('closeOtherTabs',{id:tab.id})}
+    {label:extensionMessages.t('closeTab'),action:()=>api.invoke('closeTabFromUser',{id:tab.id}),destructive:true},
+    {label:extensionMessages.t('closeOtherTabs'),action:()=>api.invoke('closeOtherTabs',{id:tab.id}),destructive:true}
   ];
   menu.replaceChildren();
   for(const item of items){
     if(item.separator){const rule=document.createElement('div');rule.className='menu-separator';menu.append(rule);continue;}
-    const entry=document.createElement('button');entry.type='button';entry.className='menu-item';entry.textContent=item.label;entry.setAttribute('role','menuitem');
+    const entry=document.createElement('button');entry.type='button';entry.className=`menu-item${item.destructive?' menu-item-danger':''}`;entry.textContent=item.label;entry.setAttribute('role','menuitem');
     entry.onclick=async()=>{closeTabMenu({restoreFocus:true});controlError='';try{await item.action();}catch(error){controlError=error.message;draw(state);}finally{const focusTarget=document.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"] .tab-main`)||document.querySelector('.tab[data-active="true"] .tab-main')||document.querySelector('#new-tab');focusTarget?.focus();}};
     menu.append(entry);
   }

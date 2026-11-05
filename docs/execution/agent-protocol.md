@@ -9,7 +9,7 @@
 1. **会话无状态，状态全在仓库**：工作队列、认领、进度、验收全部通过 GitHub Issue / PR / label / 评论承载。任何本地文件、数据库、schedule 不作为协作依据（换机器、换会话必须能无缝接续）。
 2. **优先级单一来源**：Issue 的 `priority:*` label。`docs/qa/daily-health-report.md` 只给人看，不是机器队列。
 3. **身份用稳定字符串**：当前仓库只有 `heyallencao` 一个协作者账号，GitHub assignee 无法区分会话。会话身份 = 认领评论里的 `工具-lane@机器`（如 `codex-fix@studio`、`zcode-integrate@studio`）。
-4. **merge 纪律是协议约束**（免费私有仓库无 branch protection）：只有集成 lane 允许点 merge。工人会话合并自己的 PR 视为违规，集成 lane 每日审计 merged-by 并纠正。
+4. **全权责任制**：谁认领 issue 谁完成到合并（自合并，前置检查见第 7 节）。无独立集成关卡；调度 lane 每日抽样审计合并质量，坏 main 立即 revert——用追责代替排队。
 
 ## 1. 工种（lane）
 
@@ -21,10 +21,9 @@
 | Agent 平台 | `lane:agent` | Agent runtime、SDK/CLI、BrowserMCP、工作台、授权与 Task Space 隔离、模型连接与凭据 | 对外 SDK 变化须同步接口文档 |
 | 视觉交互体系 | `lane:ui` | 设计 token、图标、窗口 chrome、菜单、面板/弹层模型、可达性、双语、状态反馈语言 | 大切片先在 issue 提交拆解方案 |
 | 基建 | `lane:infra` | 打包、CI、签名、E2E 基础设施 | 无专属工人时由 browser 兼管，量大再独立 |
-| 集成 | —（指定会话） | 唯一允许 merge 的角色：审 PR、跑全量 E2E、合并或打回；不开新切片 | 当前无 branch protection，靠此规则约束 |
 | 调度 | —（dsh 定时会话） | 每日 09:00 体检；为 issue 打 `lane:*` + `priority:P0-P3`；回收 stale；出日报 | 不写业务代码 |
 
-同一 lane 可挂多个会话并行。工人只领自己 lane 的 issue；队列空时结束本轮，不跨 lane 领活。
+同一 lane 可挂多个会话并行。工人只领自己 lane 的 issue；队列空时结束本轮，不跨 lane 领活。工人按第 7 节自合并自己的 PR。
 
 ## 2. Issue 生命周期与 label
 
@@ -41,12 +40,10 @@ open ──认领──▶ claimed ──交PR──▶ in-review ──merge─
 ## 3. 认领协议（工人会话每一轮的开工步骤）
 
 ```bash
-# 0. 生产节流（两级触发，防 PR 无限堆积；触发后不许停工，转排水）：
-#    触发：本 lane 开放 PR >= 2（持续节流），或全局开放 PR > 8（兜底）
-#    动作：不再领新 issue → 先 rebase/补证据/响应 review 自己名下的 PR
-#          → 名下清空后协助消化队列（takeover-intent 接手冲突 PR 并 rebase，
-#             或对无冲突 PR 做 COMMENT review + 本地验证，供集成合并）
-#    恢复：本 lane < 2 且全局 <= 8 → 回到第 1 步正常循环
+# 0. 全局断路器（仅故障时触发，如 CI/额度中断导致积压）：
+#    开放 PR > 8 → 全员暂停领取新 issue，优先完成自己名下 PR 的
+#    rebase 与自合并，直至 <= 8 后恢复第 1 步。正常流自合并即时消化，
+#    队列常态应为个位数。
 gh pr list --state open --json number --jq 'length'
 
 # 1. 从自己 lane 的队列顶取一个（已排除被认领的）
@@ -67,7 +64,7 @@ git worktree add ../corvid-issue-<N> -b fix/issue-<N>-<slug> origin/main
 
 分支命名：`<lane>/issue-<N>-<slug>`（如 `browser/issue-77-cookie-recovery`）。不得复用他人分支，不得 force-push 共享分支。
 
-PR 创建前必须 rebase 到 origin/main；集成 lane 按创建顺序 FIFO 合并——main 推进快，冲突窗口必须压在小时级以内。
+PR 创建前必须 rebase 到 origin/main；自合并前再次 rebase 确认最新——main 推进快，冲突窗口必须压在小时级以内。
 
 ## 4. 心跳与进度（跨机器可续的关键）
 
@@ -100,26 +97,21 @@ progress(codex-fix@studio): E2E 通过，剩余 docs 同步
 | 疑似与他人撞车（同文件/同 issue 双 PR） | 停手，评论 @集成 lane 仲裁；集成 lane 定合并顺序，后者 rebase |
 | 指令冲突 | 优先级：`AGENTS.md` > 本文 > 会话目标文本 > issue 评论 |
 
-## 7. 集成 lane 每轮清单
+## 7. 自合并规则与审计
 
-```bash
-gh pr list --state open --json number,title,author
-# 处理顺序：按创建时间 FIFO，最老优先（PR 年龄纳入调度日报，超 24h 未审优先处理）
-# 批量验证：一次全量 E2E 通过后可按序连续合并同批最多 3 个已审 PR；
-#   批后发现 main 红 → revert 本批最新一个并复测，逐个定位（revert-first 原则不变）
-# 对每个 PR：
-#  a. 查重：标题 grep【#NNN】，同 issue 多 PR 则关重（留证据全的）
-#  b. review（COMMENT 型；同账号无法 Approve）：对照验收标准与证据
-#  c. 本地跑全量 env -u ELECTRON_RUN_AS_NODE npm test
-#  d. PR 描述图片链接按 AGENTS.md「Issue/PR 图片」规则 grep 检查（/tmp/、file://、易失分支 URL）
-#  e. 合格 merge（唯一 merge 权限），不合格打回并写明原因
-# 每日附加：
-#  - 扫 claimed 无心跳 → 打 stale
-#  - 审计 .github/workflows：发现任何 PR 触发的 workflow 一律删除（CI 成本约束见 AGENTS.md）
-#  - 审计 merged-by（工人自合 = 违规，纠正并记录）
-#  - 清理已合并/废弃的僵尸分支
-#  - main 被合坏 → 立即 revert 恢复 main，修复另开 priority:P0
-```
+工人对自己的 PR 执行合并，**前置检查全部满足才允许点 merge**：
+
+ a. 查重：开工前已做；合并前再确认无他人同 issue 的新 PR（标题 grep【#NNN】）
+ b. rebase 到 origin/main 最新后无冲突
+ c. 本地全量 `env -u ELECTRON_RUN_AS_NODE npm test` 通过
+ d. PR 描述含验收证据（E2E 输出摘要、截图 sha256 前缀），图片链接符合 AGENTS.md 规则
+ e. merge 后确认 `Closes #N` 自动关单生效，issue 无遗留未覆盖边界未记录
+
+**不自合的高危变更**：签名/公证/发布产物、凭据存储与迁移、安全与授权语义——打 `blocked:user` 交产品所有者或其指定会话复核。
+
+**坏 main 责任**：谁合并谁负责——发现 main 被自己合坏，立即 revert 恢复 main，修复另开 `priority:P0` issue。
+
+**审计（调度 lane，每日）**：抽样当日 merge，检查证据完整性、是否 rebase 后合并、是否越范围；违规按第 10 节记录进日报。审计是追责手段，不是合并关卡。
 
 ## 8. 调度 lane（dsh 每日 09:00）清单
 
