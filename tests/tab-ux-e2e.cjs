@@ -8,14 +8,17 @@ const http=require('node:http');
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-tabux-'));
+  const loadingQaDir=process.env.CORVID_TAB_LOADING_QA_DIR;
+  if(loadingQaDir)fs.mkdirSync(loadingQaDir,{recursive:true});
   const favicon='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#2d6cdf"/></svg>';
   const page=(title,body)=>`<!doctype html><title>${title}</title><link rel="icon" href="/favicon.svg?for=${encodeURIComponent(title)}"><body>${body}</body>`;
   let bookmarkFaviconRequests=0;
   const server=http.createServer((req,res)=>{
     if(new URL(req.url,'http://fixture').pathname==='/favicon.svg'){res.writeHead(200,{'content-type':'image/svg+xml','cache-control':'no-store'});res.end(favicon);return;}
     if(new URL(req.url,'http://fixture').pathname==='/favicon.ico')bookmarkFaviconRequests++;
-    res.writeHead(200,{'content-type':'text/html'});
     const url=new URL(req.url,'http://fixture');
+    if(url.pathname==='/slow'){setTimeout(()=>{if(!res.destroyed){res.writeHead(200,{'content-type':'text/html'});res.end(page('Slow Fixture','<p>slow page ready</p>'));}},900);return;}
+    res.writeHead(200,{'content-type':'text/html'});
     if(url.pathname==='/search'){res.end(page('Search Fixture',`<p>${url.searchParams.get('q')||''}</p>`));return;}
     if(url.pathname==='/edit'){res.end(page('Unsaved Fixture','<button id="arm" onclick="window.onbeforeunload=e=>{e.preventDefault();e.returnValue=\'\';}">Arm unsaved-change guard</button><input id="draft" value="keep me">'));return;}
     if(url.pathname==='/saved'){res.end(page('Saved Fixture','<p>saved shortcut target</p>'));return;}
@@ -118,6 +121,24 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>(await tabs.count())===1 && (await tabs.first().textContent()).includes('Find Fixture'),'first tab title');
     const icon=tabs.first().locator('img.favicon');
     await until(async()=>String(await icon.getAttribute('src')).includes('/favicon.svg'),`tab favicon from page; current src=${await icon.getAttribute('src')}; rooms=${JSON.stringify((await call('/rooms')).rooms.map(room=>({id:room.id,active:room.active,profileId:room.profileId,tabs:room.tabs.map(tab=>({id:tab.id,title:tab.title,url:tab.url,active:tab.active,faviconUrl:tab.faviconUrl}))})))}`);
+
+    for(const [locale,label] of [['zh-CN','正在加载'],['en','Loading']]){
+      await shell.evaluate(async locale=>window.browserShell.invoke('setUiLocale',{locale}),locale);
+      await shell.locator('#address').fill(`${base}/slow?locale=${locale}`);await shell.locator('#address').press('Enter');
+      const loading=tabs.first().locator('.tab-loading-indicator');await loading.waitFor({state:'visible'});
+      assert.match(await tabs.first().locator('.tab-main').getAttribute('aria-label'),new RegExp(label),'loading tab has a localized accessible name');
+      if(loadingQaDir&&locale==='zh-CN')await shell.screenshot({path:path.join(loadingQaDir,'issue-197-loading.png')});
+      await loading.waitFor({state:'detached'});
+      await until(async()=>{const snapshot=await call('/rooms');const current=snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs[0];return current?.title==='Slow Fixture'&&current.isLoading===false;},`${locale} slow tab completes`);
+      await tabs.first().locator('.tab-loading-indicator').waitFor({state:'detached'});
+      await tabs.first().locator('.favicon').waitFor({state:'visible'});
+      assert.equal(await tabs.first().locator('.tab-loading-indicator').count(),0,'loading indicator is removed after navigation completes');
+      if(loadingQaDir&&locale==='zh-CN')await shell.screenshot({path:path.join(loadingQaDir,'issue-197-loaded.png')});
+      assert.equal(await tabs.first().locator('.tab-main').getAttribute('aria-label'),'Slow Fixture','tab title accessible name is restored after loading completes');
+    }
+    await shell.evaluate(async()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
+    await shell.locator('#address').fill(`${base}/`);await shell.locator('#address').press('Enter');
+    await until(async()=>{const snapshot=await call('/rooms');return snapshot.rooms.find(room=>room.id===snapshot.activeRoomId)?.tabs[0]?.title==='Find Fixture';},'restore find fixture');
 
     // Cmd/Ctrl+F opens the find bar against the active page; Enter/Shift+Enter
     // walk matches; Escape closes the bar.

@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { createAgentTaskStore } = require('./agent-task-store.cjs');
+const { createAgentTaskStore, MAX_QUEUED_MESSAGES, MAX_QUEUED_MESSAGE_LENGTH } = require('./agent-task-store.cjs');
 const MAX_OUTPUT = 24_000;
 const MAX_IMPORTED_CONVERSATION = 24_000;
 const TOOL_ACTIVITY_LABELS = Object.freeze({
@@ -7,6 +7,7 @@ const TOOL_ACTIVITY_LABELS = Object.freeze({
   corvid_navigate: { starting: 'agentPageOpenStarting', completed: 'agentPageOpenCompleted', failed: 'agentPageOpenFailed' },
 });
 const copy = value => JSON.parse(JSON.stringify(value));
+const codedError = (key, message) => new Error(`[[corvid-error:${key}]] ${message}`);
 function savedConversationContext(conversation = []) {
   const eligible = conversation.filter(turn => turn && ['user', 'assistant'].includes(turn.role) && typeof turn.text === 'string' && turn.text.trim());
   const selected = [];
@@ -26,12 +27,13 @@ const safeError = error => String(error?.message || error)
   .replace(/\b(sk-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,})\b/g, '[redacted]')
   .slice(0, 1_000);
 
-function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAgentCredential, onChange = () => {} }) {
+function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAgentCredential, canReadPageContext = () => true, onChange = () => {} }) {
   if (!runtime || typeof runtime.id !== 'string' || typeof runtime.version !== 'string' || typeof runtime.createSession !== 'function' || typeof runtime.canResume !== 'function' || typeof runtime.readPageContext !== 'function' || typeof runtime.removeTaskData !== 'function' || typeof runtime.getModelSelection !== 'function' || typeof runtime.resolveModel !== 'function') throw new TypeError('A compatible Corvid Agent runtime is required');
   if (typeof issueAgentCredential !== 'function' || typeof revokeAgentCredential !== 'function') throw new TypeError('A scoped Corvid Agent identity provider is required');
   const taskStore = createAgentTaskStore(dataDir);
   let tasks = [];
   const sessions = new Map();
+  const transcriptFallbackSessions = new Set();
   const sessionCredentialIds = new Map();
   const disposalAttempts = new WeakSet();
   const continuationClaims = new Set();
@@ -65,6 +67,35 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     const canContinueFromTranscript = Boolean(!canResumeSession && hasAssistantTranscript && transcript.length);
     return { ...visible, hasSession: Boolean(sessionRef || hasAssistantTranscript), continuationMode: task.stopUnconfirmed ? null : canResumeSession ? 'session' : canContinueFromTranscript ? 'saved-conversation' : null, canContinue: Boolean(!task.stopUnconfirmed && (canResumeSession || canContinueFromTranscript)) };
   }
+  // This is a list-only preview; it redacts recognizable patterns but does not replace transcript access controls.
+  function summaryText(value, maximum = 72) {
+    const characters = Array.from(String(value || '')
+      .replace(/```[\s\S]*?```|`[^`]*`/g, ' ')
+      .replace(/https?:\/\/[^\s<>"'，。；、！？)\]}]+/gi, '链接')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[已隐藏]')
+      .replace(/\+?(?:\d[\s().-]*){9,}\d/g, '[已隐藏]')
+      .replace(/((?:api[-_ ]?key|password|secret|token)\s*[:=]\s*)[^\s,;]+/gi, '$1[已隐藏]')
+      .replace(/\b(?:sk-[A-Za-z0-9_-]{12,}|sk-ant-[A-Za-z0-9_-]{12,})\b/g, '[已隐藏]')
+      .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '[已隐藏]')
+      .replace(/\s+/g, ' ')
+      .trim());
+    return characters.length > maximum ? `${characters.slice(0, maximum - 1).join('').trimEnd()}…` : characters.join('');
+  }
+  function listSummaries(profileId) {
+    return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(task => {
+      const prompt = task.conversation?.find(turn => turn.role === 'user')?.text || task.prompt;
+      return {
+        id: task.id,
+        roomId: task.roomId,
+        promptSummary: summaryText(prompt),
+        promptAccessibleSummary: summaryText(prompt, 240),
+        promptTitle: summaryText(prompt, 8_000),
+        pageTitle: summaryText(task.page?.title || ''),
+        status: task.status,
+        updatedAt: task.updatedAt || task.createdAt,
+      };
+    }));
+  }
   function list(profileId) { return copy(tasks.filter(task => !profileId || task.profileId === profileId).map(present)); }
   function taskById(taskId) { const task = tasks.find(item => item.id === taskId); if (!task) throw new Error('Agent task not found'); return task; }
   function addEvent(task, type, text, messageKey, params) {
@@ -72,6 +103,21 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     task.events = [...(task.events || []), { type, text: text.slice(0, 4_000), ...(messageKey ? { messageKey, params } : {}), at: new Date().toISOString() }].slice(-100);
     task.updatedAt = new Date().toISOString();
     changed();
+  }
+  function finishAssistantTurn(task, status) {
+    const turn = task.conversation?.at(-1);
+    if (turn?.role !== 'assistant') return;
+    turn.status = status;
+    turn.finishedAt = new Date().toISOString();
+  }
+  function assertPageContextAccess(binding) {
+    if (canReadPageContext(binding) !== true) throw codedError('agent-control-unavailable', '当前空间、浏览身份或页面不再允许 Agent 读取；请重新检查后再试。');
+  }
+  async function readPageContext(binding) {
+    assertPageContextAccess(binding);
+    const context = await runtime.readPageContext({ dataDir, ...binding });
+    assertPageContextAccess(binding);
+    return context;
   }
   function handleRuntimeEvent(task, event) {
     if (task.status !== 'running') return;
@@ -92,7 +138,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     }
   }
   async function prepare({ profileId, roomId, tabId }) {
-    const context = await runtime.readPageContext({ dataDir, profileId, roomId, tabId });
+    const context = await readPageContext({ profileId, roomId, tabId });
     const snapshotText = JSON.stringify(context.snapshot);
     return { profileId, roomId, tabId, label: context.label, url: context.url, title: context.title, snapshot: snapshotText.slice(0, 12_000), snapshotTruncated: snapshotText.length > 12_000 };
   }
@@ -132,12 +178,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     taskStartClaims.add(roomId);
     startingProfiles.set(roomId,profileId);
     try {
-      const context = await runtime.readPageContext({ dataDir, profileId, roomId, tabId });
+      const context = await readPageContext({ profileId, roomId, tabId });
       const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
       if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
       const selectedModel = runtime.getModelSelection();
       const modelInfo = selectedModel ? await runtime.resolveModel(selectedModel) : null;
-      const task = { id: crypto.randomUUID(), profileId, roomId, tabId, sessionRef: null, ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      const task = { id: crypto.randomUUID(), profileId, roomId, tabId, sessionRef: null, messageQueue: [], ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       tasks.push(task); changed();
       await run(task, { message: task.prompt, context, consentedSnapshot, initial: true });
       return copy(present(task));
@@ -146,12 +192,18 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       startingProfiles.delete(roomId);
     }
   }
-  async function continueTask({ taskId, message, includePageContext, contextPreview }) {
+  async function continueTask({ taskId, message, queueItemId, queueItemRevision, includePageContext, contextPreview }) {
     const task = taskById(taskId);
     if(profileDeletionClaims.has(task.profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能继续 Agent 对话'),{code:'CORVID_PROFILE_DELETING'});
     if (continuationClaims.has(taskId)) throw new Error('当前任务仍在运行或不能继续');
     if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
     if (task.stopUnconfirmed) throw new Error('上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
+    let queuedItem = null;
+    if (task.messageQueue?.length) {
+      queuedItem = task.messageQueue[0];
+      if (queuedItem.id !== queueItemId || queuedItem.revision !== queueItemRevision) throw codedError('agent-queue-changed', '后续消息顺序或内容已变化，请重新检查并发送队首消息');
+      message = queuedItem.text;
+    } else if (queueItemId) throw codedError('agent-queue-missing', '这条后续消息已不存在，请刷新队列后重试');
     const resumeCheckpoint = Boolean(task.sessionRef && runtime.canResume(task.sessionRef));
     const priorConversation = resumeCheckpoint ? null : savedConversationContext(task.conversation);
     if (!resumeCheckpoint && !priorConversation.length) throw new Error('已保存的对话内容不足以继续；原记录已保留，请从新对话开始');
@@ -161,12 +213,14 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     continuationClaims.add(taskId);
     task.status = 'preparing'; changed();
     try {
-      const context = await runtime.readPageContext({ dataDir, profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
+      const context = await readPageContext({ profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
       if (task.status !== 'preparing') throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
       if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
       task.conversation ||= [];
-      task.conversation.push({ role: 'user', text: message.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() });
+      const turnStartedAt = new Date().toISOString();
+      task.conversation.push({ role: 'user', text: message.trim(), at: turnStartedAt }, { role: 'assistant', text: '', status: 'running', at: turnStartedAt });
+      if (queuedItem) task.messageQueue = task.messageQueue.filter(item => item.id !== queuedItem.id);
       task.error = null;
       task.page = { label: context.label, url: context.url, title: context.title };
       task.output = '';
@@ -180,6 +234,39 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       continuationClaims.delete(taskId);
     }
   }
+  function queueMessage({ taskId, text }) {
+    const task = taskById(taskId);
+    if (continuationClaims.has(taskId)) throw codedError('agent-queue-busy', '正在检查页面或发送消息，暂时无法修改队列');
+    if (!['running', 'preparing'].includes(task.status) && !present(task).canContinue) throw codedError('agent-queue-unavailable', '当前对话不可继续，无法保存后续消息');
+    if (typeof text !== 'string' || !text.trim() || text.trim().length > MAX_QUEUED_MESSAGE_LENGTH) throw codedError('agent-queue-invalid', `后续消息必须为 1 至 ${MAX_QUEUED_MESSAGE_LENGTH} 个字符`);
+    task.messageQueue ||= [];
+    if (task.messageQueue.length >= MAX_QUEUED_MESSAGES) throw codedError('agent-queue-full', `最多可保存 ${MAX_QUEUED_MESSAGES} 条后续消息`);
+    const now = new Date().toISOString();
+    task.messageQueue.push({ id: crypto.randomUUID(), text: text.trim(), revision: 1, createdAt: now, updatedAt: now });
+    changed(); return copy(present(task));
+  }
+  function updateQueuedMessage({ taskId, itemId, text }) {
+    const task = taskById(taskId), item = task.messageQueue?.find(entry => entry.id === itemId);
+    if (!item) throw codedError('agent-queue-missing', '找不到这条后续消息');
+    if (continuationClaims.has(taskId)) throw codedError('agent-queue-busy', '正在检查页面或发送消息，暂时无法修改队列');
+    if (typeof text !== 'string' || !text.trim() || text.trim().length > MAX_QUEUED_MESSAGE_LENGTH) throw codedError('agent-queue-invalid', `后续消息必须为 1 至 ${MAX_QUEUED_MESSAGE_LENGTH} 个字符`);
+    item.text = text.trim(); item.revision += 1; item.updatedAt = new Date().toISOString(); changed(); return copy(present(task));
+  }
+  function moveQueuedMessage({ taskId, itemId, offset }) {
+    const task = taskById(taskId), queue = task.messageQueue || [], index = queue.findIndex(item => item.id === itemId);
+    if (![-1, 1].includes(offset) || index < 0) throw codedError('agent-queue-order-invalid', '后续消息顺序无效');
+    if (continuationClaims.has(taskId)) throw codedError('agent-queue-busy', '正在检查页面或发送消息，暂时无法调整队列');
+    const next = index + offset;
+    if (next < 0 || next >= queue.length) return copy(present(task));
+    [queue[index], queue[next]] = [queue[next], queue[index]]; changed(); return copy(present(task));
+  }
+  function removeQueuedMessage({ taskId, itemId }) {
+    const task = taskById(taskId);
+    if (continuationClaims.has(taskId)) throw codedError('agent-queue-busy', '正在检查页面或发送消息，暂时无法修改队列');
+    const queue = task.messageQueue || [], next = queue.filter(item => item.id !== itemId);
+    if (next.length === queue.length) throw codedError('agent-queue-missing', '找不到这条后续消息');
+    task.messageQueue = next; changed(); return copy(present(task));
+  }
   async function run(task, { message, context, consentedSnapshot, initial, checkpoint = initial ? null : task.sessionRef, priorConversation = null }) {
     try {
       const credential = await issueAgentCredential({ taskId: task.id, roomId: task.roomId });
@@ -192,7 +279,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         await disposeSession(task, session);
         throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
-      task.sessionRef = session.checkpoint() || (priorConversation ? null : task.sessionRef || null);
+      if (priorConversation) transcriptFallbackSessions.add(task.id);
+      task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
       changed();
       sessions.set(task.id, session);
       if (typeof session.subscribe === 'function') session.subscribe(event => {
@@ -205,16 +293,17 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const payload = initial ? `用户任务：\n${message}\n\n用户明确确认共享的当前页面上下文（仅限此空间的 ${context.label}）：\n${pageContext}` : `${transcript}用户继续指令：\n${message}\n\n用户已重新确认当前页面上下文（仅限此空间的 ${context.label}）：\n${pageContext}`;
       void Promise.resolve(session.prompt(payload)).then(async () => {
         if (task.status !== 'running') return;
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
-        const assistantTurn = task.conversation?.at(-1);
-        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'completed';
+        const checkpoint = session.checkpoint();
+        task.sessionRef = checkpoint || (priorConversation ? null : task.sessionRef || null);
+        transcriptFallbackSessions.delete(task.id);
+        finishAssistantTurn(task, 'completed');
         task.status = 'completed'; addEvent(task, 'completed', 'Agent 已完成本轮回复'); sessions.delete(task.id);
         await finalizeSession(task, session);
       }, async error => {
         if (task.status !== 'running') return;
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
-        const assistantTurn = task.conversation?.at(-1);
-        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
+        task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
+        transcriptFallbackSessions.delete(task.id);
+        finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `Agent 未能完成：${task.error}`); sessions.delete(task.id);
         await finalizeSession(task, session);
       }).catch(async error => {
@@ -235,22 +324,22 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       try { await revokeSessionCredential(task.id); }
       catch { credentialCleanupFailed = true; }
       if (task.status === 'preparing') {
-        const assistantTurn = task.conversation?.at(-1);
-        if (assistantTurn?.role === 'assistant') assistantTurn.status = 'failed';
+        finishAssistantTurn(task, 'failed');
         task.status = 'failed'; task.error = safeError(error); addEvent(task, 'error', `无法启动 Agent：${task.error}`);
       }
-      if (credentialCleanupFailed) reportSessionCleanupFailure(task);
-      if (task.status === 'failed' && task.error) throw new Error(task.error);
-      throw new Error(safeError(error));
+      if (credentialCleanupFailed) {
+        try { reportSessionCleanupFailure(task); } catch { task.stopUnconfirmed = true; }
+      }
+      throw new Error(task.status === 'failed' && task.error ? task.error : safeError(error));
     }
   }
   async function stop(taskId) {
     const task = taskById(taskId), session = sessions.get(taskId);
     if (!session || task.status !== 'running') return copy(present(task));
-    task.sessionRef = session.checkpoint() || task.sessionRef || null;
+    if (!transcriptFallbackSessions.has(taskId)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
+    transcriptFallbackSessions.delete(taskId);
     task.status = 'interrupted';
-    const assistantTurn = task.conversation?.at(-1);
-    if (assistantTurn?.role === 'assistant') assistantTurn.status = 'interrupted';
+    finishAssistantTurn(task, 'interrupted');
     addEvent(task, 'interrupted', '任务已停止；部分网页操作的最终结果可能需要检查');
     sessions.delete(taskId);
     await revokeOrReport(task);
@@ -268,27 +357,26 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const session = sessions.get(task.id);
       if (!session) {
         task.status = 'interrupted';
-        const assistantTurn = task.conversation?.at(-1);
-        if (assistantTurn?.role === 'assistant' && assistantTurn.status === 'running') assistantTurn.status = 'interrupted';
+        finishAssistantTurn(task, 'interrupted');
         addEvent(task, 'interrupted', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
         await revokeOrReport(task);
         continue;
       }
       task.status = 'waiting_for_user';
-      task.sessionRef = session.checkpoint() || task.sessionRef || null;
-      const assistantTurn = task.conversation?.at(-1);
-      if (assistantTurn?.role === 'assistant') assistantTurn.status = 'waiting_for_user';
+      if (!transcriptFallbackSessions.has(task.id)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
+      finishAssistantTurn(task, 'waiting_for_user');
       addEvent(task, 'waiting_for_user', '你已接管此空间；Agent 已暂停，交还后可检查页面并继续。');
       sessions.delete(task.id);
       await revokeOrReport(task);
       try {
         await session.abort?.();
-        task.sessionRef = session.checkpoint() || task.sessionRef || null;
+        if (!transcriptFallbackSessions.has(task.id)) task.sessionRef = session.checkpoint() || task.sessionRef || null;
       } catch (error) {
         task.status = 'interrupted';
         task.error = `无法确认 Agent 已暂停：${String(error?.message || error).slice(0, 500)}`;
         addEvent(task, 'error', task.error);
       } finally {
+        transcriptFallbackSessions.delete(task.id);
         await disposeSession(task, session);
         changed();
       }
@@ -335,7 +423,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     return removed.length;
   }
   function finishProfileDeletion(profileId) { profileDeletionClaims.delete(profileId); }
-  return { list, prepare, start, continueTask, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, cancelProfileDeletion, removeProfileData, finishProfileDeletion };
+  return { list, listSummaries, prepare, start, continueTask, queueMessage, updateQueuedMessage, moveQueuedMessage, removeQueuedMessage, pauseRoom, stop, clear, profileDeletionBlockers, beginProfileDeletion, cancelProfileDeletion, removeProfileData, finishProfileDeletion };
 }
 
 module.exports = { createAgentWorkbench, savedConversationContext };

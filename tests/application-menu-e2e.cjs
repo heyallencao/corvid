@@ -9,6 +9,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-application-menu-'));
   let app,config,shell;
+  const skipNativeWindowFocus=process.env.CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS==='1';
   const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   const api=async(route,body,method)=>{
     const response=await fetch(config.baseUrl+route,{method:method||(body?'POST':'GET'),headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
@@ -27,14 +28,21 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   },id);
   const shortcut=async combination=>{
     const parts=combination.split('+'),keyCode=parts.pop(),modifiers=parts.map(part=>({Meta:'meta',Control:'control',Shift:'shift',Alt:'alt'})[part]);
-    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyDown',keyCode,modifiers}),{keyCode,modifiers});
-    await app.evaluate(({BrowserWindow},{keyCode,modifiers})=>BrowserWindow.getFocusedWindow().webContents.sendInputEvent({type:'keyUp',keyCode,modifiers}),{keyCode,modifiers});
+    for(const type of ['keyDown','keyUp'])await app.evaluate(({BrowserWindow},{type,keyCode,modifiers})=>{
+      const window=BrowserWindow.getAllWindows()[0];
+      if(!window)throw new Error('Missing shortcut target window');
+      window.webContents.sendInputEvent({type,keyCode,modifiers});
+    },{type,keyCode,modifiers});
   };
   const find=(items,id)=>{for(const item of items){if(item.id===id)return item;const nested=find(item.submenu||[],id);if(nested)return nested;}return null;};
   const labels=items=>items.flatMap(item=>[item.label,...labels(item.submenu||[])]).filter(Boolean);
   try{
     const launched=await launchElectron(_electron,{executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}},{label:'application-menu-e2e',dataDir});
     app=launched.app;shell=launched.shell;config=await waitForControl(app,dataDir,{label:'application-menu-e2e'});
+    if(!skipNativeWindowFocus){
+      await app.evaluate(({app:electronApp})=>electronApp.focus(process.platform==='darwin'?{steal:true}:undefined));
+      await until(async()=>app.evaluate(({BrowserWindow})=>Boolean(BrowserWindow.getFocusedWindow())),'Corvid application window focus');
+    }
     const first=await menu(),firstLabels=first.map(item=>item.label);
     if(process.platform==='darwin')assert.equal(first[0].id,'corvid-app-menu');
     assert.ok(firstLabels.includes('文件')&&firstLabels.includes('编辑')&&firstLabels.includes('视图'));
@@ -73,12 +81,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const secondWindow=windows.find(window=>window.id!==firstWindow.id);
     const secondMenu=await menu();
     assert.ok(find(secondMenu,`corvid-window-${secondWindow.id}`),'the Window menu lists each open Corvid window');
-    await click(`corvid-window-${firstWindow.id}`);
-    await until(async()=>(await api('/windows')).focusedWindowId===firstWindow.id,'Window menu focuses the selected window');
-    const selectedMenu=await menu();
-    assert.equal(find(selectedMenu,`corvid-window-${firstWindow.id}`).checked,true);
-    await click('corvid-new-tab');
-    await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
+    if(skipNativeWindowFocus){
+      console.log('SKIP native Window menu focus and routing; requires an unlocked macOS desktop');
+    }else{
+      await click(`corvid-window-${firstWindow.id}`);
+      await until(async()=>(await api('/windows')).focusedWindowId===firstWindow.id,'Window menu focuses the selected window');
+      const selectedMenu=await menu();
+      assert.equal(find(selectedMenu,`corvid-window-${firstWindow.id}`).checked,true);
+      await click('corvid-new-tab');
+      await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
+    }
 
     await shell.locator('#show-settings').click();
     await shell.locator('#ui-locale').selectOption('en');
@@ -93,7 +105,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     app=restarted.app;config=await waitForControl(app,dataDir,{label:'application-menu-e2e-restart'});
     const restored=await menu();assert.ok(restored.some(item=>item.label==='File'),'selected language persists in the native menu after restart');
     assert.equal(find(restored,'corvid-devtools'),null);
-    console.log('PASS Corvid native menu actions, focused-window routing, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure');
+    console.log(`PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure${skipNativeWindowFocus?' (native window focus and routing skipped)':''}`);
   }finally{
     if(app)await closeElectron(app).catch(error=>{console.error(error);process.exitCode=1;});
     fs.rmSync(dataDir,{recursive:true,force:true});

@@ -90,4 +90,49 @@ Pi 默认工具与 Corvid 浏览器权限必须拆开：`desktop/pi-agent.cjs` s
 
 - 已安装 BrowserMCP 来源目录固定在本地干净检出 commit `847790e4e57b5d3de137829bf51e20c5fb357d73`。REA 对 `src/mcp/server.ts`、`src/api/commands.ts`、`src/launcher/stdio.ts`、`src/host/doctor.ts` 做精确选择分析：Evidence `ev_97f8675045ebadba960eefa677e358507fa90a6936a813cab03c6e62360f145b`，父图谱 `ev_c8bfe027d960d704b5fc6a16158ce7c7561b0b177436c18276935fb58ff34dbf`。该分析只证明所选源码声明，不证明实际 BrowserMCP runtime 或 Chrome 行为。
 - Corvid MCP 当前包含五个只读工具与四个写工具：`page_navigate`（只允许 HTTP/HTTPS 且禁止 URL 内嵌账号密码）、`page_click`、`page_fill`、`page_press`。每个动作要求显式 `roomId`/`tabId`、managed page 和 Agent 控制；待用户接管或 execution risk 时拒绝。所有动作工具声明 `readOnlyHint:false`、`destructiveHint:true`、`openWorldHint:true`；结果不等于网站操作已成功，Agent 需要再取 Snapshot 验证。
-- `node tests/mcp-e2e.cjs` 使用隔离 Electron 与本地 HTTP 页面验证工具清单、操作副作用、HTTP(S) URL 范围、操作后状态、用户接管拒绝和离线错误。仍未连接真实 MCP host、真实网站或打包应用；仍不提供任意 `evaluate`/CDP、文件上传或 tab 生命周期控制。
+- `node tests/mcp-e2e.cjs` 使用隔离 Electron 与本地 HTTP 页面验证工具清单、操作副作用、HTTP(S) URL 范围、操作后状态、用户接管拒绝和离线错误。仍未连接真实 MCP host、真实网站或打包应用；不提供任意 `evaluate`/CDP、文件上传或 Room 生命周期/控制权转移工具。标签生命周期的有限 MCP 工具见下方 Issue #259 记录。
+
+## 2026-11-04 页面历史导航实现补充
+
+- Corvid SDK Page 通过受控 `back` / `forward` API 路由调用浏览器历史；Browser MCP 新增 `page_back`、`page_forward`、`page_reload`，仍适配现有 SDK，不增加端口、凭据或任意代码执行能力。
+- 本轮隔离 Electron + 本地 HTTP fixture 的 MCP E2E 证明空历史不导航、同一 managed Tab 的前进/后退与重新请求、用户接管后拒绝操作、后台 Agent 动作不切换前台 Room。该证据只覆盖 Corvid 当前实现，不验证参考 BrowserMCP 的对应行为、真实 MCP host 或真实网站。
+
+
+## 2026-11-04 Browser MCP 页面等待能力
+
+- Issue #257 为 MCP 补充两个有限观察工具：精确 URL 等待与 `domcontentloaded`/`load` 等待。它们复用 SDK 轮询与控制权检查，不改变页面，也不支持任意表达式或 `networkidle`。
+- 验收使用本地 HTTP 延迟响应，确认点击链接后返回预期 URL、文档完成前等待不提前返回、timeout 有界，并检查后台等待不影响前台浏览空间。真实 MCP host、真实站点及 Chromium 所有加载边界不由该本地证据覆盖。
+
+
+## 2026-11-04 Browser MCP Agent 标签生命周期
+
+- Issue #259 将 SDK 已有的 Room/Page 生命周期收敛为窄 MCP 工具：`page_new` 只创建 Agent-owned 空白标签，`page_close` 只关闭 Agent 创建且受管的页面；不会接管 Room、关闭用户/未知来源页或自动跳转。网页 `beforeunload` 仍由应用交给用户处理。
+- 隔离真实 Electron 将验证 Agent 新建/关闭、未知来源 popup 拒绝关闭、控制权拒绝及后台 Room 不切换前台。此结果不等于真实 MCP host 的用户确认体验或多窗口平台验证。
+
+
+## 2026-11-04 Browser MCP 视口截图
+
+- Issue #262 为 MCP 增加只读 `page_screenshot`：复用显式授权 Room/受管 Page 与 Agent 控制检查，返回当前视口 `image/png` 内容；不导航、不切换前台、不落盘，图像字节上限 8 MiB，完整页截图不对 MCP 开放。
+- 验证使用隔离真实 Electron 和本地 fixture；覆盖 image content/PNG 签名、后台 Room 前台稳定和超限拒绝。没有真实 MCP host，因此不证明具体 host 会显示图像或将其转交视觉模型。
+
+
+## 2026-11-04 Browser MCP 表单选择与悬停
+
+- Issue #264 将 SDK 已有的 `selectOption()` 与 `hover()` 暴露为 `page_select_option`、`page_hover`。选择支持 value/label/index、单选/多选和清空；按 SDK 合同更新 DOM 选项并发出非可信 input/change 事件，不操作原生选择器；悬停只接受 locator，不开放任意坐标或脚本。两者都遵循显式 Room/Page 与 Agent 控制检查，并标记为可产生页面副作用的 action。
+- 隔离真实 Electron + 本地 fixture 验证下拉状态和悬停后菜单可见、错误选项，以及用户接管拒绝。没有真实站点/MCP host 证据，不推断所有自定义下拉菜单、hover 触屏兼容或 host 交互。
+
+
+## 2026-11-04 Browser MCP 页面元素状态等待
+
+- Issue #266 将 SDK `Page.waitForSelector()` 收敛为 `page_wait_for_selector`：只接受已有 locator schema，状态限定 `attached`、`detached`、`visible`、`hidden`，timeout 100–60,000ms，默认 10 秒；不暴露函数或任意脚本。
+- 隔离真实 Electron + 本地 SPA fixture 已验证动态出现、隐藏、移除、timeout 与用户接管中断。通过 fixture 的局部 DOM 变化验证同文档观察，不代表真实网站/MCP host 对所有 selector 和动画的兼容性。
+
+## 2026-11-04 Browser MCP 页面滚动
+
+- Issue #268 将 SDK `Page.scroll(deltaX, deltaY, {x, y})` 暴露为 `page_scroll`：位移每轴限制 -2000..2000，至少一个非零；坐标必须成对且落在主视口内，缺省使用视口中心。主进程使用单次 Room 序列化的 CDP `Input.synthesizeScrollGesture`（mouse source）定位并滚动页面或嵌套容器，不运行网页脚本、不激活后台 Room。
+- 验收发现直接对后台 WebContentsView 派发 CDP `mouseWheel` 未产生页面滚动；改用 mouse-source scroll gesture 后，隔离 Electron fixture 中长文档和坐标命中的内部滚动面板都实际滚动。该差异只在当前 macOS/Electron 运行态观测，不推断其他平台或所有 Chromium 版本相同。
+
+## 2026-11-04 Browser SDK 与 MCP 的 contenteditable 输入
+
+- Issue #271 将 `Page.fill()` / `page_fill` 扩展到 `contenteditable="true"`、空属性与 `plaintext-only` 编辑宿主。Snapshot 和 role locator 将编辑宿主识别为 textbox；目标可以是宿主或其后代，但 Selection Range 只选中最近编辑宿主。实际输入使用可信 Backspace 与 Chromium `Input.insertText`，HTML 字符按文本处理，不直接写入 DOM/HTML。原有首字符的行内格式可能保留；换行遵循 Chromium 编辑器段落语义。
+- 运行态观察：macOS Electron 中 `Meta+A` 会产生可信按键事件却没有选中编辑内容，因此以内部 Selection Range 限定选择范围；之后的删除与文本输入仍验证 `beforeinput` / `input` 为 `isTrusted`。

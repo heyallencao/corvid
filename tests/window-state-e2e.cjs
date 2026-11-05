@@ -11,13 +11,26 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-window-state-'));
   const statePath=path.join(dataDir,'window-state.json');
   const readStates=()=>{const saved=JSON.parse(fs.readFileSync(statePath,'utf8'));return Array.isArray(saved)?saved:[saved];};
-  let app;
+  let app,shell;
+  const qaDir=process.env.CORVID_WINDOW_MIN_SIZE_QA_DIR;
   const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
-  const start=async()=>{app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});await app.firstWindow();return app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getBounds());};
-  const stop=async()=>{await app.close();app=undefined;};
+  const start=async()=>{app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});shell=await app.firstWindow();return app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getBounds());};
+  const stop=async()=>{await app.close();app=undefined;shell=undefined;};
   try{
     const initial=await start();
     assert.deepEqual({width:initial.width,height:initial.height},{width:1280,height:850});
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:130,y:150,width:600,height:400}));
+    const minimum=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getBounds());
+    assert.deepEqual({width:minimum.width,height:minimum.height},{width:704,height:420},`requested undersized bounds must respect the product minimum: ${JSON.stringify(minimum)}`);
+    const compactLayout=await shell.evaluate(()=>({iconWidth:getComputedStyle(document.querySelector('#chrome-tools .icon-button')).width,documentWidth:document.documentElement.scrollWidth,viewportWidth:innerWidth}));
+    assert.equal(compactLayout.iconWidth,'28px','the compact chrome breakpoint is reachable at the minimum window width');
+    assert.ok(compactLayout.documentWidth<=compactLayout.viewportWidth,`minimum window has no horizontal overflow: ${JSON.stringify(compactLayout)}`);
+    if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-219-window-minimum-zh-CN-704x420.png')});}
+    await until(()=>{try{const state=readStates()[0];return state?.width>=704&&state?.height>=420;}catch{return false;}},'minimum window state persistence');
+    await stop();
+    fs.writeFileSync(statePath,JSON.stringify([{x:130,y:150,width:600,height:400}]));
+    const restoredMinimum=await start();
+    assert.deepEqual({width:restoredMinimum.width,height:restoredMinimum.height},{width:704,height:420},'legacy undersized persisted bounds are normalized before restore');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:130,y:150,width:1010,height:720}));
     await until(()=>{try{const states=readStates();return states[0]?.x===130&&states[0]?.y===150&&states[0]?.width===1010&&states[0]?.height===720;}catch{return false;}},'window state file');
     await stop();
@@ -47,7 +60,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.ok(Math.abs(legacy.x-160)<=4,`expected x near 160, got ${legacy.x}`);
     assert.ok(Math.abs(legacy.y-170)<=24,`expected y near 170, got ${legacy.y}`);
     await stop();
-    console.log('PASS window bounds persist, corrupt state falls back, detached-monitor position is clamped, legacy single-window state is read');
+    console.log('PASS window bounds enforce and restore the 704x420 minimum, compact CSS is reachable, corrupt state falls back, detached-monitor position is clamped, legacy single-window state is read');
   }finally{
     if(app)await app.close().catch(()=>{});
     fs.rmSync(dataDir,{recursive:true,force:true});
