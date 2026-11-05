@@ -74,7 +74,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await shell.locator('#tabs .tab-main').last().getAttribute('aria-label'),'Page 14 · Fixture','the active tab retains its full title as an accessible name');
     assert.ok(await shell.locator('#new-tab').isVisible(),'the new-tab action stays reachable after scrolling');
 
-    await resize(704,420);
+    await resize(719,420);
     await until(()=>tabs.first().evaluate(element=>getComputedStyle(element).width==='44px'),'narrow icon layout');
     const closeTo=async count=>{while(await tabs.count()>count){const before=await tabs.count();await tabs.last().locator('.tab-close').click();await until(async()=>await tabs.count()===before-1,`${before-1} narrow tabs remain`);}};
     await closeTo(5);

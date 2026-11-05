@@ -225,8 +225,8 @@ const contrastRatio = (foreground, background) => {
       assert.equal(reduced.scroll, 'auto', `${colorScheme}: reduced motion disables smooth scrolling`);
     }
 
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704, 452));
-    await shell.waitForFunction(() => window.innerWidth === 704);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(719, 452));
+    await shell.waitForFunction(() => window.innerWidth === 719);
     for (const colorScheme of ['light', 'dark']) {
       await shell.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
       const compactSelection = await shell.evaluate(() => {
@@ -240,7 +240,7 @@ const contrastRatio = (foreground, background) => {
         return { width: window.innerWidth, height: window.innerHeight, room: style(room), nav: style(nav) };
       });
       assert.deepEqual(compactSelection.room, compactSelection.nav, `${colorScheme}: compact Room and navigation selections share the same visual language`);
-      assert.equal(compactSelection.width, 704);
+      assert.equal(compactSelection.width, 719);
     }
 
     console.log(`PASS interaction states at ${viewport.width}x${viewport.height} plus 704x420 compact mode: Room/navigation selection matches across light/dark themes and survives hover (contrast ${JSON.stringify(selectedTextContrast)}), dialog submit keeps its accent on hover, press feedback is visible, and themed scrollbars/selection respect reduced motion`);
