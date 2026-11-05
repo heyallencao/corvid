@@ -60,7 +60,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     };
     const openRoom = (await api('GET', '/rooms')).rooms.find(room => room.ownership === 'user');
     assert.ok(openRoom, 'the test app starts with a user-controlled browsing Room');
-    const userTab = openRoom.tabs[0];
     await api('POST', `/rooms/${openRoom.id}/activate`, {});
     await shell.locator('#address').fill(origin);
     await shell.locator('#address').press('Enter');

@@ -9,13 +9,15 @@ const { createPageContextMenuTemplate, safePageUrl } = pageContextMenu;
 const byId = (items, id) => items.find(item => item.id === id) || null;
 
 test('page context menu localizes navigation and link actions', () => {
+  const zhLocale = createMainLocale('zh-CN');
+  const enLocale = createMainLocale('en');
   const zh = createPageContextMenuTemplate({
-    t: createMainLocale('zh-CN').t,
+    t: zhLocale.t,
     context: { canGoBack: true, canGoForward: false, linkURL: 'https://example.test/path?q=1' },
     handlers: { back() {}, openLink() {}, copyText() {} },
   });
   const en = createPageContextMenuTemplate({
-    t: createMainLocale('en').t,
+    t: enLocale.t,
     context: { canGoBack: true, canGoForward: false, linkURL: 'https://example.test/path?q=1' },
     handlers: { back() {}, openLink() {}, copyText() {} },
   });
@@ -27,6 +29,15 @@ test('page context menu localizes navigation and link actions', () => {
   assert.equal(byId(en, 'corvid-page-back').label, 'Back');
   assert.equal(byId(en, 'corvid-page-open-link').label, 'Open Link in New Tab');
   assert.equal(zh.some(item => /Developer|开发者|Electron|Inspect|检查元素/i.test(item.label || '')), false);
+  for (const key of [
+    'pageContextBack', 'pageContextForward', 'pageContextReload', 'pageContextOpenLink',
+    'pageContextCopyLink', 'pageContextOpenImage', 'pageContextCopyImage', 'pageContextUndo',
+    'pageContextRedo', 'pageContextCut', 'pageContextCopy', 'pageContextPaste',
+    'pageContextDelete', 'pageContextSelectAll',
+  ]) {
+    assert.notEqual(zhLocale.t(key), key, `missing zh-CN translation for ${key}`);
+    assert.notEqual(enLocale.t(key), key, `missing en translation for ${key}`);
+  }
 });
 
 test('link and image actions only accept HTTP(S) URLs and invoke Corvid handlers', () => {
