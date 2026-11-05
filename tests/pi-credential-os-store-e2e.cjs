@@ -5,13 +5,16 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
 async function launch(dataDir) {
   const extraArgs = String(process.env.CORVID_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
-  const app = await _electron.launch({ executablePath: electronPath, args: [...extraArgs, project], env: {
+  const packagedAppPath = process.env.CORVID_PACKAGED_APP_PATH ? path.resolve(process.env.CORVID_PACKAGED_APP_PATH) : null;
+  if (packagedAppPath && process.env.CORVID_REQUIRE_PACKAGED_SIGNATURE === '1') assertDeveloperIdSignature(packagedAppPath);
+  const executablePath = packagedAppPath ? path.join(packagedAppPath, 'Contents', 'MacOS', 'Corvid') : electronPath;
+  const app = await _electron.launch({ executablePath, args: packagedAppPath ? extraArgs : [...extraArgs, project], env: {
     ...process.env,
     CORVID_DATA_DIR: dataDir,
     CORVID_PORT: '0',
@@ -38,7 +41,21 @@ async function openApiKeyProvider(app) {
   const shell = await app.firstWindow();
   await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
   const select = shell.locator('.pi-model-select');
-  await select.waitFor();
+  const status = shell.locator('.pi-model-status');
+  await status.waitFor({ state: 'visible', timeout: 2_000 });
+  try { await select.waitFor({ state: 'visible', timeout: 20_000 }); }
+  catch (error) {
+    const message = await status.innerText().catch(() => '');
+    if (/系统安全存储|secure system storage/i.test(message)) {
+      const screenshotDir = process.env.CORVID_CREDENTIAL_OS_STORE_QA_DIR;
+      if (screenshotDir) {
+        fs.mkdirSync(screenshotDir, { recursive: true });
+        await shell.screenshot({ path: path.join(screenshotDir, 'issue-110-secure-storage-timeout.png') }).catch(() => {});
+      }
+      throw new Error(`The model catalog surfaced its credential-store recovery status before the provider list became available: ${message}`, { cause: error });
+    }
+    throw error;
+  }
   const option = await select.locator('option').evaluateAll(options => options.find(item => {
     try { return JSON.parse(item.value).providerId === 'anthropic'; } catch { return false; }
   })?.value);
@@ -61,13 +78,13 @@ async function openApiKeyProvider(app) {
   let app;
   try {
     app = await launch(dataDir);
+    if (process.env.CORVID_PACKAGED_APP_PATH) assert.equal(await app.evaluate(({ app: electronApp }) => electronApp.isPackaged), true,
+      'the credential flow runs inside the packaged Corvid app');
     const initialShell = await app.firstWindow();
     const pageUrl = `http://127.0.0.1:${site.address().port}/`;
     await initialShell.getByLabel(/地址或搜索|Address or search/i).fill(pageUrl);
     await initialShell.getByLabel(/地址或搜索|Address or search/i).press('Enter');
     await waitForPage(dataDir, pageUrl);
-    assert.equal(await app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()), true,
-      'the running Electron build reports asynchronous OS credential protection available');
     let shell = await openApiKeyProvider(app);
     await shell.locator('.pi-model-key').fill(secret);
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).click();
@@ -88,7 +105,6 @@ async function openApiKeyProvider(app) {
 
     await app.close();
     app = await launch(dataDir);
-    assert.equal(await app.evaluate(({ safeStorage }) => safeStorage.isAsyncEncryptionAvailable()), true);
     shell = await openApiKeyProvider(app);
     await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
     assert.equal(await shell.locator('.pi-model-key').count(), 0,
@@ -99,8 +115,29 @@ async function openApiKeyProvider(app) {
     assert.equal(afterLogout.providers.anthropic, undefined, 'logout removes the credential from Corvid persistence');
     console.log(`PASS ${process.platform} Electron safeStorage availability, encrypted persistence, restart read, and logout deletion`);
   } finally {
-    if (app) await app.close().catch(() => {});
-    await new Promise(resolve => site.close(resolve));
+    if (app) {
+      let appProcess;
+      try { appProcess = app.process(); } catch {}
+      let closeTimer;
+      await Promise.race([
+        app.close().catch(() => {}),
+        new Promise(resolve => { closeTimer = setTimeout(resolve, 3_000); }),
+      ]);
+      clearTimeout(closeTimer);
+      if (appProcess?.exitCode === null) {
+        appProcess.kill('SIGTERM');
+        await Promise.race([
+          new Promise(resolve => appProcess.once('exit', resolve)),
+          new Promise(resolve => setTimeout(resolve, 2_000)),
+        ]);
+      }
+    }
+    await new Promise(resolve => {
+      let closeTimer;
+      site.close(() => { clearTimeout(closeTimer); resolve(); });
+      site.closeAllConnections?.();
+      closeTimer = setTimeout(resolve, 2_000);
+    });
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

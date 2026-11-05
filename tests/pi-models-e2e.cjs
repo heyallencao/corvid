@@ -15,9 +15,15 @@ const safeStorage=createFakeSafeStorage();
   const rendererErrorStart=rendererSource.indexOf('function userFacingAgentError');
   const rendererErrorEnd=rendererSource.indexOf('\nlet state',rendererErrorStart);
   assert.ok(rendererErrorStart>=0&&rendererErrorEnd>rendererErrorStart,'renderer error formatter is present for locale contract coverage');
+  const modelControlsStart=rendererSource.indexOf('async function renderPiModelControls');
+  const loadingStatusIndex=rendererSource.indexOf('target.append(status)',modelControlsStart);
+  const modelRequestIndex=rendererSource.indexOf("api.invoke('piModels')",modelControlsStart);
+  assert.ok(modelControlsStart>=0&&loadingStatusIndex>modelControlsStart&&loadingStatusIndex<modelRequestIndex,'model loading status is visible before the model catalog request starts');
   for(const {language,marker,expected} of [
     {language:'zh-CN',marker:'secure-storage-unavailable',expected:'系统安全存储当前不可用'},
     {language:'en-US',marker:'secure-storage-unavailable',expected:'Secure system storage is unavailable'},
+    {language:'zh-CN',marker:'secure-storage-timeout',expected:'系统安全存储在限定时间内未响应'},
+    {language:'en-US',marker:'secure-storage-timeout',expected:'Secure system storage did not respond in time'},
     {language:'zh-CN',marker:'secure-storage-provider-unverified',expected:'Linux 当前无法确认系统密码管理器已保护账号授权'},
     {language:'en-US',marker:'secure-storage-provider-unverified',expected:'Linux could not confirm that the system password manager protects this credential'},
     {language:'zh-CN',marker:'secure-storage-response-invalid',expected:'系统安全存储返回了无效响应'},
@@ -36,9 +42,36 @@ const safeStorage=createFakeSafeStorage();
     context.window.corvidI18n.setLocale(language);
     context.extensionMessages=context.window.corvidI18n;
     vm.runInNewContext(rendererSource.slice(rendererErrorStart,rendererErrorEnd),context);
-    assert.ok(context.userFacingAgentError({message:`[[corvid-error:${marker}]] provider tag rejected`}).startsWith(expected),`${language} localizes ${marker} before it reaches the UI`);
+    const wrappedMessage=`Error invoking remote method 'shell-action': Error: [[corvid-error:${marker}]] provider tag rejected`;
+    const localizedError=context.userFacingAgentError({message:wrappedMessage});
+    assert.ok(localizedError.startsWith(expected),`${language} localizes wrapped ${marker} errors before they reach the UI`);
+    if(marker==='secure-storage-timeout') assert.doesNotMatch(localizedError,/解锁|unlock/i,`${language} timeout copy does not assume a locked keychain`);
   }
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-pi-models-'));
+  const timeoutDir = path.join(root, 'safe-storage-timeouts');
+  const waitForever = () => new Promise(() => {});
+  const timeoutStore = createAgentCredentialStore({ dataDir: path.join(timeoutDir, 'availability'), safeStorage: { ...safeStorage, isAsyncEncryptionAvailable: waitForever }, safeStorageTimeoutMs: 20 });
+  await assert.rejects(timeoutStore.list(), error => error.code === 'secure-storage-timeout');
+  const retryMigrationDir = path.join(timeoutDir, 'retry-migration'); fs.mkdirSync(retryMigrationDir, { recursive: true });
+  const retryMigrationPath = path.join(retryMigrationDir, 'agent-credentials.json');
+  const retryMigrationBytes = Buffer.from(JSON.stringify({ schemaVersion: 1, providers: { anthropic: { kind: 'api_key', secret: 'sk-test-retry-migration' } } }));
+  fs.writeFileSync(retryMigrationPath, retryMigrationBytes, { mode: 0o600 });
+  let timeoutMigration = true;
+  const retryMigrationSafeStorage = { ...safeStorage, isAsyncEncryptionAvailable() { if (timeoutMigration) { timeoutMigration = false; return waitForever(); } return Promise.resolve(true); } };
+  const retryMigrationStore = createAgentCredentialStore({ dataDir: retryMigrationDir, safeStorage: retryMigrationSafeStorage, safeStorageTimeoutMs: 20 });
+  await assert.rejects(retryMigrationStore.list(), error => error.code === 'secure-storage-timeout');
+  assert.deepEqual(fs.readFileSync(retryMigrationPath), retryMigrationBytes, 'timed out migration initialization preserves the legacy credential file');
+  assert.deepEqual(await retryMigrationStore.read('anthropic'), { type: 'api_key', key: 'sk-test-retry-migration' }, 'a later store operation retries initialization after secure storage becomes available');
+  assert.equal(JSON.parse(fs.readFileSync(retryMigrationPath, 'utf8')).schemaVersion, 2, 'retry commits the credential migration');
+  const encryptionTimeoutStore = createAgentCredentialStore({ dataDir: path.join(timeoutDir, 'encryption'), safeStorage: { ...safeStorage, encryptStringAsync: waitForever }, safeStorageTimeoutMs: 20 });
+  await assert.rejects(encryptionTimeoutStore.modify('anthropic', () => ({ type: 'api_key', key: 'sk-test-timeout-credential' })), error => error.code === 'secure-storage-timeout');
+  assert.equal(fs.existsSync(path.join(timeoutDir, 'encryption', 'agent-credentials.json')), false, 'an encryption timeout does not create or replace the credential file');
+  const decryptSeed = createAgentCredentialStore({ dataDir: path.join(timeoutDir, 'decryption'), safeStorage });
+  await decryptSeed.modify('anthropic', () => ({ type: 'api_key', key: 'sk-test-decrypt-timeout' }));
+  const encryptedBeforeDecryptTimeout = fs.readFileSync(path.join(timeoutDir, 'decryption', 'agent-credentials.json'));
+  const decryptionTimeoutStore = createAgentCredentialStore({ dataDir: path.join(timeoutDir, 'decryption'), safeStorage: { ...safeStorage, decryptStringAsync: waitForever }, safeStorageTimeoutMs: 20 });
+  await assert.rejects(decryptionTimeoutStore.read('anthropic'), error => error.code === 'secure-storage-timeout');
+  assert.deepEqual(fs.readFileSync(path.join(timeoutDir, 'decryption', 'agent-credentials.json')), encryptedBeforeDecryptTimeout, 'a decryption timeout preserves existing encrypted credentials byte for byte');
   const dataDir = path.join(root, 'corvid');
   const agentDir = path.join(root, 'pi-agent');
   fs.mkdirSync(agentDir, { recursive: true });

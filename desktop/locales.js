@@ -442,6 +442,7 @@
       extensionPopupUnavailable: '扩展弹窗当前不可用',
       extensionPopupFailed: '无法打开扩展弹窗，请检查扩展状态后重试。',
       secureStorageUnavailable: '系统安全存储当前不可用，现有账号授权和文件已保留。请检查并解锁系统钥匙串或密码管理器后重试。',
+      secureStorageTimeout: '系统安全存储在限定时间内未响应。现有账号授权和文件已保留；请稍后重试。',
       credentialStorageResponseInvalid: '系统安全存储返回了无效响应。现有账号授权和文件已保留；请检查系统钥匙串或密码管理器后重试。',
       credentialMigrationBackupCleanupFailed: '已验证新凭据，但无法删除旧迁移备份。当前密文与备份均已保留；请检查数据目录权限后重试。',
       credentialFormatUnsupported: '当前凭据文件使用 Corvid 尚不支持的数据版本。现有文件与迁移备份均已保留；请升级到兼容版本后重试。',
@@ -894,6 +895,7 @@
       extensionPopupUnavailable: 'This extension popup is unavailable.',
       extensionPopupFailed: 'Could not open the extension popup. Check the extension and try again.',
       secureStorageUnavailable: 'Secure system storage is unavailable. Existing credentials and files were preserved. Check and unlock the system keychain or password manager, then retry.',
+      secureStorageTimeout: 'Secure system storage did not respond in time. Existing credentials and files were preserved; try again later.',
       credentialStorageResponseInvalid: 'System secure storage returned an invalid response. Existing credentials and files were preserved. Check the system keychain or password manager, then retry.',
       credentialMigrationBackupCleanupFailed: 'The new credential was verified, but the old migration backup could not be removed. The current ciphertext and backup were preserved. Check the data directory permissions, then retry.',
       credentialFormatUnsupported: 'The current credential file uses a Corvid data version this build does not support. Existing files and the migration backup were preserved. Upgrade Corvid to a compatible version, then retry.',
@@ -957,6 +959,7 @@
       if (!match) return null;
       const key = {
         'secure-storage-unavailable': 'secureStorageUnavailable',
+        'secure-storage-timeout': 'secureStorageTimeout',
         'secure-storage-provider-unverified': 'credentialStorageProviderUnavailable',
         'secure-storage-response-invalid': 'credentialStorageResponseInvalid',
         'credential-migration-backup-cleanup-failed': 'credentialMigrationBackupCleanupFailed',
