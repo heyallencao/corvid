@@ -7,6 +7,10 @@
 应用显式使用 `com.heyallencao.corvid` 作为 bundle identifier。Corvid 用户数据仍使用 `~/.corvid`；测试通过 `CORVID_DATA_DIR` 指向临时目录，不依赖安装位置或当前工作目录。
 本轮未包含 Corvid 专属 macOS 图标，因此开发包会使用 Electron 默认图标；品牌图标仍需在面向用户分发前补齐。
 
+## 打包安全配置与验收
+
+electron-builder 为 Electron Framework 写入 Fuse V1：关闭 `RunAsNode`、`NODE_OPTIONS` 和 Node CLI Inspector 入口；打包启动 smoke 使用只绑定 loopback 的 Chromium CDP 连接 renderer，不启用 Node Inspector；启用内嵌 ASAR 完整性校验与 `OnlyLoadAppFromAsar`。保留 `GrantFileProtocolExtraPrivileges` 以支持当前 `file://...app.asar` 桌面壳；关闭该 Fuse 的试验会阻止打包页面加载。Cookie 加密和浏览器 V8 snapshot Fuse 保持 Electron 二进制默认状态；首个安全切片不改变既有 Profile Cookie 存储语义，Corvid 也未打包独立 browser snapshot。macOS arm64/x64 目录包均由 `test:packaged:mac` / `test:packaged:mac:x64` 检查 Fuse 字节、正常启动和隔离副本 ASAR 篡改拒绝；签名包测试跳过篡改副本，因为改写会使外层 Developer ID 签名失效。Fuse 测试限定 macOS，Windows 包不据此推断 Fuse 字节状态。
+
 ## 打包后启动验收
 
 `npm run package:mac:dir` 在 Apple Silicon 主机上构建未签名的 arm64 `.app`；`npm run package:mac:dir:x64` 使用原生 Intel 主机或 Apple Silicon 上的 Rosetta Node 构建未签名的 x64 `.app`。构建前删除同架构路径旧 `.app`，构建失败时清除不完整产物，避免旧包被误当作本次结果。需要 Developer ID 签名时，设置 `CORVID_MAC_SIGNING_IDENTITY` 后运行 `npm run package:mac:signed:dir`；签名模式没有可用身份会在改写产物前失败。随后运行 `npm run test:packaged:mac` 做开发包启动检查，或运行 `npm run test:packaged:signed:mac` 验证 Developer ID 签名、从包内启动真实 Electron，并在 packaged app 中测试系统安全存储密钥写入、重启读取和登出删除。
