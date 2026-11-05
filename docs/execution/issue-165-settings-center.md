@@ -14,6 +14,14 @@
 - 从设置打开模型管理或 Agent 授权前，检查待保存的搜索、启动、新标签与下载偏好；用户可继续编辑、放弃后继续，或保存后继续。继续编辑恢复原分类、草稿和焦点；Escape 返回设置，不隐式丢弃。必填项无效时“保存并继续”先恢复设置并提示校验错误，“放弃并继续”仍可离开。语言与主题即时生效并保存，双语界面明确说明 Cancel 不回滚这些即时项。
 - 700×420 窄窗会压缩设置留白，确保下载路径及文件夹操作首屏可见；其它下载选项继续在独立内容区滚动查看，保存/取消固定可见。
 
+## D25 子项进度
+
+- **D25-1（已合并）**：PR #172 设置中心与 Issue #285 草稿离开语义。
+- **D25-2（本轮验收）**：macOS arm64 开发版真实下载目录选择器与保存位置对话框；中英文标题、取消/确认、偏好持久化和重启恢复已通过人工验收，证据见[QA 记录](../qa/issue-165-native-dialogs.md)。
+- **后续**：全产品键盘/VoiceOver、Windows 和打包版验收仍待处理；Linux 不属于首个大版本支持范围。
+
+Issue #165 保持开放；本子项不代表完整设置中心验收完成。
+
 ## 数据与边界
 
 `browser-preferences.json` 当前格式为 `{ "schemaVersion": 2, "theme": "system|light|dark", "startupBehavior": "restore|new-tab", "newTabBehavior": "home|blank", "downloadDirectory": "", "askWhereToSave": true }`，权限 `0600`，通过临时文件与 rename 原子替换。schemaVersion 1 仅含主题时迁移其主题，其余字段回退为现有体验默认值。下载目录必须是可访问的绝对目录；验证错误按当前 Corvid locale 显示。偏好不包含 Profile ID，也不更改网页自身配色。
@@ -26,11 +34,11 @@
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 已通过，覆盖 schemaVersion 1 迁移、设置保存/重启、空白页注入开关、启动新标签复用、下载取消与自动保存、失效目录中英文错误，以及 700×420 设置布局；更新的中英文截图见[视觉检查记录](../qa/ui-visual-check.md)。
 - `env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-site-e2e.cjs` 已通过：空白页禁用站点操作；活动 HTTP(S) 来源显示与操作启用；合成通知权限获准后可在设置中取消审查并保留授权、确认撤销；取消站点数据清理保持 fixture localStorage，确认后清除且不改变独立权限；确认默认选择为非破坏项；语言切换后动态来源仍正确。Electron 权限/清理确认框用替身控制结果。测试截图在 700×420 需滚动内容区，并验证范围说明、当前来源、两个操作按钮及固定底部动作可完整显示。
 - 2026-11-04 增量：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_CAPTURE_QA_SCREENSHOTS=1 node tests/settings-preferences-e2e.cjs` 通过，增加低高度下载控件首屏几何断言、键盘可见焦点、保留/放弃/保存草稿路径及模型/Agent 管理导航。截图与视觉限制见 [设置中心 QA](../qa/ui-visual-check.md#issue-285-离开设置时的草稿与窄窗首屏2026-11-04)。该脚本由本地 HTTP fixture、临时数据目录和本机 Electron 驱动，没有登录 OAuth 或发起模型请求。
-- 系统文件夹/保存对话框由测试替身覆盖；真实桌面对话框还需单独验收。
+- 自动化测试中的系统文件夹/保存对话框由测试替身覆盖；真实 macOS 下载文件夹选择器与保存位置对话框已有独立人工记录。测试替身仍不能证明其它原生系统对话框或跨平台行为。
 
 ## 尚未覆盖
 
-启动、新标签、下载偏好和设置中心的站点权限/数据操作已由 macOS 隔离 Electron 与本地 HTTP fixture 验收；权限请求与清理确认结果使用替身，真实系统对话框仍未覆盖。屏幕阅读器、全产品键盘审计、Windows/Linux 和打包版也未覆盖。Issue #165 保持开放，待这些边界补齐后再判断完成。
+启动、新标签、下载偏好和设置中心的站点权限/数据操作已由 macOS 隔离 Electron 与本地 HTTP fixture 验收；下载文件夹选择器与下载保存位置由独立人工验收覆盖。站点权限/清理确认结果仍使用替身；屏幕阅读器、全产品键盘审计、Windows 与打包版尚未覆盖。Linux 不在首个大版本范围。Issue #165 保持开放，待剩余边界补齐后再判断完成。
 
 ## UI/UE 参考
 

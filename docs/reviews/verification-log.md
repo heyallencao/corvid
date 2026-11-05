@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-06 Issue #165 D25-2 macOS 原生下载对话框
+
+- 环境：macOS 26.5.1 arm64、Node.js v24.22.1、Electron 45.2.1 开发版；独立 worktree、临时 `CORVID_DATA_DIR`、合成目标目录和本地 `file://` 下载夹具。
+- 人工验收：中英文真实目录选择器均可打开；取消保持原目录，确认后路径写入设置，`browser-preferences.json` 为 `0600` 且关闭/重启后路径和语言恢复。中英文原生下载保存对话框取消均不生成目标文件，确认后仅写入隔离目标目录中的预期文本夹具。详细步骤及观察见[QA 记录](../qa/issue-165-native-dialogs.md)。
+- 隐私边界：空目录偏好首次打开系统默认 Downloads 时，因原生选择器会枚举宿主目录项而立即取消；未打开或处理其文件，也未保留该次选择器截图。后续只在隔离目录中继续。
+- 限制：未覆盖 Windows、签名打包版、VoiceOver、其它原生确认框或跨平台呈现；未访问真实网页、用户浏览资料、Provider、模型或 OAuth。
+
 ## 2026-11-06 Release macOS runner 失败复核（Issue #319）
 
 - 改动：macOS `lipo` 的 `x86_64`/`aarch64` 架构名先归一为 Node/Electron 的 `x64`/`arm64` 再断言；手动 Release workflow 的 arm64 全量回归现在允许完整链失败后重跑一次，仍需某一整轮全链成功，不跳过失败项。
