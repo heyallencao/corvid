@@ -1523,3 +1523,12 @@
 - 当前 main 集成：从远端 PR 原 head `0b6fbc7` 正向合并 `origin/main` `fe77898`，保留双方文件内容；通过 `npm test` 纳入现存 `application-menu.test.mjs`、`chrome-import-categories.test.mjs` 与新的 `chrome-import-sqlite.test.mjs`。本次尚未运行合并后的测试，不把候选树中过往定向结果当作此合并 head 的复验。
 - 门禁背景：`fe77898` 主线本机规定全量门禁已在本记录的集成评论中报告为 27/30；browser focus、dialogs alert、uploads chooser 三个失败均同签名复现在 main。PR 当前全量门禁因此仍未取得通过结果，见 Issue #289 与 #18。
 - 限制：此前 SQLite/category Node 合同 7/7 的结果来自不同候选快照；完整 Chrome 导入 E2E 在原生扩展弹窗焦点处未到达新增英文断言，只有设置 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 的导入流程结果为 EXIT 0，跳过原生失焦关闭覆盖。全量门禁和默认原生交互仍需在当前 head 复验；Issue #18 保持开放。未覆盖真实 Chrome 资料、系统钥匙串授权、Windows 打包版。
+## 2026-11-04 disabled 状态一致性 token（Issue #210 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-210-disabled-token`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+- 复核更正：issue 基线（`771c9bb`）的「灰面 hover 色 6 种」在当前 main 已全部 token 化（--surface-hover/--tab-hover/--tab-close-hover/--accent-soft/--accent-solid-hover 等，无裸 hex hover 背景），该子项无剩余工作。实际剩余债务：disabled 同语义三值（:170 全局 .46 / :387 队列 .5 / :719 对话框 .55）+ cursor 两值（default / not-allowed）。
+- 改动：`:root` 新增 `--disabled-opacity: .55`；全局 `button:disabled` 改用 token 并统一 `cursor: not-allowed`；队列规则（.5）收敛后冗余删除；对话框规则改用 token（值不变）。`.tab.dragging` 的 .55 为拖拽反馈语义，与 disabled 无关，保留字面值。
+- 探针矩阵：表单外注入 disabled 按钮（全局规则）0.46/default → 0.55/not-allowed（预期变更）；chrome-import 确认按钮 opacity 0.55 不变、cursor default → not-allowed（预期变更）；categories fieldset 与 enabled 对照不受影响。
+- 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
+- E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
