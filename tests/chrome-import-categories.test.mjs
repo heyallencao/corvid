@@ -29,7 +29,7 @@ test('Chrome 数据预览按类别隔离读取错误',async()=>withChromeProfile
   const selected=chromeImport.readSelectedProfile(root,'Default',['bookmarks']);
   assert.equal(selected.bookmarks.length,1);
   assert.deepEqual(selected.history,[],'unselected History must not be opened');
-  assert.throws(()=>chromeImport.readSelectedProfile(root,'Default',['history']),/数据库/,'selecting the unreadable category must preserve the original read failure');
+  assert.throws(()=>chromeImport.readSelectedProfile(root,'Default',['history']),error=>error.message==='[[corvid-error:chrome-sqlite-corrupt]]','selecting the unreadable category must preserve the stable corruption error');
 }));
 
 test('仅导入扩展时不会读取损坏的书签或历史数据库',async()=>withChromeProfile(({root,profile})=>{
