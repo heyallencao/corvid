@@ -1548,6 +1548,10 @@
 - 复核背景：当前 main 的 `:root` 之外裸 hex 仅剩 `#fff` ×4（issue 基线的 54 值已被合并 PR 波次基本清偿），本切片完成「裸 hex 归并」收尾。
 - 验证：注入 renderer 同构节点读取 `.pi-primary-action`/`.workspace-empty-action` 计算色——main 与分支一致；注入按钮元素截图逐字节相同；`interaction-states-e2e.cjs`、`dialogs-ui-e2e.cjs` 通过；`git diff --check` 通过。
 - 边界：工作台整体截图含堆叠的 disabled 子切片预期差异，隔离验证以注入节点为准；未覆盖 VoiceOver/其他平台/打包版。
+
+- 2026-11-05 Pi 自定义端点 E2E accessible name 同步（Issue #305，PR #308 集成重放）：基于 origin/main 合并后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-custom-endpoint-e2e.cjs` 通过。测试按当前本地化目录按钮名称“管理模型”打开设置并等待 `#pi-model-settings` 可见，完成合成端点发现、凭据存储、模型选择和本地 Agent 请求；截图由 `CORVID_PI_MODEL_QA_SCREENSHOT_PATH` 生成，状态为中文模型目录/自定义端点空表单、逻辑窗口约 1280×811（PNG 2560×1622），端点地址为本地 fixture，无密钥或用户数据。原作者记录 SHA-256 `44bc9dd24a693d074b14436048e2490a73333ef8a73652324370ec45ef786079`（e46cc39 组合门禁 EXIT 0）。未调用真实 Provider/OAuth，未验证 Windows 或打包版。
+
+- 2026-11-05 Agent Room 面板 E2E 断言同步（Issue #304，PR #309 集成重放）：基于最新 main 合并后定向验证 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs`；测试断言与现行面板对比度/可访问名称一致。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0；截图 SHA-256 见 PR 描述。未验证 Windows、打包版或读屏实际播报。
 ## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
 
 - 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
