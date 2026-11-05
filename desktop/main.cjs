@@ -145,13 +145,28 @@ let panelOpen = false;
 const selectedChromeSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
+let hangChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_ONCE==='1';
 let failChromeCookieSetNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'';
 let failChromeCookieRemoveNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_REMOVE_FAIL_NAME:'';
 function normalizeCookieDomain(domain){return String(domain||'').toLowerCase().replace(/^\./,'').replace(/\.$/,'');}
+function chromeCookieStoreTimeoutMs(){
+  const testTimeout=process.env.CORVID_TEST_MODE==='1'?Number(process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_MS):0;
+  return Number.isFinite(testTimeout)&&testTimeout>=100&&testTimeout<=30000?testTimeout:30000;
+}
+async function awaitChromeCookieStoreOperation(operation){
+  let timer;
+  try{
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_,reject)=>{timer=setTimeout(()=>{const error=new Error('CORVID_COOKIE_PERSISTENCE_TIMEOUT');error.code='CORVID_COOKIE_PERSISTENCE_TIMEOUT';reject(error);},chromeCookieStoreTimeoutMs());}),
+    ]);
+  }finally{clearTimeout(timer);}
+}
 async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
-  await destinationSession.cookies.flushStore();
+  if(hangChromeCookieFlushForTest){hangChromeCookieFlushForTest=false;await awaitChromeCookieStoreOperation(()=>new Promise(()=>{}));}
+  await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.flushStore());
 }
 function verifyChromeCookiesPersisted(destinationSession,addedCookies){
   const persistentCookies=addedCookies.filter(({cookie})=>Number.isFinite(cookie.expirationDate));
@@ -1055,8 +1070,8 @@ async function dispatch(method, args = {}, fromApi = false) {
           if(previous.length){failures.push('为保护目标 Profile 原有 Cookie，跳过无法按路径安全执行的删除回滚');continue;}
           try{
             if(failChromeCookieRemoveNameForTest===cookie.name){failChromeCookieRemoveNameForTest='';throw new Error('测试注入：Chrome Cookie 回滚删除失败');}
-            await destinationSession.cookies.remove(cookie.url,cookie.name);
-          }catch{failures.push('删除本次新增 Cookie');}
+            await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.remove(cookie.url,cookie.name));
+          }catch(error){if(error?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT')throw error;failures.push('删除本次新增 Cookie');}
         }
         if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}
         if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。为保护目标 Profile 原有 Cookie，本次跳过无法按路径安全执行的删除回滚；本次导入的 Cookie 可能仍保留在目标 Profile。请在当前对话框中重试；关闭对话框或重启 Corvid 后，请重新选择同一 Chrome 来源和目标 Profile，再次点击“导入”以补写持久化结果。`);
@@ -1066,7 +1081,7 @@ async function dispatch(method, args = {}, fromApi = false) {
           const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId),{consent:args.cookieConsent});
           cookieResult.unsupported=sourceCookies.unsupported;
           for(const cookie of sourceCookies.cookies){
-            const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
+            const existing=await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.get({url:cookie.url,name:cookie.name}));
             // Electron omits the leading dot for HostOnly cookies, while Chrome Domain cookies include it.
             const targetDomain=normalizeCookieDomain(cookie.sourceDomain);
             if(existing.some(item=>normalizeCookieDomain(item.domain)===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
@@ -1074,8 +1089,8 @@ async function dispatch(method, args = {}, fromApi = false) {
             if(!hostOnly)cookieDetails.domain=sourceDomain;
             try{
               if(failChromeCookieSetNameForTest===cookie.name){failChromeCookieSetNameForTest='';throw new Error('测试注入：Chrome Cookie 单项写入失败');}
-              await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;
-            }catch{cookieResult.failed++;}
+              await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.set(cookieDetails));addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;
+            }catch(error){if(error?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT')throw error;cookieResult.failed++;}
           }
           await flushChromeCookies(destinationSession);
           verifyChromeCookiesPersisted(destinationSession,addedCookies);
@@ -1103,7 +1118,7 @@ async function dispatch(method, args = {}, fromApi = false) {
         if(!cookieResult.failed)selectedChromeSources.delete(args.sourceToken);
         return {...result,cookies:cookieResult,extensions,profileId};
       }catch(error){
-        try{await rollbackCookies();}catch(rollbackError){throw new Error(`${error.message}；${rollbackError.message}`);}
+        try{await rollbackCookies();}catch(rollbackError){const combined=new Error(`${error.message}；${rollbackError.message}`);combined.code=error.code||rollbackError.code;throw combined;}
         throw error;
       }
     }

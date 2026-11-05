@@ -1687,3 +1687,11 @@
 - 对照：在 UI 测试启动签名包后、首次打开模型设置前加入 2 秒等待；对 `/private/tmp/corvid-issue110-signed-package/dist/mac-arm64/Corvid.app` 执行深度签名验证，通过，Identifier 为 `com.heyallencao.corvid`、TeamIdentifier `37HP972H37`。隔离真实 Electron E2E 仍在同一个模型设置阶段报告 `safeStorage` 15 秒超时，未写入合成凭据；随后移除临时等待代码并确认无 Corvid/Electron 遗留进程。
 - 结论：单纯将首次 UI 调用推迟 2 秒不能解决当前签名包超时；这一结果不证明具体根因。前述上游 issue 的 v42 复现与 Corvid v45.2.1 版本不完全相同，也没有证据把当前故障归因到 Electron 上游缺陷。Developer ID 相关 API/Keychain 响应路径仍待独立定位。该轮运行的是旧截图包，画面文案尚未包含本轮已合并的超时提示调整。
 - 边界：本轮未向用户请求钥匙串操作。已完成真实签名包启动和 API 等待观察，但凭据往返仍未通过，Issue #110 保持开放、PR #157 保持草稿。
+
+## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
+
+- 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
+- 定向验收：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` 通过；覆盖 30 秒 Cookie 操作上限（测试中缩至 1 秒）、未确定状态和同源重试/重启，以及隔离 APFS 实际写至 `ENOSPC`（245 MiB），满盘时旧 Cookie 可读，释放空间后 SQLite `quick_check` 为 `ok`，同源 513 条持久 Cookie 重试并再次重启后仍保留。
+- 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
+- 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
+- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
