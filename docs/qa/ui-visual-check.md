@@ -16,6 +16,15 @@
 - 验证：`CORVID_INTERACTION_QA_DIR=docs/qa/screenshots/issue-216 env -u ELECTRON_RUN_AS_NODE node tests/interaction-states-e2e.cjs` 最终 EXIT 0，覆盖浅/深主题、selected/hover/active、细滚动条、选区与 reduced-motion。E2E 使用临时数据目录并在退出时清理；Electron 进程与临时依赖链接已退出/移除。不访问真实网站、用户资料、模型或 OAuth。
 - 未覆盖：浏览器 renderer 的截图不包含上层 `WebContentsView` 合成像素；未测试原生 macOS overlay scrollbar 的实际显示、Windows/Linux、打包版、真实鼠标硬件、屏幕阅读器及用户自定义高对比度主题；Kobra 行为也只覆盖静态目录画面。
 
+## 2026-11-04 空间与导航选中态统一（Issue #215）
+
+- 问题与修正：最新主线已经由 PR #243 让侧栏选中项在 hover 时保持原状态，但当前空间仍使用中性文字/灰底，当前书签入口使用强调文字/强调底色/内侧指示线。隔离 Electron 基线断言在浅色主题实测 `rgb(48, 55, 80)` 与 `rgb(53, 73, 185)` 文字色不一致。修正后，当前空间沿用现有侧栏选中 token 与 2px 内侧指示线，空间圆点仍保留为空间身份标记；没有新增品牌色或改变导航行为。
+- Corvid 环境与截图：macOS arm64、Electron 45.2.1、Node.js v24.22.1；临时 `CORVID_DATA_DIR`、`about:blank` 合成初始 Room/书签面板、shell viewport 1024×700 CSS px（PNG 2048×1400，Retina 2×）；未加载网页主体、用户浏览数据或账号信息。修复前浅/深主题截图重用 PR #243 的基线图，提交来源 `48cfea6`：[浅色修复前](screenshots/issue-215/issue-215-selection-light-before-1024x700.png)，SHA-256 `504e97eb5d5149f136d3b0c6159b74ed116f0dd9f6225cf76d365243968b45f0`；[深色修复前](screenshots/issue-215/issue-215-selection-dark-before-1024x700.png)，SHA-256 `ec9586cee31b05edeb83c9c4bfaf50cf8f3e8273b46e189b6101cc789205c316`。修复后浅色[当前空间与书签同时选中](screenshots/issue-215/issue-215-selection-light-after-1024x700.png)，SHA-256 `ea2a87992725bb0faeaf544abe3a8b652590835feaa224894a2c35fa0e6275b8`；深色[当前空间与书签同时选中](screenshots/issue-215/issue-215-selection-dark-after-1024x700.png)，SHA-256 `4f310051d103300a205e901aec1773a07abd46191891a8baf94d873e84ff00c0`。
+- 运行态验证：`interaction-states-e2e.cjs` 在 1024×700 断言当前空间与当前侧栏入口颜色、底色和指示线相同；浅/深主题选中文字对比度分别为 6.49:1、8.04:1；当前空间和侧栏选中项在 hover 时保持已选样式。随后在 704×420 紧凑视口重做两主题样式相等断言。测试保持 `about:blank`，未调用模型、OAuth 或网络服务。截图由 Electron renderer 产生，不包含原生标题栏或网页 `WebContentsView` 合成层。
+- UI/UE 参考与 REA：Kobra `https://kobra.systems/components/input-otp`，2026-11-04，1280×850，REA controlled replay Evidence `ev_f172ddf847c4c72b6741c44d18c37ef6356fdfd5b8a4be3b5c1c6a086ae0fc01`，截图 SHA-256 `0661c85e09182ee4980f9638a0c459b22aad0e7ab543dab7a1c7ff71fc0a1f30`。直接观察：当前组件目录项以绿色圆点和文字区别于中性未选项；页面属于组件文档，不是浏览器。没有点击或 hover Kobra 导航，因此不推断其 hover、pressed、键盘或滚动行为。只借鉴“当前项应有稳定且克制的状态线索”，颜色和指示线沿用 Corvid 自有 token；没有复制代码、图标或素材。Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描。
+- Impeccable detector：对 `desktop/styles.css` 运行一次检测，退出码 2；只报告既有 `side-tab` warnings（第 442、581 行），均与本次 Room/导航选择器无关。没有把 detector 结果描述为全站通过。
+- 未覆盖：没有测试用户自建长名称空间、Windows/Linux、打包版、VoiceOver/其他读屏、系统高对比度主题、原生窗口合成或网页画布截图。Issue #215 还包括标题栏、整体品牌/主题与 Agent 面板整合，本切片只统一当前空间和侧栏页面的选中语言，Issue 继续开放。
+
 
 ## 2026-11-04 书签即时反馈与窄窗布局（Issue #195）
 
@@ -109,37 +118,7 @@
 - REA 覆盖：尝试使用 REA `observe_native_ui` 读取同一隔离窗口，但 `native-macos` provider 报 `capability_unavailable`：进程未提供可验证的启动时间，无法完成 PID 防复用校验。因此本条原生菜单行为来自 `System Events`、Corvid 隔离控制接口和单独菜单截图，不标记为 REA 观察，也不把 provider 失败当成产品行为。
 - 修复后直接复核（2026-11-03 21:51 Asia/Shanghai）：隔离 Electron 45.2.1、临时 `CORVID_DATA_DIR`，macOS `System Events` 分别选择“窗口 1”和“窗口 2”；读取到窗口 1 时 `AXMenuItemMarkChar=✓` 且窗口 2 无勾选，反向切换后窗口 2 为 `✓` 且窗口 1 无勾选。Corvid `/windows` 焦点 ID 相应从 `legacy-window` 切到第二窗口 UUID，再切回 `legacy-window`。这是原生 AX 菜单状态与控制 API 的直接观察，不是 REA Evidence，也不验证像素/VoiceOver。人工诊断脚本结束时测试 helper 超时并终止了本轮自启 Electron；状态读取已在退出前完成，退出后确认无残留 Electron 进程。
 - 自动化复核：`node tests/application-menu.test.mjs` 3/3；`env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs` 通过（隔离真实 Electron）；`env -u ELECTRON_RUN_AS_NODE node tests/browser-shortcuts-e2e.cjs` 通过。菜单 E2E 的系统菜单动作以 Electron callback 驱动，不将其作为物理鼠标输入证据。全套 `npm test`、VoiceOver、Windows/Linux、打包版与原生像素对照尚未覆盖。
-- 参考关系：网页菜单参考 EasyUI OriginDropdown 的可读层级与状态语义，具体页面、Evidence ID 与移植边界见[Issue #162 执行记录](../execution/issue-162-application-menu.md)。原生菜单依平台行为实现，不复制网页皮肤。
-## 2026-11-03 设置中心首个切片（Issue #165）
-
-- 环境与状态：macOS 本机真实 Electron，窗口分别为 1024×700 与 700×420 CSS 像素，使用隔离 `CORVID_DATA_DIR` 和 `about:blank`，没有个人网页、账号或凭据。前后截图：旧长表单[中文 1024×700](screenshots/corvid-localization-zh-CN-settings-1024x700.png)，新设置中心[中文 1024×700](screenshots/issue-165-settings-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-en-700x420.png)。新图由本轮隔离 E2E 生成，供 PR 审阅。
-- 视觉判断：常规窗口采用窄分类导航加单一内容区，标题、作用范围标签与说明形成层级，底部操作固定；主题沿用 Corvid 既有表面与文字 token，未增加装饰动画。窄窗将分类导航移到内容上方，并仅滚动设置内容，保留保存/取消操作可见。验收重点为 700×420 下导航不挤压表单、较长的 Profile/站点内容可滚动且操作区不被遮挡；英文长文案与当前网站无可用来源状态也需检查。
-- UI/UE 参考与 REA 证据：EasyUI `https://easyui.site/` 首页，Chromium 156.0.8078.79，1280×900，`en-US`、浅色、减少动态效果；REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`，观察日期 2026-11-03（采集时刻未保留）。**直接观察**：AX 树显示独立命名的主导航、Home/Components/Sponsors 导航项、独立组件搜索与主题切换按钮，以及组件预览加载中的 `status`。**静态证据**：本轮未检查其站点源码或脚本。**推断**：将导航、搜索和内容状态明确命名有助于设置页定位；这不证明该页面具备设置交互，也不构成三栏布局要求。**未知与限制**：没有操作控件，未检查键盘路径、窄窗、焦点、错误/空态或过渡行为；页面预览状态为加载中，不能据此评价完整组件行为。Corvid 保持自己的双栏结构、状态文案和视觉 token，未复制组件、样式或素材。
-- 补充参考：Aceternity UI Grouped Sidebar（`https://ui.aceternity.com/blocks/sidebars/grouped-sidebar`），REA controlled replay，Evidence `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb`，观察日期 2026-11-04；Chromium 156.0.8078.79、临时 profile、1280×900、浅色、`en-US`、减少动态效果。**直接观察**：可访问性树列出主导航及 Content/Team/Settings 分组，Settings 下显示 General/Security/API Keys 子项；页面组件说明描述展开状态、持久化和宽/窄侧栏尺寸。**静态证据**：未检查源码。**推断**：稳定的分区命名与明确选中状态适用于设置分类定位，因此 Corvid 保留单层分类导航和选中反馈；不采用可折叠分组或尺寸。**未知与限制**：没有点击或键盘操作该组件；REA 未验证持久化声明、动画、焦点、窄窗或错误态。参考站点只提供交互灵感，未复制代码、样式或素材。
-- 范围与限制：本切片只重组已经存在的语言、搜索、Profile 导入/扩展、Agent 连接及站点权限/数据入口，并新增应用级主题选择；启动/新标签和下载偏好仍未实现。截图只证明上述隔离数据与两个窗口尺寸下的视觉状态，不证明站点操作完整往返、全产品键盘流程、屏幕阅读器或 Windows/Linux/打包版表现。
-
-### Issue #165 启动与下载偏好增量
-
-- 直接观察：macOS 本机 Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture；截图在 2026-11-03 由 `tests/settings-preferences-e2e.cjs` 生成，窗口为 1024×700 与 700×420 CSS px，界面分别为 zh-CN/en，无个人网页、账号或凭据。常规窗截图展示常规设置；窄窗截图展示下载分类。[中文 1024×700](screenshots/issue-165-settings-preferences-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-preferences-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-preferences-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-preferences-en-700x420.png)。截图采集时刻未留存。
-- 视觉调整：窄窗分类从横向滚动改为三列两行网格，让“Agent 与连接 / Agent and connections”等六个入口完整可见；E2E 直接检查 700px 窄窗下无横向溢出、所有按钮边界均在导航区域内。类别选择只显示当前设置分区，滚动回到该分区顶部，避免其他类别末尾内容混入当前视图。主题色、圆角、表面与固定保存操作沿用 Corvid 现有样式，不增加装饰动画。
-- UI/UE 参考与 REA：仍使用 EasyUI 首页信息分区参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`；站点、直接观察、静态证据、推断与未知边界已详述在本节上方“设置中心首个切片”。新增窄窗导航判断来自 Corvid 自身双语截图与 DOM 几何断言，不把 EasyUI 首页推断为设置页或三列导航设计规范；没有复制代码、样式或素材。
-- 未知与限制：局部 Electron fixture 证明设置分类和表单当前截图状态，不代表屏幕阅读器播报、完整键盘操作、真实系统文件夹/保存对话框或 Windows/Linux/打包版表现。后续窄窗首屏与滚动边界在下方 2026-11-04 复核中补充。
-
-### Issue #285 离开设置时的草稿与窄窗首屏（2026-11-04）
-
-- 直接观察：解锁后的本机 Corvid 原生 Electron 窗口中，通过 CUA 查看设置中心截图及可访问性树，确认六个分类、表单与固定保存/取消操作均可访问；截图未作为可分发证据保留。另一次 REA `observe_native_ui` 对隔离 Electron 窗口返回 `capability_unavailable`，原因是 provider 无法提供可验证的进程启动时间，故不把该尝试标为 REA 原生观察。运行态 E2E 截图来自隔离临时 `CORVID_DATA_DIR`、本地 HTTP fixture 与 `about:blank`，没有用户网页或 Profile 数据。
-- 直接观察与修复：旧 700×420 截图的下载文件夹输入框下方操作被固定保存区遮住。缩短低高度设置留白并提高可用对话框高度后，下载路径与“更改文件夹/恢复系统默认”操作均在首屏完整可见；路径使用单行省略规则，保存/取消继续固定在底部。新中文[下载首屏](screenshots/issue-165-settings-preferences-zh-CN-700x420.png)，英文[下载首屏](screenshots/issue-165-settings-preferences-en-700x420.png)，窗口逻辑尺寸 700×420 CSS px、PNG 1408×776；SHA-256 分别为 `9c33d3fa475e7de7ade3747874fa48fa96daf1485dcbc4d6a2ff2cdb8c729f4d`、`5dcabb2ee047554517004a1dc2c59644a9c9bc86938b9a66b673f8fd0455d9cf`。下载前询问与提示需在内容区滚动后查看。
-- 未保存决策：从有草稿的设置跳转模型管理或 Agent 授权时显示三种明确操作。中文[窄窗决策框](screenshots/issue-165-settings-unsaved-zh-CN-700x420.png)，SHA-256 `a24be4d6e170ff62905f455995d90315d6a2d0f0da4f37e17121e8ca2415cfc8`。E2E 直接验证各按钮留在视口内、继续编辑恢复草稿/分类/焦点、保存后再进入模型管理、放弃后进入 Agent 授权且不提交草稿；必填搜索模板为空时保存会回到设置提示校验错误，放弃仍可离开。语言和主题即时生效并保存的边界由双语文案说明。
-- 键盘：真实 Electron E2E 以 Tab 从首分类移至下一分类，并断言 `:focus-visible` 与实线轮廓；设置离开决策的 Escape 不会丢弃操作，而是返回当前设置。没有完成全产品键盘审计或屏幕阅读器实播。
-- 视觉判断与参考：保持 Corvid 既有边框、强调色、固定动作区和克制表面；窄窗压缩优先让文件夹路径与常用按钮同屏，而把次级询问选项留在滚动区。分类层级参考沿用 EasyUI 首页 REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755` 与 Aceternity Grouped Sidebar `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb` 的有限直接观察；未重新扫描市场站点，也不将其当作设置页验收要求。没有复制代码、样式或素材。
-- 未覆盖：REA 原生窗口观察不可用；CUA 原生截图未保存。已保存截图为隔离 Electron/Playwright 运行态的 renderer 截图，不证明 macOS 原生文件夹选择器、Windows/Linux、签名包、VoiceOver 或网页 WebContentsView 合成像素。
-
-### Issue #165 当前网站分类入口增量
-
-- 直接观察：2026-11-04（Asia/Shanghai，本轮 Electron E2E 生成截图，脚本未保留精确采集时刻），Corvid macOS Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 `127.0.0.1` fixture；当前网站设置分类显示合成来源及“管理站点权限 / 清理此站点数据”按钮。常规窗 1024×700 可同时显示来源和操作；700×420 下需滚动设置内容区，截图刻意滚到来源与操作可见的位置。中文[1024×700](screenshots/issue-165-settings-site-zh-CN-1024x700.png)、[700×420](screenshots/issue-165-settings-site-zh-CN-700x420.png)，英文[1024×700](screenshots/issue-165-settings-site-en-1024x700.png)、[700×420](screenshots/issue-165-settings-site-en-700x420.png)。页面仅显示本地合成内容，没有个人浏览数据。
-- 视觉判断：当前网站级标签与明确来源行让清理范围可辨；两个站点操作平级放置，取消和保存仍固定在对话框底部。700×420 需要滚动才能读到来源并操作；当前内容区保留独立滚动，自动化验证并截图确认范围说明、当前来源和两个操作按钮可同时完整显示，保存/取消仍固定可见。
-- UI/UE 参考与 REA：延用 EasyUI 首页有限的分区/命名状态参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`（站点 `https://easyui.site/`、首页；2026-11-03；具体观察限制见本节上方“设置中心首个切片”）。本轮没有重新访问参考页或创建新 REA Evidence；站点分类、焦点、滚动与状态只依据 Corvid 隔离运行态直接观察。EasyUI 没有被当作浏览器权限或清理流程证据，也未复制其代码/素材。
-- 未知与限制：通知权限请求与站点清理确认由 Electron `dialog.showMessageBox` 替身驱动；本地 fixture 已通过设置分类完成授权后保留/撤销检查，不证明原生系统权限/确认对话框的焦点与像素表现，也未覆盖屏幕阅读器、真实鼠标、Windows/Linux、打包版或全产品键盘顺序。
+- 参考关系：网页菜单参考 EasyUI OriginDropdown 的可读层级与状态语义，具体页面、Evidence ID 与移植边界见[Issue #162 执行记录](https://github.com/heyallencao/corvid/issues/162)。原生菜单依平台行为实现，不复制网页皮肤。
 
 ## 2026-11-03 全屏菜单桌面状态（Issue #141）
 
@@ -366,6 +345,15 @@
 - 操作与结果：鼠标右键、`Shift+F10` 与 ContextMenu 键均可打开菜单；焦点落在首项，方向键循环，Home/End 定位首尾；Escape 关闭后返回原标签；Tab 与 Shift+Tab 关闭菜单并把焦点移至相邻 shell 控件。打开态键盘截图 SHA-256 `0002435ac8fa46a60ccd24a8d09ea7b857ba95951b911465bd1949af41fcd70c`，本机临时留存并已检查首项焦点环和菜单位置。
 - 限制：仅 macOS、本地 fixture 和应用内菜单；没有 VoiceOver/屏幕阅读器验收，截图不包含独立 `WebContentsView` 的网页正文，也不代表原生系统右键菜单。
 
+## 2026-11-03 最小高度下 Corvid Agent 工作台空间复核（Issue #16）
+
+- 环境：本机 macOS，Electron 开发构建，独立 `CORVID_DATA_DIR=/tmp/corvid-heartbeat-20261103-1159`；首次 Chrome 资料导入提示选择“稍后”后使用 `about:blank`；没有读取或导入用户浏览器资料，也没有调用真实模型或 OAuth。通过 CUA 观察 AX 与截图，不是 REA Evidence。窗口最小边界来自 `desktop/main.cjs` 当前 `setMinimumSize(704, 420)`；截图为约 704×420 CSS px 对应的 1408×840 图像像素，CSS 尺寸未从运行时 API 单独读取。
+- 操作：先在最小高度观察默认浏览壳，再打开“Agent 工作区”并进入“Corvid Agent”。随后仅拉高同一隔离窗口，检查高度增加后的对照状态；不创建任务、不提交页面上下文。
+- 观察：420 CSS px 短窗下，64px 侧栏图标、标签/地址栏、关闭工作台、模型选择与“未连接/连接账号”状态仍可见；但 Agent 欢迎标题和说明被下方固定输入表单挤压，截图只露出文字局部，页面绑定提示/输入/模型区竞争同一纵向空间。`#library` 使用 `overflow:hidden`，Pi 工作台内容区为纵向 flex，任务/欢迎区与表单分别分配剩余高度；`@media (max-height:480px)` 把 `#pi-task-form` 的 `max-height` 提到 92%，而表单内部滚动，故内容未彻底丢失但首屏层级不完整。拉高窗口后，欢迎标题和说明恢复为完整可见。
+- 判断：这是有限窗口高度下的具体布局优化，不是字体偏好：高频欢迎说明被遮到难以阅读，降低了 Agent 空态引导的可发现性。建议为任务/欢迎区保留最低可见高度，限制输入表单最大占用；必要时让表单自身滚动，并保证页面来源、模型/连接状态、输入和预览操作能按优先级到达，不允许欢迎正文被表单遮挡。该方向符合 Issue #16 已有“短窗可读、可滚动、无重叠”验收。
+- 参考边界：本轮未补采 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity 页面；这些组件/营销页不提供与 Corvid 浏览器 Agent 工作台相同的短窗高度合同，不以其页面反推需求。已有关联的 UI 细节与字号优化见 Issue #16 及其前序 QA 记录。
+- 截图限制：CUA 只在本轮交互中显示截图，没有可复用的脱敏文件产物，因此未附入 Issue/仓库。画面仅有 Corvid chrome 与 `about:blank`，无网页主体和用户数据；后续通过本地 fixture 生成可审阅文件后再作为 Issue #16 的截图补充。未运行测试。
+
 本记录是一次人工目视检查，用于补足自动化测试无法覆盖的布局问题。它不是逐像素视觉基线，也不替代 e2e 断言。
 
 ## 环境与方法
@@ -413,6 +401,23 @@
 - 未知与限制：REA 没有观察 Chrome/Safari 原生窗口、删除失败恢复或窄窗行为；本次产品运行未测试 VoiceOver、Windows/Linux、打包版、暗色模式或扩展专属外部数据；没有将截图解释为 Chromium 所有磁盘残留均已抹除的证明。
 
 
+## 2026-11-03 设置、资料库与 Agent 工作区完成度复核
+
+- **运行态环境：** macOS 隔离 Corvid Electron，`CORVID_DATA_DIR=/tmp/corvid-style-audit-20261103-1300`，仅 `about:blank`；首次资料导入提示选择“稍后”。没有读取/导入用户浏览器资料、连接模型或执行 OAuth。CUA 截图为 2560×1700 图像像素；视口 CSS 尺寸和设备像素比未通过运行时 API 测量。本地运行窗口属于旧提交 `771c9bb6c1a9dc208a468c034b89ac3436b19542`，因此不能当作 GitHub 当前主分支的完整运行态基线。
+- **当前主分支交叉核对：** GitHub `main` 为 `56adc9ceb977933f03885e674a9650f669f75ae8`。只读源码确认工作区卡片仍使用 `#library` 固定右侧 420px 宽度、`top:126px`、`right:12px`、16px 圆角和阴影；面板头包含 9px 字距眉题、标题、搜索和关闭按钮。`desktop/index.html` 当前主分支的设置表单含应用语言、搜索引擎、搜索模板、Chrome 导入、Profile 扩展和外部 Agent 访问；未发现常规分组导航、显式主题选择、启动/新标签偏好或下载保存偏好入口。这里是代码静态观察，未执行主分支窗口。
+- **直接观察（CUA，旧提交）：** 分别打开书签、历史、下载、Agent 空间和 Corvid Agent。前三个列表空态都在右侧大卡片中只显示“暂无书签 / 暂无浏览历史 / 暂无下载”，并始终显示搜索框；空态没有对应的下一步操作。Agent 空态有说明和“打开 Corvid Agent”按钮；对话工作台显示“历史对话 · 0”，欢迎说明居中，Composer 固定在底部。由于当前页是 `about:blank` 且模型未连接，不能据此检查发送任务、页面上下文同意、真实连接错误或任务状态。
+- **设置直接观察（CUA，旧提交）：** 从已有“浏览历史”面板打开设置后，设置以居中对话框叠在已打开的工作区卡片上，后方卡片仍保留并被模糊/变暗；对话框内容为搜索引擎、搜索模板、浏览器资料导入、当前 Profile 扩展和保存/取消。本地旧版本的设置字段比 GitHub `main` 少应用语言与外部 Agent 访问，因此本截图仅作历史形态参考；主分支静态结构已另外确认。
+- **视觉判断：** 低装饰、中性色与靛蓝强调保持克制，但当前列表面板的重复眉题、单句空态和大块空白更像未完成的通用管理卡片，未充分表达书签、历史、下载各自的用途；设置把若干不同作用范围塞进对话框，也没有专业浏览器设置中心的分类层级。此判断针对信息层级和任务语义，不要求增加装饰图或动效。主分支深色配色存在，但是否有显式主题选择已由静态设置表单核查为无入口；本轮没有切换主题。
+- **参考：** Kobra `/components/input-otp` 的既有 REA Evidence `ev_d9031d59f216f90410942ff24402a14620cac83262016208561bff9f0c3788c9` 显示导航、预览、上下文属性的职责分区；它是组件工作台，不是浏览器设置。Aceternity 分组侧栏公开说明可作为导航分组的补充灵感，未在本轮用 REA 观察其运行态。Chrome 与 Firefox 官方帮助文档描述了个性化/语言/无障碍、外观、下载、标签/浏览、权限/数据等设置类别；这是帮助文档信息架构，不是运行态 UI 证据。
+- **Issue 与排期：** 浏览器设置中心已创建 [Issue #165](https://github.com/heyallencao/corvid/issues/165)，并同步为 D24；日常面板视觉细节归入既有 [Issue #16](https://github.com/heyallencao/corvid/issues/16)，避免重复开单。UI 截图只在 CUA 对话中显示，没有可安全引用的文件产物，本轮未附图。没有运行测试。
+# 2026-11-04 桌面主界面 Impeccable 评审
+
+- 目标：`desktop/index.html`，Impeccable slug `desktop-index-html`；使用隔离 macOS Electron（本地提交 `771c9bb6c1a9dc208a468c034b89ac3436b19542`，落后缓存 `origin/main` 82 个提交）。
+- 方法：双代理先设计评审、后独立检测。CUA 直接观察默认壳层、Agent 空态和设置；REA DOM 记录 3717 nodes。Detector 报 6 warnings、0 errors：低对比度 2、10px 功能文字 3、Inter 过度使用 1。完整评分、问题、参考 Evidence ID 和边界见 [Impeccable snapshot](../../.impeccable/critique/2026-11-03T23-31-28Z__desktop-index-html.md)。
+- 运行态截图：2560×1636，SHA-256 `60e0910b0de5464196cd111d3378909ed163ddd5e4b55dea0800f0c4ede3ae93`，仅本机 `/tmp/corvid-impeccable-default.png`；无个人资料/网页主体。临时应用及数据已关闭清理。
+- Issue 去重：未新建 Issue；中英支持 #130、设置分组 #165、地址栏对比度 #192、整体品牌/空态 #16 与 D24 已有跟踪。旧工作副本显示的空白新标签已由上游 #93 / PR #94 处理，不重复开单。
+- 未运行测试。未覆盖英文、窄短窗、暗色、真实网页、Agent 运行/失败、键盘与辅助技术；灵感站点只引用项目内 2026-11-03 历史 REA 记录，本轮未取得新鲜站点证据。
+
 ## 2026-11-04 标签页身份与溢出（Issue #201）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`、本地 HTTP 合成标题页面；窗口逻辑尺寸 1280×850 与最小 704×420，Retina 截图分别为 2560×1636 和 1408×776：[14 标签常规窗口](screenshots/issue-201-tabs-14-zh-CN-1280x850.png)，SHA-256 `2c78d2beede906fc8d18abd2c9ff83313e5c89db0cfd73224d4f3eda2a5a602b`；[14 标签英文窄窗](screenshots/issue-201-tabs-14-en-704x420.png)，SHA-256 `710f262e53e1bb1d44f0d330218ae4f63aa8d9c19c028bb326d72efe23c8de9a`。仅使用本地合成页面标题/URL；没有个人浏览数据、账号、真实网页或凭据。截图来自 Playwright shell renderer，能检查 Corvid 标签与 chrome，但不包含由 Electron `WebContentsView` 单独绘制的网页画布，因此不把空白区域当作网页显示结果。
@@ -442,6 +447,19 @@
 - 证据分类：**直接观察**为本轮隔离 Electron 截图、真实 DOM、键盘焦点与中英文本地化状态；**静态证据**为摘要投影只包含 Room ID、72 字符可见请求摘要、最多 240 字符脱敏辅助摘要、最多 8000 字符的脱敏完整提示、脱敏页面标题、状态和更新时间，按 Profile 过滤后才投递 Renderer；**推断/产品判断**为用请求意图替代默认 Agent Room 名称能减少同名扫描成本，同时保留用户自定义 Room 名称；**未知**包括全部自然语言个人信息检测、屏幕阅读器实际播报、不同平台与打包版表现。
 - 未覆盖：本轮最终隔离 Electron E2E 已覆盖完整脱敏 tooltip、超过 240 字符的末尾标题断言和英文占位词本地化。没有登录模型或调用真实 Provider；没有测试真实用户对话、真实网页内容、VoiceOver 实播、深色主题、Windows/Linux 和签名应用；常见模式脱敏不等于完整 PII 检测。`pi-workbench-e2e.cjs` 为组合流程定向回归，并非全量 `npm test`。
 
+
+## 2026-11-04 Agent 消息队列主次操作与窄窗（Issue #194）
+
+- 目标与改动：让队首“检查页面并发送下一条”作为明确主操作单独呈现；上移、编辑、移除收进默认折叠的“更多操作”，保留键盘可达性和清楚的逐项名称。队列正文移除嵌套卡片质感、用细分隔线分开消息；主操作使用现有品牌强调色。页面检查与再次明确同意的发送合同不变。
+- Corvid 运行证据：macOS 开发版 Electron 45.2.1、隔离临时数据、本地 HTTP 页面 fixture、窗口测试调用 `setSize(1280,850)` 与 `setSize(700,420)`；renderer PNG 栅格分别为 2560×1622 与 1408×776（DPR 2）。截图未另行记录最终原生窗口 bounds，文件名 704×420 是测试标注，PNG 尺寸不证明窗口外框大小；截图无真实网页、账号或浏览数据。zh-CN 1280×850 [截图](screenshots/issue-194-message-queue-zh-CN-1280x850.png)，SHA-256 `c187e6948d28da7abe648e5eaa139bee9d4c79ca0d8ac05e04af59ef8dcfedf1`；en 1280×850 [截图](screenshots/issue-194-message-queue-en-1280x850.png)，SHA-256 `ce3d3b5833d6edb7da3beca81309bff7593410d962fd6fe2f330ba93707588e1`；zh-CN 704×420 [截图](screenshots/issue-194-message-queue-zh-CN-704x420.png)，SHA-256 `ab0aad69d7a61308e4b9dc656ba905cf387c1e3103ec92b4486fd734d4de0ebb`；en 704×420 [截图](screenshots/issue-194-message-queue-en-704x420.png)，SHA-256 `49f30e16f597de96e4cb92bcdb74d2643fbb99c94dd9a0321ad6aae67d3b1429`。
+- 视觉判断：主按钮与次级管理入口的字重、对比度、垂直顺序形成可扫读层级；消息内容以正文和轻分隔线呈现，避免每条再包一层浮卡。窄窗中队列与固定输入区争用垂直空间，消息列表仍可在任务历史滚动区访问；截图将主操作滚至任务滚动视口内，测试断言其完整边界可见。后续若任务头部内容增长，需继续验证窄窗内主操作定位。
+- UI/UE 参考与 REA 证据：Kobra Chat Input `https://kobra.systems/components/chat-input`，REA Evidence `ev_5bd9271a5d3e641358f71ca5308cfb038e6cbcd917b2dfdbfee52aaf090293c8`，2026-11-04 受控浏览器观察，Chromium 156.0.8078.80、1280×720、en-US、浅色、减少动态效果。**直接观察**：组件文档的输入框旁有清楚突出的发送图标及较弱的附属输入动作；该页面是三栏组件文档展示。**静态证据**：未检查该站代码或样式。**推断**：仅借用“发送主操作与低频动作可有明确层级”这一交互提示；不移植组件或素材，也不把它作为消息队列行为证据。**未知与限制**：未操作该组件的键盘/窄窗状态；该输入框不是任务队列，REA 捕获时间没有在本记录保留精确到分钟的值。Rare UI、EasyUI、Pin UI 与 Aceternity UI 本轮未用于此细节。
+- 覆盖限制：定向真实 Electron E2E 使用确定性本地 Agent fixture，没有调用真实模型或 OAuth；没有验证 VoiceOver 实播、Windows/Linux、签名打包版、真实网页或完整 `npm test`。
+- 接管后视觉复查（2026-11-04 15:42 UTC）：复用 PR 内隔离 Electron 与本地 fixture 截图；没有改动产品布局。1280×850 逻辑窗口截图可读到“后续消息 · 2”、队首内容、主按钮与折叠的“更多操作”；704×420 逻辑窗口截图只呈现队列的一部分，主按钮可见，队列标题和多条消息并非同时完整呈现。测试在窄窗中滚动任务历史区域，使主按钮完全进入视口后再截图，因此截图不证明所有队列项可同时看到，也不证明滚动/焦点的完整键盘体验。截图 PNG 栅格为 1280×850 状态下 2560×1622、704×420 状态下 1408×776；PNG 是 renderer 视口，不包含原生窗口标题区。仓库内既有截图保持原样。
+- 直接观察与静态证据：所选截图直接显示首要发送动作位于次级操作之前；简中窄窗还显示折叠的“更多操作”摘要。`desktop/styles.css` 仍让外层任务历史和队列列表分别滚动，队列列表 `max-height:132px`；原生 `details/summary` 提供键盘展开语义和 `:focus-visible` 样式。推断：嵌套滚动会增加窄窗及键盘操作时辨识滚动容器的成本。未知：屏幕阅读器实际播报、键盘滚动焦点变化、多队列项的完整滚动体验尚未由本轮视觉截图验证。
+- Impeccable detector：Assessment B 对 `desktop/renderer.js` 与 `desktop/locales.js` 的输出为 `[]`（退出码 0）；扫描范围不含 CSS-only 文件，不代表完整 UI 无问题。Assessment A 独立检查源码与截图，指出窄窗全队列可见性、嵌套滚动成本、重绘后的焦点恢复仍需运行态验证。本轮保留“队首主操作 + 折叠低频操作”的最小方案，未据此扩大功能范围。
+- 参照证据沿用本节前述 Kobra Chat Input `ev_5bd9271a5d3e641358f71ca5308cfb038e6cbcd917b2dfdbfee52aaf090293c8`；它仅支持发送主次层级的交互提示，不含队列行为。本轮未重新捕获 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 页面，也未移植素材/代码。
+
 ## 2026-11-04 地址栏连接状态与 SVG 图标（Issue #209）
 
 - **范围与设计判断：** 将侧栏 6 个 Unicode 图形、空间标题操作、Profile 下拉、地址栏安全标记、查找按钮、关闭按钮、标签/窗口新建按钮与固定标签 pin 统一为 currentColor SVG，复用 16px/20px 图标尺寸及 1.7px 笔画 token。连接状态按当前已提交 URL 区分 HTTPS 加密、HTTP 未加密、本地页和无法确认；失败的当前导航显示未知，HTTP 4xx/5xx 响应仍按未加密连接显示。这里仅说明传输加密状态，不表示网站身份可信。Pin 图标改为跟随主题颜色的内联 SVG；当前 fallback favicon 已改为 DOM 内联 SVG；hostname 色相由 CSS 自定义属性提供，字形颜色使用 `--favicon-fallback-foreground` 主题 token。此分支原先没有 Issue 所述 `FALLBACK_FAVICON` 固定描边常量。
@@ -465,3 +483,64 @@
 - 直接观察与视觉判断：中文界面使用平台系统 UI 字体和 PingFang SC、Microsoft YaHei UI、Noto Sans CJK SC 等明确回退；可见中文正文、辅助文字和控件不低于 12px，panel eyebrow 在中文下移除拉大字距；英文继续使用 system-ui 并保留 10/11px 紧凑文字。两种语言的空态标题、说明与操作层级在截图中清晰，去掉与书签/历史无关的品牌眉题后标题更直接。704×420 窄窗 Agent 面板没有水平溢出；截图只记录 viewport 当前可见区域，不单独证明面板所有纵向内容都无需滚动。
 - UI/UE 参考与 REA 证据：项目既有 EGO `observe_native_ui` Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02）及 Kaze `observe_native_ui` Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403128bf9ee16d740bbdb9067`（2026-11-02）仅用于日常浏览 chrome、侧栏和网页画布的产品语境；没有观察它们的字体 fallback、CJK 小字或字体缩放行为。2026-11-04 的 REA 安装包目录扫描：Kaze `ev_f808570849e34f1db2fcb56e240957549376e9e88214ed49284d618d14c171ed` 与 EGO `ev_741c3981ef91b99a5db222b3b13011e1e87a2fb93ebf8907ab96762986c0c380` 均受 80 项目录上限约束；Kaze 的定向 ASAR inventory `ev_bccb58150737314758d343ca2f305f11a12f9498a499298ded9298d5bcb7cdc0` 报告 unpacked native helper 完整性矛盾，且本轮没有分析其字体源码或运行时。它们都不构成竞品字体行为证据。Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 本轮未作为字体依据；本切片选择系统原生字体与 locale-aware CJK fallback 是 Corvid 的可维护性与可读性判断，不移植外部 CSS、图标或素材。
 - 验收与限制：`CORVID_TYPOGRAPHY_QA_DIR=docs/qa/screenshots/issue-212 node tests/typography-e2e.cjs` 最终 EXIT 0，验证中英文字体栈、locale 字号 token、中文可见文本 12px 下限、书签标题无错误眉题和 704×420 无水平溢出。初次断言把字号为 0 的图标按钮隐藏文字计入“可见文本”，据实际 DOM 将检查器改为跳过零字号文本后重跑通过。四张图来自 Playwright renderer 截图，不是原生桌面合成或 WebContentsView 网页像素验收。Impeccable detector 对既有侧边强调线、重复描边/阴影与字号层级给出 warning/advisory；这些跨页面结果需结合人工审阅，未作为本切片的字体需求。未知项包括 Windows/Linux 本地 CJK 字体回退、打包版、深色主题、屏幕阅读器与真实用户字号偏好；没有登录 OAuth、调用模型或消耗模型额度。
+
+## 2026-11-04 accent 对比色 token 化渲染一致性（Issue #210 子切片 D2）
+
+- 注入 `.pi-primary-action` 元素截图（Playwright renderer 截图，1024×700、隔离 `CORVID_DATA_DIR`）。
+- 分支与 origin/main 对照逐字节相同——`color: #fff` → `color: var(--accent-contrast)` 纯重构，渲染不变。
+- 边界：注入节点证据，非真实会话全页面截图；相关规则在真实工作台的呈现由 interaction-states/dialogs-ui E2E 覆盖。
+
+
+
+## 2026-11-04 CSS 级联收敛子切片 A 前后一致性（Issue #211）
+
+
+
+- 环境：macOS arm64、Electron 45.2.1、1024×700 CSS px、隔离 `CORVID_DATA_DIR`；浅色 Agent 授权对话框与深色 Chrome 导入对话框各一张，来自 Playwright renderer 截图。
+
+- [浅色 Agent 授权（分支）](screenshots/issue-211-a-branch-agent-access-light-1024x700.png) SHA-256 `c08969d5fd9c94fc…`、[深色 Chrome 导入（分支）](screenshots/issue-211-a-branch-chrome-import-dark-1024x700.png) SHA-256 `716bfa0525686f7a…` 与 origin/main 同法截取的对照图逐字节相同；计算样式矩阵（含 renderer 动态注入的 `.pi-consent`、`.extension-load-error` 与窄窗 `.pi-create-room`）亦逐字节一致。
+
+- 边界：截图只证明本切片改动前后渲染不变，不证明级联债务全部收敛；后续子切片见 issue #211 拆解方案评论。
+
+
+
+## 2026-11-04 按钮 type 显式化 hover 终态一致性（Issue #211 子切片 C）
+
+
+
+- 环境：macOS arm64、Electron 45.2.1、1024×700 CSS px、隔离 `CORVID_DATA_DIR`；hover 状态下 `#chrome-tools` 工具栏截图（Playwright renderer 截图）。
+
+- [分支工具栏 hover 截图](screenshots/issue-211-c-branch-toolbar-hover.png) SHA-256 `e619b94ef61ff1e4…` 与 origin/main 对照逐字节相同——type 显式化前后 hover 终态渲染不变（`:not([type="submit"])` 为属性字面匹配的实证）。
+
+- 边界：只覆盖工具栏代表组件；侧栏/空间条以计算样式探针（终态等待 400ms）证实一致。
+## 2026-11-03 设置中心首个切片（Issue #165）
+
+- 环境与状态：macOS 本机真实 Electron，窗口分别为 1024×700 与 700×420 CSS 像素，使用隔离 `CORVID_DATA_DIR` 和 `about:blank`，没有个人网页、账号或凭据。前后截图：旧长表单[中文 1024×700](screenshots/corvid-localization-zh-CN-settings-1024x700.png)，新设置中心[中文 1024×700](screenshots/issue-165-settings-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-en-700x420.png)。新图由本轮隔离 E2E 生成，供 PR 审阅。
+- 视觉判断：常规窗口采用窄分类导航加单一内容区，标题、作用范围标签与说明形成层级，底部操作固定；主题沿用 Corvid 既有表面与文字 token，未增加装饰动画。窄窗将分类导航移到内容上方，并仅滚动设置内容，保留保存/取消操作可见。验收重点为 700×420 下导航不挤压表单、较长的 Profile/站点内容可滚动且操作区不被遮挡；英文长文案与当前网站无可用来源状态也需检查。
+- UI/UE 参考与 REA 证据：EasyUI `https://easyui.site/` 首页，Chromium 156.0.8078.79，1280×900，`en-US`、浅色、减少动态效果；REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`，观察日期 2026-11-03（采集时刻未保留）。**直接观察**：AX 树显示独立命名的主导航、Home/Components/Sponsors 导航项、独立组件搜索与主题切换按钮，以及组件预览加载中的 `status`。**静态证据**：本轮未检查其站点源码或脚本。**推断**：将导航、搜索和内容状态明确命名有助于设置页定位；这不证明该页面具备设置交互，也不构成三栏布局要求。**未知与限制**：没有操作控件，未检查键盘路径、窄窗、焦点、错误/空态或过渡行为；页面预览状态为加载中，不能据此评价完整组件行为。Corvid 保持自己的双栏结构、状态文案和视觉 token，未复制组件、样式或素材。
+- 补充参考：Aceternity UI Grouped Sidebar（`https://ui.aceternity.com/blocks/sidebars/grouped-sidebar`），REA controlled replay，Evidence `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb`，观察日期 2026-11-04；Chromium 156.0.8078.79、临时 profile、1280×900、浅色、`en-US`、减少动态效果。**直接观察**：可访问性树列出主导航及 Content/Team/Settings 分组，Settings 下显示 General/Security/API Keys 子项；页面组件说明描述展开状态、持久化和宽/窄侧栏尺寸。**静态证据**：未检查源码。**推断**：稳定的分区命名与明确选中状态适用于设置分类定位，因此 Corvid 保留单层分类导航和选中反馈；不采用可折叠分组或尺寸。**未知与限制**：没有点击或键盘操作该组件；REA 未验证持久化声明、动画、焦点、窄窗或错误态。参考站点只提供交互灵感，未复制代码、样式或素材。
+- 范围与限制：本切片只重组已经存在的语言、搜索、Profile 导入/扩展、Agent 连接及站点权限/数据入口，并新增应用级主题选择；启动/新标签和下载偏好仍未实现。截图只证明上述隔离数据与两个窗口尺寸下的视觉状态，不证明站点操作完整往返、全产品键盘流程、屏幕阅读器或 Windows/Linux/打包版表现。
+
+### Issue #165 启动与下载偏好增量
+
+- 直接观察：macOS 本机 Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture；截图在 2026-11-03 由 `tests/settings-preferences-e2e.cjs` 生成，窗口为 1024×700 与 700×420 CSS px，界面分别为 zh-CN/en，无个人网页、账号或凭据。常规窗截图展示常规设置；窄窗截图展示下载分类。[中文 1024×700](screenshots/issue-165-settings-preferences-zh-CN-1024x700.png)、[中文 700×420](screenshots/issue-165-settings-preferences-zh-CN-700x420.png)、[英文 1024×700](screenshots/issue-165-settings-preferences-en-1024x700.png)、[英文 700×420](screenshots/issue-165-settings-preferences-en-700x420.png)。截图采集时刻未留存。
+- 视觉调整：窄窗分类从横向滚动改为三列两行网格，让“Agent 与连接 / Agent and connections”等六个入口完整可见；E2E 直接检查 700px 窄窗下无横向溢出、所有按钮边界均在导航区域内。类别选择只显示当前设置分区，滚动回到该分区顶部，避免其他类别末尾内容混入当前视图。主题色、圆角、表面与固定保存操作沿用 Corvid 现有样式，不增加装饰动画。
+- UI/UE 参考与 REA：仍使用 EasyUI 首页信息分区参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`；站点、直接观察、静态证据、推断与未知边界已详述在本节上方“设置中心首个切片”。新增窄窗导航判断来自 Corvid 自身双语截图与 DOM 几何断言，不把 EasyUI 首页推断为设置页或三列导航设计规范；没有复制代码、样式或素材。
+- 未知与限制：局部 Electron fixture 证明设置分类和表单当前截图状态，不代表屏幕阅读器播报、完整键盘操作、真实系统文件夹/保存对话框或 Windows/Linux/打包版表现。后续窄窗首屏与滚动边界在下方 2026-11-04 复核中补充。
+
+### Issue #285 离开设置时的草稿与窄窗首屏（2026-11-04）
+
+- 直接观察：解锁后的本机 Corvid 原生 Electron 窗口中，通过 CUA 查看设置中心截图及可访问性树，确认六个分类、表单与固定保存/取消操作均可访问；截图未作为可分发证据保留。另一次 REA `observe_native_ui` 对隔离 Electron 窗口返回 `capability_unavailable`，原因是 provider 无法提供可验证的进程启动时间，故不把该尝试标为 REA 原生观察。运行态 E2E 截图来自隔离临时 `CORVID_DATA_DIR`、本地 HTTP fixture 与 `about:blank`，没有用户网页或 Profile 数据。
+- 直接观察与修复：旧 700×420 截图的下载文件夹输入框下方操作被固定保存区遮住。缩短低高度设置留白并提高可用对话框高度后，下载路径与“更改文件夹/恢复系统默认”操作均在首屏完整可见；路径使用单行省略规则，保存/取消继续固定在底部。新中文[下载首屏](screenshots/issue-165-settings-preferences-zh-CN-700x420.png)，英文[下载首屏](screenshots/issue-165-settings-preferences-en-700x420.png)，窗口逻辑尺寸 700×420 CSS px、PNG 1408×776；SHA-256 分别为 `9c33d3fa475e7de7ade3747874fa48fa96daf1485dcbc4d6a2ff2cdb8c729f4d`、`5dcabb2ee047554517004a1dc2c59644a9c9bc86938b9a66b673f8fd0455d9cf`。下载前询问与提示需在内容区滚动后查看。
+- 未保存决策：从有草稿的设置跳转模型管理或 Agent 授权时显示三种明确操作。中文[窄窗决策框](screenshots/issue-165-settings-unsaved-zh-CN-700x420.png)，SHA-256 `a24be4d6e170ff62905f455995d90315d6a2d0f0da4f37e17121e8ca2415cfc8`。E2E 直接验证各按钮留在视口内、继续编辑恢复草稿/分类/焦点、保存后再进入模型管理、放弃后进入 Agent 授权且不提交草稿；必填搜索模板为空时保存会回到设置提示校验错误，放弃仍可离开。语言和主题即时生效并保存的边界由双语文案说明。
+- 键盘：真实 Electron E2E 以 Tab 从首分类移至下一分类，并断言 `:focus-visible` 与实线轮廓；设置离开决策的 Escape 不会丢弃操作，而是返回当前设置。没有完成全产品键盘审计或屏幕阅读器实播。
+- 视觉判断与参考：保持 Corvid 既有边框、强调色、固定动作区和克制表面；窄窗压缩优先让文件夹路径与常用按钮同屏，而把次级询问选项留在滚动区。分类层级参考沿用 EasyUI 首页 REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755` 与 Aceternity Grouped Sidebar `ev_ebf975bd570dbe44f649677ff4df073cb74ff0afc275ae21c1e699336ecbb7bb` 的有限直接观察；未重新扫描市场站点，也不将其当作设置页验收要求。没有复制代码、样式或素材。
+- 未覆盖：REA 原生窗口观察不可用；CUA 原生截图未保存。已保存截图为隔离 Electron/Playwright 运行态的 renderer 截图，不证明 macOS 原生文件夹选择器、Windows/Linux、签名包、VoiceOver 或网页 WebContentsView 合成像素。
+
+### Issue #165 当前网站分类入口增量
+
+- 直接观察：2026-11-04（Asia/Shanghai，本轮 Electron E2E 生成截图，脚本未保留精确采集时刻），Corvid macOS Electron 45.2.1，隔离 `CORVID_DATA_DIR` 与本地 `127.0.0.1` fixture；当前网站设置分类显示合成来源及“管理站点权限 / 清理此站点数据”按钮。常规窗 1024×700 可同时显示来源和操作；700×420 下需滚动设置内容区，截图刻意滚到来源与操作可见的位置。中文[1024×700](screenshots/issue-165-settings-site-zh-CN-1024x700.png)、[700×420](screenshots/issue-165-settings-site-zh-CN-700x420.png)，英文[1024×700](screenshots/issue-165-settings-site-en-1024x700.png)、[700×420](screenshots/issue-165-settings-site-en-700x420.png)。页面仅显示本地合成内容，没有个人浏览数据。
+- 视觉判断：当前网站级标签与明确来源行让清理范围可辨；两个站点操作平级放置，取消和保存仍固定在对话框底部。700×420 需要滚动才能读到来源并操作；当前内容区保留独立滚动，自动化验证并截图确认范围说明、当前来源和两个操作按钮可同时完整显示，保存/取消仍固定可见。
+- UI/UE 参考与 REA：延用 EasyUI 首页有限的分区/命名状态参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`（站点 `https://easyui.site/`、首页；2026-11-03；具体观察限制见本节上方“设置中心首个切片”）。本轮没有重新访问参考页或创建新 REA Evidence；站点分类、焦点、滚动与状态只依据 Corvid 隔离运行态直接观察。EasyUI 没有被当作浏览器权限或清理流程证据，也未复制其代码/素材。
+- 未知与限制：通知权限请求与站点清理确认由 Electron `dialog.showMessageBox` 替身驱动；本地 fixture 已通过设置分类完成授权后保留/撤销检查，不证明原生系统权限/确认对话框的焦点与像素表现，也未覆盖屏幕阅读器、真实鼠标、Windows/Linux、打包版或全产品键盘顺序。
+
