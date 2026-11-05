@@ -112,8 +112,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await waitUntil(async () => !(await shell.locator('#status .bookmark-feedback').count()), 'transient bookmark feedback clears');
     const stableChromeHeight=(await measure(shell)).chromeHeight;
     assert.ok(stableChromeHeight>90, 'the visible bookmark row contributes to measured chrome');
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704, 420));
-    await waitUntil(async () => shell.evaluate(() => window.innerWidth === 704), 'minimum supported viewport');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(719, 420));
+    await waitUntil(async () => shell.evaluate(() => window.innerWidth === 719), 'minimum supported viewport');
     const narrow = await assertPageStartsBelowChrome(shell, stableChromeHeight, 'narrow viewport with bookmark row');
     assert.equal(narrow.pageViews.find(item => item.url === url).bounds.width, await shell.evaluate(() => document.querySelector('#browser-shell').clientWidth));
 

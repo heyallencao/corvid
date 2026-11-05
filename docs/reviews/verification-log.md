@@ -1692,9 +1692,10 @@
 
 - 基线：当前 `origin/main` `f443531b2cc6553b69f1677f1aae3b8431817d04`；隔离工作树 `/private/tmp/corvid-integrate-glm-02/wt-fix189`。保留 PR 的 719px 修复及测试，移除其违反仓库规则的 `pull_request` workflow；未纳入该工作流的 Actions 验收。
 - 修正：统一 `MIN_WINDOW_WIDTH` 与窗口创建时的最小宽度为 719px，防止首次创建与保存状态恢复采用不同阈值；同步窗口状态 E2E 最小尺寸/恢复断言及截图文件名。
-- 静态验证：`node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs`、`node --check tests/window-state-e2e.cjs`、`git diff --check origin/main...HEAD` 与工作区 `git diff --check` 通过。
-- 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；覆盖 Agent Room 窄窗宽度 719/720/721/800/860/873/874/900/972/983/984/1024/1280，缩放 2x。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` EXIT 0；覆盖 719×420 下限、旧小尺寸保存状态恢复、紧凑 chrome、损坏状态回退与离屏位置约束。
-- 全量门禁：本轮没有运行 `env -u ELECTRON_RUN_AS_NODE npm test`；现有最近一次全量运行证据是旧基线失败，不能据此声称当前 main 全量通过。
+- 相关测试合同：`tab-overflow-e2e.cjs`、`browser-layout-e2e.cjs`、`typography-e2e.cjs`、`interaction-states-e2e.cjs` 原先仍把 704px 当作可达到的最小宽度，已同步为 719px；interaction-states 的窄窗宽度断言与输出文案也同步更新。
+- 静态验证：`node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs`、`node --check tests/window-state-e2e.cjs`、四个同步的窗口/E2E 脚本语法、`git diff --check origin/main...HEAD` 与工作区 `git diff --check` 通过。
+- 定向验证：`agent-rooms-panel-e2e.cjs` 与 `window-state-e2e.cjs` EXIT 0；719px 覆盖 13 档窗口与 2x 缩放、719×420 下限及旧小尺寸状态恢复。更新后 `tab-overflow-e2e.cjs`、`browser-layout-e2e.cjs`、`typography-e2e.cjs`、`interaction-states-e2e.cjs` 均 EXIT 0；interaction-states 连续两次通过。
+- 全量门禁对照：候选 `0b6d54e` 逐入口链 53 PASS / 10 FAIL；最新 main `f443531` 同链 57 PASS / 6 FAIL。两边同态失败为 node:test 输入焦点、RPC `ENOTEMPTY`、SDK `UnknownVizError`、fullscreen、Chrome popup 原生激活及 application-menu 原生焦点。候选新增的 4 项均来自 704px 旧合同，其中 3 项首次定向通过，interaction-states 在同步宽度合同后两次通过；**上述修复尚未重跑完整链**。因此候选尚未满足全量门禁，不可记录为通过或合并。
 - 截图：PR 原始截图 `docs/qa/screenshots/issue-16-agent-panel-719px-macos.png` 来自原 PR 分支，不作为本轮重新截取的截图；保留为历史辅助证据。当前复验以本轮真实 Electron DOM/原生窗口断言为准。
 - 边界：仅本机 macOS 开发版 Electron 与本地 fixture；未覆盖 Windows、签名包、屏幕阅读器或全量套件。本记录不关闭 Issue #16 的其余 UI 验收范围。
 
