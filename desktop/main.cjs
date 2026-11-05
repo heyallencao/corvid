@@ -828,7 +828,9 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     if(tab.homeSurfaceInstalled)return Promise.resolve();
     if(tab.homeInjection)return tab.homeInjection;
     if(view.webContents.isDestroyed()||view.webContents.getURL()!=='about:blank')return Promise.resolve();
-    tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
+    // 起始页文案在注入时按当前 uiLocale 生成；注入后不随切换重绘（已打开的起始页保留旧语言）。
+    const homeStrings=()=>({locale:mainMessages.locale,ariaLabel:mainMessages.t('newTabAriaLabel'),heading:mainMessages.t('newTabHeading'),intro:mainMessages.t('newTabIntro'),searchLabel:mainMessages.t('newTabSearchLabel'),searchAction:mainMessages.t('newTabSearchAction'),bookmarksTitle:mainMessages.t('newTabBookmarksTitle'),allBookmarks:mainMessages.t('newTabAllBookmarks'),bookmarksGroup:mainMessages.t('newTabBookmarksGroup'),emptyState:mainMessages.t('newTabEmptyState'),quickActions:mainMessages.t('newTabQuickActions'),historyAction:mainMessages.t('newTabHistoryAction'),agentAction:mainMessages.t('newTabAgentAction'),openBookmarkTemplate:mainMessages.t('newTabOpenBookmark'),siteFallbackName:mainMessages.t('newTabSiteFallbackName'),siteFallbackMark:mainMessages.t('newTabSiteFallbackMark')});
+    tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)},${JSON.stringify(homeStrings())})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
     return tab.homeInjection;
   };
   // HTTP 4xx/5xx documents still navigate successfully; report their response status without replacing the page.

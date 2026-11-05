@@ -1,5 +1,11 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 新标签起始页双语（Issue #130 子切片 A1）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`、BrowserWindow 1024×700，`capturePage` 渲染真实像素：[zh-CN 起始页](screenshots/issue-130/issue-130-startpage-zh-CN-1024x700.png)（SHA-256 前缀 `bbe20d67`）、[en 起始页（切换语言后新建标签）](screenshots/issue-130/issue-130-startpage-en-1024x700.png)（`3b20b659`）。页面为空白起始页无个人数据。
+- 直接观察：en 模式起始页全部文案为英文（Where to next? / Search the web or enter an address / Top bookmarks / All bookmarks / Browsing history / Corvid Agent 及 aria-label），无中文残留；zh 模式文案不回归。切语言后已打开的起始页保留原语言，新建标签使用新语言（合同记录于[本地化架构](../architecture/localization.md)）。
+- 断言与边界：closed shadow DOM 不可被页面侧探测，`tab-ux-e2e` 以宿主元素 `data-home-locale`/`data-home-heading` 镜像断言（zh-CN → en 切换 → 新标签 en 文案且无中文字符 → 恢复 zh-CN）；渲染像素由本截图佐证。未覆盖：VoiceOver 实播、Windows 字体回退、徽标兜底字符的逐 locale 视觉核对（en 兜底 'W' 由源码与测试路径覆盖）。
+
 ## 2026-11-06 原生控件统一自绘外观（Issue #208）
 
 - 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`，由 `native-controls-e2e` 在真实交互中生成（`CORVID_NATIVE_CONTROLS_QA_DIR`），BrowserWindow 1024×700：[onboarding zh-CN 浅色](screenshots/issue-208/issue-208-onboarding-zh-CN-light.png)（SHA-256 前缀 `392fec4f`）、[设置·外观 zh-CN 浅色](screenshots/issue-208/issue-208-settings-zh-CN-light.png)（`2675be46`）、[zh-CN 深色](screenshots/issue-208/issue-208-settings-zh-CN-dark.png)（`1e5fa62c`）、[en 浅色](screenshots/issue-208/issue-208-settings-en-light.png)（`4fb06e03`）、[en 深色](screenshots/issue-208/issue-208-settings-en-dark.png)（`66507788`）。

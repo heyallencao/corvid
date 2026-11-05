@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #130 子切片 A1：新标签起始页双语
+
+- 基线：隔离 worktree，候选基于 `origin/main` `83f2aa2`（含 PR #324），分支 `ui/issue-130-newtab-locale`。改动：`desktop/main-locales.cjs`（新增 `newTab*` 双语键 16 项）、`desktop/main.cjs`（起始页注入时按当前 uiLocale 构建文案对象，第二参数注入序列化函数）、`desktop/new-tab-page.cjs`（模板与书签卡可访问名称全部消费注入文案；宿主元素带 `lang` 与 `data-home-locale`/`data-home-heading` 镜像）、`tests/tab-ux-e2e.cjs`（双语断言块）、`docs/architecture/localization.md`。与开放 PR #249（locales.js/agent-workbench 域）无文件交集。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` EXIT 0（含新块：zh 镜像 → setUiLocale en → 新建标签 en 文案 `/Where to next/` 且无 `[\u4e00-\u9fff]` → 恢复 zh-CN → 单空白标签基线复原）；`localization-e2e`、`restore-loading-e2e` EXIT 0。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 独占运行 EXIT 0（结果记录于 PR 描述）。
+- 截图：`capturePage` 真实像素 zh/en 起始页入库 `docs/qa/screenshots/issue-130/`，SHA-256 见 [UI 视觉检查条目](../qa/ui-visual-check.md#2026-11-06-新标签起始页双语issue-130-子切片-a1)。
+- 边界：语言切换后已打开的起始页保留原语言（新建标签生效）；closed shadow 内容以 dataset 镜像 + 渲染像素截图双重佐证；未覆盖 VoiceOver、Windows。#130 其余子切片（A2 主进程错误 en 泄漏、A3 扫描收口、A4 布局与口径）继续开放。
+
 ## 2026-11-06 Issue #208 原生控件统一自绘外观
 
 - 基线：隔离 worktree，候选基于 `origin/main` `3820e19`（含 PR #323），分支 `ui/issue-208-native-controls`。改动：`desktop/styles.css`（全局 select 自绘 caret、checkbox 自绘、`.profile-switcher:focus-within` 焦点环、`#profile-select` 28px 三档收敛、`.pi-model-select` 触发器 34→32px、`#findbar input` 32px、`dialog select` 右内边距、focus-visible 边框融入 accent 线）、`desktop/index.html`（onboarding 主按钮加 `primary-action` class）、新增 `tests/native-controls-e2e.cjs` 并入 `npm test` 链。
