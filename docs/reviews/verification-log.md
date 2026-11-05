@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-05 Issue #182 Fuses 安全配置（PR #318 最新候选）
+
+- 基线与范围：以最新 main `41bb26e36521031ebaed0a5d04580a5267ad0c22`（含 #227、#229、#242、#246）为基线，Fuses/ASAR 切片提交 `7f84ece`。保留 #246 双语网页上下文菜单的文档和 `npm test` 入口，未带入陈旧分支文件。
+- 全量门禁：候选首次 `env -u ELECTRON_RUN_AS_NODE npm test` 在未改动的 `button-hover-contrast-e2e.cjs:75` 因未观察到 hover 状态退出；同一 hover 测试在精确 main `41bb26e` 与候选单独运行时也各出现测量失败。随后候选完整重跑 EXIT 0：node:test 37/37，所有串行 Electron E2E/合同入口通过（包括 3 项网页上下文菜单合同与真实 Electron E2E、1599 模型搜索选择器、短窗/双语用例）；未跳过测试。
+- 签名产物：本轮在该候选上重建 `/private/tmp/corvid-183-safe/dist/mac-arm64/Corvid.app`。`codesign --verify --deep --strict --verbose=2` 通过；Identifier `com.heyallencao.corvid`、Authority `Developer ID Application: ANFU CAO (37HP972H37)`、TeamIdentifier `37HP972H37`、Hardened Runtime（Runtime Version 26.5.0）。
+- REA 对该 `.app` 直接读取 Electron Framework arm64：Evidence `ev_69976b7195afba940d96042f55562aaa7565a364f27f1dff90b5d5282f944543`；Framework SHA-256 `695310919e4e7d4f7c927df0c0c479ae792d1a49b98078c87f9a157b4d3aaf79`。Fuse V1 profile 完整：RunAsNode、EnableCookieEncryption、NODE_OPTIONS、Node CLI Inspector、V8 Snapshot 均 disabled；ASAR integrity、OnlyLoadAppFromAsar、GrantFileProtocolExtraPrivileges、WasmTrapHandlers enabled。REA 推导 RunAsNode/Node CLI Inspector arguments 不生效、内嵌 ASAR integrity enforced、加载限制于 app.asar；Fuse 静态字节不能排除应用代码经其他入口启用调试能力。
+- 签名包 smoke：`CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/packaged-fuses-e2e.cjs` PASS；`CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/packaged-app-launcher-e2e.cjs` PASS（darwin arm64、Electron 45.2.1，renderer/Room/control 接口和正常退出）。
+- 未覆盖：未运行签名包系统钥匙串凭据往返；Issue #110 的 Developer ID 凭据 UI 超时不归因于 Fuses。macOS x64、Windows、公证和安装器流程未验证，不能从 arm64 结果外推。
+
 ## 2026-11-05 PR #246 网页上下文菜单最新主线集成（候选）
 
 - 候选基线：精确 PR head `fa92fe9` 合并至最新 `origin/main` `926a9e1`；文档冲突以最新 main 为底，再补回本 PR 的 QA 入口、测试索引、D16 状态和页面菜单测试脚本。`package.json` 保留 main 的 Release/签名配置与完整测试链，并将网页菜单合同和 E2E 纳入默认 `npm test`。
