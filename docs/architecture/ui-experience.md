@@ -15,13 +15,14 @@ Provider 凭据也由 Corvid 管理：`agent-credentials.json` schemaVersion 2 �
 
 Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英文（`en`），并从第一步建立可增加其他 locale 的本地化资源和格式化边界。此合同覆盖浏览器 chrome、Agent 工作区、设置、菜单、帮助、错误/状态/空态与可访问名称；不翻译网站自身提供的网页主体。新界面文案不得散落在业务逻辑中，日期、数字、复数和较长译文造成的布局变化均需纳入设计与验收。整体跟踪见 [Issue #130](https://github.com/heyallencao/corvid/issues/130) 和执行板 D24。
 
+Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英文（`en`），并从第一步建立可增加其他 locale 的本地化资源和格式化边界。此合同覆盖浏览器 chrome、Agent 工作区、设置、菜单、帮助、错误/状态/空态与可访问名称；不翻译网站自身提供的网页主体。新界面文案不得散落在业务逻辑中，日期、数字、复数和较长译文造成的布局变化均需纳入设计与验收。整体跟踪见 [Issue #130](https://github.com/heyallencao/corvid/issues/130) 和执行板 D23。
+
 ## 当前基线
 
-- 本机隔离启动的空白 Corvid 窗口显示 Profile/Room 横条、标签条、地址与九个图标操作；左侧没有持久导航或 Space 列表。
-- 浏览器日常入口、Agent Room 和 Corvid Agent 工作区处于同一行，信息层级与图标语言不一致。
-- History/Bookmarks/Downloads、Agent Room、Corvid Agent 工作区复用一个顶部展开并压缩网页高度的 `#library` 面板。
-- `desktop/index.html` 内存在重复覆盖的内联 CSS，浏览器 chrome、任务面板和对话框缺少共享设计 token。
-- 已安装产品的现场观察：Ego 当前窗口使用浏览器导航和可见 Space 入口，并保持普通网页浏览能力；Kaze 使用 Browser/Skills/Scheduled/Activity 侧栏与可见 Space/标签组织。Ego 的 AX 树包含多个旧/后台 WebContents，不能视作单窗 DOM；截图/观察仅作产品层参照，不采集或引用私人页面内容。
+- 当前源码与本轮隔离窗口一致：宽窗左侧为持久导航，包含浏览身份、空间、Agent 入口与书签/历史/下载/设置；右侧主区域从标签栏、导航工具栏进入网页画布。默认空白 `about:blank` 截图未显示网站内容，也没有打开 Agent 工作区或资料库面板。
+- `desktop/styles.css` 在常规宽度使用 232px 侧栏；窗口宽度不大于 873 CSS px 时收拢为 64px 图标栏。Agent/资料库面板按需使用右侧工作区，不应把其关闭状态误记为缺少该入口。
+- 首次启动时出现 Chrome 资料导入提示；本轮在全新 `CORVID_DATA_DIR` 中选择“稍后”后进入空白页，没有读取或导入用户浏览器资料。该截面只验证了默认壳层级，没有覆盖导入流程、真实网页、多标签拥挤或窄窗。
+- 过往 EGO/Kaze 窗口记录只适用于各自证据所列版本、窗口和时间；因浏览器窗口可能含网页主体，本项目当前比较遵守隔离/脱敏边界。没有安全可读的当前运行态证据时，竞品运行态应明确标为未知，而不从旧截图或包内字符串推断。
 - 参照边界：EGO 的公开 `ego-lite` 仓库是 Agent harness/技能，不是完整浏览器运行时；Kaze 的开源仓库主要提供公开产品说明、网站与技能，安装版 Electron 包包含实际运行时代码。对 EGO 的闭源浏览器本体不推断未观察到的实现；对 Kaze 的 REA 静态图谱不推断运行时可达性或授权效果。
 
 ## 设计原则
@@ -38,12 +39,17 @@ Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英
 10. **一个空间只运行一项 Agent 任务。** 同一 Room 中同时只能有一项 `preparing` 或 `running` 任务，避免多个会话交错操作同一页面；发送请求期间按钮立即显示处理中并禁用，失败后恢复重试。并行任务通过不同 Room 启动，Room 之间保持独立。
 11. **字体尊重操作系统并覆盖中文阅读。** 浏览器壳和 Agent 工作区使用系统 UI sans-serif 与平台 CJK fallback，不依赖用户额外安装 Inter；`zh-CN` 下小型可见 UI 文本至少 12px，英文可保留 10/11px 紧凑层级。浏览数据标题直接表达当前列表，不加与页面内容无关的品牌眉题。
 12. **交互状态彼此可辨。** hover 反馈不能覆盖当前选中状态；可按下按钮提供轻微触点反馈；主题化滚动条和文字选区沿用 Corvid 色板；状态过渡统一使用短时长 token，并遵守 `prefers-reduced-motion`。标签栏与扩展工具栏等专门隐藏的滚动条保持原行为。
+13. **空间与导航共享选中语义。** 当前空间与当前侧栏入口使用同一组强调底色、文字色和内侧指示线；空间身份圆点继续保留为身份/归属线索。主题切换和 hover 不应让已选状态变成两套视觉语言。
+
+## 样式 token 合同
+
+`desktop/styles.css` 是桌面壳层的共享样式 token 边界。圆角采用 4px 步进的 `--radius-xs`（4px）、`--radius-sm`（8px）、`--radius-md`（12px）、`--radius-lg`（16px）和 `--radius-xl`（20px），另以 `--radius-circle` 表达圆形指示器；上下两角圆弧等组合形状可由这些 token 与 0 组合。浮层投影以 `--elevation-card`、`--elevation-raised`、`--elevation-popover`、`--elevation-panel`、`--elevation-menu` 和 `--elevation-dialog` 描述语义层级，投影颜色继续引用浅/深主题下既有的 shadow 色值。焦点 halo 和选中指示等零偏移/内阴影是交互状态，不属于浮层 elevation。Issue #210 本轮只收敛圆角与投影结构；色板、近似灰、状态色和对比度债务继续跟踪，完整状态见[执行任务板 D26](../execution/feature-board.md)。
 
 ## 目标信息架构
 
 - **左侧导航：** Corvid 品牌；Profile 切换；Spaces/Rooms 列表与新建；Agent 区（Corvid Agent 对话入口与 Agent Room 列表）；底部书签、历史、下载、设置。
 - **浏览器 chrome：** 标签行和新建标签；后退、前进、刷新；地址/搜索输入；收藏与当前站点工具。
-- **原生应用菜单：** macOS 使用 Corvid 品牌应用菜单与 File/Edit/View/Window/Help 等系统菜单；Windows/Linux 默认收起菜单栏，并遵循系统 Alt 唤出约定。菜单动作路由到当前聚焦的 Corvid 窗口及用户控制的活动 Room/Tab；Agent 所有、等待接管或存在未决执行风险时，页面导航、标签修改、查找/打印和缩放操作保持禁用。菜单语言跟随应用级 `zh-CN` / `en` 偏好。此合同由 [Issue #162](../execution/issue-162-application-menu.md) 跟踪，真实运行态与平台覆盖仍待验收。
+- **原生应用菜单：** macOS 使用 Corvid 品牌应用菜单与 File/Edit/View/Window/Help 等系统菜单；Windows/Linux 默认收起菜单栏，并遵循系统 Alt 唤出约定。菜单动作路由到当前聚焦的 Corvid 窗口及用户控制的活动 Room/Tab；Agent 所有、等待接管或存在未决执行风险时，页面导航、标签修改、查找/打印和缩放操作保持禁用。菜单语言跟随应用级 `zh-CN` / `en` 偏好。此合同由 [Issue #162](https://github.com/heyallencao/corvid/issues/162) 跟踪，真实运行态与平台覆盖仍待验收。
 - **主画布：** 当前 Browser Page，由 Chromium `WebContentsView` 呈现。它的原生 bounds 顶边由各个壳层窗口的 `#browser-shell` 实测高度驱动；CSS 高度变化时经窗口专属 IPC 同步给主进程，避免固定坐标覆盖标签、书签栏或状态条。资料库面板和站点工具菜单共用该高度及间距变量，网页视图与壳层覆盖层保持在同一 chrome 边界之后。
 - **新标签起始页：** 用户新建的空白标签仍保持 `about:blank` 页面合同，由 Corvid 壳层显示本地起始体验：地址/搜索输入、当前浏览身份的常用书签、全部书签、历史和 Corvid Agent 入口。起始页收起重复的浏览器书签栏；导航使用现有地址栏提交路径，继续遵守用户配置的搜索模板和 URL 校验。起始页不创建网络页面，不进入 Agent 页面上下文；显示期间隐藏对应窗口中的 Chromium 页面视图，离开空白标签后按原布局恢复。视觉方向参考已核验的 EGO 日常浏览模式；Kaze 新标签行为没有足够运行态证据，本设计不对其作推断。
 - **Corvid Agent 对话工作区：** 右侧并行面板采用持续聊天布局，空态引导、单线程消息流、活动与状态位于上方，固定输入框、当前页面来源和模型选择位于底部；历史按对话收起，可选中后续聊。发送页面内容前提供可检查的预览和明确同意。运行、失败、停止、接管和继续状态就近显示在对话中，conversation 与 Agent Room/task/transcript 保持清晰对应。交互密度参考 REA 可见的 Kaze Agent 面板和模型/输入相对位置，Corvid 保留自己的视觉语言、EGO 式日常浏览主线及授权合同。当前切片由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 跟踪。
@@ -65,3 +71,11 @@ Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英
 ## 验收边界
 
 每一批 UI 变化只声明该批实际在隔离 Electron 窗口中验证的视觉和交互结果。没有覆盖的 OS、打包版本、屏幕阅读器、主题模式或真实网站保留为未验证；Ego/Kaze 的未观测行为不推断为产品事实。
+
+## 日常工具面板与设置中心的完成度
+
+2026-11-03 的隔离 UI 复核发现，书签、历史、下载和 Agent 工作区虽然入口可达，但空态仍较接近通用卡片：右侧固定面板重复品牌眉题、标题和搜索框，正文只有一句状态文字，缺少按当前任务选择的下一步；设置则把语言、搜索、导入、扩展和外部 Agent 授权放入同一对话框，主题和下载等常用浏览器偏好不集中。仅有统一 CSS token 不足以形成成熟产品的品牌完成度。
+
+后续打磨应把品牌名控制在必要的位置，以清楚的区域标题、语义分组、稳定的内容密度和有用的空态区分浏览器导航、资料库与 Agent 工作区。空态只提供当前任务真正需要的行动，不为装饰而加图或动效。设置中心需要明确“应用级 / 浏览身份级 / 当前站点级”配置范围，并把主题、启动、新标签、搜索、下载、权限/数据、扩展和 Agent/模型入口组织到可扩展分组；首发中英文与凭据保护分别遵循 D23、Issue #130 与 Issue #110，不能引入第二份状态。
+
+参考只用于说明层级：Kobra 的组件工作台以导航、预览、上下文说明分区；Aceternity 的分组侧栏展示主导航与独立组的层级表达。二者是组件/文档站结构灵感，不能决定浏览器需要哪些设置，也不构成采用其配色、三栏比例或装饰动效的要求。该方向分别由 [Issue #16](https://github.com/heyallencao/corvid/issues/16) 的界面打磨与 [Issue #165](https://github.com/heyallencao/corvid/issues/165) 的设置中心交付。
