@@ -169,8 +169,8 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     catch { reportSessionCleanupFailure(task); }
   }
   async function start({ profileId, roomId, tabId, prompt, includePageContext, contextPreview }) {
-    if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
-    if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 8_000) throw new Error('任务内容必须为 1 至 8000 个字符');
+    if (includePageContext !== true) throw codedError('agent-page-context-required', '请先确认发送页面上下文');
+    if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 8_000) throw codedError('agent-task-content-invalid', '任务内容必须为 1 至 8000 个字符');
     if(profileDeletionClaims.has(profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能启动 Agent'),{code:'CORVID_PROFILE_DELETING'});
     if (taskStartClaims.has(roomId) || tasks.some(task => task.roomId === roomId && ['preparing', 'running'].includes(task.status))) {
       throw new Error('[[corvid-error:agent-task-room-busy]] 此空间已有 Agent 任务正在启动或运行。请等待完成，或在其他空间并行开始。');
@@ -180,7 +180,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     try {
       const context = await readPageContext({ profileId, roomId, tabId });
       const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
-      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
+      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw codedError('agent-page-context-changed', '页面已变化，请重新检查并确认上下文');
       const selectedModel = runtime.getModelSelection();
       const modelInfo = selectedModel ? await runtime.resolveModel(selectedModel) : null;
       const task = { id: crypto.randomUUID(), profileId, roomId, tabId, sessionRef: null, messageQueue: [], ...(selectedModel ? { selectedModel: { providerId: selectedModel.providerId, modelId: selectedModel.modelId, name: modelInfo?.name || selectedModel.modelId } } : {}), prompt: prompt.trim(), page: { label: context.label, url: context.url, title: context.title }, conversation: [{ role: 'user', text: prompt.trim(), at: new Date().toISOString() }, { role: 'assistant', text: '', status: 'running', at: new Date().toISOString() }], output: '', events: [], status: 'preparing', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
@@ -195,9 +195,9 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
   async function continueTask({ taskId, message, queueItemId, queueItemRevision, includePageContext, contextPreview }) {
     const task = taskById(taskId);
     if(profileDeletionClaims.has(task.profileId))throw Object.assign(new Error('该浏览身份正在删除，暂时不能继续 Agent 对话'),{code:'CORVID_PROFILE_DELETING'});
-    if (continuationClaims.has(taskId)) throw new Error('当前任务仍在运行或不能继续');
-    if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw new Error('当前任务仍在运行或不能继续');
-    if (task.stopUnconfirmed) throw new Error('上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
+    if (continuationClaims.has(taskId)) throw codedError('agent-task-continuation-unavailable', '当前任务仍在运行或不能继续');
+    if (!['completed', 'interrupted', 'failed', 'waiting_for_user'].includes(task.status)) throw codedError('agent-task-continuation-unavailable', '当前任务仍在运行或不能继续');
+    if (task.stopUnconfirmed) throw codedError('agent-task-stop-unconfirmed', '上一轮未能确认停止；请检查模型服务和页面状态后从新对话继续');
     let queuedItem = null;
     if (task.messageQueue?.length) {
       queuedItem = task.messageQueue[0];
@@ -206,17 +206,17 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
     } else if (queueItemId) throw codedError('agent-queue-missing', '这条后续消息已不存在，请刷新队列后重试');
     const resumeCheckpoint = Boolean(task.sessionRef && runtime.canResume(task.sessionRef));
     const priorConversation = resumeCheckpoint ? null : savedConversationContext(task.conversation);
-    if (!resumeCheckpoint && !priorConversation.length) throw new Error('已保存的对话内容不足以继续；原记录已保留，请从新对话开始');
-    if (includePageContext !== true) throw new Error('请先确认发送页面上下文');
-    if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw new Error('继续内容必须为 1 至 8000 个字符');
+    if (!resumeCheckpoint && !priorConversation.length) throw codedError('agent-task-history-unavailable', '已保存的对话内容不足以继续；原记录已保留，请从新对话开始');
+    if (includePageContext !== true) throw codedError('agent-page-context-required', '请先确认发送页面上下文');
+    if (typeof message !== 'string' || !message.trim() || message.trim().length > 8_000) throw codedError('agent-task-content-invalid', '继续内容必须为 1 至 8000 个字符');
     const previousStatus = task.status;
     continuationClaims.add(taskId);
     task.status = 'preparing'; changed();
     try {
       const context = await readPageContext({ profileId: task.profileId, roomId: task.roomId, tabId: task.tabId });
-      if (task.status !== 'preparing') throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
+      if (task.status !== 'preparing') throw codedError('agent-control-returned', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       const consentedSnapshot = JSON.stringify(context.snapshot).slice(0, 12_000);
-      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw new Error('页面已变化，请重新检查并确认上下文');
+      if (!contextPreview || contextPreview.url !== context.url || contextPreview.label !== context.label || contextPreview.title !== context.title || contextPreview.snapshot !== consentedSnapshot) throw codedError('agent-page-context-changed', '页面已变化，请重新检查并确认上下文');
       task.conversation ||= [];
       const turnStartedAt = new Date().toISOString();
       task.conversation.push({ role: 'user', text: message.trim(), at: turnStartedAt }, { role: 'assistant', text: '', status: 'running', at: turnStartedAt });
@@ -272,12 +272,12 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
       const credential = await issueAgentCredential({ taskId: task.id, roomId: task.roomId });
       if (!credential || typeof credential.id !== 'string' || !credential.id || typeof credential.token !== 'string' || !credential.token) throw new TypeError('Corvid Agent identity provider returned an invalid scoped credential');
       sessionCredentialIds.set(task.id, credential.id);
-      if (task.status !== 'preparing') throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
+      if (task.status !== 'preparing') throw codedError('agent-control-returned', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       const session = await runtime.createSession({ dataDir, taskId: task.id.replaceAll('-', '_'), profileId: task.profileId, roomId: task.roomId, tabId: task.tabId, agentCredential: { id: credential.id, token: credential.token }, includePageContext: true, expectedContext: { label: context.label, url: context.url, title: context.title, snapshot: consentedSnapshot }, ...(task.selectedModel ? { selectedModel: task.selectedModel } : {}), checkpoint, ...(priorConversation ? { priorConversation } : {}) });
       if (!session || typeof session.checkpoint !== 'function' || typeof session.prompt !== 'function') throw new TypeError('Agent runtime returned an invalid session');
       if (task.status !== 'preparing') {
         await disposeSession(task, session);
-        throw new Error('空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
+        throw codedError('agent-control-returned', '空间已交给用户；Agent 会话尚未就绪，本轮不会继续启动，请检查页面后重新开始。');
       }
       if (priorConversation) transcriptFallbackSessions.add(task.id);
       task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;

@@ -16,9 +16,9 @@ async function until(predicate, label) {
 
 (async () => {
   const localeSource = fs.readFileSync(path.join(__dirname, '../desktop/locales.js'), 'utf8');
-  for (const { language, expectedBusy, expectedStarting } of [
-    { language: 'zh-CN', expectedBusy: '此空间已有 Agent 任务正在启动或运行', expectedStarting: '正在启动 Agent 任务' },
-    { language: 'en-US', expectedBusy: 'An Agent task is already starting or running in this space', expectedStarting: 'Starting Agent task' },
+  for (const { language, expectedBusy, expectedStarting, expectedChanged } of [
+    { language: 'zh-CN', expectedBusy: '此空间已有 Agent 任务正在启动或运行', expectedStarting: '正在启动 Agent 任务', expectedChanged: '页面已变化' },
+    { language: 'en-US', expectedBusy: 'An Agent task is already starting or running in this space', expectedStarting: 'Starting Agent task', expectedChanged: 'The page changed' },
   ]) {
     const context = { navigator: { language }, window: {}, document: { documentElement: { lang: '' }, querySelectorAll() { return []; } } };
     vm.runInNewContext(localeSource, context);
@@ -26,6 +26,24 @@ async function until(predicate, label) {
     assert.ok(context.window.corvidI18n.t('agentTaskRoomBusy').startsWith(expectedBusy), `${language} translates same-Room concurrency feedback`);
     assert.ok(context.window.corvidI18n.t('startingTask').startsWith(expectedStarting), `${language} translates the pending start state`);
     assert.equal(context.window.corvidI18n.userFacingError('[[corvid-error:agent-task-room-busy]] internal details'), context.window.corvidI18n.t('agentTaskRoomBusy'));
+    const changedError = context.window.corvidI18n.userFacingError('[[corvid-error:agent-page-context-changed]] 页面已变化，请重新检查并确认上下文');
+    assert.ok(changedError.startsWith(expectedChanged), `${language} translates stale page-context feedback`);
+    assert.equal(
+      context.window.corvidI18n.userFacingError("Error invoking remote method 'shell-action': Error: [[corvid-error:agent-page-context-changed]] 页面已变化，请重新检查并确认上下文"),
+      context.window.corvidI18n.t('agentPageContextChanged'),
+      `${language} translates coded errors wrapped by Electron IPC`
+    );
+    for (const [code, key] of [
+      ['agent-page-context-required','agentPageContextRequired'],
+      ['agent-task-content-invalid','agentTaskContentInvalid'],
+      ['agent-page-context-changed','agentPageContextChanged'],
+      ['agent-task-continuation-unavailable','agentTaskContinuationUnavailable'],
+      ['agent-task-stop-unconfirmed','agentTaskStopUnconfirmed'],
+      ['agent-task-history-unavailable','agentTaskHistoryUnavailable'],
+      ['agent-control-returned','agentControlReturned'],
+    ]) {
+      assert.equal(context.window.corvidI18n.userFacingError(`[[corvid-error:${code}]] internal details`), context.window.corvidI18n.t(key), `${language} maps ${code} to its resource`);
+    }
   }
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-agent-continuation-lock-'));
   const context = { label: 'page-1', url: 'http://127.0.0.1/page', title: 'Fixture', snapshot: { role: 'main', text: 'fixture' } };
