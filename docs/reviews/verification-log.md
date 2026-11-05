@@ -1554,3 +1554,10 @@
 - 2026-11-05 Agent Room 面板 E2E 断言同步（Issue #304，PR #309 集成重放）：基于最新 main 合并后定向验证 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs`；测试断言与现行面板对比度/可访问名称一致。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0；截图 SHA-256 见 PR 描述。未验证 Windows、打包版或读屏实际播报。
 
 - 2026-11-05 SDK popup 用例先激活 opener（Issue #306，PR #311 集成重放）：`sdk/e2e.js` 将无关 `newPage()` 移到 popup 断言之后，确保可信点击发生在活动 opener 标签；设置 `CORVID_SDK_POPUP_QA_SCREENSHOT_PATH` 可保存本地 popup 页截图。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0。集成合并后定向与全量结果见本日记录。
+## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
+- 审计更正：早前「应用菜单仅 2 个 accelerator」为 grep 伪结果（计数到 helper 定义行）——当前 main 菜单已挂 T/N/W/Shift+W、前进后退、R/F/P、缩放三档、全屏等 accelerator 并有 `syncApplicationMenuState` 动态启用与「键盘快捷键」帮助项。对照 `installShortcuts` 合同的真实缺口为 **Cmd/Ctrl+G 查找下一个、Cmd/Ctrl+Shift+G 查找上一个**（及浏览器惯例不列菜单的 Cmd+1..9、Ctrl+Tab，维持不列）。
+- 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
+- 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
+- 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
