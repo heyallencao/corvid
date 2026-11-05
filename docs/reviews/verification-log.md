@@ -17,6 +17,14 @@
 - 最终全量：在集成候选（含远端新增双语断言和工作区取整断言修正）上，`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：37 项 node:test、65 条串行 Electron/契约脚本全部通过。此前全量曾分别在 `profile-deletion-e2e.cjs:99`、`interaction-states-e2e.cjs:34`、`pi-workbench-e2e.cjs:617`、`profiles-e2e.cjs:12` 失败；四个脚本各自独立复跑通过。`window-state-e2e.cjs` 严格高度相等断言在 main 与候选上均因原生取整差失败，容差修正后定向与最终全量通过。`git diff --check origin/main...HEAD` 通过。
 - 工作区原生取整修正：最新 main 与 PR 候选均可复现 `window-state-e2e.cjs` 的严格高度相等断言因 macOS workArea 取整差 1–3px 失败；窗口仍完整包含在工作区中。测试现在允许高度最多比 workArea 计算值小 4px，同时保留完整边界包含断言。定向 `window-state-e2e.cjs` 与修正后的全量套件通过。
 
+## 2026-11-05 Agent 工作台窄窗工具栏滚动验收（Issue #217）
+
+- 候选范围：基于 GitHub `main` `926a9e186e251d3e4150cc6a9a4e26a23c93a8ad`，PR #232 将历史/新建会话操作固定在 Agent 工作台任务列表滚动区之外，并为 18 条隔离合成任务增加真实窄窗溢出验收。Issue #217 的其他范围保持开放。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` PASS；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-header-e2e.cjs` PASS（zh-CN/en）。窗口外框 704×568；shell viewport 719×428 CSS px。中英文列表 `scrollHeight/clientHeight` 分别为 350/99、376/99，`scrollTop` 为 250、276.5；工具栏滚动前后 y 坐标均为 171px；历史与新建按钮均完整位于 x=401–700 的工作区内。`node --check desktop/renderer.js`、`node --check tests/pi-workbench-header-e2e.cjs` 与 `git diff --check` PASS。
+- 全量门禁：最终标准命令 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 34/34 通过，后续串行 E2E 与合同脚本全部通过，包含工作台、短高窗口、本 PR 窄窗、Chrome 导入、设置和 hover 回归；没有设置测试跳过变量。此前三轮全量运行曾分别在 `pi-workbench-e2e.cjs:601` 的摘要行边界断言、`chrome-import-e2e.cjs:774` 的原生父窗口激活关闭扩展弹窗断言、以及再次在 `pi-workbench-e2e.cjs:601` 失败。对应 Pi 工作台单项（含边界值诊断）和默认 Chrome 导入单项之后均独立通过；失败轮次附近观察到其他工作树并行 Electron/E2E 进程，因果无法单凭时间关系确认。未改动相关主线测试，第四轮完整标准链通过。
+- 环境与数据：macOS arm64（darwin 25.5）、Node.js v24.22.1、npm 11.19.1、Electron 45.2.1；隔离临时 Corvid 数据目录、真实隔离 Room/Tab ID 与合成历史记录。没有读取真实网页/浏览器资料，也没有调用 Provider、OAuth 或模型。两张 658×440 PNG 位于 `tests/fixtures/issue-217/`；zh-CN SHA-256 `b373d7724716768c8a52ae39d3b2c3ba4dc012a5bdb69310948e5c87bd7063ba`，en SHA-256 `809fc7e2e0105cd98a8570911c71f3876f74460f36e8da9f2d499bf089bfdd4e`。
+- 限制：只覆盖 macOS 开发版、浅色主题与 704×568 外框；未覆盖 Windows/Linux、打包版、暗色主题、VoiceOver/读屏实播或其他窗口尺寸。Issue #217 仍开放。
+
 ## 2026-11-05 PR #273 Release workflow 前向重放（候选，未合并）
 
 - 候选基线：GitHub `main` `266418fc27217e86b51994efdada92702ed899da`；从 PR #273 精确差异重放发布 workflow、macOS x64/Windows 打包设置与跨平台打包 smoke 支持，保留 main 的签名打包路径、完整 npm test 链及更新后的窗口/Agent E2E 断言。为生成 arm64/x64 DMG/ZIP，在 main 的默认目录 target 上叠加 DMG/ZIP targets。

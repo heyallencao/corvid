@@ -73,6 +73,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           const { left, right, top, bottom, width, height } = element.getBoundingClientRect();
           return { left, right, top, bottom, width, height };
         };
+        list.scrollTop = 0;
+        const toolbarTopBeforeScroll = toolbar.getBoundingClientRect().top;
+        list.scrollTop = list.scrollHeight;
+        const listScrollTop = list.scrollTop;
+        const toolbarTopAfterScroll = toolbar.getBoundingClientRect().top;
         const buttonRect = button.getBoundingClientRect();
         const historyButtonRect = historyButton.getBoundingClientRect();
         const workspaceRect = workspace.getBoundingClientRect();
@@ -84,6 +89,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           list: { ...rect(list), clientWidth: list.clientWidth, scrollWidth: list.scrollWidth },
           listScrollHeight: list.scrollHeight,
           listClientHeight: list.clientHeight,
+          listScrollTop,
+          toolbarTopBeforeScroll,
+          toolbarTopAfterScroll,
           toolbar: rect(toolbar),
           toolbarIsOutsideList: !list.contains(toolbar),
           toolbarParentIsWorkspace: toolbar.parentElement === workspace,
@@ -97,6 +105,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       assert.equal(geometry.toolbarIsOutsideList, true, `${locale} toolbar must not share the task-list scrollbar layer`);
       assert.equal(geometry.toolbarParentIsWorkspace, true, `${locale} toolbar remains fixed in the workbench content`);
       assert.ok(geometry.listScrollHeight > geometry.listClientHeight, `${locale} fixture must exercise an overflowing task list: ${JSON.stringify(geometry)}`);
+      assert.ok(geometry.listScrollTop > 0, `${locale} fixture actually scrolls the task list: ${JSON.stringify(geometry)}`);
+      assert.equal(geometry.toolbarTopAfterScroll, geometry.toolbarTopBeforeScroll, `${locale} toolbar stays fixed while the task list scrolls`);
       assert.ok(
         geometry.button.width > 0 && geometry.visibleButtonWidth >= geometry.button.width - 1,
         `${locale} new-conversation action remains fully visible outside the 704px task-list scrollport: ${JSON.stringify(geometry)}`
