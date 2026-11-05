@@ -1892,3 +1892,10 @@
 - 候选：`1f7ad0b`（x64 架构名称归一与 arm64 全量回归失败重试）及 `1bbe5d0`（Pi Workbench 异步重绘时 detached locator 有界重取），基于最新 `origin/main` `25f28d6`。环境：独立 worktree `infra/issue-319-release-macos-gate`，macOS arm64、Node.js v24.22.1、Electron 45.2.1；全量命令 `env -u ELECTRON_RUN_AS_NODE npm test`，使用 `caffeinate` 防止系统休眠。
 - 验证：重放后首次全量运行在地址建议 E2E 的 `window.browserShell.invoke` 未就绪时失败，期间检测到另一 worktree #217 的全量 E2E 正在运行；未据此归因代码问题。随后第二次完整运行 `EXIT 0`，37/37 node:test 与后续全部串行 E2E/合同脚本通过，包括地址建议、Pi Workbench、启动诊断和 Agent 工作区用例。
 - 清理与边界：完整运行更新的 9 张已跟踪 QA 截图已恢复为分支原始字节。仅本机 macOS 开发版、合成数据和本地 fixture；未覆盖 Intel runner 实际打包产物、签名包、公证和 publish。手动 Release workflow 仍需通过 `workflow_dispatch` 验证 x64 packaged smoke 与 arm64 retry gate。
+
+## 2026-11-06 Electron E2E 启动诊断当前主线复验（Issue #87）
+
+- 基线：PR #326 合并后的 `origin/main` `d9450d3`；独立 worktree `infra/issue-87-electron-startup-diagnostics`，macOS arm64、Node.js v24.22.1、Electron 45.2.1。启动诊断与有界清理实现已由此前 PR #116/#155/#164 合入。
+- 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test 与全部串行 E2E/合同脚本通过，覆盖 `electron-startup.e2e.mjs` 8 项、慢速恢复、Library、多窗口和 Pi Workbench。全量结束后本 worktree 的 Corvid Electron 子进程已退出。合入后 Pi Workbench 定向冒烟亦 EXIT 0。
+- 历史根因：本轮未复现原始 Electron 启动挂起，未取得足以归因产品或 harness 的证据。并行的另一 worktree 全量运行停在 `popup-events-e2e.cjs`，其 Electron 进程持续存活；这是本轮观察到的独立 E2E 停滞，不能据此认定为原 issue 的启动挂起，也未在本 issue 扩大修复范围。
+- 边界：当前仅验证 macOS arm64 开发环境；Windows、签名包和真实用户 Profile 未覆盖。一次最新主线全量通过结合既有多轮全量回归，验证诊断与门禁当前可用，但不能证明历史间歇挂起根因已定位。
