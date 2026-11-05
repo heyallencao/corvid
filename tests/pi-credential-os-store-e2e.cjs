@@ -40,7 +40,7 @@ async function waitForPage(dataDir, url) {
 async function openApiKeyProvider(app) {
   const shell = await app.firstWindow();
   await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
-  const select = shell.locator('.pi-model-select');
+  const select = shell.locator('.pi-model-select:visible').first();
   const status = shell.locator('.pi-model-status');
   await status.waitFor({ state: 'visible', timeout: 2_000 });
   try { await select.waitFor({ state: 'visible', timeout: 20_000 }); }
@@ -56,11 +56,24 @@ async function openApiKeyProvider(app) {
     }
     throw error;
   }
-  const option = await select.locator('option').evaluateAll(options => options.find(item => {
-    try { return JSON.parse(item.value).providerId === 'anthropic'; } catch { return false; }
-  })?.value);
-  assert.ok(option, 'the catalog contains an API Key provider');
-  await select.selectOption(option);
+  const catalog = await shell.evaluate(() => window.browserShell.invoke('piModels'));
+  const provider = catalog.providers.find(item => item.id === 'anthropic' && item.supportsApiKey);
+  assert.ok(provider?.models.length, 'the catalog contains an API Key provider');
+  const model = provider.models[0];
+  await select.click();
+  const search = shell.locator('.pi-model-search:visible');
+  await search.fill(model.id);
+  const option = shell.locator(`[role="option"][data-provider-id="anthropic"][data-model-id="${model.id}"]`);
+  await option.waitFor();
+  const targetIndex = await option.evaluate(element => [...element.parentElement.children].indexOf(element));
+  const activeIndex = await search.evaluate(input => {
+    const active = document.getElementById(input.getAttribute('aria-activedescendant'));
+    return active ? [...active.parentElement.children].indexOf(active) : 0;
+  });
+  const optionCount = await shell.locator('[role="option"]').count();
+  for (let step = 0; step < (targetIndex - activeIndex + optionCount) % optionCount; step++) await search.press('ArrowDown');
+  await search.press('Enter');
+  await shell.waitForFunction(() => document.querySelector('.pi-model-select[aria-expanded="false"]'));
   return shell;
 }
 

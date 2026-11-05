@@ -42,27 +42,30 @@ const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
     })();
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await shell.getByRole('button', { name: /Connect current page|连接当前页面/ }).click();
+    await shell.evaluate(async () => window.browserShell.invoke('setUiLocale', { locale: 'en' }));
+    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent === 'Current selection is not connected');
 
-    const modelSelect = shell.locator('.pi-model-select');
+    const modelSelect = shell.locator('.pi-model-select:visible').first();
     await modelSelect.waitFor({ timeout: 5_000 }).catch(async error => {
       const diagnostic = await shell.evaluate(() => ({ panelKind: document.querySelector('#library')?.dataset.kind, panelHidden: document.querySelector('#library')?.hidden, workbench: document.querySelector('#pi-workbench-content')?.innerText, taskForm: document.querySelector('#pi-task-form')?.innerText, address: document.querySelector('#address')?.value }));
       throw new Error(`${error.message}; UI state: ${JSON.stringify(diagnostic)}`);
     });
-    const codexValue = await modelSelect.locator('option').evaluateAll(options => options.find(option => option.value.includes('openai-codex') && option.value.includes('gpt-6-luna'))?.value);
-    assert.ok(codexValue, 'the default choice remains stored as a selectable value');
-    await modelSelect.selectOption(codexValue);
+    await shell.evaluate(() => window.browserShell.invoke('selectPiModel', { providerId: 'openai-codex', modelId: 'gpt-6-luna' }));
+    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent === 'Current selection is not connected');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-model.json'), 'utf8')),
+      { providerId: 'openai-codex', modelId: 'gpt-6-luna' }, 'the default model remains stored while its name is hidden');
     await shell.waitForFunction(() => document.querySelector('.pi-model-controls')?.dataset.connected === 'false');
-    assert.equal(await modelSelect.locator('option:checked').textContent(), 'Current selection is not connected');
+    assert.equal(await modelSelect.innerText(), 'Current selection is not connected');
     assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-model.json'), 'utf8')).modelId, 'gpt-6-luna', 'the visible label change does not replace the persisted model choice');
     assert.equal(await shell.locator('.pi-model-status').textContent(), 'Not connected');
     await shell.screenshot({ path: path.join(screenshotsDirectory, 'issue-200-unconnected-model-en-1280x850.png') });
     await shell.evaluate(async () => window.browserShell.invoke('setUiLocale', { locale: 'zh-CN' }));
-    await shell.waitForFunction(() => document.querySelector('.pi-model-select option:checked')?.textContent === '当前选择尚未连接');
+    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent === '当前选择尚未连接');
     assert.equal(await shell.locator('.pi-model-status').textContent(), '未连接');
     await shell.screenshot({ path: path.join(screenshotsDirectory, 'issue-200-unconnected-model-zh-CN-1280x850.png') });
     await shell.evaluate(async () => window.browserShell.invoke('setUiLocale', { locale: 'en' }));
-    await shell.waitForFunction(() => document.querySelector('.pi-model-select option:checked')?.textContent === 'Current selection is not connected');
-    assert.equal(await modelSelect.locator('option:checked').textContent(), 'Current selection is not connected');
+    await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.textContent === 'Current selection is not connected');
+    assert.equal(await modelSelect.innerText(), 'Current selection is not connected');
     assert.equal(await shell.locator('.pi-model-status').textContent(), 'Not connected');
     await modelSelect.focus();
     await shell.keyboard.press('Tab');
