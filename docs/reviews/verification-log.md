@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #16 子切片 B1：全表面走查与面板焦点抽测
+
+- 基线：隔离 worktree，候选基于 `origin/main` `007df58`，分支 `ui/issue-16-b1-walkthrough`。改动仅文档与截图：`docs/qa/ui-visual-check.md` 走查条目、`docs/qa/screenshots/issue-16/walkthrough/` 选摘 8 张（3 尺寸 × 双语 × 3 表面）。无代码改动。
+- 走查方法：脚本驱动隔离 Electron（`CORVID_TEST_MODE=1`、空书签/零历史合成态），`setUiLocale` 切换、`BrowserWindow.setBounds` 三档尺寸，`capturePage` 全窗截图 18 张；焦点探针在 renderer 内读取 `document.activeElement` 与面板 hidden 状态。
+- 结果：18 张走查未发现新可见缺陷；面板开合焦点回归合同（书签/工作台两面板、双语各一次）全部正确。走查矩阵、选摘 SHA-256 与边界见 [UI 视觉检查条目](../qa/ui-visual-check.md#2026-11-06-全表面走查与面板焦点抽测issue-16-子切片-b1)。
+- 定向验证：文档提交 `git diff --check` 通过；截图为运行态真实渲染。无代码改动故不涉测试链。
+- 边界：抽样走查非全量验收；#16 保持开放（B2 六状态矩阵、B3 错误态抽测、B4 键盘全流程待做）；VoiceOver、Windows、打包版与桌面合成截图边界不变。
+
 ## 2026-11-06 Issue #217 窄窗头部操作行换行保护
 
 - 基线：隔离 worktree，分支 `ui/issue-217-toolbar-wrap`；开发基于 `25f28d6`，合并前 rebase 到 `origin/main` `25c8d76`（#326/#328/#87/#244 文档与 Release 提交，其中 #326 为 pi-workbench-e2e 642 行 detach 竞态加重试包装；rebase 仅 verification-log 文档冲突，两侧条目均保留）。改动：`desktop/styles.css`（`.pi-chat-toolbar` 加 `flex-wrap:wrap` + `row-gap`，`.pi-new-chat` 加 `margin-left:auto` 保证换行后右对齐；`max-height:520px` 媒体内按钮紧凑化 26px/micro 并 `nowrap`，防止短高换行挤压欢迎态）、`tests/pi-workbench-header-e2e.cjs`（新增 toolbar 无横向溢出、管理模型在模型行/不在头部两组断言）。
