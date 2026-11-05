@@ -1823,3 +1823,9 @@
 - 全量验证：`env -u ELECTRON_RUN_AS_NODE npm test` 最终 EXIT 0，34 项 node:test 与全部串行 Electron/契约脚本通过。第一次全量运行在 `interaction-states-e2e.cjs:175` 等待 hover 超时；该用例独立复跑通过。第二次全量运行在 `chrome-import-e2e.cjs:754` 等待扩展弹窗关闭超时；该用例独立复跑通过。第三次完整重跑通过，包括上述两项。运行中更新的 Issue #129/#18/#279 QA 截图已恢复为仓库原始文件。
 - `node --check` 与 `git diff --check` 通过。截图状态、窗口尺寸、脱敏范围及 SHA-256 见[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-导航状态区与恢复issue-202)。
 - 限制：仅 macOS 开发版与合成本地 fixture；未覆盖 Windows、签名包、真实网络、真实网站、读屏实播或暗色主题人工检查。PR 上旧 GitHub Actions 检查均无 runner steps，不能作为通过证据；按仓库约束不新增 PR CI，以上本地全量结果是当前验收依据。
+
+## 2026-11-06 tab-ux 全量回归复验（Issue #292）
+
+- 基线：隔离 worktree，`origin/main` `d1ab9c2`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。首次执行因 worktree 尚无依赖而报 `ERR_MODULE_NOT_FOUND: electron`，随后 `npm ci` 成功（375 packages，0 vulnerabilities）。
+- 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，后续全量 E2E 脚本链均完成，包含 `tests/tab-ux-e2e.cjs` 输出 `PASS tab favicon, find, drag, last-tab recovery and middle-click close`。这是当前主线全量验证，不代表其他平台或打包版。
+- 范围与限制：产品/测试修复 `02244ff` 已在本次基线中；此复验没有修改产品代码。模型相关合同使用测试 fixture；未调用真实 OAuth 或 Provider。测试更新的 9 张已跟踪 QA 截图已恢复到基线字节，本记录未附截图。
