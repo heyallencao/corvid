@@ -172,6 +172,31 @@ const taskFile = dataDir => path.join(dataDir, 'agent-tasks.json');
     assert.equal(failedTransition.conversation[0].text,failedTransitionTask.conversation[0].text,'failed runtime replacement preserves prior Corvid messages');
     assert.equal(failedTransitionWorkbench.list()[0].continuationMode,'saved-conversation','the task remains recoverable from its Corvid transcript');
 
+    const failedStartupCleanupDir=path.join(root,'startup-cleanup-failure');fs.mkdirSync(failedStartupCleanupDir);
+    const failedStartupRuntime=makeRuntime('failed-startup-runtime');
+    failedStartupRuntime.createSession=async()=>{throw new Error('synthetic session initialization failure');};
+    let startupRevokeAttempts=0;
+    const startupRevoked=[];
+    const failedStartupIdentity={
+      issueAgentCredential:async({taskId,roomId})=>({id:`builtin:${taskId}`,token:`secret:${taskId}:${roomId}`}),
+      revokeAgentCredential:async id=>{if(++startupRevokeAttempts===1)throw new Error('synthetic startup credential revoke failure');startupRevoked.push(id);},
+    };
+    const failedStartupWorkbench=createAgentWorkbench({dataDir:failedStartupCleanupDir,runtime:failedStartupRuntime,...failedStartupIdentity});
+    await assert.rejects(
+      failedStartupWorkbench.start({profileId:'profile-a',roomId:'room-startup-cleanup',tabId:'tab-startup-cleanup',prompt:'recover after startup cleanup failure',includePageContext:true,contextPreview}),
+      /synthetic session initialization failure/,
+      'a credential cleanup failure must not replace the original session initialization error',
+    );
+    const failedStartupTask=failedStartupWorkbench.list()[0];
+    assert.equal(failedStartupTask.status,'failed','a failed startup with a failed credential revocation cannot remain permanently preparing');
+    assert.equal(failedStartupTask.stopUnconfirmed,true,'the failed task records that credential cleanup is still unconfirmed');
+    assert.equal(failedStartupTask.canContinue,false,'an unrevoked scoped credential prevents transcript continuation');
+    assert.equal(failedStartupTask.conversation.at(-1).status,'failed','the pending assistant turn is marked failed');
+    assert.ok(failedStartupTask.events.some(event=>event.messageKey==='agentSessionCleanupFailed'),'the cleanup failure is surfaced on the retained task');
+    assert.deepEqual(await failedStartupWorkbench.clear(failedStartupTask.id),{ok:true},'the retained credential can be revoked by retrying task removal');
+    assert.deepEqual(startupRevoked,[`builtin:${failedStartupTask.id}`],'task removal succeeds only after the outstanding scoped credential is revoked');
+    assert.equal(failedStartupWorkbench.list().length,0,'the terminal failed task can be removed after cleanup succeeds');
+
     const handoffDir=path.join(root,'identity-handoff');fs.mkdirSync(handoffDir);
     const handoffRuntime=makeRuntime('handoff-runtime');
     const pendingPrompts=[];

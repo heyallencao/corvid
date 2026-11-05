@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-05 Issue #5 启动失败双重故障恢复（PR #287 重放最新主线）
+
+- 变更：按集成裁决，#287 仅承载启动期 `createSession()` 失败且 scoped credential 撤销也失败的独立修复（#156 已收窄为已完成会话异步清理）。原提交 `55386af` 基于 #156 旧 lineage；本次前向合并 `origin/main` `98e4678`（含 #154、#156）为合并提交 `82d81c8`，冲突解决保留 main 的 transcript 回退、pauseRoom finally 与工作台截图断言，叠加启动 catch 块修复、对应合同、`docs/execution/issue-5-startup-cleanup-recovery.md`、D12/索引行及本记录。
+- 修复内容：启动错误路径捕获凭据撤销失败并保留原始初始化异常；任务与 assistant turn 落为 `failed`，撤销失败时记录 `agentSessionCleanupFailed` 双语事件、设置 `stopUnconfirmed` 并禁用续聊；凭据映射延迟到撤销成功才清除，删除任务可重试，成功后才删除记录。
+- 定向验证：`NODE_PATH=<主工作区依赖> node tests/agent-runtime-contract-e2e.cjs` PASS（同时覆盖 #156 异步清理合同与本切片启动双故障合同：原始异常保留、failed/stopUnconfirmed、canContinue=false、首次 clear `{ok:false}` 保留任务、第二次撤销成功后删除）；`node tests/agent-task-continuation-contract.cjs` 与 `node tests/profile-deletion-services.cjs` PASS；`node --check`（agent-workbench、两项测试）与 `git diff --check` 通过。
+- 真实 Electron：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` PASS（临时链接主工作区依赖后运行，覆盖上下文同意、多轮、重启恢复、接管与清理失败 UI）。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1；首段 node:test 34/34 全部通过（browser/dialogs/uploads 三项环境敏感用例本轮通过，佐证 Issue #289 的环境敏感结论），串行链 36 项通过后于 `tests/window-state-e2e.cjs:21` 失败（期望 height 850 实得 845；与 843/847 同族的显示器 workArea 测试假设，由 Issue #303 / PR #310 跟踪），链在失败处停止，其后入口本轮未执行。失败与启动修复无关。
+- 限制：未运行真实模型/OAuth、Provider 会话初始化、打包版或跨平台；启动路径由确定性假 runtime 覆盖，不证明真实 Provider 初始化失败场景。Issue #5 保持开放。
+
 ## 2026-11-05 Issue #5 Agent 会话清理失败重试（PR #156 前向更新）
 
 - 变更：从 PR #156 原 head `038be69` 前向合并 `origin/main`；保留主线新增 Agent transcript 回退、工作台 UI 和索引内容，保留 PR 的已完成会话异步清理重试及新增 UI 清理失败验收。`tests/profile-deletion-services.cjs` 对异步 `clear()` 调用增加 await。此前误纳入启动失败后的凭据撤销双重失败修复与合同；因该独立问题由后续 PR #287 处理，本次更新已从 #156 移除，避免范围重复。
@@ -1532,6 +1541,13 @@
 - 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
 - E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
 - 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
+## 2026-11-04 accent 对比色 token（Issue #210 子切片 D2）
+
+- 分支 `ui/issue-210-accent-contrast`（堆叠于 `ui/issue-210-disabled-token`），改动仅 `desktop/styles.css`。
+- 改动：`:root` 新增 `--accent-contrast: #fff`；4 处 accent 实底上的 `color: #fff`（.pi-model-action 连接 CTA、.pi-create-room/.pi-primary-action、.workspace-empty-action、onboarding 末位主按钮）改为 `color: var(--accent-contrast)`。
+- 复核背景：当前 main 的 `:root` 之外裸 hex 仅剩 `#fff` ×4（issue 基线的 54 值已被合并 PR 波次基本清偿），本切片完成「裸 hex 归并」收尾。
+- 验证：注入 renderer 同构节点读取 `.pi-primary-action`/`.workspace-empty-action` 计算色——main 与分支一致；注入按钮元素截图逐字节相同；`interaction-states-e2e.cjs`、`dialogs-ui-e2e.cjs` 通过；`git diff --check` 通过。
+- 边界：工作台整体截图含堆叠的 disabled 子切片预期差异，隔离验证以注入节点为准；未覆盖 VoiceOver/其他平台/打包版。
 ## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
 
 - 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
@@ -1539,4 +1555,3 @@
 - 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
 - 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
 - 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
-- 未覆盖：Windows/Linux 真机 accelerator 键位、VoiceOver、菜单 accelerator 与 before-input-event 拦截层级的全键位穷举实测（机制分析见 PR；browser-shortcuts-e2e 覆盖键盘路径）。
