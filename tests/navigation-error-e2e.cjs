@@ -3,19 +3,30 @@ const electron=require('electron');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const http=require('node:http');
+const net=require('node:net');
 const os=require('node:os');
 const path=require('node:path');
+const {navigationFailureDetails,navigationHttpStatusFailure}=require('../desktop/navigation-errors.cjs');
 
 const root=path.resolve(__dirname,'..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(result)return result;await delay(25);}throw new Error(`Timed out waiting for ${label}`);};
 
 (async()=>{
+  assert.deepEqual(navigationFailureDetails(-105,'net::ERR_NAME_NOT_RESOLVED','en'),{message:'Server not found',code:'ERR_NAME_NOT_RESOLVED'},'DNS failures should retain a specific reason and safe Chromium code');
+  assert.deepEqual(navigationFailureDetails(-118,'net::ERR_TIMED_OUT','en'),{message:'Connection timed out',code:'ERR_TIMED_OUT'},'Chromium timeout errors should have a specific localized reason and safe code');
+  assert.deepEqual(navigationFailureDetails(-777,'https://fixture.invalid/ERR_CONNECTION_REFUSED','en'),{message:'Unable to load this page',code:'-777'},'error details should not extract code-like strings from URLs');
+  assert.deepEqual(navigationHttpStatusFailure(408,'zh-CN'),{message:'服务器返回 HTTP 408',code:'HTTP 408'});
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-navigation-error-'));
   let app,client,failUntilRecovery=true,failedRequests=0,releaseCancel,signalCancelStarted;
   const cancelGate=new Promise(resolve=>releaseCancel=resolve);
   const cancelStarted=new Promise(resolve=>signalCancelStarted=resolve);
   const server=http.createServer(async(req,res)=>{
+    if(req.url==='/status/500'||req.url==='/status/408'){
+      const statusCode=Number(req.url.split('/').at(-1));
+      if(statusCode===408)await delay(250);
+      res.writeHead(statusCode,{'content-type':'text/html'});res.end(`<title>HTTP ${statusCode} fixture</title><h1>HTTP ${statusCode}</h1>`);return;
+    }
     if(req.url==='/fail'){
       failedRequests++;
       if(failUntilRecovery){req.socket.destroy();return;}
@@ -30,6 +41,10 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
+  const unusedPortServer=net.createServer();
+  await new Promise(resolve=>unusedPortServer.listen(0,'127.0.0.1',resolve));
+  const refusedPort=unusedPortServer.address().port;
+  await new Promise((resolve,reject)=>unusedPortServer.close(error=>error?reject(error):resolve()));
   try{
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1'}});
     const shell=await app.firstWindow();
@@ -42,15 +57,65 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     await shell.locator('#room-strip').getByRole('button',{name:'Navigation errors'}).click();
     let lastTabState;
     const waitForTab=predicate=>until(async()=>{lastTabState=(await room.tabs())[0];return predicate(lastTabState)?lastTabState:false;},'browser tab state').catch(error=>{console.error('Last tab state:',lastTabState);throw error;});
+    const waitForError=message=>until(async()=>{const value=await shell.locator('#status .navigation-error').textContent().catch(()=>null);return value?.includes(message)?value:false;},`navigation message ${message}`);
+    const waitForHttpStatus=async(statusCode,message)=>{await waitForError(message);return waitForTab(tab=>tab.loadComplete&&tab.navigationError?.code===`HTTP ${statusCode}`);};
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='Local page');
     await shell.locator('#address').fill(`${base}/home`);await shell.locator('#address').press('Enter');
     await waitForTab(tab=>tab.url===`${base}/home`&&tab.loadComplete);
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='Connection is not encrypted');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP page should show that its connection is unencrypted');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'Connection is not encrypted','the connection state should be accessible in English');
+    assert.equal(await shell.locator('.nav-symbol').evaluateAll(icons=>icons.length===6&&icons.every(icon=>icon.querySelector('svg')&&!icon.textContent.trim())),true,'sidebar navigation should render drawn SVG icons instead of text glyphs');
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
+    await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='连接未加密');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'连接未加密','the connection state should follow the Chinese locale');
+    await shell.locator('#address').fill(`${base}/status/500`);await shell.locator('#address').press('Enter');
+    const http500Zh=await waitForHttpStatus(500,'服务器返回 HTTP 500');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP error response is still an unencrypted connection, not an unknown connection');
+    assert.equal(await shell.locator('#status .navigation-error').textContent(),'服务器返回 HTTP 500','Chinese UI should state the HTTP 500 response without calling the loaded page a navigation failure');
+    assert.equal(http500Zh.navigationError.code,'HTTP 500');
+    assert.equal(await shell.locator('#address').inputValue(),`${base}/status/500`,'HTTP response errors should preserve the address for editing');
+    await shell.locator('#status').getByRole('button',{name:'重试'}).click();
+    await waitForHttpStatus(500,'服务器返回 HTTP 500');
+    const qaDir=process.env.CORVID_NAVIGATION_QA_DIR;
+    if(qaDir){
+      fs.mkdirSync(qaDir,{recursive:true});
+      await shell.setViewportSize({width:1024,height:700});
+      await shell.screenshot({path:path.join(qaDir,'issue-198-http-500-zh-CN-1024x700.png')});
+    }
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
+    await shell.locator('#address').fill(`${base}/status/408`);await shell.locator('#address').press('Enter');
+    const http408En=await waitForHttpStatus(408,'Server returned HTTP 408');
+    assert.equal(await shell.locator('#status .navigation-error').textContent(),'Server returned HTTP 408','HTTP 408 should explain the server timeout response');
+    assert.equal(http408En.navigationError.code,'HTTP 408');
+    await shell.locator('#address').fill(`${base}/status/500`);await shell.locator('#address').press('Enter');
+    await waitForHttpStatus(500,'Server returned HTTP 500');
+    await shell.setViewportSize({width:700,height:420});
+    assert.equal(await shell.locator('#status').evaluate(element=>element.scrollWidth<=element.clientWidth),true,'short-window error status should not overflow horizontally');
+    assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).isVisible(),true,'short-window retry should remain visible');
+    assert.equal(await shell.locator('#status .navigation-error-details summary').isVisible(),true,'short-window error-code disclosure should remain visible');
+    if(qaDir){
+      await shell.screenshot({path:path.join(qaDir,'issue-198-http-500-en-700x420.png')});
+    }
+    await shell.setViewportSize({width:1280,height:850});
+    const details=shell.locator('#status .navigation-error-details');
+    assert.equal(await details.locator('code').isVisible(),false,'the raw status code should remain collapsed until requested');
+    await details.locator('summary').click();
+    assert.equal(await details.locator('code').textContent(),'HTTP 500','the collapsed technical detail should expose the raw HTTP status code');
+    const refusedUrl=`http://127.0.0.1:${refusedPort}/unavailable`;
+    await shell.locator('#address').fill(refusedUrl);await shell.locator('#address').press('Enter');
+    assert.match(await waitForError('Server refused the connection'),/Page failed to load: Server refused the connection/,'connection refusal should differ from HTTP failures');
+    assert.equal((await room.tabs())[0].navigationError.code,'ERR_CONNECTION_REFUSED');
+    assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unknown','a failed connection must not be shown as encrypted');
     await shell.locator('#address').fill(`${base}/fail`);await shell.locator('#address').press('Enter');
-    await shell.locator('#status .navigation-error').waitFor();
+    await waitForError('Unable to load this page');
     assert.ok(failedRequests>0,'fixture should receive the failed navigation request');
-    assert.match(await shell.locator('#status .navigation-error').textContent(),/页面加载失败：无法加载此页面/);
+    assert.match(await shell.locator('#status .navigation-error').textContent(),/Page failed to load: Unable to load this page/);
     assert.equal(await shell.locator('#address').inputValue(),`${base}/fail`,'failed URL must remain visible for editing');
-    assert.equal(await shell.locator('#status').getByRole('button',{name:'重试'}).count(),1,'user-owned tab should expose retry');
+    assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).count(),1,'user-owned tab should expose retry');
     const failedTabId=(await room.tabs())[0].id;
+    assert.equal(await shell.locator(`#tabs .tab[data-tab-id="${failedTabId}"] .tab-loading-indicator`).count(),0,'failed navigation must not leave a tab spinner');
     await shell.locator('#new-tab').click();
     const newTab=await until(async()=>(await room.tabs()).find(tab=>tab.id!==failedTabId),'second tab');
     await shell.locator(`#tabs .tab[data-tab-id="${newTab.id}"][data-active="true"]`).waitFor();
@@ -65,7 +130,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(failedTab.navigationError.url,`${base}/fail`,'error must be bound to its owning tab and URL');
     assert.equal(failedTab.isLoading,false,'failed navigation must leave loading state');
     failUntilRecovery=false;
-    await shell.locator('#status').getByRole('button',{name:'重试'}).click();
+    await shell.locator('#status').getByRole('button',{name:'Retry'}).click();
     const recovered=await waitForTab(tab=>tab.url===`${base}/fail`&&tab.loadComplete&&tab.title==='Recovered navigation');
     await until(async()=>await shell.locator('#status .navigation-error').count()===0,'error cleared after retry');
     assert.equal(recovered.title,'Recovered navigation');
@@ -80,7 +145,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(await shell.locator('#status .navigation-error').count(),0,'superseded navigation must not leave a stale error');
     assert.equal(await shell.locator('#address').inputValue(),`${base}/home`);
 
-    console.log('PASS navigation failure feedback, preserved URL, loading state, retry recovery and superseded navigation');
+    console.log('PASS localized connection, timeout-code, HTTP status and unknown failures; preserved URL, retry recovery and superseded navigation');
   }finally{
     releaseCancel?.();
     if(client)await client.disconnect().catch(()=>{});

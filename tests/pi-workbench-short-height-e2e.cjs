@@ -81,13 +81,26 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.ok(zhLayout && zhLayout.viewport.height <= 480, 'test exercises the supported short-height layout: ' + JSON.stringify(zhLayout));
     assert.equal(zhLayout.text.description, '提问、总结或让 Agent 协助浏览。分享前先检查页面内容。', 'Chinese welcome copy remains complete');
     assert.ok(zhLayout.headingVisible && zhLayout.descriptionVisible && zhLayout.noOverlap, 'Chinese welcome heading and full description remain visible above the composer: ' + JSON.stringify(zhLayout));
+    const composerFirstViewport = async () => shell.locator('#pi-task-form').evaluate(form => {
+      const visible = selector => {
+        const element = form.querySelector(selector);
+        const rect = element.getBoundingClientRect();
+        const bounds = form.getBoundingClientRect();
+        return rect.height > 0 && rect.top >= bounds.top && rect.bottom <= bounds.bottom;
+      };
+      return { pageBindingVisible: visible('.pi-page-binding'), promptVisible: visible('#pi-task-prompt') };
+    });
+    const zhComposerFirstViewport = await composerFirstViewport();
+    assert.ok(zhComposerFirstViewport.pageBindingVisible && zhComposerFirstViewport.promptVisible, 'Chinese page binding and task prompt are visible without scrolling: ' + JSON.stringify(zhComposerFirstViewport));
 
     await shell.evaluate(() => window.corvidI18n.setLocale('en'));
     await shell.locator('.pi-chat-toolbar .pi-new-chat').click();
-    await shell.getByText('Ask Corvid Agent to help you understand a page', { exact: true }).waitFor();
+    await shell.getByText('Ask Corvid Agent about this page', { exact: true }).waitFor();
     const enLayout = await readWelcomeLayout();
-    assert.equal(enLayout.text.description, 'Ask, summarize, or browse with help. Review page content before sharing.', 'English welcome copy remains complete');
+    assert.equal(enLayout.text.description, 'Ask, summarize, or browse. Review this page before sharing.', 'English welcome copy remains complete');
     assert.ok(enLayout && enLayout.headingVisible && enLayout.descriptionVisible && enLayout.noOverlap, 'English welcome heading and full description remain visible above the composer: ' + JSON.stringify(enLayout));
+    const enComposerFirstViewport = await composerFirstViewport();
+    assert.ok(enComposerFirstViewport.pageBindingVisible && enComposerFirstViewport.promptVisible, 'English page binding and task prompt are visible without scrolling: ' + JSON.stringify(enComposerFirstViewport));
 
     const composerAccess = await shell.locator('#pi-task-form').evaluate(form => {
       const fullyVisible = selector => {
@@ -100,12 +113,15 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return {
         scrollable: form.scrollHeight > form.clientHeight,
         modelSelectorVisible: fullyVisible('.pi-model-select'),
+        connectionStatusVisible: fullyVisible('.pi-model-status'),
+        connectActionVisible: fullyVisible('.pi-model-connection > .pi-model-action'),
+        modelManagementVisible: fullyVisible('.pi-model-manage'),
         promptVisible: fullyVisible('textarea'),
         pageReviewVisible: fullyVisible('.pi-secondary-action'),
       };
     });
-    assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
-      'model, prompt, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
+    assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.connectionStatusVisible && composerAccess.connectActionVisible && composerAccess.modelManagementVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
+      'model, account recovery, prompt, management, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
 
     console.log('PASS Corvid Agent welcome remains readable in zh-CN/en at short window height: ' + JSON.stringify({ zh: zhLayout, en: enLayout }));
   } finally {

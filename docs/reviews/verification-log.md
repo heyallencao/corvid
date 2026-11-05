@@ -1,12 +1,168 @@
 # 验证记录
 
-## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
+## 2026-11-05 Issue #5 启动失败双重故障恢复（PR #287 重放最新主线）
 
-- 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
-- 定向验收：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` 通过；覆盖 30 秒 Cookie 操作上限（测试中缩至 1 秒）、未确定状态和同源重试/重启，以及隔离 APFS 实际写至 `ENOSPC`（245 MiB），满盘时旧 Cookie 可读，释放空间后 SQLite `quick_check` 为 `ok`，同源 513 条持久 Cookie 重试并再次重启后仍保留。
-- 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
-- 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
-- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
+- 变更：按集成裁决，#287 仅承载启动期 `createSession()` 失败且 scoped credential 撤销也失败的独立修复（#156 已收窄为已完成会话异步清理）。原提交 `55386af` 基于 #156 旧 lineage；本次前向合并 `origin/main` `98e4678`（含 #154、#156）为合并提交 `82d81c8`，冲突解决保留 main 的 transcript 回退、pauseRoom finally 与工作台截图断言，叠加启动 catch 块修复、对应合同、`docs/execution/issue-5-startup-cleanup-recovery.md`、D12/索引行及本记录。
+- 修复内容：启动错误路径捕获凭据撤销失败并保留原始初始化异常；任务与 assistant turn 落为 `failed`，撤销失败时记录 `agentSessionCleanupFailed` 双语事件、设置 `stopUnconfirmed` 并禁用续聊；凭据映射延迟到撤销成功才清除，删除任务可重试，成功后才删除记录。
+- 定向验证：`NODE_PATH=<主工作区依赖> node tests/agent-runtime-contract-e2e.cjs` PASS（同时覆盖 #156 异步清理合同与本切片启动双故障合同：原始异常保留、failed/stopUnconfirmed、canContinue=false、首次 clear `{ok:false}` 保留任务、第二次撤销成功后删除）；`node tests/agent-task-continuation-contract.cjs` 与 `node tests/profile-deletion-services.cjs` PASS；`node --check`（agent-workbench、两项测试）与 `git diff --check` 通过。
+- 真实 Electron：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` PASS（临时链接主工作区依赖后运行，覆盖上下文同意、多轮、重启恢复、接管与清理失败 UI）。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1；首段 node:test 34/34 全部通过（browser/dialogs/uploads 三项环境敏感用例本轮通过，佐证 Issue #289 的环境敏感结论），串行链 36 项通过后于 `tests/window-state-e2e.cjs:21` 失败（期望 height 850 实得 845；与 843/847 同族的显示器 workArea 测试假设，由 Issue #303 / PR #310 跟踪），链在失败处停止，其后入口本轮未执行。失败与启动修复无关。
+- 限制：未运行真实模型/OAuth、Provider 会话初始化、打包版或跨平台；启动路径由确定性假 runtime 覆盖，不证明真实 Provider 初始化失败场景。Issue #5 保持开放。
+
+## 2026-11-05 Issue #5 Agent 会话清理失败重试（PR #156 前向更新）
+
+- 变更：从 PR #156 原 head `038be69` 前向合并 `origin/main`；保留主线新增 Agent transcript 回退、工作台 UI 和索引内容，保留 PR 的已完成会话异步清理重试及新增 UI 清理失败验收。`tests/profile-deletion-services.cjs` 对异步 `clear()` 调用增加 await。此前误纳入启动失败后的凭据撤销双重失败修复与合同；因该独立问题由后续 PR #287 处理，本次更新已从 #156 移除，避免范围重复。
+- 定向合同：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-runtime-contract-e2e.cjs` 与 `node tests/profile-deletion-services.cjs` 均 PASS；覆盖已生成回复在异步 dispose/revoke 失败时保留、任务不可续聊、删除失败保留记录、凭据映射保留并在重试成功后删除，以及异步 clear 调用被 await。相关 `node --check` 和 `git diff --check` 通过。
+- 真实 Electron：隔离 worktree 首次运行因缺少依赖链接，在模型设置初始化等待失败；临时链接至主工作区已安装依赖后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` PASS，覆盖工作台原有上下文同意、多轮对话、重启恢复、用户接管及会话清理失败 UI 合同；测试后移除链接。
+- 全量门禁：用同一临时依赖链接执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 1，Node/Electron 首段 30 项中 27 通过、3 失败：`browser.e2e.mjs:99` 输入焦点 HTTP 400；`dialogs.e2e.mjs:26` renderer alert 超时；`uploads.e2e.mjs:40` file chooser 超时。三项错误签名与 Issue #18 记录的 `origin/main` `fe77898` 同态基线一致。
+- 前一轮后续入口：在范围收窄前，按 `package.json` 顺序串行执行了 62 个脚本，其中 54 个默认路径通过、8 个失败；另于干净 `origin/main` `fe77898` worktree 复跑六项，均以相同错误位置/签名失败。另两项为已记录的原生焦点限制：Chrome 导入默认模式在 extension popup 原生父窗口激活处超时，设置文档批准的 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 后完整导入流程 PASS；应用菜单默认模式在原生窗口焦点等待超时，设置文档批准的 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1` 后其余菜单合同 PASS。该入口统计来自当时包含启动失败修复的候选版本，不作为当前收窄提交的验证结果；收窄后重新执行的标准全量命令仍 EXIT 1，结果见上。全量失败签名与当前 `main` 已知基线/原生桌面限制一致，未观察到 PR #156 特有的新失败。
+- 限制：规定全量命令仍为 EXIT 1，不能记作全量通过。其余串行入口已执行，未运行真实模型/OAuth；Issue #5 保持开放，PR #156 保持草稿。
+
+## 2026-11-05 Issue #18 Chrome SQLite 错误本地化（PR #154 集成复验）
+
+- 变更：基于 `origin/main` `fe77898` 前向集成 PR #154。真实导入路径发现 Electron IPC 会将稳定 SQLite 错误码包装为 `Error invoking remote method ...`，导致 renderer 原有开头匹配未命中并显示内部错误标记；调整错误映射并为包装形状增加合同覆盖。
+- 定向合同：`node --test tests/chrome-import-sqlite.test.mjs tests/chrome-import-categories.test.mjs` 7/7 PASS；`node --check desktop/locales.js` 与 `git diff --check` PASS。
+- 真实 Electron：`CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 ... node tests/chrome-import-e2e.cjs` PASS，覆盖完整 Chrome 导入、Cookie 解密/写入/隔离/持久化、损坏与锁定 SQLite、恢复重试、扩展迁移及回滚。该批准开关跳过原生 popup 外部点击失焦子场景，测试直接关闭 fixture popup 后继续；不代表该原生焦点行为通过。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，Node 阶段 34 项中 31 PASS、3 FAIL：`browser.e2e.mjs:99` 输入焦点 HTTP 400，`dialogs.e2e.mjs:26` renderer alert 超时，`uploads.e2e.mjs:40` file chooser 超时。三项在干净 `origin/main` `fe77898` 以相同签名复现，归于 Issue #289；本 PR 未观察到特有失败。运行时临时借用主工作区已安装依赖，测试后移除链接。
+- 限制：未通过原生 popup blur 子场景、未运行真实 Chrome 用户资料/系统钥匙串、真实网站、Windows/Linux 或打包版；全量命令未通过，Issue #18 仍开放跟踪其余跨平台与窄窗验收。
+
+## 2026-11-04 Issue #279 Chrome 导入对话框布局（PR 前验证）
+
+- 问题：Chrome 导入长预览时，整个 dialog 随内容滚动，初始窗口内可能找不到取消与主操作。实现将内容区设为唯一滚动区，标题和底部操作常驻；底部取消复用原 dialog 关闭/来源清理路径，Cookie 同意和类别启用规则不变。
+- 命令：布局子场景 `CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 与完整 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 均 EXIT 0；`node --check tests/chrome-import-e2e.cjs`、`node --check desktop/renderer.js` 与 `git diff --check` 通过。Impeccable detector 扫描 `desktop/index.html` 与 `desktop/styles.css`，报告既有 dialog inset、eyebrow、警示左边框与卡片边框/阴影提示；没有组件级隔离数据，未把不相关警告作为本切片回归。
+- 环境：独立 worktree `/private/tmp/corvid-issue18-import-cta`，基于 `origin/main` `7582b7f`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR` 与合成 Chrome User Data/Profile。原生资料选择器由测试替身接入本地 fixture。E2E 生成了 1280×850 与 704×420、zh-CN/en 截图，见[布局 QA 记录](../qa/issue-279-chrome-import-layout.md)。
+- 断言：四种语言/窗口组合均验证取消与导入按钮在 dialog 和 viewport 内且不被水平裁切、预览区高度不足时有独立滚动、滚动不会移动标题或底部操作、从最后扩展选择项按 Tab 可以依次到达底部取消和主操作且点击可关闭 dialog；切换最后一个可导入类别时按钮按既有规则禁用/启用。随后完整 Chrome 导入 E2E 通过，覆盖合成 Cookie 解密/写入/隔离/持久化和扩展迁移回归；不代表系统钥匙串人工授权测试。
+- REA/参考限制：Issue #18 保存的 Kobra Alert 参考 Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61` 仅涉及上下文状态呈现，不支持固定页脚判断；本次 REA retained-record 查询未找到该 ID，故没有宣称本轮重验了 Kobra。布局依据是 Corvid 当前合成 Electron 截图及对应 HTML/CSS 结构。未复制站点素材或代码。
+- 数据与覆盖限制：没有读取本机 Chrome 资料、真实 Cookie 或系统钥匙串；没有访问真实网站、登录 OAuth 或调用模型。布局子场景在导入写入前结束；随后完整 E2E 只向隔离临时目录写入合成书签/历史/Cookie/扩展数据。暗色主题、读屏播报、打包版、Windows/Linux、真实用户资料未覆盖；D13 整体保持部分状态。
+
+## 2026-11-04 Issue #279 PR #280 合并与 GitHub CI
+
+- 交付：PR #280 已于 2026-11-04 squash 合并，合并提交 `36199b8bc7c59eed7c556e52a0660a57495c7431`；Issue #279 随 PR 关闭。主线实现与本 QA 记录一同交付。
+- CI 状态：Chrome 导入类别隔离、系统凭据存储和 PR 截图链接检查三个 workflow 均显示 failure，但 GitHub job API 返回 `runner_id=0`、`steps=[]`，日志缺失。check-run annotation 明确说明账户近期付款失败或支出限额需要提高，任务未启动。因此这些远端检查没有执行任何测试或截图校验，不能视作实现测试失败，也不能记作 CI 通过。
+- 验证依据：本机布局子场景与完整 `tests/chrome-import-e2e.cjs` 均已 EXIT 0，范围和环境见上方 PR 前验证记录；远端 Windows/Linux/macOS 工作流本次没有提供兼容性证据。
+
+## 2026-11-04 Issue #244 链接债务复核
+
+- 只读检查：重新读取 GitHub 开放列表与 PR 正文，并对照本地 `git worktree list`。当前 27 个开放 Issue、21 个开放 PR；9 个 Issue 正文含本机路径（包括 #244 自身，另 8 个），8 个开放 PR 共 21 个图片目标仍引用非 `main` 分支或相对路径，相关 8 个分支都有独立工作树。
+- 维护更新：Issue #211 已移除仅对应已修复新标签按钮问题的本机截图路径；保留的 CSS 级联问题与截图边界已重新说明。该截图没有上传，因为它不能证明当前仍开放的缺陷。
+- 限制：上述只读盘点不能证明图片内容安全或 GitHub 页面渲染。所有活动 PR 描述本轮均未更改；PR #247 私有仓库页面仍未取得登录态渲染证据。
+
+## 2026-11-04 Issue #244 PR 描述截图链接门禁
+
+- 变更：新增 PR 描述图片链接检查器和 `pull_request` 工作流；工作流从目标分支检出受信任检查器，权限仅为 `contents: read` 与 `pull-requests: read`。开放 PR 允许引用自身分支的截图供评审；禁止本机路径、相对图片目标、其他分支图片；合并事件要求图片已迁移到 `main` 或 GitHub 附件。
+- 定向验证：`node --check scripts/check-pr-description-images.cjs`、`node --check tests/pr-description-images.test.cjs`、`node tests/pr-description-images.test.cjs`、Ruby YAML parser 对 `.github/workflows/pr-description-images.yml` 解析、`git diff --check` 均通过。10 个合成事件覆盖开放/合并状态、自身/其他分支、GitHub 附件、main 图片、本机/相对路径、Markdown 引用式图片及 HTML 图片路径。
+- 环境与限制：仅 Node.js 本地脚本和临时合成事件 JSON；未启动 Electron、未读浏览器数据、未调用模型/OAuth。PR #251 的 GitHub Actions 检查已触发，但 runner 未启动（`runner_id=0`、`steps=[]`）；annotation 表示账户付款失败或需要提高支出上限，因此没有执行工作流步骤。`actionlint` 当前不可用，YAML 语法由 Ruby parser 解析。脚本不下载图片，不证明页面渲染、图片内容脱敏或复现描述完整性。
+- 剩余：已有开放 Issue/PR 的截图链接须逐项清理；私有仓库图片页面的登录态实际渲染尚未复核。PR #247 图片通过 Contents API 存在检查不能替代页面验证。
+
+## 2026-11-04 Issue #78 旧 checkpoint 版本来源保护
+
+- 变更：旧版 `agent-tasks.json` 只含 `piSessionFile` 路径时，迁移继续保留不透明路径，但把 runtime 版本记为 `unknown`；不再将它伪装成当前安装版本。运行时因此拒绝直接恢复该 checkpoint，改用最多 40 条/24,000 字符的 Corvid 对话记录开启替代会话。任务 ID、模型、Profile/Room/Page 绑定及旧对话保留；新 checkpoint 只在替代会话首轮成功后提交。
+- 定向验证：本机 Node.js v24.22.1。`node tests/agent-legacy-checkpoint-migration.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs` 均 EXIT 0；涉及文件的 `node --check` 与 `git diff --check` 通过。
+- GitHub Actions：PR #272 的 7 个工作流检查在 1–3 秒内失败，所有作业均为 `steps=[]`；GitHub annotation 明确为账户付款失败或支出上限不足，runner 未启动，故远程测试没有执行。
+- 验证边界：合同使用隔离临时数据目录和确定性 runtime；未启动 Electron、未读取真实用户数据、未调用 Provider/OAuth 或真实模型，未进行签名包诊断。跨版本真实 runtime checkpoint 格式转换、凭据迁移/重新授权、Electron UI 和打包平台仍未由此验证。
+
+## 2026-11-04 Issue #216 交互状态与主题浏览器表面
+
+- 交付状态：PR #243 已于 2026-11-04 squash 合并到 `main`，合并提交 `48cfea63366ed83f14b34eb3174ff6ea76161d8a`；Issue #216 已关闭。此切片交付不代表 D07 整体完成。
+- 范围：统一按钮状态过渡 token，添加启用按钮按压时的轻位移与色调反馈；修正侧栏已选入口 hover 时文本/底色被通用状态覆盖，并增加品牌色内侧状态标记；为 Corvid shell 的滚动区域和文字选区补主题样式。标签栏、扩展栏明确保留隐藏滚动条。未增加菜单开合动画。
+- 定向命令：`CORVID_INTERACTION_QA_DIR=docs/qa/screenshots/issue-216 env -u ELECTRON_RUN_AS_NODE node tests/interaction-states-e2e.cjs`，最终 EXIT 0。`node --check tests/interaction-states-e2e.cjs` 与 `git diff --check` 通过。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR`、about:blank、1024×700 CSS px shell viewport。浅/深主题都用 Electron renderer media emulation 检查，不代表系统原生主题切换；测试后临时 node_modules 链接与 Electron 进程均清理。未访问外网、真实网页或用户资料；未登录 OAuth、未调用模型。
+- 断言结果：选中导航项在 hover 后保留颜色/底色和指示线；按钮 mouse down 时 computed transform/filter 提供触点反馈；滚动容器 computed scrollbar width 为 thin，标签栏仍为 none；选区颜色取当前主题 token；减少动态效果将过渡设为 ≤0.02ms 且关闭平滑滚动。浅色/深色合成截图及哈希见[视觉检查](../qa/ui-visual-check.md#2026-11-04-交互状态与主题浏览器表面-issue-216)。
+- Impeccable detector：`impeccable detect --json desktop/styles.css` 扫描完成但退出码 2；两个 warning 均为既有 border-left 规则（`.pi-task-event` 与 `.agent-access-boundary` 的既有左边框样式），不属于本次修改。本轮没有运行全量 `npm test`。
+- GitHub Actions：PR #243 的两个跨平台 workflow 启动 6 个矩阵作业，均约 2 秒后失败；`gh run view` 显示所有作业 `steps: []`，没有可读取的作业步骤或失败日志。因此本轮远程 CI 未执行测试，当前无法从这些结果判断实现兼容性或根因。
+- 限制：不覆盖原生滚动条像素、WebContentsView 合成、真机输入设备、Windows/Linux、打包版本、屏幕阅读器及站点页面 CSS；结果只证明本地开发 Electron 下的定向 UI 状态。
+
+## 2026-11-04 Issue #215 空间与导航选中态统一
+
+- 变更：当前 Room 的文字、底色与内侧强调指示线改用与当前侧栏入口相同的主题 token；保留空间身份圆点。回归测试覆盖选中态一致性、浅/深主题对比度、Room/nav hover 稳定性与 704×420 紧凑视口。
+- 基线证据：同一 Electron 测试在修改前失败，浅色主题 Room 文字 `rgb(48, 55, 80)` 与侧栏选中文字 `rgb(53, 73, 185)` 不同；修复后 E2E 从渲染 computed style 读取并通过，两主题对比度为浅色 6.49:1、深色 8.04:1。
+- 环境：独立 worktree `/private/tmp/corvid-issue215-selection-states`，更新并重放到 `origin/main` 的 `5dc0563`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与 `about:blank`，不读取用户资料、不访问真实网页、不使用 OAuth 或模型。命令：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue215-captures node tests/interaction-states-e2e.cjs`。
+- 视觉与 REA：修复前后浅/深截图、状态尺寸和 SHA-256 见[QA 记录](../qa/ui-visual-check.md#2026-11-04-空间与导航选中态统一-issue-215)。Kobra 当前目录状态由 REA controlled replay `ev_f172ddf847c4c72b6741c44d18c37ef6356fdfd5b8a4be3b5c1c6a086ae0fc01` 直接观察；它只支持“选中项应有清楚状态线索”的灵感，不支持 hover/键盘或浏览器 chrome 行为推断。
+- 检查：`node --check tests/interaction-states-e2e.cjs`、`package.json` JSON 解析和 `git diff --check` 均通过。Impeccable detector 对 `desktop/styles.css` 返回两条既有 warning（第 442、581 行）；新增选中态规则未触发。全量 `npm test` 未运行。
+- 最终定向复跑：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue215-captures node tests/interaction-states-e2e.cjs`，EXIT 0；真实 Electron 覆盖 1024×700 与 704×420，浅/深主题选中态一致、hover 稳定，渲染态文字对比度 6.49:1 / 8.04:1。QA 截图与 SHA-256 见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-空间与导航选中态统一-issue-215)。
+- 限制：本次开发版 Electron 与 renderer 截图不证明打包版、原生窗口合成、网页视图、Windows/Linux、VoiceOver 或用户自定义高对比度主题。只交付 #215 的选中状态语言子项，不关闭该 Issue。
+
+
+
+## 2026-11-04 对话框提交按钮悬停级联（Issue #211 子项）
+
+- 范围：修复全局 `button:hover` 覆盖 dialog submit 主色的问题。最新主线已用 `#new-tab` 稳定 ID 选择器，因此不再把已修复的 aria-label 失配写成本次结果；完整 CSS 级联债务仍由 Issue #211 跟踪。 PR #247 已于 2026-11-04 squash 合并，提交 `2054972cab0afb6340dc8e4a7b3b7d5fa82fd05c`；Issue #211 继续开放。
+- 验证命令：`CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue211-validation-output node tests/interaction-states-e2e.cjs`，EXIT 0；另执行 `git diff --check`。真实 Electron E2E 打开新建空间 dialog，确认 `:hover` 命中并等待 140ms 后，在浅色与深色主题断言提交按钮背景色等于悬停前值和 `--accent-solid`。为验证断言敏感度，临时恢复旧选择器后同一 E2E 在主色断言处失败，观察到中性色 `rgb(236, 238, 242)` 而预期强调色为 `rgb(83, 103, 216)`。
+- 环境：独立 worktree `/private/tmp/corvid-issue211-submit-hover`，基于 `origin/main` `7244a88`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 `CORVID_DATA_DIR`，窗口为 1024×700。截图见[QA 记录](../qa/issue-211-submit-hover.md)。未访问外网、用户网页或 Profile；未使用模型与 OAuth。测试后 Electron 进程退出，临时 `node_modules` 软链接已移除。
+- Impeccable：运行 `impeccable detect --json desktop/index.html`。检测器报告现有 HTML 内联样式中的侧边强调线、面板边框/阴影和排版层级提示；本切片只改通用 button hover 级联，没有修改这些不同区域。未运行全量 `npm test`。
+- 限制：不覆盖打包版、Windows/Linux、系统原生主题、辅助技术播报或完整的其他 dialog 流程。该验证只覆盖本地开发 Electron 中主按钮的悬停背景。
+## 2026-11-04 Issue #148 原生窗口焦点与菜单路由复验
+
+- 背景：PR #148 因 macOS 锁屏时未能完成 Electron 原生焦点验收而保留了该限制；本次在解锁桌面后对 PR 合并版本与当前主线分别重跑默认模式，未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`。
+- 最新主线追加复验：在解锁的 macOS 桌面、隔离 worktree `d195c58`（当时的 `origin/main`）上再次运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/application-menu-e2e.cjs`，EXIT 0，输出 `PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure`。未设置 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS`；测试退出后无 Corvid Electron 进程残留。
+- 命令：`env -u ELECTRON_RUN_AS_NODE node tests/application-menu-e2e.cjs`。PR 头提交 `de6b3db`（PR #148）EXIT 0；当前主线 `161ca62` EXIT 0。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1。两次均由 E2E 创建独立临时 `CORVID_DATA_DIR`，应用监听随机本地端口；测试结束清理数据目录，Electron 进程退出。未读取真实 Profile/网页数据，未使用模型、OAuth 或外网。
+- 覆盖：应用启动并获取 Electron focused window；菜单动作、Agent-owned Room 权限门禁、双窗口 Window 菜单目标选择及动作路由、切换英文和重启后的菜单语言持久化、隐藏内部调试菜单。E2E 输出 `PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure`。
+- 限制：Window 菜单项由测试通过 Electron `MenuItem.click` 触发，焦点与路由由 Electron `BrowserWindow`/应用 API 及 Room 状态断言核验；本次未通过 CUA 实际点击 macOS 菜单栏，也未覆盖 VoiceOver、其他平台、打包版本或其他窗口管理器行为。该结果只关闭解锁 macOS 开发版中的 Electron 焦点/路由待验项，不表示完整双语覆盖或所有原生交互均已验收。
+
+
+## 2026-11-04 地址栏历史与搜索建议（Issue #191）
+
+- 实现：地址栏输入时仅从当前浏览 Profile 的本地历史取最多 6 条候选，先排 URL/标题前缀，再按最近访问排序并按 URL 去重；可见副标题只显示主机和路径。普通文本显示“搜索此内容”动作，沿用用户已保存的搜索模板，确认前不发出网络请求。候选通过 `combobox`/`listbox` 表达，支持方向键、Enter、Esc、鼠标选择和清空关闭；文案覆盖 `zh-CN`/`en`。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_ADDRESS_SUGGESTIONS_QA_DIR=/private/tmp/corvid-issue191-qa node tests/address-suggestions-e2e.cjs` 通过。真实 Electron + 隔离临时数据与本地 HTTP fixture 覆盖重复访问去重、Profile 隔离、URL 查询/片段隐藏、键盘选择与焦点保持、Esc 保留输入、搜索模板只在确认后执行、zh-CN/en 名称、清空关闭，以及 704×420 无横向溢出。截图和 REA/UI 判断见[地址栏建议视觉检查](../qa/ui-visual-check.md#2026-11-04-地址栏建议与键盘选择-issue-191)。
+- 静态检查：`node --check` 覆盖 `desktop/library.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/address-suggestions-e2e.cjs`；本地库合同探针验证过滤、去重、最近排序、空查询与 Profile 隔离；`git diff --check` 通过。没有运行全量 `npm test`。
+- UI/UE 参考与 REA 边界：Aceternity UI `/components` Search 对话框的 REA controlled replay，Evidence `ev_03624926237a8c15166f8a3e066fecacb0041f7d616310448135bad5d67c2c4e`、`ev_9367e9f54ba0a032a62be6dd7b34e22040be41ae2cd7cc73cfc5fa1270817677`、`ev_643bb90ebc8795e05341a5e84e970dcbc956fd69e74a58594539b513534f02c5`；仅直接观察该站点搜索面板分组、过滤和键盘选择。它不证明浏览器 omnibox 行为。Corvid 截图来自合成本地 fixture；没有复制代码或素材。Rare UI、Kobra、EasyUI、Pin UI 未扫描。未访问真实网站、搜索引擎、模型或 OAuth；未覆盖 VoiceOver/Narrator/Orca、暗色主题和其他平台。
+
+## 2026-11-04 导航错误原因与 HTTP 状态（Issue #198）
+
+- 实现合同：将 Chromium 网络失败原因映射为双语说明，并只展示经校验的标准错误码；HTTP 4xx/5xx 导航仍保留服务器提供的页面内容，同时在 Corvid 状态区说明 HTTP 状态并允许重试。HTTP 状态读取自 Electron `did-navigate` 的 `httpResponseCode`/`httpStatusText`：[Electron WebContents 文档](https://www.electronjs.org/docs/latest/api/web-contents)。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。`env -u ELECTRON_RUN_AS_NODE CORVID_NAVIGATION_QA_DIR=/tmp/corvid-issue198-qa node tests/navigation-error-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均通过；`node --check` 覆盖所有修改的 JavaScript 文件，`git diff --check` 通过。真实 Electron E2E 覆盖连接拒绝、HTTP 408/500、zh-CN/en 原因、错误代码展开、URL 保留、HTTP 500 重试、连接复原与错误清除、替代挂起导航、700×420 窄窗可见性。未访问真实网站、模型或 OAuth。
+- 超时边界：DNS `-105`、Chromium `ERR_TIMED_OUT` 映射由确定性断言检查；HTTP 408 是本地 fixture 返回的 HTTP 响应，不是网络黑洞。没有声称完成真实网络层 `ERR_TIMED_OUT` 集成测试，也未验证代理/DNS 运行环境下所有 Chromium 错误码。
+- 截图与视觉：常规中文截图 [issue-198-http-500-zh-CN-1024x700.png](../qa/screenshots/issue-198-http-500-zh-CN-1024x700.png)，1024×700，SHA-256 `474b737a957a6ef3a420779d395ae3d8edbe2d8d6999b9910e20d7a147c049be`；窄窗英文截图 [issue-198-http-500-en-700x420.png](../qa/screenshots/issue-198-http-500-en-700x420.png)，700×420，SHA-256 `9829d563fd384803488c04652e2a887085513e129ec0cbe480d8c885bfce78f2`。屏幕状态及布局记录见[导航错误提示视觉检查](../qa/ui-visual-check.md#2026-11-04-导航错误提示与窄窗布局-issue-198)。
+- REA 与限制：Kobra Alert <https://kobra.systems/components/alert>，既有 REA Evidence `ev_7dbddd29058eef11227135f0879409777f91101dca4a0c7d543d9886057d2f61`（记录时间 2026-11-03 09:20 Asia/Shanghai）；本轮确认 evidence bundle 仍可读取。直接观察仅包括可访问树中的命名 alert 与 Error/Warning/Success/Info 示例，不包含源码或导航交互。Corvid 将“错误文字清楚可辨”应用在既有状态区属于设计推断。没有复制参考素材。未覆盖原生证书页面、其他 Chromium 错误码的运行态、Linux/Windows、屏幕阅读器、真实网站及真实网络超时集成路径。
+
+## 2026-11-04 历史面板日期与来源信息（Issue #196）
+
+- 实现范围：历史行改为标题、可见主机/路径、本地化时间与删除动作；按浏览器本地日历分为今天、昨天和按日期标题的较早记录。界面不显示 URL 查询参数或片段，搜索仍使用库中的完整 URL。日期异常时回退到双语“日期未知 / Date unavailable”，不丢弃历史条目。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE CORVID_HISTORY_QA_DIR=/tmp/corvid-issue196-qa node tests/history-panel-e2e.cjs` 通过：两次真实本地 fixture 访问与合成历史按本地日期降序分组，验证今天/昨天/较早日期标题、zh-CN/en 格式、可见主机/路径、查询参数与片段不出现在可见文本或 tooltip、完整 URL 仍可搜索、单条删除和 700×420 无横向溢出。回归 `env -u ELECTRON_RUN_AS_NODE node tests/library-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/library-search-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 均通过。所有改动 JS 文件 `node --check` 与 `git diff --check` 通过。没有访问真实网站、模型、OAuth 或个人浏览记录。
+- 截图：隔离合成历史数据，宽窗 [issue-196-history-zh-CN-1024x700.png](../qa/screenshots/issue-196-history-zh-CN-1024x700.png)（实际 PNG 2048×1336，SHA-256 `9a9e9a9b93b65b4a716efa5ac6d7365de8cc89fb01550667944464ad1522c427`）；窄窗 [issue-196-history-zh-CN-700x420.png](../qa/screenshots/issue-196-history-zh-CN-700x420.png)（实际 PNG 1408×776，SHA-256 `8c65db9b902f25c443e090e7536ae7870c1fd95dfd14b432b2d1fa5629c0573a`）。页面仅显示本地夹具与合成记录，无个人浏览内容。
+- REA/UI 参考与边界：项目既有研究文档记录 EGO `observe_native_ui` Evidence `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 与 Kaze `observe_native_ui` Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02）。本轮用 REA 查询这两个 ID 时，当前 Evidence store 均返回 0 条匹配记录，因此没有新鲜打开或重新分析这两份证据。项目文档记载的直接观察仅包括浏览器 chrome、标签/空间入口和网页画布；两份快照都没有打开历史面板，竞品时间分组与条目交互仍未知。样式取舍基于 Corvid 现有 Library 面板及 Issue #196 的可见差距：补足识别页面所需的时间和主机/路径，不引入另一套卡片或导航模型。
+- 未覆盖：跨时区切换后的历史分组、远端竞品历史面板、VoiceOver/Narrator/Orca 实播、Windows/Linux 窗口布局和真实用户历史数据。
+
+## 2026-11-04 书签与历史列表行（Issue #220）
+
+- 实现：书签/历史条目使用本地 hostname 首字母标识、标题、仅含主机与路径的副标题以及带可访问名称的删除图标；历史保留 #196 的日期分组/时间。书签、历史空态分别提供说明，并按当前 Profile 是否有活动空间提供打开新标签页或新建空间动作；无匹配空态可清除搜索。Profile 变化会清空旧搜索词，避免筛选残留跨身份显示。标识不请求远程 favicon；query/hash 不显示。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。`env -u ELECTRON_RUN_AS_NODE CORVID_LIBRARY_ROWS_QA_DIR="$PWD/docs/qa/screenshots" node tests/library-search-e2e.cjs` 与同环境 `node tests/history-panel-e2e.cjs` 均通过；覆盖标识尺寸/删除 SVG、URL 查询片段隐藏、空态和操作 zh-CN/en、Profile 搜索重置、书签搜索清除、空间/标签动作、历史日期组、删除、重启持久化及 700×420 窄窗。测试使用隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture，没有访问真实网站、账号、浏览记录、模型或 OAuth。`node --check` 覆盖 renderer/locales/两项 E2E，`git diff --check` 通过；未运行完整 `npm test`。
+- 截图与目视：书签行 [issue-220-bookmarks-zh-CN-1024x700.png](../qa/screenshots/issue-220-bookmarks-zh-CN-1024x700.png)，SHA-256 `1357d6d7ce3f3595b7e24509660cee04f93a2e9fffa70baaaa1a26ae7f0cc5e6`；书签空态 [issue-220-bookmarks-empty-zh-CN-1024x700.png](../qa/screenshots/issue-220-bookmarks-empty-zh-CN-1024x700.png)，SHA-256 `7865f0488110264ed76b91dbf99c9d686e8d9910afdf18628d64f31677afcc8e`；历史空态 [issue-220-history-empty-zh-CN-1024x700.png](../qa/screenshots/issue-220-history-empty-zh-CN-1024x700.png)，SHA-256 `114548cee1e56648377643e7aad88c9fa5f943315bcf0b85a331f280b59be694`；历史常规窗 [issue-220-history-zh-CN-1024x700.png](../qa/screenshots/issue-220-history-zh-CN-1024x700.png)，SHA-256 `df638f893b4d1f018dada7c34a9330e5008d905a10b4af2b86336962c9605c81`；历史窄窗 [issue-220-history-zh-CN-700x420.png](../qa/screenshots/issue-220-history-zh-CN-700x420.png)，SHA-256 `037507755007724f15fecb5f2dafc75086cdfa22d142a9ebcc29c813f7f8c57a`。首次视觉复核发现通用 `.entry > span` 将站点标识拉伸为色块、历史删除按钮仍显示文本；两项已修正并重新截图/回归。无个人数据。
+- UI/UE 参考与 REA：Kobra `components/empty` 与 `components/item` 受控重放 Evidence 和覆盖限制见[视觉记录](../qa/ui-visual-check.md#2026-11-04-书签与历史列表行-issue-220)。直接观察仅用于空态结构和列表信息层级；未观察生产浏览器的书签/历史面板行为，也没有复制素材。Impeccable detector 本轮对改动文件输出两条 `side-tab` 警告，定位到 `styles.css` 既有行 380 与 513，均非此次新增 CSS；未扩展修整无关组件。
+
+## 2026-11-04 标签页加载反馈（Issue #197）
+
+- 实现：导航进行中在对应标签的 favicon 槽位显示 15px CSS spinner；完成或失败后恢复 favicon。将 `isLoading` 加入标签栏渲染签名，避免状态变化被跳过；加载状态的按钮可访问名称提供 `zh-CN`/`en` 双语，动画沿用现有 `prefers-reduced-motion` 全局策略。没有增加第二条进度条，避免重复表达同一加载状态和挤压标签栏。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1。以下四项均在本地真实 Electron 与本地 fixture 下通过：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs`（普通标签慢加载 spinner、zh-CN/en 可访问名称、加载完成恢复 favicon，并覆盖原有查找/拖拽/末标签恢复）；`env -u ELECTRON_RUN_AS_NODE node tests/tab-pin-menu-e2e.cjs`（固定标签保留中心 pin glyph、菜单与拖拽/关闭/重启回归）；`env -u ELECTRON_RUN_AS_NODE node tests/navigation-error-e2e.cjs`（导航错误后 spinner 清除）；`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs`（双语 chrome 与窄窗回归）。`node --check`（所有改动的 JS 文件）与 `git diff --check` 通过。`tab-ux-e2e.cjs` 首次重跑曾在起始页准备阶段超时，单独重跑通过；固定标签测试加入慢加载后，首次因测试试图查找已被新标题替换的旧标题而失败，修正 fixture 导航后通过。未访问真实网站、模型或 OAuth。
+- 截图：本地慢页面加载中 [issue-197-loading.png](../qa/screenshots/issue-197-loading.png) 与完成后 [issue-197-loaded.png](../qa/screenshots/issue-197-loaded.png)，均为 2560×1636 截图，页面为合成 fixture，无个人数据。SHA-256 分别为 `b1841a3162bd0bed29627da6c960b9d495f44ae2c1fd66553a4017eb43b97317`、`2dc6f06d071afa6a49647350975fb1060595926f2f88cf54118acbe98eb146a5`。
+- UI/UE 参考与 REA 边界：沿用已有 Kaze 浏览器标签/网页画布 REA Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`（2026-11-02，1440×851）与 EGO 日常浏览 Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`。这些证据直接观察到浏览器标签和网页画布层级，但没有覆盖加载中 spinner 状态；该状态以 Issue #197 的复现记录与本地真实 Electron fixture 为依据。设计推断：在既有 favicon 槽位替换图标可让用户定位到具体加载标签，同时不增加横向密度；spinner 是 Corvid 自有实现，未复制任何站点代码、样式或素材。Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 与 Kaze 本轮未重新采集。未知：其他平台系统动画偏好、屏幕阅读器实播及远程页面 favicon 竞态未覆盖。
+
+## 2026-11-04 主进程权限与导航错误双语
+
+- 调整：主进程系统提示和权限名称迁移到 `desktop/main-locales.cjs`；导航失败文本按应用语言选择资源。英文权限详情在权限范围句与设备限制句之间补上可见空格，并在权限 E2E 中同时检查两种范围模板。
+- 重放：PR #148 从旧基线重放到 `origin/main` `2649c66`，保留该基线已有的原生菜单重建和浏览身份删除逻辑；修复合并时发现的英文权限详情句间缺空格，并添加覆盖“本次授权”和“仅当前请求”两类范围的断言。
+- 静态验证：`node --check` 覆盖主进程、本地化资源、权限映射与两项 E2E 脚本；资源键对齐和英文句间空格检查通过；`git diff --check` 通过。
+- 真实 Electron 验证：`permissions-e2e.cjs`、`evaluation-risk-e2e.cjs`、`claim-e2e.cjs`、`beforeunload-e2e.cjs`、`navigation-error-e2e.cjs` 与 `localization-e2e.cjs` 均通过。Chrome 导入默认模式在系统原生弹窗关闭时等待超时；启用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 后完整导入主体通过，但该模式不验证原生点外/失焦关闭。应用菜单结构合同测试 3/3 通过；`application-menu-e2e.cjs` 在键盘检查前因 `BrowserWindow.getFocusedWindow()` 返回 null 退出，因此尚未验证重放后的菜单语言切换运行态。
+- 未覆盖：未运行全量 `npm test`；上述结果来自本机 macOS、Node.js v24.14.1、Electron 45.2.1 与隔离临时数据/本地 fixture。仍未证明原生系统对话框布局、VoiceOver、其他 OS、打包签名、所有 Chromium 错误码或全产品文案盘点；Issue #130 与 D24 保持开放/部分。
+
+## 2026-11-04 Corvid Agent 首任务表单顺序与断连状态（Issue #200）
+
+- 当前实现：任务输入框先于模型选择；模型管理收敛为有本地化可访问名称的紧凑按钮；未连接状态提高字号与表面层级，并将“连接账号”作为明显操作；Agent 工作台隐藏与主标题重复的 8px 眉题，避免标题上方增加冗余层级；移除表单按钮依赖 `:last-child` 的偶然着色与相关 `!important` 覆盖。模型/Provider 名称继续按用户配置显示，符合[统一桌面体验设计](../architecture/ui-experience.md)对可配置模型语义的约定。
+- 参考判断：Kaze 运行中 Agent 面板 REA Evidence `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`（2026-11-02）直接显示模型选择器靠近输入区；证据未展开选择器或验证授权/窄窗行为。本轮 CUA 查看 Kaze 当前 Agent 面板（2026-11-04，精确分钟未留存）：顶部为历史/新建/停靠控制，输入区显示当前页面引用、提示输入、@ 标签与模型选择；这只是当前运行界面的直接可见状态，没有保存截图或 REA 行为证据。Kobra Chat Input 组件页 REA Evidence `ev_996ee85086d0d37ca6f674d30e7fe76884766d21c66af9c8f561d80dd054864d`（2026-11-04 06:45–06:51，1280×800）直接观察到模型名与提示输入及附件/发送操作邻近；组件演示未提交消息、未展开模型菜单，不能证明真实对话行为。EGO 浏览器壳层参考沿用项目既有 Evidence `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02），只用于标签、地址栏、书签、Space 与网页画布层级，不推断 Agent 功能。本轮 REA 安装包扫描 Kaze `ev_217ee056654245bf87cf8e7c447583335d915377b11d4d914d1e7a6ed6dd13f4`（扫描完整 270 项，识别 `app.asar`）和 EGO `ev_b0711916c0b0a9aa4d748620322a9c3e895a33630eec791a7e540a6a185f1e95`（到 1200 项上限后为 partial，未识别候选）只说明包结构/扫描边界，不证明产品运行行为。设计判断是任务输入先于模型设置，模型/连接信息仍靠近输入；模型名保持用户配置值，页面内容分享继续独立预览并明确同意。没有复制竞品代码或素材。
+- 静态检查：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/pi-workbench-e2e.cjs`、`node --check tests/pi-workbench-short-height-e2e.cjs` 与 `git diff --check` 通过。工作台 E2E 覆盖首任务 Tab 顺序、未连接和已连接合成状态、键盘操作、页面上下文同意、多轮对话、恢复与后续消息队列；测试使用本地 HTTP 页面和确定性 Agent fixture。
+- 运行态验收：隔离 worktree `/private/tmp/corvid-issue200-agent-first-task`、macOS、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。`env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/tmp/corvid-issue200-evidence node tests/pi-workbench-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/tmp/corvid-issue200-evidence node tests/pi-workbench-short-height-e2e.cjs` 最终均通过。短窗为 704×420 窗口、shell 视口 704×388 CSS px；中英文标题/完整说明、页面绑定和任务输入首屏可见且不重叠，模型选择、连接状态/恢复、模型管理及页面复核可在表单内滚动访问。宽窗和短窗截图已目视复核并保存到 QA 目录。最终运行未出现其他 Corvid Electron/E2E 进程；未发起真实模型请求、OAuth 或 GPT-6 Luna 消耗。
+- 截图：隔离本地 fixture、浅色主题、无私人浏览内容。宽窗逻辑 1280×850，PNG 2560×1636，[首任务表单](../qa/screenshots/issue-200-agent-first-task-1280x850.png)，SHA-256 `01425dc4aaedc5f21d83de9c6a8140c75750277d1196953c73ea86510d8e9716`；短窗输入首屏逻辑 704×420，PNG 1408×776，[输入优先](../qa/screenshots/issue-200-agent-first-task-704x420-input-first-view.png)，SHA-256 `175b82d25086ee1554a904214353d80a4e2ad53e044ba0616d4b4168af246a81`；同一短窗表单滚动状态 [模型和连接控件](../qa/screenshots/issue-200-agent-first-task-704x420-controls-scroll.png)，SHA-256 `1b0282d121a0b1f5cee6cf3906ae05c3597541be046dc10e8e31b9c57385539f`。
+- Impeccable detector：对隔离 worktree 中 `desktop/index.html` 的最终扫描返回 exit 2，共 26 条（side-tab 1、undersized-ui-text 9、tiny-text 3、gpt-thin-border-wide-shadow 11、overused-font 1、flat-type-hierarchy 1）。扫描以静态页面为范围，仍报告 source 中 8px “CORVID 工作区”文案；真实 Electron 断言与最终截图确认它在 Corvid Agent 工作台运行态隐藏。其它导航小字、边框/阴影、字体与字级提示覆盖全桌面页面，不归因为本次表单改动，留待 D21 全局视觉复核。没有扩大 Issue #200 的范围修改全局 token。
+- 未覆盖：未验证真实 OAuth/Provider、真实 GPT-6 Luna 请求、VoiceOver、暗色主题、签名打包版及 Windows/Linux；短窗下模型/连接等全部操作需在独立表单内滚动，不是同时首屏可见。完整 `npm test` 未运行。
+
+## 2026-11-04 Agent 当前轮运行时长（Issue #186）
+
+- 实现：assistant turn 保存 `finishedAt`；完成、失败、停止、中断与控制权交接时结束当前轮。运行中耗时在 Agent 工作台更新，终态冻结；重启恢复时若没有可靠结束时间，显示本轮时长未知并避免累计离线时间。zh-CN/en 资源同步，逐秒变化标记为 `aria-live="off"`。
+- 定向检查：`node --check desktop/agent-workbench.cjs`、`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/agent-message-queue-contract.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node --check tests/pi-workbench-e2e.cjs`；`node tests/agent-message-queue-contract.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/localization-e2e.cjs`；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`；`git diff --check`。全部通过。合同用例还检查启动失败、停止和用户接管都保存终止时间。E2E 使用隔离数据目录、确定性本地 HTTP fixture 和真实 Electron；GPT-6 Luna 仅为 UI 选择器 fixture，没有 OAuth 或真实模型请求，不消耗模型额度。
+- 测试修正：首轮 E2E 的固定 1.1 秒等待在计时边界偶发读到 0 秒；改为最多 3 秒轮询可见计时变化后重跑通过。该修正只让断言等待可观测行为，不改变产品计时逻辑。
+- UI 与 REA 参考的直接观察、推断和未知项、截图尺寸/hash 与视觉边界见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-agent-当前轮运行时长-issue-186)。REA 竞品证据未显示运行时长，故仅用于浏览器画布、Agent 面板及输入层级参照。
+- 未覆盖：未运行完整 `npm test`、打包版、Windows/Linux、VoiceOver、真实 Provider 网络时序或真实网页。CUA 本轮报告 Mac 锁屏，未完成原生桌面/辅助技术验收；工作台 E2E 由本地 fixture 覆盖。截图为合成页面，不含个人浏览数据。
 
 ## 2026-11-04 Agent 运行中消息队列（Issue #180）
 
@@ -15,7 +171,15 @@
 - 真实 Electron 与双语 UI：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0。覆盖队列新增、查看、编辑、重排、移除、停止冻结、键盘操作、队首发送前重新预览并同意、队列余项保留及短高窗口滚动可达；中文、英文资源键完整。页面为本地 fixture。
 - 产品与模型边界：UI 测试选择 GPT-6 Luna 仅为了验证模型选择界面状态；未发起 OAuth 或真实模型请求，没有消耗模型额度。真实模型 smoke 未运行。
 - REA 与设计记录：EGO、Kaze、Kobra 的可用证据和直接观察/推断/未知、重采集失败及覆盖边界，记录于[浏览器参考分析](../research/browser-reference-analysis.md#2026-11-04-agent-后续消息队列设计复核)与[UI 视觉检查](../qa/ui-visual-check.md#2026-11-04-agent-运行中消息队列issue-180)。两张截图来自本地合成页面，不含个人数据。
-- 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)，D25 在合并后关闭。
+- 未完成覆盖：未运行完整 `npm test`、打包版、Windows/Linux 应用 UI、VoiceOver、真实 Provider 网络时序或真实网站；REA 本轮无法成功重新打开 Kobra 组件页。此处不宣称竞品具有已验证的运行中消息队列能力。测试入口见[测试索引](../qa/e2e-suites.md)。PR #184 已于 2026-11-04 合并（提交 `86267e1`），Issue #180 已关闭；D25 已标记完成。
+
+## 2026-11-04 Chrome 导入类别独立读取（Issue #18）
+
+- 修复：预览分别读取书签与历史；单类读取失败时只报告并禁用对应类别。提交只读取已勾选类别，因此损坏的未选数据库不再阻断其他可读资料。Cookie 的预览计数与既有明确同意后读取合同保持不变。
+- 自动化：macOS、Node.js v24.22.1、Electron 45.2.1，合成 Chrome Profile 和隔离 `CORVID_DATA_DIR`。`node --check desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 通过；`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 通过 zh-CN 与 en 两个真实 Electron 场景：损坏 History 被禁用、可读书签保持可选并成功导入、目标历史为空；英文和中文错误状态均逐字断言。`git diff --check` 与 `package.json` JSON 解析通过。完整 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 随后也 EXIT 0，既有 Cookie、导入、扩展与弹窗路径全部通过。未运行全量 `npm test`。
+- 跨平台运行：GitHub Actions [Chrome 导入类别隔离跨平台验收 #41695935717](https://github.com/heyallencao/corvid/actions/runs/41695935717) 中 macOS 14、Windows 2022、Ubuntu 24.04 的真实 Electron 类别隔离场景全部通过。三平台均使用合成 Profile；只覆盖 zh-CN/en 中 History 损坏时仍能导入书签，不代表完整 Chrome 导入、Cookie/钥匙串、原生目录选择器、打包版或其他平台 UI 均已通过。
+- 截图：中文[损坏历史类别状态](../qa/screenshots/issue-18-category-isolation-zh-CN.png)，英文[对应状态](../qa/screenshots/issue-18-category-isolation-en.png)，均来自隔离本地合成资料；SHA-256 分别为 `332f1412cbd988f4d286c76964764fd29807e69e709ca3a16f77fba358028215` 与 `e144fdf6b6a06645bd5f14edbeb68dfbb1bd4ae7cbce5855aa902842490783a0`。
+- 未覆盖：未运行全量 `npm test`；此前整份导入 E2E 曾有后段原生窗口激活/弹窗关闭焦点超时，但本轮当前提交完整重跑通过。未读取真实 Chrome Profile、未访问真实网站、未调用系统钥匙串、OAuth 或模型。Windows/Linux 仅覆盖上述类别隔离子场景；完整导入路径、原生目录选择器、钥匙串、打包版和真实 Chrome 锁定/损坏形态仍未验证。
 
 ## 2026-11-04 浏览身份删除用户流程（Issue #174）
 
@@ -179,6 +343,16 @@
 - 缺口：两个 scoped Agent 客户端的并发 HTTP 请求和跨 Room 拒绝已有 E2E，但此前没有证明一个获准 Room 的长时间页面操作不会阻塞另一个 Room 的操作。
 - 验证：真实 Electron、macOS、Node.js v24.14.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`。本地 HTTP fixture 暂停 Agent A 的 `/slow` 导航响应；A 的导航请求确认仍未结束后，Agent B 对其独立获准 Room 的 `/fast` 导航在 3 秒界限内返回 200，之后释放 A 并确认其也返回 200。既有断言同时确认越权 Room/Tab 读写仍返回 `403/CORVID_FORBIDDEN`。`node --check tests/agent-access-e2e.cjs`、`git diff --check` 和 `env -u ELECTRON_RUN_AS_NODE node tests/agent-access-e2e.cjs` 均通过。
 - 边界：证明的是同一 Corvid 主进程中按 Room 分开的浏览器操作队列可独立推进，不证明真实 Provider/模型并发、多个操作系统进程之间的运行调度或抵御同一 OS 用户恶意进程。Issue #96 继续开放。
+
+## 2026-11-03 Agent runtime 切换首轮失败时保留 checkpoint（Issue #78）
+
+- 缺口：旧任务的 checkpoint 不兼容时，Corvid 从 transcript 创建替代 runtime session；新 session 在初始化时即可能返回空会话 checkpoint，当前流程会在首轮成功前覆盖旧引用。首轮失败、主动停止或 Room 接管都会使原 runtime 的恢复材料提前丢失。
+- 红测：将更新后的 `tests/agent-runtime-contract-e2e.cjs` 放入 `origin/main` `0dc6a38` 临时基线副本运行，断言失败：实际记录被替换为 runtime 的未提交空会话 checkpoint（`runtimeId=delayed-checkpoint-runtime`），预期仍为原 `future-runtime` opaque checkpoint。基线副本已移除；测试仅使用临时目录和确定性 runtime，不启动 Electron。
+- 修复：transcript 回退会话从初始化到首轮成功前保留旧引用；首轮失败、主动停止和 Room 接管不提交未完成的新 runtime checkpoint。首轮成功后再以新 checkpoint 替换旧值，若没有新 checkpoint 则清除过期引用；Corvid 保存的 transcript 仍允许继续。
+- 验证：更新后的回归在 `origin/main` `0dc6a38` 基线失败、在修复分支通过。`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 与 `git diff --check` 均通过；初始基线上的全量回归为 8 项串行 `node:test` 和 48 条独立脚本，共 56 项。随后分支重放到合并 #141 后的最新 `origin/main` `e83627b`，再次运行 `env -u ELECTRON_RUN_AS_NODE npm test` 并通过：21 项 `node:test` 和 49 条独立脚本，共 70 项。真实 Electron 使用临时数据目录和本地页面 fixture。为复用已安装依赖，测试期间临时链接 #141 worktree 的 `node_modules`；测试后已移除链接，未改依赖清单。全量套件中 Chrome 扩展截图测试改写的两张 Issue #129 截图已恢复。
+- 最新主线复验（2026-11-04）：重放到 `62da03c` 后，`node tests/agent-runtime-contract-e2e.cjs` 通过；`node --check desktop/agent-workbench.cjs`、`node --check tests/agent-runtime-contract-e2e.cjs` 与 `git diff origin/main...HEAD --check` 通过。附加运行 `pi-workbench-e2e.cjs` 在 700×420 布局断言失败（提示词和页面复核控件首屏不可见）。为定位归属，在干净 `origin/main` `62da03c` worktree 上同命令得到完全相同的 `page/select/status/action=true`、`prompt/preview=false` 失败；该失败发生在 checkpoint 续聊路径之前，是当前主线已有的窄窗失败，不归因本次 checkpoint 改动。
+- 当前主线复验（2026-11-04，重放到 `origin/main` `e2d0ec3f32d56b8069614f230cd5c1fae685ba8a`）：`node tests/agent-runtime-contract-e2e.cjs`、`node tests/agent-task-continuation-contract.cjs`、相关 `node --check` 与 `git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` 在真实 Electron 中 EXIT 0，覆盖未知 checkpoint 的 transcript 恢复、重新确认页面、同一 task ID、旧记录保留、首轮失败/重试、停止/接管和重启路径。环境为 macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；应用使用隔离临时数据目录和本地 HTTP fixture，没有调用真实 Provider、模型或 OAuth。该 E2E 会刷新 Issue #180/#186 的三张跟踪截图，本轮已恢复测试产生的图片副产物。
+- 边界：没有运行全量 `npm test`、屏幕阅读器、签名打包或 Windows/Linux；未调用真实 Provider，也没有验证真实 runtime 升级时的 checkpoint 格式转换与凭据重授权。模块合同和本次 UI E2E 只证明 Corvid transcript 回退与旧 checkpoint 保护路径，不代表真实跨版本 runtime 迁移已完成。Issue #78 保持开放。
 
 ## 2026-11-03 Chrome 导入向导空白报告复核（Issue #124）
 
@@ -1144,3 +1318,336 @@
 - 外部服务：未进行 OAuth 登录或远程模型调用；模型相关用例使用本地 fixture/凭据测试。
 - 清理：测试生成的两张 Issue #129 截图已恢复至提交版本；测试进程退出，无 Electron、Playwright 或 npm test 残留。
 - 限制：完整回归本轮通过一次，但未复现 Issue #87 所述的历史启动挂起，也未定位其根因；本记录不表示该问题已修复，Issue #87 继续开放。此次只在 macOS 开发环境运行，不能证明 Windows/Linux 或打包应用行为。
+
+## 2026-11-04 Chrome 导入类别隔离重放与完整 E2E 边界（Issue #18）
+
+- 主线与分支：将 PR #176 从旧基线重放到 `origin/main` `c111f356`（包含 PR #187/#188），当前重放提交 `4f6005b`。重放无冲突。
+- 合同与静态检查：`node --test tests/chrome-import-categories.test.mjs` 2/2 通过；`desktop/chrome-import.cjs`、`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check` 和 `git diff --check origin/main...HEAD` 通过。
+- 隔离真实 Electron：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs` 通过，覆盖 zh-CN/en 下 History 损坏时仍可选择并导入书签。使用合成 Chrome Profile 与隔离 `CORVID_DATA_DIR`，未读取本机 Chrome、系统钥匙串、OAuth 或模型。
+- 完整导入 E2E：`env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` 在扩展弹窗关闭流程中等待“原生父窗口激活后关闭弹窗”超时，尚未进入 Chrome 导入步骤。干净 `c111f35` 基线运行同一命令，在相同原生激活断言超时；当前 CUA 报告 Mac 锁屏。故本次结果不能归因于 PR #176 的导入改动，也不能算作完整导入 E2E 通过。
+- 清理与限制：两次 Electron 进程均退出；测试生成的 Issue #129 与 #18 截图已还原，基线 worktree 已移除。完整导入 E2E 需在已解锁桌面重跑；真实 Chrome、钥匙串授权/拒绝、打包版及全量 `npm test` 仍未覆盖。
+
+## 2026-11-04 Chrome Cookie 预览隔离合同补充（Issue #18）
+
+- 变更：为 `tests/chrome-import-categories.test.mjs` 增加损坏 Cookies 文件用例，断言可读书签仍显示；macOS 上计数失败只设置 `errors.cookies`，未选择 Cookie 的读取不触碰该文件。复核 `package.json` 后将 QA 测试索引同步为 31 个 `node:test` 用例、共 86 项自动化检查，并标明 Cookie 计数路径仅在 macOS 验证。
+- 验证：当前环境 `darwin`；`node --test tests/chrome-import-categories.test.mjs` 3/3 通过（含 macOS Cookie 计数失败分支）；`git diff --check` 通过。
+- 边界：仅是模块合同测试，不运行 Electron UI，也不代表完整 Chrome 导入 E2E；完整测试仍因本机桌面锁屏在导入步骤前无法完成。此用例未访问真实 Chrome Profile、钥匙串、OAuth 或模型。
+
+## 2026-11-04 Chrome 导入完整流程隔离回归（Issue #18）
+
+- 环境：macOS arm64、Node.js v24.14.1、Electron 45.2.1；使用测试创建的合成 Chrome Profile、合成 Cookie key 和临时 Corvid 数据目录。
+- 验证：`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过。覆盖完整 Chrome 导入流程、Cookie 解密/写入/Profile 隔离与持久化、失败重试、回滚、强杀后重导、扩展导入/恢复等；`node --check tests/chrome-import-e2e.cjs` 和 `git diff --check` 通过。
+- 跳过范围：测试在扩展弹窗重开后通过 Playwright 直接关闭合成弹窗，绕过锁屏导致的原生父窗口激活/点外关闭步骤；除此之外脚本继续执行完整导入场景。该结果证明导入功能路径通过，不证明原生弹窗失焦行为。
+- 限制：默认无环境变量模式仍需在已解锁桌面验收原生扩展弹窗失焦关闭；未读取本机 Chrome、未使用系统钥匙串、OAuth 或真实模型。全量 `npm test` 未运行。
+
+## 2026-11-04 原生菜单焦点测试边界复核（Issue #130）
+
+- 变更：快捷键 E2E 改为向唯一隔离 Electron 窗口发送输入，不再依赖 `BrowserWindow.getFocusedWindow()`；纯 Node 菜单合同增加断言，确认 Window 菜单项回调将选中窗口 ID 交给焦点处理器。
+- 验证：`node --check tests/application-menu-e2e.cjs` 通过；`application-menu-e2e.cjs` 在改用明确窗口输入后通过 Agent Room 快捷键门禁，继续到双窗口原生前台切换处超时。随后尝试显式激活应用，仍未取得 `BrowserWindow.getFocusedWindow()`；CUA 状态查询报告 Mac 锁屏。此 E2E 未通过，也未到达本次菜单语言切换与重启持久化断言。真实桌面焦点行为仍待解锁状态下复验。
+- 单元合同：本轮 `node --test tests/application-menu.test.mjs` 3/3 通过，包含新增的 Window 菜单焦点回调断言；E2E 尚未到达语言切换及重启持久化断言。没有将锁屏/焦点受限下的超时记为产品缺陷或功能通过；相关 Electron 进程已退出。本轮未运行完整 `npm test`。
+
+## 2026-11-04 锁屏下菜单本地化运行态隔离验收（Issue #130）
+
+- 变更：新增显式测试变量 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1`，只跳过双窗口原生焦点和路由步骤；默认模式仍完整执行该步骤。它用于在桌面锁屏时继续验收本 PR 的菜单语言切换与重启持久化，不替代原生焦点验收。
+- 验证：CUA 本轮报告 macOS 锁屏；`node --check tests/application-menu-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1 node tests/application-menu-e2e.cjs` EXIT 0，真实隔离 Electron 下 Agent Room 快捷键门禁、中文/英文原生菜单切换、语言偏好重启恢复与无 Electron/runtime/开发者工具菜单项断言通过。输出明确标记“SKIP native Window menu focus and routing”。`node --test tests/application-menu.test.mjs` 3/3、`git diff --check` 通过。
+- 边界：双窗口原生焦点与菜单动作路由仍依赖默认模式；该行为此前在已合并 PR #169 / Issue #167 的 macOS 解锁桌面现场 E2E 与 System Events 复核通过。本轮没有重跑全量 `npm test`，也没有重新执行默认原生焦点路径。
+
+## 2026-11-04 窗口最小尺寸与可达紧凑断点（Issue #219）
+
+- 环境：独立 `codex/issue219-window-min-size` worktree；macOS arm64、Node.js v24.14.1、Electron 45.2.1；测试创建隔离 `CORVID_DATA_DIR`，无网络页面或个人浏览数据。
+- 验证：`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_WINDOW_MIN_SIZE_QA_DIR=/private/tmp/corvid-issue219-qa node tests/window-state-e2e.cjs` EXIT 0。真实 Electron 检查 600×400 `setBounds` 被限制为 704×420、720px 紧凑断点在 704px 生效、文档无水平溢出、窗口状态持久化及旧 600×400 状态恢复时归一到最小尺寸；既有坏状态回退、脱离显示器坐标裁剪和旧单窗口状态用例也通过。截图为 1408×776 PNG，SHA-256 `04a78147606bb0b9a4ae8fb5d12c1af5d3324227469451cc22463e9170666487`，见[视觉记录](../qa/ui-visual-check.md#2026-11-04-最小窗口与紧凑工具栏-issue-219)。
+- 静态检查：`node --check desktop/main.cjs`、`node --check tests/window-state-e2e.cjs`、`git diff --check` 均通过。
+- REA 参考：Aceternity UI Sidebar 文档页在 704×420 的受控浏览器证据为 `ev_162bfcf637c7995af8504348a1df4b65eb03da2bee0010a657df75c2f1662181`；仅作窄视口排布参考，不据此声称组件交互或 Corvid 行为，限制见[视觉记录](../qa/ui-visual-check.md#2026-11-04-最小窗口与紧凑工具栏-issue-219)。
+- 未覆盖：仅在当前 macOS 桌面验证；未测小于最小尺寸的显示区域、Windows/Linux、深色主题、网页内容场景、辅助技术或其他语言的手动外观。本轮未运行完整 `npm test`。
+
+## 2026-11-04 标签页身份与溢出（Issue #201）
+
+- 变更：常规标签以 170px 为优先宽度、空间不足时缩到 120px；窄于 760px 时切换到 44px favicon 模式；标签栏显示有名称的左右滚动控制并在边界禁用，新建标签按钮滚动时保持可达。网页未提供 favicon 或 favicon 加载失败时，使用本地生成的域名首字母；标签按钮提供完整标题 tooltip 和 aria-label。`package.json`、E2E 索引、执行板与截图索引已同步。
+- 验证：`node --check desktop/renderer.js`、`node --check tests/tab-overflow-e2e.cjs`、`git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；设置 `CORVID_TAB_OVERFLOW_QA_DIR=docs/qa/screenshots` 重跑也 EXIT 0。真实隔离 Electron 覆盖常规与窄窗各 1/5/14 标签、滚动和边界、键盘 Enter 切换、无 favicon 回退、zh-CN/en 滚动名称与窄窗无页面横向溢出。截图与 REA 证据边界见 [桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-04-标签页身份与溢出-issue-201)。Electron 测试进程已清理；全量 `npm test` 未运行。中间一次窄窗回归误点了处于禁用态的左箭头，已修正用例顺序（先验证起点禁用，再向右滚动并返回起点）后重新运行通过。
+- 限制：仅 macOS 开发版 Electron 与合成本地页面；截图来自 shell renderer，不包含原生 `WebContentsView` 网页画布；未覆盖其他平台、打包版、屏幕阅读器实播、暗色主题或真实站点 favicon 异常。
+
+## 2026-11-04 地址栏连接状态与图标体系（Issue #209）
+
+- 变更：浏览器 chrome/侧栏的操作图标统一为 currentColor SVG；地址栏连接标记区分 HTTPS 加密、HTTP 未加密、本地页与无法确认状态，HTTP 500 仍保留未加密状态；未知/连接错误不展示闭锁；新增 zh-CN/en 可访问名称。固定标签 pin 改为内联 SVG，站点无 favicon 或图标加载失败时使用基于 hostname 的内联 SVG 徽记，颜色由 CSS 自定义属性与主题 token 提供，不再使用图标 data URI。
+- 环境：独立 worktree `/private/tmp/corvid-issue209-icon-system`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。所有 Electron 验收使用临时 `CORVID_DATA_DIR` 与合成 HTTP fixture；未访问真实用户页面/浏览数据，未使用模型、OAuth 或外网。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/navigation-error-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE node tests/tab-overflow-e2e.cjs` EXIT 0；`env -u ELECTRON_RUN_AS_NODE node tests/tab-pin-menu-e2e.cjs` EXIT 0。覆盖未加密 HTTP、HTTP 500、失败连接未知、双语状态名称、六个侧栏入口 SVG、内联 favicon 与色彩 token、currentColor pin，以及原有导航重试、标签溢出、pin/menu/restart 回归。`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/navigation-error-e2e.cjs`、`node --check tests/tab-overflow-e2e.cjs`、`node --check tests/tab-pin-menu-e2e.cjs` 与 `git diff --check` 通过。一次初始语言假设、favicon 异步替换和旧 `img.favicon` 断言被修正后，各相关测试完整重跑通过。开发依赖通过根目录 `node_modules` 临时软链接提供，测试结束后移除；Electron 进程已退出。没有运行完整 `npm test`。
+- GitHub 交付：PR #233 于 2026-11-04 squash 合并，提交 `1f608de13ddd9bed349d9ae2d8f0a9a4757cd394`；Issue #209 已以中文修复说明关闭。PR 的跨平台 CI 未启动原因见上文。
+- 截图：英文 700×420 SHA-256 `784222a20d9e8da0dc95ab1e1da7edcd37d274c825325ac58fd81f430f094d2c`；简体中文 1024×700 SHA-256 `6d99c79ee99e4c663888e0ede33ec08b7b019cbac73d332c85f12fc497ca4a66`；界面检查与 REA 参考限制见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-地址栏连接状态与-svg-图标-issue-209)。
+- GitHub CI：PR #233 的 Chrome 导入类别和系统凭据存储共 6 个 job 全部 `runner_id=0`、`steps=[]`，annotation 指出近期付款失败或支出上限导致 job 未启动；属于账户/runner 限制，不是测试代码失败。macOS arm64 另有容量提示。跨平台 CI 未执行，不能记为通过。
+- 限制：HTTPS 只按当前 HTTPS URL 及 Chromium 默认 TLS 校验结果派生，未用本机受信任证书执行真实 HTTPS 成功页验收，也未注入证书错误；未验证深色主题、VoiceOver、Windows/Linux 和打包版本。REA EGO/Kaze 原生观察只证明浏览器 chrome 和导航布局语境，不证明其锁态行为；具体 Evidence 和未观察站点列于视觉检查记录。
+
+
+## 2026-11-04 相似 Agent 对话识别（Issue #193）
+
+- 变更：主进程提供只含 Room ID、首条用户请求脱敏摘要（可见文字最多 72 字符、无障碍名称最多 240 字符、悬停提示最多 8000 字符）、页面标题、状态和更新时间的摘要投影，并按每个窗口当前 Profile 推送；控制 API 不可读取该 UI 摘要接口。Renderer 仅在对应 Profile 的空间侧栏、对话历史和 Agent 工作区展示摘要。默认 Agent Room 用安全摘要替代重复的“Corvid Agent 对话”标签；用户命名的 Room 保留。URL、常见凭据样式值、邮箱、电话号码及 40 字符以上的不透明串在摘要中隐藏；这不是完整个人信息检测。
+- 验证：`node --check desktop/agent-workbench.cjs`、`node --check desktop/main.cjs`、`node --check desktop/preload.cjs`、`node --check desktop/renderer.js`、`node --check tests/pi-workbench-e2e.cjs` 与 `git diff --check` 通过。最终 `CORVID_UI_EVIDENCE_DIR=docs/qa/screenshots node tests/pi-workbench-e2e.cjs` EXIT 0；真实 Electron 45.2.1 + 隔离临时 `CORVID_DATA_DIR` + 本地 HTTP fixture 覆盖同页同状态不同请求、URL 后中文内容保留、凭据/邮箱/电话/URL 脱敏、72 字符视觉摘要、240 字符无障碍名称、超过 240 字符的完整 tooltip 尾部、英文安全占位词、历史键盘顺序、704×420 窄窗、任务动作区分及原有同意/续聊/重启恢复/控制权交接。依赖通过临时软链接从根工作区 `node_modules` 引入，E2E 退出后已移除；测试顺带生成的其他 Issue 截图已恢复，仅保留 #193 两张合成夹具截图。另一个无 Electron 投影合同脚本 EXIT 0，覆盖 Profile 过滤、字段长度与脱敏。没有登录 ChatGPT 或调用 GPT-6 Luna；本切片使用本地确定性 Agent fixture，不需要真实 Provider。全量 `npm test` 未运行。
+- REA 参照：EGO `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e` 仅用于浏览器/Space 侧栏语境；Kaze `ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7` 仅观察 Agent 面板及模型选择，不含历史命名行为；Kobra item `ev_321077654f899ddbc47b6b4feeb4c3acda79d474fc09092023f0183cb54d1343` 仅显示标题/更新时间静态层级。完整证据限制见 UI QA 记录。
+- 限制：仅 macOS 开发版 Electron 与合成本地页面；未覆盖真实用户数据、全部 PII/自然语言、VoiceOver 实播、其他操作系统、打包版、暗色主题或真实模型服务。桌面 E2E 进程已退出。
+## 2026-11-04 书签即时反馈与收藏状态（Issue #195）
+
+- 变更：地址栏星标按当前标签 URL 与 Profile 查询并显示收藏态；`aria-pressed` 和本地化可访问名称同步，按钮忙时禁止重复提交；点击切换添加/移除，状态区显示 2.5 秒的双语结果提示，失败使用通用恢复文案。页面标题不写进提示，避免长标题和网页提供内容挤压浏览器工具栏。同步更新 D08、E2E 索引与视觉记录。
+- 环境：独立 worktree `/private/tmp/corvid-issue195-bookmark-feedback`，基于 `origin/main`；macOS arm64、Electron 45.2.1；测试使用隔离临时 `CORVID_DATA_DIR`、本地 HTTP fixture、Playwright shell 视口 1280×800 与 704×420。没有读取真实浏览数据、OAuth 登录或模型调用。
+- 验证：`env -u ELECTRON_RUN_AS_NODE CORVID_BOOKMARK_SCREENSHOT_DIR=/private/tmp/corvid-issue195-bookmark-feedback/docs/qa/screenshots node tests/library-e2e.cjs` 最终退出码 0。真实 Electron 覆盖新标签星标禁用、zh-CN/en 添加与移除、操作后 1 秒内显示反馈、`aria-pressed`、按钮切换/短窗无横向溢出、书签保存、重启保留以及面板删除后重启为空。一次中间尝试把 Playwright locator 的 `waitFor` 状态写成不支持的 `disabled`，在用 DOM 状态等待修正后完整重跑通过。`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/library-e2e.cjs` 和 `git diff --check` 通过；所有 Electron 进程已退出，临时 `node_modules` 软链接已移除。截图路径、视口和 SHA-256 见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-书签即时反馈与窄窗布局-issue-195)。未运行完整 `npm test`。
+- REA 与参考边界：引用已有 EGO 原生窗口 Evidence `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02、EGO 0.6.2.5）；它支持熟悉浏览器 chrome/书签入口的布局语境，但没有操作星标或验证收藏反馈，因此本轮不以它推断竞品行为。安装的 EGO 进程当前仍运行，本轮没有打开、读取或改变其个人页面。Kaze、Rare UI、Kobra、EasyUI、Pin UI 与 Aceternity UI 未用于该控件；没有移植第三方组件或素材。本轮参考说明、证据类型和限制已写入 QA 记录。
+- Impeccable：按项目 Skill 执行一次 `impeccable detect --json desktop/index.html desktop/renderer.js desktop/styles.css desktop/locales.js`；命令退出码 2 并返回仓库级样式/字号提示。因此不宣称全站 detector 通过；当前切片继续使用既有 Corvid 图标、表面和布局，通过截图人工检查本次变更区域，没有扩展修复无关 UI。
+- GitHub CI：PR #230 的 Chrome 导入类别矩阵与系统凭据存储矩阵均在 2026-11-04 被拒绝启动。六个 job 均 `runner_id=0`、无执行步骤；check annotation 明确为近期账户付款失败或支出上限。它们不是代码测试失败，本地真实 Electron E2E 已通过。PR #230 后续经普通 squash 流程于 04:33:55 UTC 合并，提交 `1f87731`；没有使用管理员绕过参数。跨平台 CI 仍未执行，不能记作通过。
+- 限制：只验证 macOS 开发版和本地 fixture；未测 VoiceOver、其他操作系统、深色模式、打包版、失败注入/磁盘故障或成功消息与加载/导航错误等状态同时出现；REA 竞品证据未覆盖星标行为。
+
+
+## 2026-11-04 Agent 消息队列操作密度（Issue #194）
+
+- 变更：队首“检查页面并发送下一条”单独作为主操作；上移/编辑/移除收在默认折叠的原生 `details` 中并可键盘展开。同步 zh-CN/en 文案、队列字号与行间分隔、E2E 键盘路径、四张窄窗/常规窗截图、E2E 索引、D19 与视觉记录。发送前页面复核和明确同意流程保持不变。
+- 环境：隔离 worktree `/private/tmp/corvid-issue194-queue-density`，macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、本地 HTTP fixture、zh-CN/en、1280×850 与 700×420 逻辑窗口。依赖通过短时 `node_modules` 软链接引入，E2E 退出后已移除。没有 OAuth 或真实模型调用。
+- 验证：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 通过；`CORVID_ISSUE194_QA_DIR=docs/qa/screenshots node tests/pi-workbench-e2e.cjs` EXIT 0。真实 Electron 覆盖消息添加、键盘展开、重排/编辑/移除、停止后队列不派发、队首发送前重新检查页面和明确同意；zh-CN/en 的常规与短窗断言主操作完整落在任务滚动视口内并输出截图。合入最新 `main` 后首次回归在既有空间摘要几何断言的父节点链读取上失败；改为直接测量 `#room-strip` 后复跑完整定向 E2E EXIT 0。`node tests/localization-e2e.cjs` EXIT 0，覆盖双语目录与浏览器界面合同。全量 `npm test` 未运行。截图哈希与 REA 参照见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-agent-消息队列主次操作与窄窗-issue-194)。
+- Impeccable：执行一次 `impeccable detect --json desktop/renderer.js desktop/styles.css desktop/locales.js`，EXIT 2；报告两个既有 `side-tab` 样式警告，分别位于 `desktop/styles.css:396` 与 `:534`，均不在本切片改动范围。本切片未把仓库级提示误报为本次引入缺陷。
+- 限制：本地 fixture 不证明真实 Provider 网络时序；未覆盖屏幕阅读器实际播报、其他平台、暗色主题和签名打包版本。
+- 接管后复验：基于原 PR head 新建隔离 worktree，并以 merge commit 同步最新 `origin/main`；`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/pi-workbench-e2e.cjs` 与队列工作台真实 Electron E2E 通过。测试使用 macOS 本地 Electron fixture、隔离 QA 截图目录与主工作区依赖的临时软链接；未调用 OAuth 或真实模型。
+- 复验限制：`node tests/localization-e2e.cjs` 连续两次均在 `tests/localization-e2e.cjs:88` 等待 `#library .panel-eyebrow` 超时 30 秒；当前未确认原因，不能报告该测试或全量 `npm test` 通过。全量回归仍待运行。
+- 全量本地回归：`npm test` 在 `tests/window-state-e2e.cjs:21` 失败，期望窗口高度 850、实际为 847，退出码 1；此前顺序执行的测试通过，但后续命令链未运行，因此不能认定全量套件通过。该失败与本 Issue 的队列 UI 范围无直接关联，根因未确认。
+
+## 2026-11-04 浏览器 chrome 与网页画布边界（Issue #213，PR 前验证）
+
+- 变更：每个 Corvid 窗口保存 renderer 测得的 `#browser-shell` 高度；主进程验证发送方属于受信任 shell 窗口且高度为有限 1–600px 数值，再重新布局原生 `WebContentsView`。Library 与站点工具浮层共享高度 CSS token 和 12px 间隔。添加 `tests/browser-layout-e2e.cjs` 并纳入 `npm test`；更新 UI 架构、执行任务板、测试索引与本轮 QA 记录。
+- 环境：独立 worktree `/private/tmp/corvid-issue213-browser-chrome`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、本地 HTTP 蓝色合成页面，不读取个人浏览数据、不访问外网、不登录 OAuth、不调用或消耗模型额度。
+- 验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/browser-layout-e2e.cjs` 退出码 0。覆盖 DOM 实测 chrome 与主进程原生 bounds 一致、无书签/状态、书签及瞬时状态、Library 和站点工具浮层、704×420 resize、新标签折叠书签栏。一次中间断言错误地假定状态行总高至少 151px；实际测量表明内容和 CSS 行高决定总高，已改为比较实测值与原生 bounds。`node --check desktop/main.cjs`、`desktop/preload.cjs`、`desktop/renderer.js`、`tests/browser-layout-e2e.cjs`、`package.json` JSON 解析及 `git diff --check` 均通过；最终复跑上述 E2E 后仍退出码 0。`impeccable detect --json --scope layout desktop/styles.css` 返回空 findings。全量 `npm test` 未运行。
+- UI/UE 参考与证据边界：本轮只引用项目研究文档中的 EGO `ev_3a5609d1eb705ccdf3c5071061a8b6a7bafa5a604f570f210b9c81a8a5c86e5e` 和 Kaze `ev_fdb1ec28706c6b2401549b230199346e86c42a50c2e12ce04b0a06f7073563b3` 既有直接观察记录，用于浏览器 chrome/网页画布的层级语境；没有新的竞品捕获，REA 本轮未返回历史记录，竞品精确行为和尺寸未知。几何结论来自 Corvid 隔离 Electron 的 DOM 与原生 bounds 实测，不来自竞品截图。macOS 在截屏复核前重新锁屏，REA/CUA 无法获取当前 Corvid 原生窗口截图；因此没有桌面合成截图。
+- 限制：定向开发版 Electron E2E 通过不代表全量测试、打包版或跨平台通过；未测试多窗口并行高度变化、恶意 IPC、深色主题、辅助技术实播或其他系统。Electron E2E 已退出。PR #239 于 2026-11-04 05:40 UTC 通过普通 squash 流程合并，提交 `49779e42b43f84f96df81e003b55e55da072a848`；Issue #213 已自动关闭。PR 最终 head 的六个 GitHub Actions job 均在启动前失败且 `steps=[]`；GitHub annotation 明确为近期账户付款失败或支出上限导致 runner 未启动，并提示 macOS arm64 容量限制。这不是代码测试执行失败，也不能计为跨平台通过；没有使用管理员绕过。
+
+## 2026-11-04 字体与中文排版（Issue #212）
+
+- 环境：独立 worktree `/private/tmp/corvid-issue212-typography`，基于 `origin/main` 的 `fd3e611`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。`npm ci --ignore-scripts` 在隔离 worktree 安装锁定依赖；Electron 安装脚本在首次 E2E 启动时下载运行时。测试使用临时 `CORVID_DATA_DIR` 和 `about:blank`，不访问互联网、不读取用户浏览数据、不使用模型或 OAuth。
+- 验证：`node --check desktop/renderer.js`、`node --check desktop/locales.js`、`node --check tests/typography-e2e.cjs`、`node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"` 与 `git diff --check` 通过。首次 `node tests/typography-e2e.cjs` 因 worktree 尚无 `playwright-core` 未启动；安装依赖后首次真实 Electron 运行暴露零字号图标按钮隐藏文字误计为可见字，调整采样条件后完整重跑：`CORVID_TYPOGRAPHY_QA_DIR=docs/qa/screenshots/issue-212 node tests/typography-e2e.cjs` EXIT 0。覆盖 zh-CN/en、1024×700 书签面板、704×420 Agent 工作区与横向边界。未运行完整 `npm test`。
+- UI 检查：Impeccable detector 对所选 `desktop/styles.css`、`desktop/index.html`、`desktop/locales.js` 报告 side-tab warning、hairline-border/wide-shadow advisory 和 flat-type-hierarchy warning；这些扫描结果涉及已有多处组件，须结合页面场景复核，未作为本切片新增功能或验收门槛。具体视觉判断、截图 SHA-256 与 REA/EGO/Kaze 覆盖限制见[字体与中文排版视觉检查](../qa/ui-visual-check.md#2026-11-04-字体与中文排版-issue-212)。
+- 范围限制：四张截图是 Electron renderer viewport，不证明原生窗口合成或网页 WebContentsView 像素；未验 Windows/Linux、打包版、深色主题、VoiceOver、真实模型与 OAuth。跨平台 GitHub Actions 尚未由本记录启动或验证。
+
+## 2026-11-04 Agent SDK 与 Browser MCP 页面历史导航（Issue #254）
+
+- 变更：Corvid SDK `Page` 新增 `back()`、`forward()`；stdio Browser MCP 新增 `page_back`、`page_forward`、`page_reload`。均通过已存在的受控主进程路由，并保留 managed Page、显式 Room/Tab、Agent 控制、待接管和 execution risk 检查。没有对应历史项时 back/forward 成功返回但不改变页面；reload 会再次请求当前页面。SDK 与 MCP 文档、D20 任务板和 E2E 索引已同步。
+- 环境：独立 worktree `/private/tmp/corvid-issue254-mcp-history-navigation`，基于 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。E2E 使用隔离临时 `CORVID_DATA_DIR`、本地 HTTP fixture 和本地 stdio MCP 进程；未访问真实网站、用户浏览数据、OAuth 或模型。
+- 验证通过：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖 tools/list 与副作用标记、about:blank 空历史不导航、同一 managed Tab A→B→back→forward、reload 的 fixture 请求计数、MCP 调用 SDK Page 方法、前台 Room 保持不变、用户接管后拒绝三项导航动作及既有授权/错误边界。`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs` 与 `git diff --check` 通过。E2E 通过临时链接使用根工作区锁定依赖，测试后已移除该链接；Electron 测试进程已退出。
+- 未通过/限制：`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 在既有 SDK 截图步骤 `Page.screenshot()` 返回 `UnknownVizError`（首次视口截图，历史导航合同在此脚本中未被执行）；因此该 SDK 全量定向脚本不记为通过。历史方法由上述 MCP Electron 集成用例直接经 SDK 调用并验证。全量 `npm test`、打包版、Windows/Linux、真实 MCP host 和真实网站未运行。
+
+## 2026-11-04 Browser MCP 页面等待工具（Issue #257）
+
+- 变更：stdio MCP 新增只读 `page_wait_for_url` 与 `page_wait_for_load`。URL 等待仅接受精确字符串；加载等待只支持 `domcontentloaded`/`load`。默认 timeout 10 秒、允许 100–60,000ms。工具复用 SDK `Page.waitForURL()` / `waitForLoadState()` 并返回最新 Page info；循环期间持续校验 Room 所有权、managed Tab 和执行风险，不执行页面脚本或改变浏览状态。D20、SDK/MCP 使用说明、测试索引和 BrowserMCP 研究记录已同步。
+- 环境：独立 worktree `/private/tmp/corvid-issue257-page-wait`，基于 PR #256 合并后的 `origin/main`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。真实 Electron + 临时 `CORVID_DATA_DIR` + stdio MCP 子进程 + 本地 HTTP 夹具；延迟页面响应 500ms。未读取用户浏览数据、未访问真实网站、未登录 OAuth/调用模型。
+- 验证通过：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具列表及只读标记、点击链接后精确 URL 等待、延迟页面 `load` 确认、timeout 返回 `CORVID_TIMEOUT`、等待期间用户接管导致 `CORVID_CONTROL_LOST`、接管后两项等待立即拒绝，以及现有后台 Room 不切换前台/授权和协议错误回归。测试依赖通过本地临时 `node_modules` 软链接提供，已移除；Electron 子进程与 fixture server 已退出。
+- 限制：未运行全量 `npm test`、打包版或 Windows/Linux；未连接真实 MCP host 或真实网站。URL 必须事先明确且精确匹配；不支持 pattern、`networkidle`、selector/function 等其他等待条件，也不证明每类 Chromium 重定向和 SPA 行为。
+
+
+## 2026-11-04 Browser MCP Agent 标签生命周期（Issue #259，PR 前验证）
+
+- 实现：MCP 新增 `page_new`，在明确授权且仍由 Agent 控制的 Room 内创建空白 Agent 标签并返回页面信息；新增 `page_close`，先校验 Room 和来源，只允许关闭 Agent 创建且受管的标签。用户或未知来源页面返回 `CORVID_FORBIDDEN`；受管检查仍阻止关闭未接管的标签。同步 SDK/MCP 说明、D20 任务板、E2E 索引与 MCP 研究记录。
+- 环境：隔离 worktree `/private/tmp/corvid-issue259-mcp-page-lifecycle`，基于 `origin/main` 的 `5dc0563`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具清单与 destructive annotations、授权 Room 中建空白页并关闭、真实 `window.open` 弹窗保持 unknown/unmanaged 且拒绝 MCP 关闭、用户接管后拒绝新建/关闭、后台 Agent Room 生命周期不激活前台，以及原有导航/等待/输入/离线与授权边界。E2E 通过临时依赖软链接复用本地锁定依赖，命令结束后已移除；Electron 和 fixture server 已退出。
+- 限制：未运行全量 `npm test`、真实 MCP host、打包应用、Windows/Linux；未触发原生 `beforeunload` 确认框，也未覆盖并行多窗口。该测试证明当前隔离开发版 Electron 的 scoped MCP 行为，不证明所有站点弹窗兼容性。
+
+
+## 2026-11-04 Browser MCP 视口截图（Issue #262，PR 前验证）
+
+- 实现：新增只读 `page_screenshot`，要求显式授权 Room/Tab、Agent 控制且标签已受管；调用 SDK `Page.screenshot()` 只捕获当前视口，返回 MCP `image/png` content item，不导航、不激活后台 Room、不写本地文件。`mcp/image-content.mjs` 限制 PNG 为 8 MiB；超限统一返回 `CORVID_OUTPUT_TOO_LARGE`。同步架构概览、D20、SDK/MCP 使用说明、E2E 索引和研究记录。
+- 环境：隔离 worktree `/private/tmp/corvid-issue262-mcp-page-screenshot`，基于 `origin/main` 的 `ad0f4bb`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check mcp/corvid.mjs`、`node --check mcp/image-content.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖只读 annotation、MCP 图像内容、PNG 签名、SDK 接口上限 helper 超限错误、后台 Room 截图不切换前台、接管后返回 `CORVID_CONTROL_LOST`，以及既有 Browser MCP 回归。E2E 通过临时依赖软链接复用工作区锁定依赖，命令结束后已移除；Electron 和 fixture server 已退出。
+- 限制：超限分支用同一上限 helper 的超界 Buffer 直接验证，未合成超 8 MiB 的真实浏览页面；未连接真实 MCP host/视觉模型、未运行全量 `npm test`、打包版、Windows/Linux。host 的图片展示能力和复杂页面截图尺寸仍需集成验证。
+
+
+## 2026-11-04 Browser MCP 下拉选择与悬停（Issue #264，PR 前验证）
+
+- 实现：新增有界 `page_select_option` 与 `page_hover`。选择接受 value/label 字符串、value/label/index 条件、多个条件及 null 清空；locator 和 Room/Page 仍显式指定；悬停不接收坐标或脚本。两项复用 SDK 受管页面检查，使用 action annotations。同步 D20、SDK/MCP 使用说明、E2E 索引和研究记录。
+- 环境：隔离 worktree `/private/tmp/corvid-issue264-mcp-select-hover`，基于 `origin/main` 的 `3ef4651`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具声明、单选/多选/清除、缺失选项报错、悬停后菜单按钮进入 Snapshot、用户交接拒绝两项工具和现有 MCP 权限/导航回归。临时 `node_modules` 链接已在命令结束后移除，Electron 与 fixture 已退出。
+- 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实 MCP host 或真实站点；合成 fixture 不能证明各站点自定义下拉和触屏/hover 菜单兼容性。
+
+
+## 2026-11-04 Browser MCP 页面元素状态等待（Issue #266，PR 前验证）
+
+- 实现：新增只读 `page_wait_for_selector`，要求明确 Room/Tab 与现有 locator；只允许 `attached`、`detached`、`visible`、`hidden`，timeout 默认 10 秒且限制 100–60,000ms。复用 SDK `Page.waitForSelector()` 和每轮 action 的控制权校验；命中后返回页面信息及状态，不接受任意函数/脚本。
+- 环境：隔离 worktree `/private/tmp/corvid-issue266-mcp-wait-selector`，基于 `origin/main` 的 `20bd55b`；macOS、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 SPA 页面 fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖工具只读 annotation、四种状态、默认 visible、缺失元素 `CORVID_TIMEOUT`、后台 Room 不抢前台、等待期间用户接管返回 `CORVID_CONTROL_LOST`，以及既有 Browser MCP 权限回归。临时 `node_modules` 链接已移除；Electron 与 fixture 已退出。
+- 限制：未运行全量 `npm test`、真实 MCP host、真实站点、打包版或 Windows/Linux；定向 fixture 不证明复杂动画、跨源 frame 与各站点 locator 语义。
+
+## 2026-11-04 Browser MCP 页面滚动（Issue #268，PR 前验证）
+
+- 实现：SDK 新增 `Page.scroll(deltaX, deltaY, {x, y})`，MCP 新增有副作用工具 `page_scroll`。要求显式授权 Room/Tab 和 Agent 控制；每轴位移限制 -2000..2000、不能同时为 0，坐标须成对且位于主视口 CSS 像素范围；缺省使用视口中心。主进程在 Room 序列化动作中执行 CDP mouse-source scroll gesture，可滚动主文档和命中点处的嵌套容器，不执行页面脚本或激活后台 Room。
+- 实现证据：直接 CDP `Input.dispatchMouseEvent` 的 `mouseWheel` 在本地隐藏后台 WebContentsView 上未触发页面滚动；改用 `Input.synthesizeScrollGesture` 且指定 `gestureSourceType: mouse` 后，隔离 Electron fixture 中长文档和嵌套 overflow 面板均实际滚动。此差异仅在当前运行环境观察，不能推断为所有平台/Electron 版本行为。
+- 环境：独立 worktree `/private/tmp/corvid-issue268-page-scroll`，基于 PR #267 合并后的 `origin/main` `92f0615`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR`、stdio MCP 子进程、本地 HTTP fixture，复用主工作区已安装依赖的临时软链接并在运行后移除。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证通过：`node --check desktop/actions.cjs`、`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` EXIT 0。覆盖 MCP action annotation、默认中心滚动长页、指定坐标滚动嵌套面板、视口越界拒绝、SDK 归零/超界/单坐标拒绝与有效调用、后台 Room 不抢前台、用户接管后拒绝滚动，以及现有 MCP 授权和离线错误回归。Electron 与 fixture 已退出。
+- 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实 MCP host 或真实站点；本地合成页面不验证触控输入、平台差异、各站点对滚动输入的自定义处理或懒加载兼容性。
+
+## 2026-11-04 contenteditable 网页输入（Issue #271，PR 前验证）
+
+- 实现：SDK `Page.fill()` 与现有 MCP `page_fill` 支持 `contenteditable="true"`、空属性和 `plaintext-only` 编辑宿主；Snapshot 与 role locator 把最近编辑宿主映射为 textbox。locator 可指向宿主或其后代，Selection Range 只选中最近宿主内容，再由可信 Backspace 和 Chromium `Input.insertText` 替换；不直接写 DOM/HTML，传入 HTML 作为字面文本。富文本宿主可能保留插入点原有行内样式；多行由 Chromium 以编辑段落语义呈现。
+- 运行态发现：本机 macOS Electron 中 `Meta+A` 虽触发可信按键事件，但没有选择 contenteditable 文本；采用 DOM Selection Range 限定范围后再走浏览器可信删除/输入路径。测试中 `beforeinput`/`input` 都为 `isTrusted:true`。
+- 环境：独立 worktree `/private/tmp/corvid-issue271-contenteditable`，基于 PR #270 合并后的 `origin/main` `f99b763`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；SDK/MCP E2E 各使用隔离临时 Corvid 数据目录和本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证通过：`node --check desktop/actions.cjs`、`node --check sdk/index.js`、`node --check mcp/corvid.mjs`、`node --check sdk/e2e.js`、`node --check tests/mcp-e2e.cjs`、`git diff --check`；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 均 EXIT 0。覆盖原生 input/textarea 回归、Snapshot/role textbox 发现、含格式与后代定位的编辑宿主、`plaintext-only`、空宿主、多行、HTML 字面量、可信 beforeinput/input、`contenteditable=false` 与隐藏目标拒绝、MCP 页面填充，以及用户接管后拒绝写入。
+- 限制：未运行全量 `npm test`、打包版、Windows/Linux、真实网站或真实 MCP host；跨文档编辑器、IME、站点自定义编辑快捷键及所有 Chromium 编辑器差异未验证。
+
+
+## 2026-11-04 SDK macOS 编辑组合键（Issue #277，PR 前验证）
+
+- 缺陷：隔离 Electron fixture 中 `page.press(input, 'Meta+a')` 发送可信按键事件，但输入框选区仍为 `[10, 10]`，没有执行全选。Chromium CDP 文档说明 `Input.dispatchKeyEvent` 可附带编辑命令；macOS 原生编辑绑定由命令名映射补齐。实现仅映射 Meta+A 全选及 Meta+方向键移动/Shift 扩展选区；不声称所有 macOS 快捷键均覆盖。
+- 环境：独立 worktree `/private/tmp/corvid-sdk-keyboard-chord`，基于 `origin/main` `20502ea`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 `CORVID_DATA_DIR`、SDK 测试本地 HTTP fixture。未读取用户浏览数据、访问真实网站、登录 OAuth 或调用模型。
+- 验证：`node --check desktop/actions.cjs`、`node --check sdk/e2e.js`、`git diff --check` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` EXIT 0。覆盖文本框与 `contenteditable` 中 Meta+A 的全文/宿主内选区、Meta+Shift+Left 实际扩展选区并替换为期望文本、既有 Control+A 按键路径和 SDK 输入回归。测试使用临时 `node_modules` 链接并在结束后移除；Electron 与 fixture 已退出。
+- 限制：未运行全量 `npm test`、正式打包、Windows/Linux；只覆盖 Chromium 文本框和 contenteditable 上列出的 macOS 命令映射，不证明网页对快捷键的自定义拦截、所有编辑命令或其他 OS 键盘绑定。
+
+## 2026-11-04 GitHub Release、图片与 PR Actions 现状核对
+
+- GitHub API/CLI 只读检查仓库 `heyallencao/corvid`：可见性为 Private；首次检查时 `main` 为 `2a03e999b04522dc6baef1a92a30f4989451eb46`，版本 `0.2.0`。后续复核发现 `main` 已推进到 `48cfea63366ed83f14b34eb3174ff6ea76161d8a`（#243），版本仍为 `0.2.0`；`gh release list --limit 20` 仍无既有 Release。
+- 本地 `main` 为 `771c9bb6c1a9dc208a468c034b89ac3436b19542`，与 GitHub `main` 分叉；工作区存在既有修改。没有从本地工作区打包或发布。
+- 开放 PR #242、#238、#237、#234、#232、#229、#227 的 Chrome 导入与系统凭据跨平台 workflow 均为 FAILURE。GitHub check annotation 明确为账户付款失败或 spending limit 需要提高；失败 job 在 2–3 秒内结束且 `steps=[]`。该证据表明 runner 未启动，不能归因于 PR 代码测试。
+- Issue #217/#218/#205 等正文含 `/tmp/...` 截图路径；开放 PR #242/#234/#229 等含依赖分支名的图片链接。盘点了部分本机 `/tmp/corvid-*` 截图并查看 #217/#205/#218 对应样图，创建 Issue #244 跟踪清理。未上传或更新任何 Issue/PR 图片；ego-browser 中 GitHub 未登录，私有仓库显示 Page not found。临时截图仍需逐张隐私复核。
+- 本轮创建 Codex 定时任务“Corvid Release 与 PR 检查（每日 9 点 / 21 点）”，仅从 `main` 检查未发布版本；当必需检查失败或被计费阻断时停止发布并报告。Release 自动化不得更改 Private 可见性或协作者权限。
+- 在干净的旧 GitHub `main` 快照（commit `2a03e99`，之后 main 已推进）完成 `npm ci`：375 packages，npm 报告 0 vulnerabilities。该快照上全量 `env -u ELECTRON_RUN_AS_NODE npm test` 两次均失败：第一次 `download-e2e.cjs` 等待 `#show-downloads` 30 秒超时；该用例单独重跑通过。第二次在 `browser-print-e2e.cjs` 等待 `#address` 30 秒超时。该结果支持旧快照存在 UI 启动/定位间歇风险；最新 `main` `48cfea6` 尚未运行测试。未运行安装器构建。
+- 未创建 GitHub Release、tag、安装包或协作者邀请。GitHub main `48cfea6` 的树中没有打包器/安装器配置，因此源码归档不能称为桌面安装器。用户将自行邀请协作者。参考：[版本与 Release 流程](../records/releases/release-policy.md)、[GitHub 图片证据规则](../qa/github-image-evidence.md)。
+
+## 2026-11-04 圆角与浮层层级 token 收敛（Issue #210，接管复核）
+
+- 变更：在 `desktop/styles.css` 建立共享 radius 与六档 elevation token，并迁移当前浏览器壳层的圆角和浮层投影；浅/深主题原有色彩保持不变。扩展 `interaction-states-e2e` 检查两主题下的 token 计算样式，D26、UI 架构、E2E 索引与 QA 记录同步更新。此 PR 是完整 token 治理中的独立子切片，Issue 保持开放。
+- 环境：隔离原 PR worktree `/private/tmp/corvid-issue210-design-tokens`，合并当日 `origin/main` 后；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时数据目录、`about:blank` 与合成书签状态，shell viewport 1024×700 CSS px。测试进程已退出。
+- 验证：接管复跑 `NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE CORVID_INTERACTION_QA_DIR=/tmp/corvid-issue210-takeover-captures node tests/interaction-states-e2e.cjs` EXIT 0，覆盖浅/深主题的 radius/elevation、profile/address/new-tab/menu/site-tools/findbar/library/dialog 计算样式及原有 selected/hover/press、滚动条/选区和 reduced-motion 合同。一次先前运行在窗口 resize 等待时超时；短探针确认窗口实际尺寸可变，随后完整复跑通过。`node --check tests/interaction-states-e2e.cjs` 与 `git diff --check` 通过。浅/深主题合成截图的窗口状态、尺寸和 SHA-256 见[Issue #210 QA 记录](../qa/issue-210-token-consolidation.md#截图证据)。完整 `npm test` 未运行。
+- UI 参考：REA 捕获 Kobra Input OTP 页面（Evidence `ev_b0061997e9ffbc39f967e8a14fdb42242d400edb6458f7d5b02132840b458e74`），直接观察仅限 1280×800 浅色静态截图与 AX；场景因 wait action 失败标记 incomplete。它只提供细分隔线、克制表面与轻投影的视觉线索，不证明组件交互或 token 行为，未复制代码/素材。详见 QA 记录。
+- 限制：Issue 正文的“无深色主题”已由当前源码 `prefers-color-scheme: dark` 规则证伪；本次也只复核开发版 macOS Electron renderer viewport，未验跨平台、打包版、VoiceOver 或原生 `WebContentsView` 合成像素。颜色、近似灰、状态色、hover 灰和对比度审计仍开放。本轮没有运行代码签名、钥匙串或 notarization 诊断；该 Issue 不涉及签名行为。
+
+## 2026-11-04 集成门禁恢复与逐入口豁免基线（integrate-glm-02）
+
+- 背景：#225（285cadb）变更非加载态 tab aria-label 契约未同步 `tests/tab-ux-e2e.cjs`（#292），且全量链此前总在前部环境敏感入口中止（#289），tab-ux 自 #225 落地后从未被链内执行，门禁红。
+- 修复：`02244ff` 同步 `:137` 断言为「完成后可访问名称恢复为页面标题」、`:134` 选择器放宽为 `.favicon`（匹配 #225 的 SVG 域名首字母回退）。修后干净环境隔离 3/3 EXIT 0。
+- 基线：main `02244ff` 逐入口全链两轮（63 入口，56 PASS / 7 FAIL）。失败定性（事实）：window-state=#293（本机 workArea 钳制）；agent-rooms-panel/pi-custom-endpoint=#295；localization=#288 间歇；fullscreen/application-menu/chrome-import 隔离 2/2 确定性失败，与 verification-log 既有 CUA「Mac 锁屏」同签名先例（1290–1316 行）归为激活/焦点族，开 #300；sdk-e2e/unit-batch 出现 UnknownVizError/`Input focus was not acquired` 间歇，属 #289 既有族。推断（未直接探测）：本轮机器处于锁屏/焦点受限态，同族失败随机器态翻动（application-menu/fullscreen 在两轮基线间互有通过/失败）。
+- 门禁政策（#289 公告）：逐入口对照同机同态 main 基线；豁免集=已立案环境敏感入口（#293/#288/#295/#300）；PR 链失败集超集部分须隔离复跑通过且属环境族，否则拒绝。
+- 首次应用：#252（radius/elevation token）三方合并无 styles.css 冲突，全链失败集与同态基线一致，3 个超集失败隔离 1/1 全过，squash 合并为 `afc4899`；merge 依据留 PR 评论。#298 的同源修法 issue 已关闭（与 02244ff 逐条一致）。
+- 边界：豁免集入口在 lane:infra 修复（#303/#304/#305/#300）落地前无法在本机达成 63/63 全绿；本记录不将豁免通过表述为全量通过。
+
+## 2026-11-05 localization E2E 旧工作区 eyebrow 断言（Issue #288）
+
+- 发现：`tests/localization-e2e.cjs` 在中英文步骤都断言 `#library .panel-eyebrow`。当前 `desktop/index.html` 的 `#library` 已没有 eyebrow 节点；工作区打开后实际可访问名称由 `setLibraryPanel()` 按当前面板设置。原断言等待一个不存在的节点并超时。
+- 修正：删除两处过期装饰标签断言；在真实打开 Agent 工作区后验证 `#library` 的中英文 `aria-label`（`Agent workspace` / `Agent 工作区`），并保留标题、内容和窄窗等现有检查。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 worktree `infra/issue-288-localization-panel-assertion`，基于 `origin/main` `1ee45ed`；隔离临时 `CORVID_DATA_DIR` 与本地 Electron fixture。`npm ci` 安装 375 packages，npm 报告 0 vulnerabilities。
+- 验证：`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过，覆盖 zh-CN/en、设置窄窗、模型/Agent 面板标签、Intl 格式、locale 持久化与重启；`git diff --check` 通过。另在同一验证 worktree 中临时叠加 Issue #303–#306 各自的未提交 E2E 修正后，`env -u ELECTRON_RUN_AS_NODE npm test` 完整跑至最后一个脚本并逐项输出 PASS。该全量结果是组合门禁证据，不能单独归因于 #288 分支。
+- 截图：由本地 fixture 生成，状态为默认标签页和浏览器 chrome，尺寸 1024×700；无个人数据。英文 `docs/qa/screenshots/corvid-localization-en-1024x700.png` SHA-256 `6bcef31fb8e2627ecabfabcf2c5f5de6c93bfef739301851ce29746a4e09593f`；简体中文 `docs/qa/screenshots/corvid-localization-zh-CN-1024x700.png` SHA-256 `ad53063e0b70175de6bb531db0279662d08089219959ddf1cf4fe42763742425`。
+- 限制：此切片只修复测试与现行 UI 合同不一致，不改变产品行为。全量组合门禁还依赖 #303–#306 的独立测试修正；未验证 Windows、打包版或真实站点。
+
+## 2026-11-05 PR #154 SQLite 错误分类候选复核
+
+- 变更范围：PR #154 为 Chrome History SQLite 损坏、数据库占用和普通读取错误添加稳定内部标记与 zh-CN/en 提示；模块合同检查失败分类和源文件字节保持，真实 Electron 导入 E2E 增加英文占用提示断言。集成修复旧类别断言以检查稳定错误标记，并将新合同登记为测试索引第 70 项；未在 D13 重复新增工作块。
+- 当前 main 集成：从远端 PR 原 head `0b6fbc7` 正向合并 `origin/main` `fe77898`，保留双方文件内容；通过 `npm test` 纳入现存 `application-menu.test.mjs`、`chrome-import-categories.test.mjs` 与新的 `chrome-import-sqlite.test.mjs`。本次尚未运行合并后的测试，不把候选树中过往定向结果当作此合并 head 的复验。
+- 门禁背景：`fe77898` 主线本机规定全量门禁已在本记录的集成评论中报告为 27/30；browser focus、dialogs alert、uploads chooser 三个失败均同签名复现在 main。PR 当前全量门禁因此仍未取得通过结果，见 Issue #289 与 #18。
+- 限制：此前 SQLite/category Node 合同 7/7 的结果来自不同候选快照；完整 Chrome 导入 E2E 在原生扩展弹窗焦点处未到达新增英文断言，只有设置 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 的导入流程结果为 EXIT 0，跳过原生失焦关闭覆盖。全量门禁和默认原生交互仍需在当前 head 复验；Issue #18 保持开放。未覆盖真实 Chrome 资料、系统钥匙串授权、Windows 打包版。
+## 2026-11-04 disabled 状态一致性 token（Issue #210 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-210-disabled-token`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+- 复核更正：issue 基线（`771c9bb`）的「灰面 hover 色 6 种」在当前 main 已全部 token 化（--surface-hover/--tab-hover/--tab-close-hover/--accent-soft/--accent-solid-hover 等，无裸 hex hover 背景），该子项无剩余工作。实际剩余债务：disabled 同语义三值（:170 全局 .46 / :387 队列 .5 / :719 对话框 .55）+ cursor 两值（default / not-allowed）。
+- 改动：`:root` 新增 `--disabled-opacity: .55`；全局 `button:disabled` 改用 token 并统一 `cursor: not-allowed`；队列规则（.5）收敛后冗余删除；对话框规则改用 token（值不变）。`.tab.dragging` 的 .55 为拖拽反馈语义，与 disabled 无关，保留字面值。
+- 探针矩阵：表单外注入 disabled 按钮（全局规则）0.46/default → 0.55/not-allowed（预期变更）；chrome-import 确认按钮 opacity 0.55 不变、cursor default → not-allowed（预期变更）；categories fieldset 与 enabled 对照不受影响。
+- 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
+- E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
+## 2026-11-04 accent 对比色 token（Issue #210 子切片 D2）
+
+- 分支 `ui/issue-210-accent-contrast`（堆叠于 `ui/issue-210-disabled-token`），改动仅 `desktop/styles.css`。
+- 改动：`:root` 新增 `--accent-contrast: #fff`；4 处 accent 实底上的 `color: #fff`（.pi-model-action 连接 CTA、.pi-create-room/.pi-primary-action、.workspace-empty-action、onboarding 末位主按钮）改为 `color: var(--accent-contrast)`。
+- 复核背景：当前 main 的 `:root` 之外裸 hex 仅剩 `#fff` ×4（issue 基线的 54 值已被合并 PR 波次基本清偿），本切片完成「裸 hex 归并」收尾。
+- 验证：注入 renderer 同构节点读取 `.pi-primary-action`/`.workspace-empty-action` 计算色——main 与分支一致；注入按钮元素截图逐字节相同；`interaction-states-e2e.cjs`、`dialogs-ui-e2e.cjs` 通过；`git diff --check` 通过。
+- 边界：工作台整体截图含堆叠的 disabled 子切片预期差异，隔离验证以注入节点为准；未覆盖 VoiceOver/其他平台/打包版。
+
+- 2026-11-05 Pi 自定义端点 E2E accessible name 同步（Issue #305，PR #308 集成重放）：基于 origin/main 合并后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-custom-endpoint-e2e.cjs` 通过。测试按当前本地化目录按钮名称“管理模型”打开设置并等待 `#pi-model-settings` 可见，完成合成端点发现、凭据存储、模型选择和本地 Agent 请求；截图由 `CORVID_PI_MODEL_QA_SCREENSHOT_PATH` 生成，状态为中文模型目录/自定义端点空表单、逻辑窗口约 1280×811（PNG 2560×1622），端点地址为本地 fixture，无密钥或用户数据。原作者记录 SHA-256 `44bc9dd24a693d074b14436048e2490a73333ef8a73652324370ec45ef786079`（e46cc39 组合门禁 EXIT 0）。未调用真实 Provider/OAuth，未验证 Windows 或打包版。
+
+- 2026-11-05 Agent Room 面板 E2E 断言同步（Issue #304，PR #309 集成重放）：基于最新 main 合并后定向验证 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs`；测试断言与现行面板对比度/可访问名称一致。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0；截图 SHA-256 见 PR 描述。未验证 Windows、打包版或读屏实际播报。
+
+- 2026-11-05 SDK popup 用例先激活 opener（Issue #306，PR #311 集成重放）：`sdk/e2e.js` 将无关 `newPage()` 移到 popup 断言之后，确保可信点击发生在活动 opener 标签；设置 `CORVID_SDK_POPUP_QA_SCREENSHOT_PATH` 可保存本地 popup 页截图。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0。集成合并后定向与全量结果见本日记录。
+## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
+- 审计更正：早前「应用菜单仅 2 个 accelerator」为 grep 伪结果（计数到 helper 定义行）——当前 main 菜单已挂 T/N/W/Shift+W、前进后退、R/F/P、缩放三档、全屏等 accelerator 并有 `syncApplicationMenuState` 动态启用与「键盘快捷键」帮助项。对照 `installShortcuts` 合同的真实缺口为 **Cmd/Ctrl+G 查找下一个、Cmd/Ctrl+Shift+G 查找上一个**（及浏览器惯例不列菜单的 Cmd+1..9、Ctrl+Tab，维持不列）。
+- 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
+- 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
+- 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 A（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-cascade-convergence`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+
+- 改动：删除 4 处失效 `!important`（`.pi-consent`、`.agent-room-choice`、`.pi-endpoint-clear-key`、`#pi-task-form .pi-create-room` 窄窗 padding）；`.pi-consent` 规则删除冗余声明，`gap: 8px` 并入同特异性后置规则 `#pi-task-form .pi-consent`；`dialog label`、`:where(.settings-import p, .import-intro, .import-limitation)`、`.profile-extension :where(p)` 零特异性化，使 `.extension-load-error` 去重要化后仍保持 danger 色；`prefers-reduced-motion` 块的 `!important` 为无障碍标准写法，保留。
+
+- 计算样式矩阵：同一 Playwright 探针分别运行 `origin/main` 与本分支（真实 Electron，注入 renderer 同构节点），读取 agent-room-choice / pi-consent / extension-load-error / import-limitation / pi-endpoint-clear-key / 窄窗（≤480px 高）pi-create-room 六个组件的 display、align-items、gap、color、padding——两份 JSON 矩阵除标签字段外逐字节一致。
+
+- 截图：`docs/qa/screenshots/issue-211-a-branch-agent-access-light-1024x700.png`（SHA-256 前 16 位 `c08969d5fd9c94fc`）与 `issue-211-a-branch-chrome-import-dark-1024x700.png`（`716bfa0525686f7a`）与 main 对照截图逐字节相同（像素级不变）。
+
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 chrome-import-e2e.cjs` 通过；`agent-rooms-panel-e2e.cjs` 在本分支与 `origin/main` 对照同点失败（等待 `我的空间` 精确按钮名超时），为 main 上既有的测试与 DOM 失配（PR #273 修正对象），非本切片引入。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版；hover 规则按组件/状态收敛（条目 1 剩余）与死规则合并（条目 3）在后续子切片 B/C。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 B（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-dead-rules`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+
+- 改动：删除被完全遮蔽的死规则 `.pi-task-output`（旧 :439，全部属性被 :502 覆盖）；`.pi-task-output.from-pi` 移除被 :504 覆盖的死 `background`（保留 border、左下圆角与 color）；`.pi-task-event` 两处基础声明合并为一条（保留存活的 `border-left` 与后者的 padding/line-height）。
+
+- 计算样式矩阵：真实 Electron 注入 renderer 同构节点，读取 `.pi-task-output.from-pi`/`.from-user`/`.pi-task-event` 的 max-width、padding、border-radius、color、background、border-left、line-height——`origin/main` 与本分支 JSON 逐字节一致（实测 maxWidth 92% 等，证明被删规则确为死规则）。
+
+- 截图：注入节点元素截图 `docs/qa/screenshots/issue-211-b-branch-workbench-synthetic.png`（SHA-256 前 16 位 `9ea7d00faa8082d0`）与 main 对照逐字节相同；为合成注入节点，非真实会话内容。
+
+- E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
+## 2026-11-04 侧栏右键第二入口（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-sidebar-context`（基于 `main` `02244ff`），改动仅 `desktop/renderer.js`（+1 行，零新 IPC、零新 locale key）。
+- 改动：右键 `.profile-switcher` / `.sidebar-section-heading`（空间标题） / `#room-strip` 时，打开既有的 profile-menu / room-menu 并同步触发器 `aria-expanded`——右键作为既有菜单动作的第二入口，菜单动作语义不变（空间菜单仍作用于当前空间）。
+- 行为探针矩阵（真实 Electron）：右键打开（hidden=false + aria-expanded=true）、Escape 关闭并复位、点击外部关闭并复位、标题区右键打开、从右键打开的菜单点「新建浏览身份」对话框正常弹出——7/7 项通过。
+- 截图：`docs/qa/screenshots/issue-214-sidebar-context-menu.png`（SHA-256 前 16 位 `aeff9ca880c16ed3`，隔离数据目录，菜单为「创建空间/关闭当前空间」既有动作）。
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`node --check`、`git diff --check` 通过。
+- 兼容性：新增行为基于 main 现行菜单机制；PR #178（菜单键盘重构，重写同区域触发器行）合并时本切片为新增独立行，预期无冲突。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；键盘等价入口已由既有触发器按钮承担（Tab 可达）。本轮未运行全量 `npm test`。
+## 2026-11-04 Issue #96 Agent Room 授权权限复验
+
+- 最新主线复验：基于 `origin/main` `9399642` 重放 PR #159 的跨平台验收切片后，在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-access-e2e.cjs`，EXIT 0，输出 `Agent access authorization E2E passed`。使用测试自建临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；没有读取用户资料、访问外网、使用 OAuth 或调用模型；测试退出后无残留 Electron。
+- 历史跨平台证据：PR #159 的 `agent-access-e2e` 在提交 `46a6e7f` 上通过 GitHub Actions [运行 #41633898145](https://github.com/heyallencao/corvid/actions/runs/41633898145)，macOS、Windows、Ubuntu 原生 runner 全部成功。Windows 用 PowerShell 检查授权文件 owner 与允许 ACL 主体；POSIX 检查 0600。此 Actions 运行早于当前主线与本次修订，不能代替当前提交的 Windows 验证。
+- 本次变更后检查：`node --check tests/agent-access-e2e.cjs` 与 `git diff --check` 通过。PR 切片增加跨平台文件权限断言与验证记录；依据仓库 CI 红线，已删除 PR 触发的 Actions workflow。Windows ACL 断言仍待 Windows 环境执行。当前授权服务端文件和路由未随本切片修改。
+- 覆盖边界：确定性 Agent 客户端与 Room 的并发授权、越权拒绝、凭据摘要/权限、撤销和重启状态；不连接真实 Provider/OAuth，不验证真实 MCP host，也不提供同一 OS 用户恶意进程隔离。
+
+
+- 改动：删除被完全遮蔽的死规则 `.pi-task-output`（旧 :439，全部属性被 :502 覆盖）；`.pi-task-output.from-pi` 移除被 :504 覆盖的死 `background`（保留 border、左下圆角与 color）；`.pi-task-event` 两处基础声明合并为一条（保留存活的 `border-left` 与后者的 padding/line-height）。
+
+- 计算样式矩阵：真实 Electron 注入 renderer 同构节点，读取 `.pi-task-output.from-pi`/`.from-user`/`.pi-task-event` 的 max-width、padding、border-radius、color、background、border-left、line-height——`origin/main` 与本分支 JSON 逐字节一致（实测 maxWidth 92% 等，证明被删规则确为死规则）。
+
+- 截图：注入节点元素截图 `docs/qa/screenshots/issue-211-b-branch-workbench-synthetic.png`（SHA-256 前 16 位 `9ea7d00faa8082d0`）与 main 对照逐字节相同；为合成注入节点，非真实会话内容。
+
+- E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 C（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-hover-convergence`（基于 `main` `bc8bb78`）。
+
+- 改动：renderer `button()` 助手统一 `b.type='button'`（动态按钮：空间条、菜单、pi 取消/发送/登出等）；静态 index.html 为 21 个未声明 type 的按钮补 `type="button"`（全部位于表单外：侧栏、chrome-tools、查找条、site-tools 菜单、关闭面板）；删除冗余的 `#pi-task-form .pi-model-action:hover` 声明（与全局 hover 同值）。
+
+- 关键更正（相对拆解方案预判）：`:not([type="submit"])` 为属性字面匹配，未声明 type 的按钮**从未被排除**在全局 hover 之外——全局 hover 交互面本就统一，不存在「补 type 后 hover 面扩大」的视觉变化。审计时未识别该语义，子切片 A/B 的探针不受影响（未涉及 hover 规则）。
+
+- 验证：hover 终态探针（等待 400ms > 120ms 过渡）读取 sidebar-nav-item / icon-button / subtle-icon-button / room-strip 项的 hover 背景，`origin/main` 与本分支四项全部一致；80ms 早期采样曾显示 icon-button 0.482→0.96 差异，确认为过渡采样伪差。工具栏 hover 截图 `docs/qa/screenshots/issue-211-c-branch-toolbar-hover.png`（SHA-256 前 16 位 `e619b94ef61ff1e4`）与 main 对照逐字节相同。`interaction-states-e2e.cjs`（含 hover 底色断言）、`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`git diff --check` 通过。
+
+- 表单语义收益：动态按钮显式 `type='button'` 后，即使未来被移入真实 `<form>` 也不会隐式提交（当前 `#pi-task-form` 为 `<section>`、唯一动态真表单 :623 已显式 `type='submit'` + `onsubmit` preventDefault，无既有 bug）。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版；查找条/菜单/关闭面板按钮未逐一 hover 探测（同类全局规则覆盖，工具栏代表已证一致）。
+
+- 2026-11-05 集成重放补充（PR #294，integrate-glm-01）：前向合并最新 main（含 #290/#291 squash 后内容），styles.css 三处冲突取 main token 版并保留本切片对 `.pi-model-action` hover 冗余声明的删除（已核实现行通用 `button:hover:not(:disabled):not([type="submit"])` 同值接管，且 renderer `button()` helper 与静态按钮均已带 `type="button"`）；base 改为 main。定向：`interaction-states-e2e`、`pi-workbench-e2e`、`pi-workbench-e2e` 与 `agent-rooms-panel-e2e` 三者 PASS。本地 `git merge-tree --write-tree origin/main HEAD` 干净（单一 merge-base `8e492bb`）；GitHub CONFLICTING 为服务端缓存误报，重算后合并。
+## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
+
+- 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
+- 定向验收：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` 通过；覆盖 30 秒 Cookie 操作上限（测试中缩至 1 秒）、未确定状态和同源重试/重启，以及隔离 APFS 实际写至 `ENOSPC`（245 MiB），满盘时旧 Cookie 可读，释放空间后 SQLite `quick_check` 为 `ok`，同源 513 条持久 Cookie 重试并再次重启后仍保留。
+- 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
+- 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
+- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
+

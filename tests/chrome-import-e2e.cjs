@@ -216,7 +216,10 @@ async function extensionValue(app,url,key,partition='persist:corvid'){
   },{target:url,keyName:key,partitionName:partition});
 }
 async function extensionPopupWindowOpen(app,urlPrefix){
-  return app.evaluate(({BrowserWindow},prefix)=>BrowserWindow.getAllWindows().some(window=>window.webContents.getURL().startsWith(prefix)),urlPrefix);
+  try{return await app.evaluate(({BrowserWindow},prefix)=>BrowserWindow.getAllWindows().some(window=>{
+    try{return !window.isDestroyed()&&window.webContents.getURL().startsWith(prefix);}catch{return false;}
+  }),urlPrefix);}
+  catch(error){if(/destroyed/i.test(String(error?.message||error)))return false;throw error;}
 }
 
 async function installDialogFixture(app,chromeRoot){
@@ -230,10 +233,43 @@ async function chooseSource(shell,sourceId='Default'){
   await shell.locator('#choose-chrome-source').click();
   await shell.locator('#chrome-source-profile').selectOption(sourceId);
   await shell.locator('#chrome-import-preview').getByText(/找到 1 个书签、1 条历史记录/).waitFor();
+  await shell.waitForFunction(()=>!document.querySelector('#chrome-import-categories').disabled);
   if(process.platform==='darwin')await shell.waitForFunction(()=>{
     const cookies=document.querySelector('input[name="chrome-category"][value="cookies"]');
     return cookies&&!cookies.disabled;
   });
+}
+
+async function verifyChromeImportDialogLayout(app,shell,locale,width,height,screenshotPath){
+  await app.evaluate(({BrowserWindow},{windowWidth,windowHeight})=>BrowserWindow.getAllWindows()[0].setSize(windowWidth,windowHeight),{windowWidth:width,windowHeight:height});
+  await shell.evaluate(({localeName})=>window.browserShell.invoke('setUiLocale',{locale:localeName}),{localeName:locale});
+  await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=0);
+  const footer=shell.locator('.chrome-import-actions'),cancel=shell.locator('#cancel-chrome-import-footer'),confirm=shell.locator('#confirm-chrome-import');
+  await footer.waitFor({state:'visible'});
+  await assert.doesNotReject(cancel.waitFor({state:'visible'}));
+  await assert.doesNotReject(confirm.waitFor({state:'visible'}));
+  const geometry=await shell.evaluate(()=>{
+    const dialog=document.querySelector('#chrome-import'),content=document.querySelector('.chrome-import-content'),header=dialog.querySelector('.import-heading'),footer=dialog.querySelector('.chrome-import-actions');
+    const rects=element=>{const rect=element.getBoundingClientRect();return {top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right};};
+    return {viewport:{width:innerWidth,height:innerHeight},dialog:rects(dialog),header:rects(header),content:rects(content),footer:rects(footer),contentScrollHeight:content.scrollHeight,contentClientHeight:content.clientHeight,cancel:rects(document.querySelector('#cancel-chrome-import-footer')),confirm:rects(document.querySelector('#confirm-chrome-import'))};
+  });
+  for(const action of [geometry.cancel,geometry.confirm]){
+    assert.ok(action.top>=geometry.dialog.top&&action.bottom<=geometry.dialog.bottom,`footer action must remain inside the dialog: ${JSON.stringify(geometry)}`);
+    assert.ok(action.top>=geometry.viewport.height*-0.02&&action.bottom<=geometry.viewport.height,`footer action must remain in the viewport: ${JSON.stringify(geometry)}`);
+    assert.ok(action.left>=0&&action.right<=geometry.viewport.width,`footer action must remain horizontally inside the viewport: ${JSON.stringify(geometry)}`);
+  }
+  assert.ok(geometry.header.top<geometry.content.top&&geometry.content.bottom<=geometry.footer.top,`header, scrolling content, and footer must remain ordered: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.contentScrollHeight>geometry.contentClientHeight,`long import preview must scroll independently: ${JSON.stringify(geometry)}`);
+  await shell.locator('#chrome-extension-choices input').last().focus();
+  await shell.keyboard.press('Tab');
+  assert.equal(await shell.evaluate(()=>document.activeElement.id),'cancel-chrome-import-footer','keyboard focus should continue from preview content to the fixed footer');
+  await shell.keyboard.press('Tab');
+  assert.equal(await shell.evaluate(()=>document.activeElement.id),'confirm-chrome-import','keyboard focus should move from cancel to the primary import action');
+  await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=element.scrollHeight);
+  const afterScroll=await shell.evaluate(()=>({header:document.querySelector('#chrome-import').querySelector('.import-heading').getBoundingClientRect().top,footer:document.querySelector('.chrome-import-actions').getBoundingClientRect().bottom}));
+  assert.equal(afterScroll.header,geometry.header.top,'scrolling the preview must not move the header');
+  assert.equal(afterScroll.footer,geometry.footer.bottom,'scrolling the preview must not move the footer');
+  if(screenshotPath){await shell.locator('.chrome-import-content').evaluate(element=>element.scrollTop=0);await shell.evaluate(()=>document.activeElement.blur());fs.mkdirSync(path.dirname(screenshotPath),{recursive:true});await shell.screenshot({path:screenshotPath});}
 }
 
 async function selectAllExtensions(shell){
@@ -518,6 +554,68 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     assert.equal(discoveredExtensions.length,2,'invalid extension manifests must be excluded');
     assert.equal(discoveredExtensions.find(item=>item.id===chromeProfiles[0].extensionId).version,'2.0.0','the newest valid extension version must be selected');
 
+    const unreadableHistoryRoot=path.join(tempRoot,'unreadable-history-chrome-user-data');
+    fs.cpSync(chromeRoot,unreadableHistoryRoot,{recursive:true});
+    fs.writeFileSync(path.join(unreadableHistoryRoot,'Default','History'),'not a SQLite database');
+    const categoryIsolationData=path.join(tempRoot,'category-isolation-corvid-data');
+    ({app,shell,call}=await boot(categoryIsolationData));
+    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,unreadableHistoryRoot);
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('#chrome-history-error').getByText('无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。').waitFor();
+    assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'a readable checked category should enable the import action while the fixed footer is visible');
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'the import action must remain disabled when no readable category is selected');
+    await shell.locator('input[name="chrome-category"][value="bookmarks"]').check();
+    const layoutScreenshotDir=path.join(project,'docs','qa','screenshots','issue-279');
+    await verifyChromeImportDialogLayout(app,shell,'zh-CN',1280,850,path.join(layoutScreenshotDir,'chrome-import-zh-CN-1280x850.png'));
+    await verifyChromeImportDialogLayout(app,shell,'en',704,420,path.join(layoutScreenshotDir,'chrome-import-en-704x420.png'));
+    await verifyChromeImportDialogLayout(app,shell,'zh-CN',704,420,path.join(layoutScreenshotDir,'chrome-import-zh-CN-704x420.png'));
+    await verifyChromeImportDialogLayout(app,shell,'en',1280,850,path.join(layoutScreenshotDir,'chrome-import-en-1280x850.png'));
+    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
+    assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'an unreadable category should be excluded before import');
+    assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'a readable category should remain selectable');
+    const categoryScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryScreenshotDir,{recursive:true});
+    await shell.screenshot({path:path.join(categoryScreenshotDir,'issue-18-category-isolation-zh-CN.png')});
+    await shell.locator('#confirm-chrome-import').click();
+    await shell.locator('#chrome-import-error').getByText(/书签新增 1 项/).waitFor();
+    assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://fixture.example/0/bookmark'],'selected readable bookmarks should import despite an unreadable unselected History database');
+    assert.deepEqual((await call('/history')).history,[],'unselected unreadable History must remain untouched');
+    const localeValues=await shell.evaluate(()=>({zh:window.corvidI18n.catalogs['zh-CN'].categoryReadUnavailable,en:window.corvidI18n.catalogs.en.categoryReadUnavailable}));
+    assert.equal(localeValues.zh,'无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。');
+    assert.equal(localeValues.en,'This data type could not be read and is excluded from this import. Check the Chrome data and try again.');
+    await shell.locator('#cancel-chrome-import-footer').click();
+    await shell.locator('#chrome-import').waitFor({state:'hidden'});
+    await app.close();app=undefined;
+
+    const categoryIsolationEnData=path.join(tempRoot,'category-isolation-en-corvid-data');fs.mkdirSync(categoryIsolationEnData);
+    fs.writeFileSync(path.join(categoryIsolationEnData,'ui-preferences.json'),JSON.stringify({schemaVersion:1,uiLocale:'en'}),{mode:0o600});
+    ({app,shell}=await boot(categoryIsolationEnData));
+    await shell.getByRole('heading',{name:'Start using Corvid with Chrome?'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#start-chrome-import').click();
+    await installDialogFixture(app,unreadableHistoryRoot);
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('#chrome-history-error').getByText('This data type could not be read and is excluded from this import. Check the Chrome data and try again.').waitFor();
+    assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'English UI should exclude the unreadable category');
+    assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'English UI should keep the readable category selectable');
+    const categoryEnScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryEnScreenshotDir,{recursive:true});
+    await shell.screenshot({path:path.join(categoryEnScreenshotDir,'issue-18-category-isolation-en.png')});
+    await shell.locator('#cancel-chrome-import').click();
+    await app.close();app=undefined;
+
+    if(process.env.CORVID_TEST_CATEGORY_ISOLATION_ONLY==='1'){
+      console.log('PASS Chrome category-isolated preview/import in zh-CN and en');
+      return;
+    }
+
     const appData=path.join(tempRoot,'fresh-corvid-data');
     const testEnv={CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE:'1'};
     if(supportsCookieImport)Object.assign(testEnv,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'});
@@ -623,7 +721,12 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     }
     await popupTrigger.click();
     await until(async()=>extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup reopen');
-    if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
+    if(process.env.CORVID_TEST_SKIP_NATIVE_POPUP_BLUR==='1'){
+      const reopenedPopup=await until(async()=>app.windows().find(page=>page.url().startsWith(popupUrlPrefix))||null,'extension popup for test-only close');
+      await reopenedPopup.close();
+      await until(async()=>!await extensionPopupWindowOpen(app,popupUrlPrefix),'extension popup closes without native blur input');
+      console.log('SKIPPED_NATIVE_EXTENSION_POPUP_OUTSIDE_CLICK','the test closed its fixture popup directly and continued with the full Chrome import flow');
+    }else if(process.env.CORVID_NATIVE_POINTER_CHECK==='1'){
       const clickTarget=await app.evaluate(({BrowserWindow,screen},bounds)=>{
         const parent=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('file://'));
         const content=parent.getContentBounds(),popup=BrowserWindow.getAllWindows().find(window=>window.webContents.getURL().startsWith('chrome-extension://'))?.getBounds();
@@ -953,11 +1056,13 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
         await shell.locator('input[name="chrome-category"][value="cookies"]').check();
         await allowCookieImport(shell);
+        await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
         lockedDatabase.exec('BEGIN EXCLUSIVE');
         await shell.locator('#confirm-chrome-import').click();
         const lockedImportStatus=shell.locator('#chrome-import-error');
         await lockedImportStatus.waitFor({state:'visible'});
-        assert.match(await lockedImportStatus.textContent(),/可能仍被 Chrome 占用/,'a busy Cookie database must direct the user to close Chrome rather than report corruption');
+        assert.match(await lockedImportStatus.textContent(),/may still be in use by Chrome/,'an English UI must show localized recovery guidance for a busy database');
+        assert.doesNotMatch(await lockedImportStatus.textContent(),/无法读取|退出 Chrome 后重试/,'an English UI must not show hard-coded Chinese SQLite guidance');
         assert.equal(await lockedImportStatus.getAttribute('data-success'),null,'a locked Cookie database must not be reported as a successful import');
         assert.deepEqual(fs.readFileSync(path.join(lockedData,'library.json')),libraryBeforeLockedImport,'a locked Chrome Cookie database must leave the target library byte-for-byte unchanged');
         assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved-locked-source'],'a locked Chrome Cookie database must not partially import Chrome bookmarks');

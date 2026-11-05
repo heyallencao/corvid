@@ -39,7 +39,8 @@ test('native browser menu labels follow Corvid locale and expose the same suppor
 });
 
 test('application menu has a branded app menu only on macOS and window items select the requested window', () => {
-  const focusWindow = () => {};
+  let focusedWindowId = null;
+  const focusWindow = id => { focusedWindowId = id; };
   const handlers = {focusWindow,newTab:()=>{},newWindow:()=>{},closeTab:()=>{},closeWindow:()=>{},back:()=>{},forward:()=>{},reload:()=>{},find:()=>{},print:()=>{},fullscreen:()=>{},zoomIn:()=>{},zoomOut:()=>{},resetZoom:()=>{}};
   const mac = createApplicationMenuTemplate({locale:'en',platform:'darwin',handlers,windows:[{id:'one',label:'Window 1',focused:false}]});
   const linux = createApplicationMenuTemplate({locale:'en',platform:'linux',handlers,windows:[]});
@@ -52,7 +53,7 @@ test('application menu has a branded app menu only on macOS and window items sel
   assert.equal(windowItem.type, 'radio');
   assert.equal(windowItem.checked, false);
   windowItem.click();
-  assert.equal(windowItem.id, 'corvid-window-one');
+  assert.equal(focusedWindowId, 'one');
 });
 
 test('menu enablement, full-screen state and focused-window check follow the current browser context', () => {

@@ -1,0 +1,35 @@
+name: Chrome 导入类别隔离验收（手动）
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chrome-import-categories:
+    name: ${{ matrix.os }} Chrome 导入类别隔离
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - windows-2022
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+
+      - name: 安装项目依赖
+        run: npm ci
+
+      - name: 验证合成资料导入
+        shell: bash
+        run: CORVID_TEST_CATEGORY_ISOLATION_ONLY=1 node tests/chrome-import-e2e.cjs

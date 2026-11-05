@@ -62,6 +62,8 @@ function identity() { return { issueAgentCredential: async () => ({ id: 'fixture
     assert.deepEqual(current.messageQueue.map(item => item.text), ['Updated next step', 'Second follow-up']);
     runtime.sessions[0].resolvePrompt();
     await waitFor(() => workbench.list()[0].status === 'completed');
+    const completedTurn = workbench.list()[0].conversation.at(-1);
+    assert.ok(Date.parse(completedTurn.finishedAt) >= Date.parse(completedTurn.at), 'a completed turn persists its end timestamp for a stable elapsed duration');
     assert.equal(runtime.prompts, promptsAfterStart, 'finishing a turn must not auto-dispatch the queue');
     await assert.rejects(workbench.continueTask({ taskId: task.id, message: 'Bypass queue', includePageContext: true, contextPreview: preview }), /后续消息顺序或内容已变化/);
     assert.equal(runtime.contextReads, readsAfterStart, 'bypassing a non-empty queue must be rejected before reading the page');
@@ -77,6 +79,8 @@ function identity() { return { issueAgentCredential: async () => ({ id: 'fixture
 
     await workbench.stop(task.id);
     assert.equal(workbench.list()[0].status, 'interrupted');
+    const stoppedTurn = workbench.list()[0].conversation.at(-1);
+    assert.ok(Date.parse(stoppedTurn.finishedAt) >= Date.parse(stoppedTurn.at), 'a user-stopped turn freezes its duration');
     assert.deepEqual(workbench.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'stop freezes dispatch and preserves the queue');
     const restarted = createAgentWorkbench({ dataDir, runtime: fixtureRuntime(), ...identity() });
     assert.deepEqual(restarted.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'restart preserves the pending queue');

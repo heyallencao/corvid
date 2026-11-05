@@ -75,7 +75,7 @@ function readHistory(directory) {
       const visitedAt=new Date(millis).toISOString();
       return {url,title:typeof row.title==='string'&&row.title?row.title:url,visitedAt};
     }).filter(Boolean).sort((a,b)=>a.visitedAt.localeCompare(b.visitedAt));
-  } catch(error) { throw sqliteReadError('Chrome 历史',error); }
+  } catch(error) { throw sqliteReadError(error); }
   finally { database?.close(); }
 }
 
@@ -87,14 +87,14 @@ function assertDatabaseIntegrity(database){
   throw error;
 }
 
-function sqliteReadError(label,error){
+function sqliteReadError(error){
   if(error.corvidSQLiteCorruption || error.errcode===11 || error.errcode===26){
-    return new Error(`${label}数据库可能已损坏或格式不受支持。Corvid 未修改 Chrome 源文件，也未导入所选类别。请先备份 Chrome 资料，再从健康的 Profile 副本重试。${error.message?`（${error.message}）`:''}`);
+    return new Error('[[corvid-error:chrome-sqlite-corrupt]]');
   }
   if(error.errcode===5 || error.errcode===6 || /database is (?:locked|busy)/i.test(error.message||'')){
-    return new Error(`无法读取${label}数据库（可能仍被 Chrome 占用）。请完全退出 Chrome 后重试。${error.message?`（${error.message}）`:''}`);
+    return new Error('[[corvid-error:chrome-sqlite-busy]]');
   }
-  return new Error(`无法读取${label}数据库；Corvid 未修改 Chrome 源文件或写入所选类别。${error.message?`（${error.message}）`:''}`);
+  return new Error('[[corvid-error:chrome-sqlite-read-failed]]');
 }
 
 function readCookieRows(directory,{checkIntegrity=false}={}) {
@@ -107,7 +107,7 @@ function readCookieRows(directory,{checkIntegrity=false}={}) {
     if(checkIntegrity)assertDatabaseIntegrity(database);
     const statement=database.prepare('SELECT * FROM cookies');statement.setReadBigInts(true);
     return statement.all();
-  }catch(error){throw sqliteReadError('Chrome Cookie',error);}
+  }catch(error){throw sqliteReadError(error);}
   finally{database?.close();}
 }
 
@@ -182,9 +182,31 @@ function assertCookieConsent(categories,consent,platform=process.platform){
   if(consent!==true)throw new Error('请先确认 Cookie 导入说明，再读取 macOS 钥匙串中的 Chrome Safe Storage。');
 }
 
-function readProfile(root, relative) {
+function readSelectedProfile(root, relative, categories) {
   const directory=profilePath(root,relative);
-  return {bookmarks:readBookmarks(directory),history:readHistory(directory),cookieCount:process.platform==='darwin'?cookieCount(directory):null};
+  const selected=new Set(categories);
+  return {
+    bookmarks:selected.has('bookmarks')?readBookmarks(directory):[],
+    history:selected.has('history')?readHistory(directory):[],
+    cookieCount:selected.has('cookies')&&process.platform==='darwin'?cookieCount(directory):null,
+  };
 }
 
-module.exports={profiles,readProfile,readCookies,readCookiesWithKey,assertCookieConsent};
+function readProfile(root, relative) {
+  return readSelectedProfile(root,relative,['bookmarks','history','cookies']);
+}
+
+function readProfilePreview(root, relative) {
+  const directory=profilePath(root,relative),result={bookmarks:[],history:[],cookieCount:null,errors:{}};
+  for(const category of ['bookmarks','history']){
+    try{result[category]=category==='bookmarks'?readBookmarks(directory):readHistory(directory);}
+    catch{result.errors[category]=true;}
+  }
+  if(process.platform==='darwin'){
+    result.cookieCount=cookieCount(directory);
+    if(result.cookieCount===null)result.errors.cookies=true;
+  }
+  return result;
+}
+
+module.exports={profiles,readProfile,readSelectedProfile,readProfilePreview,readCookies,readCookiesWithKey,assertCookieConsent};
