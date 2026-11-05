@@ -54,7 +54,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await (async () => { for (let i = 0; i < 200; i++) { const result = await call('/rooms'); if (result.rooms.flatMap(room => room.tabs).some(tab => tab.url === pageUrl && tab.title === 'Custom endpoint fixture page')) return; await delay(25); } throw new Error('Local page did not finish loading'); })();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
-    await shell.getByRole('button', { name: '管理 Corvid Agent 模型' }).click();
+    await shell.getByRole('button', { name: '管理模型' }).click();
+    await shell.locator('#pi-model-settings').waitFor({state:'visible'});
+    if(process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH){fs.mkdirSync(path.dirname(process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH),{recursive:true});await shell.screenshot({path:process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH});}
     await shell.locator('#pi-endpoint-name').fill('Fixture Endpoint');
     await shell.locator('#pi-endpoint-url').fill(`http://127.0.0.1:${models.address().port}/v1`);
     await shell.locator('#pi-endpoint-key').fill(endpointApiKey);

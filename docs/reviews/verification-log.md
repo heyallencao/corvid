@@ -1541,6 +1541,19 @@
 - 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
 - E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
 - 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
+## 2026-11-04 accent 对比色 token（Issue #210 子切片 D2）
+
+- 分支 `ui/issue-210-accent-contrast`（堆叠于 `ui/issue-210-disabled-token`），改动仅 `desktop/styles.css`。
+- 改动：`:root` 新增 `--accent-contrast: #fff`；4 处 accent 实底上的 `color: #fff`（.pi-model-action 连接 CTA、.pi-create-room/.pi-primary-action、.workspace-empty-action、onboarding 末位主按钮）改为 `color: var(--accent-contrast)`。
+- 复核背景：当前 main 的 `:root` 之外裸 hex 仅剩 `#fff` ×4（issue 基线的 54 值已被合并 PR 波次基本清偿），本切片完成「裸 hex 归并」收尾。
+- 验证：注入 renderer 同构节点读取 `.pi-primary-action`/`.workspace-empty-action` 计算色——main 与分支一致；注入按钮元素截图逐字节相同；`interaction-states-e2e.cjs`、`dialogs-ui-e2e.cjs` 通过；`git diff --check` 通过。
+- 边界：工作台整体截图含堆叠的 disabled 子切片预期差异，隔离验证以注入节点为准；未覆盖 VoiceOver/其他平台/打包版。
+
+- 2026-11-05 Pi 自定义端点 E2E accessible name 同步（Issue #305，PR #308 集成重放）：基于 origin/main 合并后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-custom-endpoint-e2e.cjs` 通过。测试按当前本地化目录按钮名称“管理模型”打开设置并等待 `#pi-model-settings` 可见，完成合成端点发现、凭据存储、模型选择和本地 Agent 请求；截图由 `CORVID_PI_MODEL_QA_SCREENSHOT_PATH` 生成，状态为中文模型目录/自定义端点空表单、逻辑窗口约 1280×811（PNG 2560×1622），端点地址为本地 fixture，无密钥或用户数据。原作者记录 SHA-256 `44bc9dd24a693d074b14436048e2490a73333ef8a73652324370ec45ef786079`（e46cc39 组合门禁 EXIT 0）。未调用真实 Provider/OAuth，未验证 Windows 或打包版。
+
+- 2026-11-05 Agent Room 面板 E2E 断言同步（Issue #304，PR #309 集成重放）：基于最新 main 合并后定向验证 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs`；测试断言与现行面板对比度/可访问名称一致。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0；截图 SHA-256 见 PR 描述。未验证 Windows、打包版或读屏实际播报。
+
+- 2026-11-05 SDK popup 用例先激活 opener（Issue #306，PR #311 集成重放）：`sdk/e2e.js` 将无关 `newPage()` 移到 popup 断言之后，确保可信点击发生在活动 opener 标签；设置 `CORVID_SDK_POPUP_QA_SCREENSHOT_PATH` 可保存本地 popup 页截图。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0。集成合并后定向与全量结果见本日记录。
 ## 2026-11-04 Issue #96 Agent Room 授权权限复验
 
 - 最新主线复验：基于 `origin/main` `9399642` 重放 PR #159 的跨平台验收切片后，在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-access-e2e.cjs`，EXIT 0，输出 `Agent access authorization E2E passed`。使用测试自建临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；没有读取用户资料、访问外网、使用 OAuth 或调用模型；测试退出后无残留 Electron。
