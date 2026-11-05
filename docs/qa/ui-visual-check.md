@@ -1,5 +1,11 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 统一对话框标题头与 × 关闭钮（Issue #218）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1，`dialogs-ui-e2e` 真实交互（Agent 触发的页面 prompt）生成：[page-dialog 标题头](screenshots/issue-218/issue-218-page-dialog-header.png)（SHA-256 前缀 `416ecdac`，BrowserWindow 默认尺寸）。
+- 直接观察：`#page-dialog` 现在有「页面请求」标题 + 右侧 × 关闭钮（此前无标题头、无 ×，观感与有完整 header 的导入/模型设置对话框割裂）；消息、回复输入与确定/取消保持原位。`#new-room`「新建空间」、`#new-profile`「新建浏览身份」、`#rename-profile`「重命名当前浏览身份」同样获得标题头与 ×（运行态断言 aria-labelledby、可访问名称、关闭钮 aria-label，× 与取消语义一致——page-dialog 的 × 使 prompt 收到 null）。
+- 断言与边界：`dialogs-ui-e2e` 双语资源键下断言四个对话框的可访问名称与关闭行为；`#settings` 已有 `aria-labelledby="settings-title"`（设置中心重构交付）无需改动；`#pi-auth-dialog` 亦有完整标题头。本轮未处理：onboarding Esc/稍后路径、设置→导入丢失设置上下文、其余 20+ 图标按钮 tooltip 缺口（#218 保持开放）。
+
 ## 2026-11-06 全表面走查与面板焦点抽测（Issue #16 子切片 B1）
 
 - 环境与范围：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`（空书签/零历史合成态）；3 档窗口（719×568 最小 / 1024×700 / 1280×850）× zh-CN/en × {主窗口、书签面板空态、Agent 工作台欢迎态}，共 18 张渲染截图，选摘 8 张入库 [walkthrough/](screenshots/issue-16/walkthrough/)：[zh 主窗窄](screenshots/issue-16/walkthrough/main-zh-CN-narrow.png)（`5fea220f`）、[en 主窗窄](screenshots/issue-16/walkthrough/main-en-narrow.png)（`aa61362e`）、[zh 主窗宽](screenshots/issue-16/walkthrough/main-zh-CN-wide.png)（`a751442b`）、[en 主窗宽](screenshots/issue-16/walkthrough/main-en-wide.png)（`05138d31`）、[zh 书签空态窄](screenshots/issue-16/walkthrough/bookmarks-zh-CN-narrow.png)（`7a832b9f`）、[en 书签空态宽](screenshots/issue-16/walkthrough/bookmarks-en-wide.png)（`659b2172`）、[en 工作台欢迎窄](screenshots/issue-16/walkthrough/workbench-en-narrow.png)（`76635a26`）、[zh 工作台欢迎中](screenshots/issue-16/walkthrough/workbench-zh-CN-mid.png)（`1ffe4caa`）。

@@ -6,5 +6,37 @@ const call=async(method,route,body)=>{const response=await fetch(config.baseUrl+
 const room=await call('POST','/rooms',{name:'UI Dialog'});const tab=room.tabs[0];await call('POST',`/tabs/${tab.id}/navigate`,{url:`http://127.0.0.1:${fixture.address().port}/`});await call('POST',`/rooms/${room.id}/activate`,{});
 const click=call('POST',`/tabs/${tab.id}/action`,{operation:'click',args:{target:'button'}});
 await shell.getByRole('button',{name:/网页对话框/}).click();assert.equal(await shell.locator('#page-dialog-message').textContent(),'Your name?');assert.equal(await shell.locator('#page-dialog-prompt').inputValue(),'initial');await shell.locator('#page-dialog-prompt').fill('human');await shell.locator('#page-dialog-form').getByRole('button',{name:'确定'}).click();await click;
-const answer=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(answer.value,'human');assert.equal((await call('GET','/rooms')).rooms.find(s=>s.id===room.id).ownership,'agent');await call('DELETE',`/rooms/${room.id}`);console.log('PASS page prompt UI response and ownership');
+const answer=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(answer.value,'human');assert.equal((await call('GET','/rooms')).rooms.find(s=>s.id===room.id).ownership,'agent');
+// Issue #218：page-dialog 标题头 + × 等价取消（prompt 收到 null）。
+const qaDir=process.env.CORVID_DIALOG_UI_QA_DIR;
+const assertDialogHeader=async(id,title)=>{const dialog=shell.locator(`#${id}`);assert.equal(await dialog.getAttribute('aria-labelledby'),`${id}-title`,`${id} points at its title`);assert.equal(await shell.getByRole('dialog',{name:title}).count()>0,true,`${id} exposes accessible name "${title}"`);assert.equal(await shell.locator(`#${id}-close`).getAttribute('aria-label'),'关闭对话框',`${id} close button is labelled`);};
+const click2=call('POST',`/tabs/${tab.id}/action`,{operation:'click',args:{target:'button'}});
+await shell.getByRole('button',{name:/网页对话框/}).click();
+await shell.locator('#page-dialog[open]').waitFor();
+await assertDialogHeader('page-dialog','页面请求');
+if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-218-page-dialog-header.png')});}
+await shell.locator('#page-dialog-close').click();await click2;
+const cancelled=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(cancelled.value,null,'× dismisses the page prompt like cancel');
+await call('DELETE',`/rooms/${room.id}`);
+// Issue #218：统一对话框标题头——aria-labelledby 可访问名称与 × 关闭钮。
+// 新建空间：标题头 + × 关闭。
+await shell.locator('#create-room-trigger').click();
+await shell.locator('#new-room[open]').waitFor();
+await assertDialogHeader('new-room','新建空间');
+await shell.locator('#new-room-close').click();
+await shell.locator('#new-room').waitFor({state:'hidden'});
+// 新建/重命名浏览身份：经浏览身份菜单打开。
+await shell.locator('#profile-menu-trigger').click();
+await shell.locator('#profile-menu button',{hasText:'新建浏览身份'}).first().click();
+await shell.locator('#new-profile[open]').waitFor();
+await assertDialogHeader('new-profile','新建浏览身份');
+await shell.locator('#new-profile-close').click();
+await shell.locator('#new-profile').waitFor({state:'hidden'});
+await shell.locator('#profile-menu-trigger').click();
+await shell.locator('#profile-menu button',{hasText:'重命名当前浏览身份'}).first().click();
+await shell.locator('#rename-profile[open]').waitFor();
+await assertDialogHeader('rename-profile','重命名当前浏览身份');
+await shell.locator('#rename-profile-close').click();
+await shell.locator('#rename-profile').waitFor({state:'hidden'});
+console.log('PASS page prompt UI response, ownership and unified dialog headers');
 }finally{if(app)await app.close().catch(()=>{});await new Promise(resolve=>fixture.close(resolve));fs.rmSync(dir,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1;});

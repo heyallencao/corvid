@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #218 统一对话框标题头与 × 关闭钮
+
+- 基线：隔离 worktree，候选基于 `origin/main` `a6cb3fc`（含 PR #331），分支 `ui/issue-218-dialog-headers`。改动：`desktop/index.html`（`#new-room`/`#new-profile`/`#rename-profile`/`#page-dialog` 四个对话框加 `header.dialog-header`（h2 + `.close-button` ×）、`aria-labelledby` 与 `data-i18n-aria-label="closeDialog"`）、`desktop/locales.js`（`newRoomTitle`/`newProfileTitle`/`renameProfileTitle`/`pageDialogTitle`/`closeDialog` 双语键 5 项）、`desktop/styles.css`（`.dialog-header` 样式，flex 独占一行）、`desktop/renderer.js`（4 个 × 处理器：三个镜像取消语义 `.close()`，page-dialog × 等价 `answerPageDialog(false)`）、`tests/dialogs-ui-e2e.cjs`（标题头合同：aria-labelledby、`getByRole('dialog',{name})`、aria-label、page-dialog × 取消 prompt 收到 null、三对话框 × 关闭）。
+- 现状核对：`#settings` 已有 `aria-labelledby="settings-title"`（设置中心重构交付）；`#pi-auth-dialog` 有完整标题头；disabled 双标准已在早前切片统一为 `--disabled-opacity`（无 `.46` 残留）；a[href] 焦点与 cursor 由 PR #237 交付。本切片后 #218 剩余：onboarding Esc/稍后路径、设置→导入丢失设置上下文、其余图标按钮 tooltip 缺口。
+- 定向验证：`dialogs-ui-e2e` EXIT 0（含新合同）；`profiles-e2e`（新建/重命名 UI 流）、`localization-e2e`（data-i18n 双语）、`contract-e2e` EXIT 0。
+- 全量门禁：见 PR 描述。
+- 边界：仅 macOS 开发版；page-dialog 的原生 Esc 关闭不回答页面对话框（关闭后 `onclose` 仅恢复面板状态）为本轮发现的既有行为，× 与取消按钮语义一致不受影响；Esc 答复语义是否需要对齐另开 issue 跟踪，不在本切片扩围。
+
 ## 2026-11-06 Issue #16 子切片 B1：全表面走查与面板焦点抽测
 
 - 基线：隔离 worktree，候选基于 `origin/main` `007df58`，分支 `ui/issue-16-b1-walkthrough`。改动仅文档与截图：`docs/qa/ui-visual-check.md` 走查条目、`docs/qa/screenshots/issue-16/walkthrough/` 选摘 8 张（3 尺寸 × 双语 × 3 表面）。无代码改动。

@@ -732,6 +732,10 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 @media (max-width: 540px) { .pi-endpoint-row { grid-template-columns: minmax(0, 1fr) auto; } .pi-endpoint-row div { grid-column: 1 / -1; } }
 dialog::backdrop { background: var(--dialog-backdrop); backdrop-filter: blur(3px); }
 dialog form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+/* 统一对话框标题头：eyebrow/h2 + 关闭钮，供 aria-labelledby 与读屏播报对话框目的。 */
+.dialog-header { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 2px; }
+.dialog-header h2 { margin: 0; font-size: 17px; letter-spacing: -.015em; }
+.dialog-header .close-button { margin: -4px 0; }
 dialog :where(label) { display: grid; flex: 1 1 100%; gap: 6px; color: var(--text-secondary); }
 dialog input, dialog select { min-height: 36px; padding: 7px 9px; }
 dialog select { padding-right: 26px; }
