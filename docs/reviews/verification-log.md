@@ -2,12 +2,19 @@
 
 ## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
 
-- 基线与候选：独立集成 worktree `/private/tmp/corvid-integrate-pr172-verified`，基线 `origin/main` `9a0068857462117af44b2164ec00300fb4a2bb6b`；从 #178 菜单原始提交重放，保留当前 main 的 SVG 按钮、本地化菜单名称和 Profile/空间标题/空间列表三个 contextmenu 入口。本次候选尚未提交，PR #178 live head `08fadeedfaae8ee1970e0d6b76f6d98af0987048` 不是本候选；只纳入菜单键盘切片，不倒灌后续无关提交。
+- 基线与候选：基于 GitHub `main` `266418fc27217e86b51994efdada92702ed899da`，集成提交 `6f49bc0`（含 `15dcfcc` 菜单修复及 #314 前向合并），保留当前 main 的 SVG 按钮、本地化菜单名称和 Profile/空间标题/空间列表三个 contextmenu 入口。
 - 修复：contextmenu 与触发按钮共用打开逻辑，关闭另一菜单、设置 `aria-expanded` 并聚焦首个 menuitem；菜单项不进入普通 Tab 顺序。方向键/Home/End 导航，Escape 关闭并还焦点，Tab 与点外关闭。trigger 增加 `aria-haspopup` / `aria-controls`，保留 main 当前菜单的本地化 `aria-label`。
-- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1，`env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0。真实隔离 Electron 覆盖 Profile/空间按钮键盘打开、方向键/Home/End/Escape/Tab 及三个右键入口的首项焦点、方向键导航、Escape 焦点恢复；测试使用本地确定性 fixture，不调用真实模型或 OAuth。`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs` 与 `git diff --check` 通过。
-- 全量门禁：macOS arm64、Node.js v24.22.1、Electron 45.2.1 环境执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 0。串行全套 E2E、合同、Electron UI、MCP 与设置回归全部通过，包含本次 `agent-rooms-panel-e2e.cjs`。使用隔离测试数据目录与本地 fixture；未调用真实 OAuth 或模型。
+- 定向验证：基于最新 main `266418f` 执行 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check` 均通过。
+- 全量门禁：基于 merge 候选 `2cb6056` 执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1。Node/Electron 首段 34/34 通过，串行后续用例通过至 `tests/application-menu-e2e.cjs:44`，随后报 `Timed out waiting for Corvid application window focus`。这是标准门禁失败，不能记为通过；该用例与本 PR 菜单无关。按现有 QA 记录使用 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1 node tests/application-menu-e2e.cjs` 单独复核 EXIT 0，其余应用菜单合同通过，但明确跳过原生窗口焦点与路由；此结果不替代失败的标准全量门禁。
 - 视觉证据：[隔离 Profile 菜单截图](../qa/screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)，状态为首项焦点、2560×1636 PNG；无网页主体或个人数据。视觉与辅助技术限制见[视觉检查](../qa/ui-visual-check.md#2026-11-05-profile-与空间菜单键盘交互-issue-16)。未验证 VoiceOver 实播、Windows/Linux、打包版。
-- 状态：本地候选已修复并通过定向 E2E；全量门禁与 GitHub PR 更新/合并仍待完成。本 slice 不代表 Issue #16 整体关闭。
+- 状态：修复已推送 PR #178；待在最新 base 上重验并由集成 lane 复核合并。本 slice 不代表 Issue #16 整体关闭。
+
+## 2026-11-05 Issue #204 onboarding 主要操作 hover 对比（PR #255 前向集成复验）
+
+- 变更：基于当前 GitHub main `9a0068857462117af44b2164ec00300fb4a2bb6b`，从 PR #255 精确 head 仅重放 `desktop/styles.css` 的 hover 默认选择器、`tests/button-hover-contrast-e2e.cjs` 与对应 QA 记录/合成截图，未引入陈旧 PR 分支中的其他主线文件。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/button-hover-contrast-e2e.cjs` PASS；macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`，1024×700 CSS px。浅/深主题主要按钮 hover 对比度均 4.88:1，次要操作维持中性 hover。`node --check tests/button-hover-contrast-e2e.cjs` 与 `git diff --check` PASS。
+- 全量门禁：候选首次 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0。之后将定向用例纳入默认 npm test 链并登记为 suite 76；该链尾变更后的最终完整门禁待重跑。
+- 限制：只覆盖 zh-CN、1024×700 和开发版 Electron；未验证英文、窄窗、辅助技术、Windows/Linux、签名打包版或网页合成像素。完整 issue 中其他对比度/字号事项仍开放。测试刷新的八张既有 QA 截图已恢复；PR 中附带的两张新截图来自隔离旧 head，保留为该状态证据，不宣称是当前完整门禁新采集。
 
 ## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
 
