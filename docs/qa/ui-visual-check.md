@@ -582,3 +582,10 @@
 - 视觉判断：只调整工具栏与列表的滚动归属，保留 Corvid 的按钮层级、间距、颜色和双语标签；窄窗下固定动作仍可见，长任务内容在下方区域滚动。当前截图已检查，未发现文字、边框或布局裁切。
 - UI/UE 参考与 REA：沿用 Kobra AI Editor 文档页既有 Evidence `ev_eed2234f92bb4dee43563c6d18dc2209dafec1dd7f373f3782c554a9c2299afb`（2026-11-04，REA Chromium 156.0.8078.80，1280×720）。直接观察仅限三列文档导航/示例/属性区；把固定操作与滚动内容分开是结合 Corvid 工作流作出的推断，不代表 Kobra 的窄窗/键盘行为。本轮未重新访问参考页，也未复制代码或素材。
 - 未覆盖：仅验证 macOS 开发版、浅色主题、704×568 这一窗口尺寸；未覆盖 Windows/Linux、打包版、暗色主题、VoiceOver/读屏实播或其他短窗。截图不含独立 `WebContentsView` 页面画布。命令与全量结果见[验证记录](../reviews/verification-log.md#2026-11-05-agent-工作台窄窗工具栏滚动验收issue-217)。
+
+## 2026-11-05 键盘链接焦点与原生控件指针反馈 Issue #218
+
+- 环境与截图：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时 Corvid 数据目录、合成历史记录与本地 HTTP fixture。BrowserWindow 外框 1024×700，renderer viewport 1024×668 CSS px，DPR 2；PNG 为 2048×1336。zh-CN 历史面板中，Tab 将焦点移至“Beta Today”链接：[键盘焦点截图](screenshots/issue-218-history-link-keyboard-focus-zh-CN-1024x700.png)，SHA-256 `90bf1b272eb35fdd38521f57a931ac30ba4f201b35bdd98cd99b963276063ce5`。页面仅含本地 fixture 和合成历史，不含真实浏览记录、账号或凭据。
+- 直接观察：真实 Electron E2E 从关闭历史面板按钮继续按 Tab，直到历史链接取得焦点；链接 computed style 为 `outlineStyle: solid`、`outlineWidth: 2px`。截图中链接周围可见共享焦点环。启用态原生 select 与 checkbox 的 computed cursor 为 `pointer`；disabled select 与 checkbox 不会被新规则设为 `pointer`。
+- 视觉判断与参考：复用 Corvid 已有 `--focus-ring` 颜色和 2px 焦点环，不引入新的控件色彩；截图中焦点边界清楚，历史行文字和操作仍可见。本轮未重新检查外部 UI/UE 参考或采集 REA 证据；验收依据为 Corvid 的真实 Electron 渲染与 computed style。
+- 未覆盖：只覆盖 macOS 开发版、浅色主题、zh-CN 和 1024×700 外框；未验证 Windows/Linux、打包版、暗色主题、英文焦点环、VoiceOver/其他读屏实播或辅助技术完整流程。Issue #218 的 dialog/tooltip 等其余范围保持开放。命令与全量结果见[验证记录](../reviews/verification-log.md#2026-11-05-键盘链接焦点与原生控件指针反馈-issue-218)。

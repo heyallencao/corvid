@@ -15,8 +15,10 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-history-panel-'));
   const qaDir = process.env.CORVID_HISTORY_QA_DIR;
   const rowQaDir = process.env.CORVID_LIBRARY_ROWS_QA_DIR;
+  const issue218QaDir = process.env.CORVID_ISSUE218_QA_DIR;
   if (qaDir) fs.mkdirSync(qaDir, { recursive: true });
   if (rowQaDir) fs.mkdirSync(rowQaDir, { recursive: true });
+  if (issue218QaDir) fs.mkdirSync(issue218QaDir, { recursive: true });
   const fixture = http.createServer((request, response) => {
     const title = request.url.startsWith('/today-one') ? 'Alpha Today' : 'Beta Today';
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -81,6 +83,46 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
     const yesterdayGroup = items.locator('.history-group[data-history-group="yesterday"]');
     const olderGroup = items.locator(`.history-group[data-history-group="${dayKey(older)}"]`);
     await todayGroup.getByRole('link', { name: 'Beta Today' }).waitFor();
+    await shell.locator('#close-library').focus();
+    let historyLinkHasKeyboardFocus = false;
+    for (let attempt = 0; attempt < 12 && !historyLinkHasKeyboardFocus; attempt += 1) {
+      await shell.keyboard.press('Tab');
+      historyLinkHasKeyboardFocus = await shell.evaluate(() => document.activeElement?.matches('.history-entry a[href]') || false);
+    }
+    assert.equal(historyLinkHasKeyboardFocus, true, 'Tab navigation reaches a history link');
+    const historyLinkFocusStyle = await shell.evaluate(() => {
+      const style = getComputedStyle(document.activeElement);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    assert.deepEqual(historyLinkFocusStyle, { outlineStyle: 'solid', outlineWidth: '2px' }, 'keyboard-focused history links show the shared visible focus ring');
+    const settingsSelectCursor = await shell.locator('#search-preset').evaluate(element => getComputedStyle(element).cursor);
+    assert.equal(settingsSelectCursor, 'pointer', 'enabled native selects communicate their pointer affordance');
+    const checkboxCursor = await shell.evaluate(() => {
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; document.body.append(checkbox);
+      const cursor = getComputedStyle(checkbox).cursor; checkbox.remove(); return cursor;
+    });
+    assert.equal(checkboxCursor, 'pointer', 'enabled checkboxes communicate their pointer affordance');
+    const disabledNativeControlCursors = await shell.evaluate(() => {
+      const select = document.createElement('select'); select.disabled = true;
+      const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.disabled = true;
+      document.body.append(select, checkbox);
+      const cursors = { select: getComputedStyle(select).cursor, checkbox: getComputedStyle(checkbox).cursor };
+      select.remove(); checkbox.remove(); return cursors;
+    });
+    assert.notEqual(disabledNativeControlCursors.select, 'pointer', 'disabled native selects retain their default cursor');
+    assert.notEqual(disabledNativeControlCursors.checkbox, 'pointer', 'disabled checkboxes retain their default cursor');
+    if (issue218QaDir) {
+      const windowBounds = await app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window.setSize(1024, 700);
+        return window.getBounds();
+      });
+      assert.deepEqual({ width: windowBounds.width, height: windowBounds.height }, { width: 1024, height: 700 });
+      await delay(200);
+      const viewport = await shell.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio }));
+      console.log(`Issue #218 screenshot geometry: ${JSON.stringify({ windowBounds, viewport })}`);
+      await shell.screenshot({ path: path.join(issue218QaDir, 'issue-218-history-link-keyboard-focus-zh-CN-1024x700.png') });
+    }
     assert.equal(await items.locator('.history-group').count(), 3, 'history is separated into local-day groups');
     assert.deepEqual(await items.locator('.history-group').evaluateAll(groups => groups.map(group => group.dataset.historyGroup)), ['today', 'yesterday', dayKey(older)], 'groups are ordered from newest to oldest');
     assert.equal(await todayGroup.locator('.history-entry').count(), 2, 'both visited pages appear under today');
