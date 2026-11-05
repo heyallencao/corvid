@@ -48,8 +48,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       assert.deepEqual(undersized, [], `visible Chinese UI text is at least 12px: ${JSON.stringify(undersized)}`);
     } else {
       assert.match(result.family, /system-ui/i);
-      assert.equal(result.compact, '11px');
-      assert.equal(result.micro, '10px');
+      assert.equal(result.compact, '12px');
+      assert.equal(result.micro, '11px');
+      const undersized = result.text.filter(item => item.fontSize < 11);
+      assert.deepEqual(undersized, [], `visible English UI text is at least 11px: ${JSON.stringify(undersized)}`);
     }
     return result;
   }

@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 低对比文字与过小字号系统清理（Issue #204）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`（首启 onboarding 弹层）、BrowserWindow 1024×700（Retina PNG 2048×1336），zh-CN/en × 浅/深主题共 8 张，均由脚本驱动真实 hover 生成，无个人资料：onboarding 主按钮 hover 态 [浅色中文](screenshots/issue-204/issue-204-onboarding-hover-zh-CN-light.png)（SHA-256 `5050961f103e5ebfca3cc97696e99eeae11c86e93c1260c08fc362feaee8bcc4`）、[深色中文](screenshots/issue-204/issue-204-onboarding-hover-zh-CN-dark.png)（`a2b9e2bcd568ae7774bb9dbad949b5abba5828b2466f4e310753d372284f4b21`）、[浅色英文](screenshots/issue-204/issue-204-onboarding-hover-en-light.png)（`7c45b05f4e12018c9622f89c6136e07f6027e5fe4c6d4cd4b2343cf79f3c92b7`）、[深色英文](screenshots/issue-204/issue-204-onboarding-hover-en-dark.png)（`681f2f8914902f09e95e30e1157e3fe1eb2f54ec74c2ae628f7e33d883c86a47`）；设置中心 [浅色中文](screenshots/issue-204/issue-204-settings-zh-CN-light.png)（`57befbf4c7bd51a2b52caf7ff029742365e7a75804cd583e6f03f1562dd1d8b2`）、[深色中文](screenshots/issue-204/issue-204-settings-zh-CN-dark.png)（`9a9fa36d5be67784b9a9484786291295225a699474a5b7fe7d93ec98102a5abf`）、[浅色英文](screenshots/issue-204/issue-204-settings-en-light.png)（`c142f391a78796b8e98262ed8567c49b3943e54cf1b4ae1bf1d33a21b8cca06c`）、[深色英文](screenshots/issue-204/issue-204-settings-en-dark.png)（`4f1c60b8709ea02e3ab694706ee5649e70cbfe41808e6d6f77db7768f6dda33d`）。
+- 直接观察与测量：token 级 WCAG 计算复核（浅色）`--danger` `#b04141` 白底 5.71:1、`--surface-error` 上 5.41:1、白字在其上 5.71:1（原 `#bd4b4b` 为 4.28:1，低于正文 4.5:1）；`--text-address-icon` `#6e7786` 地址栏底 4.25:1、白底 4.52:1（原 `#8991a0` 约 2.97:1，低于非文字 3:1）；`--text-muted` 既有值在侧栏/地址栏/白底分别为 5.24/5.29/5.62:1，维持不动。深色主题 token 复核 4.5–8.0:1 全部达标，未改动。运行态 hover 计算样式：浅/深主题 onboarding 主按钮均为 `--accent-solid` 白字（4.88:1），与 `button-hover-contrast-e2e` 断言一致。
+- 字号改动：en 根 token `--font-size-small` 11px→12px、`--font-size-micro` 10px→11px（zh-CN 维持 12/12），覆盖 detector 清单所列 brand-caption、侧栏段标题、panel-eyebrow、Agent 欢迎文案、页面绑定与模型状态等位置；残留字面 10/11px 文字统一归入 token（设置说明/备注/范围标签、设置导航紧凑态、模型搜索与选项行、导入错误窄窗态、全屏快捷键提示），zh-CN 全界面可见文字 ≥12px、en ≥11px 由 `typography-e2e` 断言。`brand-caption` 补溢出省略防止 11px 大写加宽裁切。顺带修正 `#fullscreen-shortcut` 引用不存在的 `--muted` token（失效回退为继承正文色）。
+- 未覆盖：Windows/Linux、打包版、VoiceOver 实播；`.pi-context` 与 `#agent-client-token` 的 11px 等宽代码字为保留豁免（代码场景，符合辅助信息 11px 下限）；紧凑高度媒体查询下工作台压缩字号（en 11px/zh 12px）属密度模式豁免。
+
 ## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
 
 - 截图：[Profile 菜单首项聚焦，2560×1636 PNG](screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)。来自隔离 Electron、本地确定性 fixture；仅 shell UI，无个人网页、浏览身份数据或凭据。截图展示 Profile 菜单打开及首项焦点状态。
