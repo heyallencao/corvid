@@ -65,7 +65,7 @@ function discover(profileDir){
       versions.push({id,name:resolveName(manifest,versionPath)||id,version:manifest.version,manifestVersion:manifest.manifest_version,permissions:permissions(manifest),sourcePath:versionPath});
     }
     versions.sort((a,b)=>compareVersions(b.version,a.version));
-    if(versions[0])found.push({...versions[0],warning:'Electron 仅支持部分 Chrome 扩展 API；Corvid 尚未集成扩展工具栏弹窗。导入后仍需验证扩展功能。'});
+    if(versions[0])found.push(versions[0]);
   }
   return found.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
 }
