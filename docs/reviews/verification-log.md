@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-05 Issue #5 Agent 会话清理失败重试（PR #156 前向更新）
+
+- 变更：从 PR #156 原 head `038be69` 前向合并 `origin/main`；保留主线新增 Agent transcript 回退、工作台 UI 和索引内容，保留 PR 的已完成会话异步清理重试及新增 UI 清理失败验收。`tests/profile-deletion-services.cjs` 对异步 `clear()` 调用增加 await。此前误纳入启动失败后的凭据撤销双重失败修复与合同；因该独立问题由后续 PR #287 处理，本次更新已从 #156 移除，避免范围重复。
+- 定向合同：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-runtime-contract-e2e.cjs` 与 `node tests/profile-deletion-services.cjs` 均 PASS；覆盖已生成回复在异步 dispose/revoke 失败时保留、任务不可续聊、删除失败保留记录、凭据映射保留并在重试成功后删除，以及异步 clear 调用被 await。相关 `node --check` 和 `git diff --check` 通过。
+- 真实 Electron：隔离 worktree 首次运行因缺少依赖链接，在模型设置初始化等待失败；临时链接至主工作区已安装依赖后，`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` PASS，覆盖工作台原有上下文同意、多轮对话、重启恢复、用户接管及会话清理失败 UI 合同；测试后移除链接。
+- 全量门禁：用同一临时依赖链接执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 1，Node/Electron 首段 30 项中 27 通过、3 失败：`browser.e2e.mjs:99` 输入焦点 HTTP 400；`dialogs.e2e.mjs:26` renderer alert 超时；`uploads.e2e.mjs:40` file chooser 超时。三项错误签名与 Issue #18 记录的 `origin/main` `fe77898` 同态基线一致。
+- 前一轮后续入口：在范围收窄前，按 `package.json` 顺序串行执行了 62 个脚本，其中 54 个默认路径通过、8 个失败；另于干净 `origin/main` `fe77898` worktree 复跑六项，均以相同错误位置/签名失败。另两项为已记录的原生焦点限制：Chrome 导入默认模式在 extension popup 原生父窗口激活处超时，设置文档批准的 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 后完整导入流程 PASS；应用菜单默认模式在原生窗口焦点等待超时，设置文档批准的 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1` 后其余菜单合同 PASS。该入口统计来自当时包含启动失败修复的候选版本，不作为当前收窄提交的验证结果；收窄后重新执行的标准全量命令仍 EXIT 1，结果见上。全量失败签名与当前 `main` 已知基线/原生桌面限制一致，未观察到 PR #156 特有的新失败。
+- 限制：规定全量命令仍为 EXIT 1，不能记作全量通过。其余串行入口已执行，未运行真实模型/OAuth；Issue #5 保持开放，PR #156 保持草稿。
+
 ## 2026-11-05 Issue #18 Chrome SQLite 错误本地化（PR #154 集成复验）
 
 - 变更：基于 `origin/main` `fe77898` 前向集成 PR #154。真实导入路径发现 Electron IPC 会将稳定 SQLite 错误码包装为 `Error invoking remote method ...`，导致 renderer 原有开头匹配未命中并显示内部错误标记；调整错误映射并为包装形状增加合同覆盖。
@@ -1514,6 +1523,15 @@
 - 当前 main 集成：从远端 PR 原 head `0b6fbc7` 正向合并 `origin/main` `fe77898`，保留双方文件内容；通过 `npm test` 纳入现存 `application-menu.test.mjs`、`chrome-import-categories.test.mjs` 与新的 `chrome-import-sqlite.test.mjs`。本次尚未运行合并后的测试，不把候选树中过往定向结果当作此合并 head 的复验。
 - 门禁背景：`fe77898` 主线本机规定全量门禁已在本记录的集成评论中报告为 27/30；browser focus、dialogs alert、uploads chooser 三个失败均同签名复现在 main。PR 当前全量门禁因此仍未取得通过结果，见 Issue #289 与 #18。
 - 限制：此前 SQLite/category Node 合同 7/7 的结果来自不同候选快照；完整 Chrome 导入 E2E 在原生扩展弹窗焦点处未到达新增英文断言，只有设置 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 的导入流程结果为 EXIT 0，跳过原生失焦关闭覆盖。全量门禁和默认原生交互仍需在当前 head 复验；Issue #18 保持开放。未覆盖真实 Chrome 资料、系统钥匙串授权、Windows 打包版。
+## 2026-11-04 disabled 状态一致性 token（Issue #210 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-210-disabled-token`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+- 复核更正：issue 基线（`771c9bb`）的「灰面 hover 色 6 种」在当前 main 已全部 token 化（--surface-hover/--tab-hover/--tab-close-hover/--accent-soft/--accent-solid-hover 等，无裸 hex hover 背景），该子项无剩余工作。实际剩余债务：disabled 同语义三值（:170 全局 .46 / :387 队列 .5 / :719 对话框 .55）+ cursor 两值（default / not-allowed）。
+- 改动：`:root` 新增 `--disabled-opacity: .55`；全局 `button:disabled` 改用 token 并统一 `cursor: not-allowed`；队列规则（.5）收敛后冗余删除；对话框规则改用 token（值不变）。`.tab.dragging` 的 .55 为拖拽反馈语义，与 disabled 无关，保留字面值。
+- 探针矩阵：表单外注入 disabled 按钮（全局规则）0.46/default → 0.55/not-allowed（预期变更）；chrome-import 确认按钮 opacity 0.55 不变、cursor default → not-allowed（预期变更）；categories fieldset 与 enabled 对照不受影响。
+- 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
+- E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
 ## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
 
 - 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。

@@ -57,7 +57,7 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
   const before=JSON.stringify(workbench.list());
   assert.throws(()=>workbench.beginProfileDeletion('work'),error=>error.code==='CORVID_PROFILE_IN_USE'&&error.blockers.some(item=>item.id==='recoverable'));
   assert.equal(JSON.stringify(workbench.list()),before,'a recoverable conversation blocks without changing task state');
-  workbench.clear('recoverable');
+  await workbench.clear('recoverable');
   workbench.beginProfileDeletion('work');
   await assert.rejects(workbench.start({profileId:'work',roomId:'room-new',tabId:'tab-new',prompt:'test',includePageContext:true,contextPreview:{}}),error=>error.code==='CORVID_PROFILE_DELETING');
   assert.equal(await workbench.removeProfileData('work'),1);

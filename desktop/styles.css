@@ -71,6 +71,7 @@
   --dialog-backdrop: #20263345;
   --focus-ring: var(--accent);
   --motion-fast: 120ms;
+  --disabled-opacity: .55;
   --motion-standard: 180ms;
   --motion-ease: cubic-bezier(.2, 0, 0, 1);
   --sidebar-width: 232px;
@@ -176,7 +177,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease), filter var(--motion-fast) var(--motion-ease); }
 button:hover:not(:disabled):not([type="submit"]) { background: var(--surface-hover); }
 button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.94); }
-button:disabled { opacity: .46; cursor: default; }
+button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 input, select, textarea { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
 input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
@@ -393,7 +394,6 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-message-queue-text { margin: 0; color: var(--text); font-size: var(--font-size-small); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pi-message-queue-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .pi-message-queue-actions button,.pi-message-queue-item > button,.pi-message-queue-form button { min-height: 27px; padding: 4px 7px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text-secondary); font: inherit; font-size: var(--font-size-micro); }
-.pi-message-queue button:disabled { opacity: .5; cursor: not-allowed; }
 .pi-message-queue-actions .pi-message-queue-send { border-color: var(--line-accent); background: var(--surface-accent); color: var(--accent-ink); }
 .pi-message-queue-item textarea,.pi-message-queue-form textarea { width: 100%; min-width: 0; min-height: 48px; max-height: 104px; resize: vertical; padding: 7px 8px; border: 1px solid var(--line-input); border-radius: var(--radius-sm); background: var(--surface-elevated); color: var(--text); font: inherit; font-size: var(--font-size-small); line-height: 1.4; }
 .pi-message-queue-form { display: grid; gap: 5px; }
@@ -737,7 +737,7 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 .onboarding-actions button { min-height: 36px; padding: 8px 12px; }
 .onboarding-actions button:last-child { background: var(--accent-solid); color: #fff; }
 #chrome-import-onboarding-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
-dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: .55; }
+dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: var(--disabled-opacity); }
 
 @media (max-width: 984px) and (min-width: 874px) {
   :root { --workspace-width: min(420px, max(310px, calc(100vw - 564px))); }
