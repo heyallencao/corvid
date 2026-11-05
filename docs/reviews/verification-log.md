@@ -1836,3 +1836,10 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，后续串行 E2E 全链完成，包含此前记录的 SDK、标签、全屏、多窗口、Chrome 导入和 Agent 工作区入口。
 - 并发限制：启动检查发现 Issue #165 的一条隔离 Electron E2E 正在运行，因此本次不是零并发环境；本轮全量链启动时总计两条 E2E 链，符合本机并发上限 2。没有精确记录该进程与本链各入口的重叠时长，也不据此推断间歇失败的根因已定位。
 - 清理与边界：测试更新的 9 张已跟踪 QA 截图已恢复为基线字节。仅当前 macOS 开发版与合成 fixture；未覆盖 Windows、签名包、真实网站或读屏。全量退出 0 证明本次运行通过，不构成未来每轮稳定性的统计结论。
+
+## 2026-11-06 Agent E2E 门禁复验（Issue #295）
+
+- 基线：隔离 worktree，`origin/main` `d6c94c4`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；`npm ci` 成功（375 packages，0 vulnerabilities）。
+- 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，串行 E2E 全链完成，其中 `pi-custom-endpoint-e2e.cjs` 与 `agent-rooms-panel-e2e.cjs` 均通过。
+- 并发限制：启动前曾检测到 #204 与 #165 两条隔离 E2E；等待 #204 退出后，在 #165 仍运行时启动本链，总并发为 2。全量链完成后其他会话又启动了新测试，因此本记录不宣称单机无并发或确认了旧失败根因。
+- 边界：当前 macOS 开发版与合成 fixture；未覆盖 Windows、签名包、真实网站或读屏。该全量 EXIT 0 是一次运行证据，不估算稳定失败率。
