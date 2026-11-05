@@ -1643,6 +1643,51 @@
 - 未覆盖：VoiceOver、Windows/Linux、打包版；查找条/菜单/关闭面板按钮未逐一 hover 探测（同类全局规则覆盖，工具栏代表已证一致）。
 
 - 2026-11-05 集成重放补充（PR #294，integrate-glm-01）：前向合并最新 main（含 #290/#291 squash 后内容），styles.css 三处冲突取 main token 版并保留本切片对 `.pi-model-action` hover 冗余声明的删除（已核实现行通用 `button:hover:not(:disabled):not([type="submit"])` 同值接管，且 renderer `button()` helper 与静态按钮均已带 `type="button"`）；base 改为 main。定向：`interaction-states-e2e`、`pi-workbench-e2e`、`pi-workbench-e2e` 与 `agent-rooms-panel-e2e` 三者 PASS。本地 `git merge-tree --write-tree origin/main HEAD` 干净（单一 merge-base `8e492bb`）；GitHub CONFLICTING 为服务端缓存误报，重算后合并。
+
+## 2026-11-04 Developer ID 签名凭据验收主线重放（Issue #110）
+
+- 主线与分支：专属工作树将 PR #157 的 7 个提交重放到 `origin/main` `0e90d29`，解决 `package.json` 与验证记录/QA 文档冲突；保留最新主线内容，签名包验收描述同步在 D15 与测试索引中。`git diff --check origin/main...HEAD` 通过，分支 `91e460f` 已推送，PR #157 当前可合并且仍为草稿。
+- CI：新 SHA `91e460f` 触发的凭据存储及 Chrome 导入两个跨平台工作流中，macOS、Windows、Linux 共 6 个任务均未分配 runner、没有执行步骤。GitHub 注解明确显示账号近期付款失败或 Actions 支出上限需要提高；这是未启动，不是测试失败。旧 SHA `c880f1d` 的三平台开发版凭据运行曾通过，但不覆盖本次重放头或签名发行包。
+- 签名包状态：此前 `c880f1d` 的本机 Developer ID 签名包在允许钥匙串访问后重试，模型设置仍显示系统安全存储等待超时；该轮没有写入合成凭据，因此未验证保存、重启读取或登出删除。现有证据仍不能确定 Keychain 调用未返回的原因。重放后尚未重建/重跑签名应用验收。
+- 并发边界：重放后的复验前检查到另一隔离工作树 `/private/tmp/corvid-issue193-conversation-identities` 的 Electron 主进程和 renderer 仍在运行。为避免争用桌面焦点，本轮没有启动、关闭或附加任何 Electron 进程；需在该进程退出后继续签名构建和 `npm run test:packaged:signed:mac`。
+- 未覆盖：当前仍没有签名包凭据往返证据；CI 付款限制期间也没有新的跨平台 runner 结果。Issue #110 与 PR #157 均保持开放/草稿。
+
+## 2026-11-04 最新主线签名包凭据往返复验（Issue #110）
+
+- 构建：在 `codex/issue110-signed-package` 重放头执行 `CORVID_MAC_SIGNING_IDENTITY='ANFU CAO (37HP972H37)' npm run package:mac:signed:dir`，EXIT 0，Electron 45.2.1、macOS arm64。`npm run test:packaged:signed:mac` 第一阶段签名 `.app` 启动/退出 smoke test 通过；`codesign --verify --deep --strict`、Developer ID authority、TeamIdentifier `37HP972H37` 和 Hardened Runtime 检查通过。`app.asar` SHA-256 为 `05698190786bade2b43fdc401097f37188c10ce9a0993c58942e9490445e88b4`，包内不含 docs/tests。electron-builder 因未配置 notarize 跳过公证。
+- 凭据往返：同命令第二阶段以 EXIT 1 结束。允许钥匙串访问后，签名包仍在 Agent 模型目录等待系统安全存储时超时 15 秒；UI 明确展示“等待系统安全存储响应超时，现有账号授权和文件已保留”。本轮没有写入合成 API Key，重启读取和登出删除未到达。截图为隔离数据目录与本地 fixture，2560×1636，SHA-256 `0502ced8a7fde157b87e0c7502f1e686529b0a7b6cbf7f82a7acdf5961c5c3c9`，见[截图](../qa/screenshots/issue-110-secure-storage-timeout.png)。
+- 对照与限制：纯 Node `node tests/pi-models-e2e.cjs`、修改文件 `node --check`、签名检查 helper 与 `git diff --check` 通过；这些合同测试不代替签名包凭据往返。当前主进程已清理。失败仍直接证明 async `safeStorage` 响应超时，但不能证明是 Keychain 权限提示、签名身份、Hardened Runtime 或 Electron 缺陷；本轮读取的 App/Helper entitlements 均只有 JIT/未签名内存/library-validation 项，无 App Sandbox entitlement。CI 重放后仍因 GitHub 付款/支出上限没有启动 runner。Issue #110 继续开放，PR #157 保持草稿。
+
+## 2026-11-04 开发版与签名包安全存储差分（Issue #110）
+
+- 开发版对照：同一重放代码、同一 macOS 用户与系统钥匙串，`env -u ELECTRON_RUN_AS_NODE CORVID_CREDENTIAL_OS_STORE_QA_DIR=/tmp/corvid-issue110-dev-current-screenshots node tests/pi-credential-os-store-e2e.cjs` EXIT 0；Corvid UI 保存合成 API Key、重启后读取已连接状态、登出后删除凭据全部通过。无真实模型请求或 OAuth。
+- 产物差异：开发版使用 `node_modules/electron/dist/Electron.app`，`codesign` 显示 Bundle ID `com.github.Electron`、ad-hoc、无 Team ID；Developer ID 包 Bundle ID `com.heyallencao.corvid`、Team ID `37HP972H37`、Hardened Runtime。App 与 Helper 的打包 entitlements 包含 JIT、unsigned executable memory 与 disable library validation，不含 App Sandbox entitlement。签名与 Bundle ID、Hardened Runtime 同时变化，不能从开发版通过单独断定其中一个为根因。
+- REA 边界：本轮以 `open_binary` 成功读取签名应用及 Electron Framework Mach-O/arm64 身份；`binary_overview`/`search_strings` 返回 `provider_unavailable`。本机 Ghidra 未配置、Hopper launcher 缺失、IDA 与 Kuna 未配置；未取得反汇编或 Keychain 调用链证据，随后已关闭 REA 分析会话。签名身份、entitlements 和 Bundle ID 来自 `codesign`/`plutil` 静态输出，不属于 REA 运行态证据。
+- Hardened Runtime 差分准备：在 `/tmp/corvid-issue110-no-hardened/mac-arm64/Corvid.app` 生成诊断包，Developer ID、Team ID 和 Bundle ID 与正式包相同；深度验签通过，CodeDirectory flags 为 `none`，未启用 Hardened Runtime。该产物只用于隔离诊断，不是交付包；凭据 E2E 尚未运行，因为另一会话仍占用 Corvid Electron 桌面窗口。本记录不将构建通过当作凭据行为通过。
+- 下一验证：桌面释放后对该诊断包运行 `CORVID_PACKAGED_APP_PATH=/tmp/corvid-issue110-no-hardened/mac-arm64/Corvid.app env -u ELECTRON_RUN_AS_NODE node tests/pi-credential-os-store-e2e.cjs`。若通过，说明差异与 Hardened Runtime/其签名配置相关，仍需进一步定位具体权限/运行时约束；若仍超时，则继续排查 Bundle ID/签名身份和 LaunchServices/Keychain 交互。无论结果如何，正式 Hardened Runtime 凭据往返尚未通过前，Issue #110 继续开放。
+
+## 2026-11-04 Developer ID、Bundle ID 与 Hardened Runtime 差分（Issue #110）
+
+- 对照一：使用当前代码构建 Developer ID、Hardened Runtime 关闭、Bundle ID `com.heyallencao.corvid` 的隔离诊断包。`env -u ELECTRON_RUN_AS_NODE CORVID_PACKAGED_APP_PATH=/tmp/corvid-issue110-no-hardened/mac-arm64/Corvid.app CORVID_CREDENTIAL_OS_STORE_QA_DIR=/tmp/corvid-issue110-no-hardened-screenshots node tests/pi-credential-os-store-e2e.cjs` EXIT 1，仍显示系统安全存储 15 秒超时，没有保存合成 Key。
+- 对照二：以同代码、同 Developer ID/Team、同关闭 Hardened Runtime 构建，唯一顶层 Bundle ID 改为开发版 Electron 使用的 `com.github.Electron`。`codesign --verify --deep --strict` 通过，CodeDirectory flags 为 `none`。`env -u ELECTRON_RUN_AS_NODE CORVID_PACKAGED_APP_PATH=/tmp/corvid-issue110-same-bundle/mac-arm64/Corvid.app CORVID_CREDENTIAL_OS_STORE_QA_DIR=/tmp/corvid-issue110-same-bundle-screenshots node tests/pi-credential-os-store-e2e.cjs` EXIT 1，仍为相同 15 秒超时，无合成凭据写入。
+- 对照结论：当前开发版 `com.github.Electron` ad-hoc Electron 完成凭据往返；Developer ID 包在两个 Bundle ID、Hardened Runtime 开/关组合中都超时。故单独关闭 Hardened Runtime或匹配 Bundle ID 不足以修复。候选差异仍包括 Developer ID 签名身份、`_electron.launch` 直接启动打包可执行文件与开发版启动方式、Keychain 对签名代码的访问/提示呈现；这些因素尚未被隔离，不能断言证书缺陷或系统授权失败。
+- 截图仍使用正式 Corvid Bundle ID + Hardened Runtime 包的恢复状态（见本节前项）；另两份 fixture 截图留在 `/tmp/corvid-issue110-no-hardened-screenshots/` 与 `/tmp/corvid-issue110-same-bundle-screenshots/`，UI 呈现同类安全存储超时。测试结束后未见 Corvid/Electron 遗留进程。CI 未启动原因仍为 GitHub 付款/支出门禁。Issue #110 开放，PR #157 草稿。
+
+
+## 2026-11-04 修正安全存储超时的恢复提示（Issue #110）
+
+- 背景：此前 `secure-storage-timeout` 的中文/英文 UI 文案直接要求检查并解锁钥匙串/密码管理器。超时只能证明 Electron 安全存储 API 在 15 秒内没有响应，不能证明钥匙串处于锁定状态；即使用户已允许本次访问，重复提示仍会把诊断工作错误地交回给用户。
+- 修改：超时状态改为“系统安全存储未及时响应、现有凭据与文件已保留、可稍后重试”，移除要求再次解锁的指令。其他明确报告 `secure-storage-unavailable` 的提示仍保留检查/解锁建议。
+- 验证：`node --check desktop/locales.js`、`node --check tests/pi-models-e2e.cjs`、`node tests/pi-models-e2e.cjs` 和 `git diff --check` 全部通过。纯 Node locale 合同验证 zh-CN/en 错误映射，并断言超时文案不含“解锁/unlock”。这不是签名包的 UI 复验；已归档的签名包截图反映本次文案修正前的状态。
+- 限制：Developer ID 签名包内 safeStorage API 仍有 15 秒超时；此修复降低无依据的重复用户指引，不代表签名包凭据读写已通过，也不关闭 Issue #110。
+
+## 2026-11-04 Developer ID 包安全存储启动延迟对照（Issue #110）
+
+- 假设：Electron 上游曾记录 macOS 在 `app.ready` 后立即请求异步安全存储时，初始化状态可能短暂不可用。官方 [Electron #51759](https://github.com/electron/electron/issues/51759) 的复现为 v42，并由 [PR #51924](https://github.com/electron/electron/pull/51924) 回移至 42 分支；该修正已包含于 v43 起的上游版本。Corvid 打包版本为 Electron 45.2.1，因此该已知旧缺陷不是当前根因的直接解释，但启动时序仍值得在实际应用中排除。
+- 对照：在 UI 测试启动签名包后、首次打开模型设置前加入 2 秒等待；对 `/private/tmp/corvid-issue110-signed-package/dist/mac-arm64/Corvid.app` 执行深度签名验证，通过，Identifier 为 `com.heyallencao.corvid`、TeamIdentifier `37HP972H37`。隔离真实 Electron E2E 仍在同一个模型设置阶段报告 `safeStorage` 15 秒超时，未写入合成凭据；随后移除临时等待代码并确认无 Corvid/Electron 遗留进程。
+- 结论：单纯将首次 UI 调用推迟 2 秒不能解决当前签名包超时；这一结果不证明具体根因。前述上游 issue 的 v42 复现与 Corvid v45.2.1 版本不完全相同，也没有证据把当前故障归因到 Electron 上游缺陷。Developer ID 相关 API/Keychain 响应路径仍待独立定位。该轮运行的是旧截图包，画面文案尚未包含本轮已合并的超时提示调整。
+- 边界：本轮未向用户请求钥匙串操作。已完成真实签名包启动和 API 等待观察，但凭据往返仍未通过，Issue #110 保持开放、PR #157 保持草稿。
+
 ## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
 
 - 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
@@ -1650,4 +1695,3 @@
 - 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
 - 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
 - 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
-

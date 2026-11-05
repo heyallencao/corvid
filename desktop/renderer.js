@@ -40,7 +40,7 @@ let agentRoomRenderVersion=0;
 let lastAgentRoomAnnouncementStates=new Map();
 let hasAgentRoomAnnouncementSnapshot=false;
 let currentBookmarkId=null, bookmarkButtonRequest=0, bookmarkMutationPending=false, bookmarkFeedbackKey=null, bookmarkFeedbackTimer=null;
-const button = (text, action, selected = false) => { const b = document.createElement('button'); b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
+const button = (text, action, selected = false) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.className = selected ? 'selected' : ''; b.onclick = action; return b; };
 const shellIconPaths={close:'m5 5 10 10M15 5 5 15',plus:'M10 4v12M4 10h12',sparkle:'M10 2.5 11.5 8.5 17.5 10 11.5 11.5 10 17.5 8.5 11.5 2.5 10 8.5 8.5 10 2.5Z'};
 function createShellIcon(name){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.classList.add('shell-icon');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',shellIconPaths[name]);svg.append(path);return svg;}
 async function openShellDialog(selector, focusSelector) {
@@ -651,6 +651,7 @@ async function renderPiModelControls(target){
   const version=(piModelControlVersions.get(target)||0)+1;piModelControlVersions.set(target,version);
   target.replaceChildren();
   const status=document.createElement('span');status.className='pi-model-status';status.setAttribute('role','status');status.textContent=extensionMessages.t('modelCatalogLoading');
+  target.append(status);
   try{
     const catalog=await api.invoke('piModels');if(piModelControlVersions.get(target)!==version)return;const choice=document.createElement('div');choice.className='pi-model-choice';const select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label',extensionMessages.t('agentModel'));
     for(const provider of catalog.providers){
