@@ -1688,6 +1688,16 @@
 - 结论：单纯将首次 UI 调用推迟 2 秒不能解决当前签名包超时；这一结果不证明具体根因。前述上游 issue 的 v42 复现与 Corvid v45.2.1 版本不完全相同，也没有证据把当前故障归因到 Electron 上游缺陷。Developer ID 相关 API/Keychain 响应路径仍待独立定位。该轮运行的是旧截图包，画面文案尚未包含本轮已合并的超时提示调整。
 - 边界：本轮未向用户请求钥匙串操作。已完成真实签名包启动和 API 等待观察，但凭据往返仍未通过，Issue #110 保持开放、PR #157 保持草稿。
 
+## 2026-11-05 macOS Agent 面板最小宽度修复（Issue #16，PR #189 接管）
+
+- 基线：当前 `origin/main` `f443531b2cc6553b69f1677f1aae3b8431817d04`；隔离工作树 `/private/tmp/corvid-integrate-glm-02/wt-fix189`。保留 PR 的 719px 修复及测试，移除其违反仓库规则的 `pull_request` workflow；未纳入该工作流的 Actions 验收。
+- 修正：统一 `MIN_WINDOW_WIDTH` 与窗口创建时的最小宽度为 719px，防止首次创建与保存状态恢复采用不同阈值；同步窗口状态 E2E 最小尺寸/恢复断言及截图文件名。
+- 静态验证：`node --check desktop/main.cjs`、`node --check tests/agent-rooms-panel-e2e.cjs`、`node --check tests/window-state-e2e.cjs`、`git diff --check origin/main...HEAD` 与工作区 `git diff --check` 通过。
+- 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；覆盖 Agent Room 窄窗宽度 719/720/721/800/860/873/874/900/972/983/984/1024/1280，缩放 2x。`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` EXIT 0；覆盖 719×420 下限、旧小尺寸保存状态恢复、紧凑 chrome、损坏状态回退与离屏位置约束。
+- 全量门禁：本轮没有运行 `env -u ELECTRON_RUN_AS_NODE npm test`；现有最近一次全量运行证据是旧基线失败，不能据此声称当前 main 全量通过。
+- 截图：PR 原始截图 `docs/qa/screenshots/issue-16-agent-panel-719px-macos.png` 来自原 PR 分支，不作为本轮重新截取的截图；保留为历史辅助证据。当前复验以本轮真实 Electron DOM/原生窗口断言为准。
+- 边界：仅本机 macOS 开发版 Electron 与本地 fixture；未覆盖 Windows、签名包、屏幕阅读器或全量套件。本记录不关闭 Issue #16 的其余 UI 验收范围。
+
 ## 2026-11-04 最新主线后的 Cookie 超时与磁盘满验收（Issue #77）
 
 - 基线：PR 分支合并最新 `origin/main` `2ae872c`；隔离 worktree `/private/tmp/corvid-issue77-disk-full-sync` 与临时 Corvid/Chrome 数据。环境：macOS 26.5.1 arm64、Node.js v24.14.1、Electron 45.2.1；合并后 `npm ci` 成功，376 个包、0 vulnerabilities。
