@@ -1906,3 +1906,12 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test 与全部串行 E2E/合同脚本通过，覆盖 `electron-startup.e2e.mjs` 8 项、慢速恢复、Library、多窗口和 Pi Workbench。全量结束后本 worktree 的 Corvid Electron 子进程已退出。合入后 Pi Workbench 定向冒烟亦 EXIT 0。
 - 历史根因：本轮未复现原始 Electron 启动挂起，未取得足以归因产品或 harness 的证据。并行的另一 worktree 全量运行停在 `popup-events-e2e.cjs`，其 Electron 进程持续存活；这是本轮观察到的独立 E2E 停滞，不能据此认定为原 issue 的启动挂起，也未在本 issue 扩大修复范围。
 - 边界：当前仅验证 macOS arm64 开发环境；Windows、签名包和真实用户 Profile 未覆盖。一次最新主线全量通过结合既有多轮全量回归，验证诊断与门禁当前可用，但不能证明历史间歇挂起根因已定位。
+
+## 2026-11-06 开放 Issue/PR 图片证据审计（Issue #244）
+
+- 当前状态（GitHub API/CLI）：扫描 23 个开放 Issue 与 1 个开放 PR 正文，没有 Markdown 或 HTML 图片目标；先前列出的 #217、#218、#205、#242、#234、#229 等条目现已不在开放集合中，因此没有为已关闭讨论批量上传历史截图。正文中的 `/tmp/` 诊断日志文本不作为图片目标，按 Issue 边界保留。
+- 最新复核（2026-11-06）：#319/#87 合并后重新读取 GitHub 正文，当前 15 个开放 Issue 与 0 个开放 PR 均无 Markdown/HTML 图片目标；检查只匹配图片语法，不把普通 Markdown 链接误计为图片。
+- 治理：仓库已有 PR 模板截图核对项、`scripts/check-pr-description-images.cjs` 与 10 项回归合同。修正文档 `docs/qa/pr-description-images.md`，明确检查器仅在提供 PR event JSON 时供人工/本地调用；依据项目禁止 PR 触发 workflow 的约束，不再声称存在自动 Actions 门禁。
+- 验证：`node tests/pr-description-images.test.cjs` 10 项通过；`node --check scripts/check-pr-description-images.cjs`、`node --check tests/pr-description-images.test.cjs`、`git diff --check` 通过。没有在 GitHub 正文中上传或替换图片，因为当前开放正文没有图片目标。
+- 全量回归：首次运行因隔离 worktree 尚未安装依赖，node:test 的 browser/dialogs/uploads 三个入口报 `ERR_MODULE_NOT_FOUND: electron`，不是产品测试失败；随后 `npm ci` 安装 375 个包，再运行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，37/37 node:test 与后续全部串行 E2E/合同脚本通过。Pi Workbench 重绘修复后的历史项键盘焦点断言通过。启动前另有 #217 worktree 的 E2E 进程存活；本次链自身完整退出。
+- 边界：检查器只验证链接形式，不下载/渲染图片，也不检查图像脱敏。当前开放 PR 的 GitHub 渲染检查无图片可覆盖；本轮改动未触及应用代码。完整全量结果仅代表当前 macOS 开发环境。
