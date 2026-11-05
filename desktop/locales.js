@@ -144,6 +144,9 @@
       chromeImportTitle: '从 Google Chrome 导入',
       closeImport: '关闭导入',
       chromeImportIntro: '建议先退出 Chrome，确保资料完整。这里只读取你选择的本机资料，不改动源文件，也不会上传。',
+      chromeSqliteCorrupt: 'Chrome 资料数据库可能已损坏或格式不受支持。Corvid 未修改源文件，也未导入所选资料。请先备份资料，再从健康的 Chrome Profile 副本重试。',
+      chromeSqliteBusy: '无法读取 Chrome 资料数据库，可能仍被 Chrome 占用。请完全退出 Chrome 后重试。源文件未修改，所选资料尚未导入。',
+      chromeSqliteReadFailed: '无法读取 Chrome 资料数据库。源文件未修改，所选资料尚未导入。请检查文件访问权限后重试。',
       importTargetProfile: '导入到 Corvid 浏览身份',
       chooseChromeDirectory: '选择 Chrome 资料目录…',
       chromeProfile: 'Chrome 浏览身份',
@@ -295,6 +298,7 @@
       saveQueuedMessage: '保存',
       removeQueuedMessage: '移除',
       sendNextQueuedMessage: '检查页面并发送下一条',
+      moreQueueActionsFor: '更多操作 · 第 {position} 条',
       queuedMessagePosition: '第 {position} 条',
       queueFrozenNotice: '队列已保留；任务恢复后需重新检查页面并确认，才会发送下一条。',
       queueBusyNotice: '当前任务尚未完成；后续消息会按顺序等待。',
@@ -591,6 +595,9 @@
       chromeImportTitle: 'Import from Google Chrome',
       closeImport: 'Close import',
       chromeImportIntro: 'Quit Chrome first to help ensure the data is complete. Corvid reads only the local data you choose, does not modify the source, and does not upload it.',
+      chromeSqliteCorrupt: 'The Chrome profile database may be damaged or use an unsupported format. Corvid did not modify the source or import the selected data. Back up the data, then retry with a healthy Chrome profile copy.',
+      chromeSqliteBusy: 'The Chrome profile database could not be read and may still be in use by Chrome. Quit Chrome completely and try again. The source was not modified and the selected data was not imported.',
+      chromeSqliteReadFailed: 'The Chrome profile database could not be read. The source was not modified and the selected data was not imported. Check file access permissions and try again.',
       importTargetProfile: 'Import into Corvid profile',
       chooseChromeDirectory: 'Choose Chrome data folder…',
       chromeProfile: 'Chrome profile',
@@ -742,6 +749,7 @@
       saveQueuedMessage: 'Save',
       removeQueuedMessage: 'Remove',
       sendNextQueuedMessage: 'Review page and send next',
+      moreQueueActionsFor: 'More actions · item {position}',
       queuedMessagePosition: 'Item {position}',
       queueFrozenNotice: 'The queue is preserved. Review the page and confirm again before sending after the task resumes.',
       queueBusyNotice: 'This task has not finished. Follow-up messages will wait in order.',
@@ -943,7 +951,7 @@
     formatDate(value, options) { return new Intl.DateTimeFormat(locale, options).format(value instanceof Date ? value : new Date(value)); },
       formatList(values, options) { return new Intl.ListFormat(locale, options).format(values); },
     userFacingError(message) {
-      const match = String(message || '').match(/^\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
+      const match = String(message || '').match(/\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
       if (!match) return null;
       const key = {
         'secure-storage-unavailable': 'secureStorageUnavailable',
@@ -954,6 +962,9 @@
         'credential-file-access-failed': 'credentialFileAccessFailed',
         'credential-file-corrupt': 'credentialFileCorrupt',
         'agent-task-room-busy': 'agentTaskRoomBusy',
+        'chrome-sqlite-corrupt': 'chromeSqliteCorrupt',
+        'chrome-sqlite-busy': 'chromeSqliteBusy',
+        'chrome-sqlite-read-failed': 'chromeSqliteReadFailed',
         'agent-control-unavailable': 'agentControlUnavailable',
         'agent-queue-changed': 'agentQueueChanged',
         'agent-queue-missing': 'agentQueueMissing',

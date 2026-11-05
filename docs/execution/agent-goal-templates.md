@@ -13,7 +13,7 @@
 职责域 lane:browser：标签页、历史、书签、下载、导入迁移、多窗口、持久化、启动与运行稳定性、性能；兼管 lane:infra 小切片（分支前缀 infra/）。
 
 持续循环，每轮：
-1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
+1. 生产节流（协议 §3 第 0 步）：本 lane 开放 PR ≥2 或全局 PR >8 时转排水，不许停工——先 rebase/补证据/响应 review 自己名下的 PR，再协助消化队列；期间不领新 issue、不创建新 PR。
 2. gh issue list --search "state:open label:lane:browser -label:claimed -label:stale"，按 priority:P0>P1>P2>P3 取一个。
 3. 认领：加 claimed label + 评论 "claimed by browser-<机器名> — 切片: <范围>"；读回校验，被抢则换下一个。
 4. git fetch origin && git worktree add ../corvid-issue-<N> -b browser/issue-<N>-<slug> origin/main。
@@ -34,7 +34,7 @@
 职责域 lane:agent：Agent runtime、SDK/CLI、BrowserMCP、Agent 工作台、授权与 Task Space 隔离、模型连接与凭据。
 
 持续循环，每轮：
-1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
+1. 生产节流（协议 §3 第 0 步）：本 lane 开放 PR ≥2 或全局 PR >8 时转排水，不许停工——先 rebase/补证据/响应 review 自己名下的 PR，再协助消化队列；期间不领新 issue、不创建新 PR。
 2. gh issue list --search "state:open label:lane:agent -label:claimed -label:stale"，按 priority 排序取一个。
 3. 认领三件套 + 读回校验（协议第 3 节）。
 4. git worktree add ../corvid-issue-<N> -b agent/issue-<N>-<slug> origin/main。
@@ -55,7 +55,7 @@
 职责域 lane:ui：设计 token 体系、图标、窗口 chrome、应用菜单与右键菜单、面板/弹层交互模型、可达性、双语、状态反馈语言。目标：视觉一致性从「网站感」提到成熟浏览器水准（对照 Rare UI/Kobra 参照与每日体检结论）。
 
 持续循环，每轮：
-1. 开放 PR >8 → 进入排水模式，不许停工：先 rebase/补证据/响应 review 自己名下的开放 PR，再按协议第 3 节第 0 步协助消化队列；本轮禁止创建新 PR。
+1. 生产节流（协议 §3 第 0 步）：本 lane 开放 PR ≥2 或全局 PR >8 时转排水，不许停工——先 rebase/补证据/响应 review 自己名下的 PR，再协助消化队列；期间不领新 issue、不创建新 PR。
 2. gh issue list --search "state:open label:lane:ui -label:claimed -label:stale"，按 priority 排序取一个。
 3. 认领三件套 + 读回校验。
 4. git worktree add ../corvid-issue-<N> -b ui/issue-<N>-<slug> origin/main。
@@ -74,7 +74,7 @@
 开工前必读且一切以其为准：仓库根 AGENTS.md 与 docs/execution/agent-protocol.md。
 
 持续循环，每轮：
-1. gh pr list --state open 按创建顺序 FIFO 逐个处理：
+1. gh pr list --state open 按创建顺序 FIFO 逐个处理（最老优先；一次全量 E2E 通过后可按序合并同批最多 3 个已审 PR，批后发现 main 红 → revert 最新一个复测）：
    a. 查重：标题 grep【#N】，同 issue 多 PR 保留证据完整者，关闭其余并注明。
    b. review（COMMENT 型）：对照 issue 验收标准与证据；缺证据打回。
    c. 本地跑全量 env -u ELECTRON_RUN_AS_NODE npm test，通过才 merge。
@@ -96,7 +96,7 @@
 职责循环（每天 09:00 固定节拍 + 事件驱动）：
 1. 每日体检：全面检查进展、可用性、易用性、UX、MVP 达标度、可对外使用度、完整度，对比 Kaze 与 EGO。中文日报：结论先行、附证据路径、区分事实与推断、记录未覆盖边界。
 2. Triage：为所有 open issue 打/校正 lane:browser|agent|ui|infra 与 priority:P0-P3（新 issue 必打；按领域归属，严重度依据体检证据，不沿用昨天结论）。lane:infra 无专属工人时小切片由 browser 兼管，量大则建议用户加开工人。
-3. 队列治理：claimed 无进展超 24h → stale；blocked:user 全部问题汇总进日报供用户一次性答复，挂超 3 天给默认方案供否决；开放 PR 超 8 在日报顶部警告。
+3. 队列治理：开放 PR 总数与最老 PR 年龄写入日报顶部（超 24h 未审标红）；claimed 无进展超 24h → stale；blocked:user 全部问题汇总进日报供用户一次性答复，挂超 3 天给默认方案供否决；开放 PR 超 8 在日报顶部警告。
 4. 冲突仲裁：同文件冲突定合并先后、同 issue 双 PR 留证据完整者、认领竞态以先评论者为准；裁决引用协议条款写进 issue/PR。
 5. 进度核对：对照 feature-board 与 verification-log 报告「计划 vs 实际」偏差，给当日建议优先级。
 
