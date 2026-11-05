@@ -1613,3 +1613,33 @@
 - 本次变更后检查：`node --check tests/agent-access-e2e.cjs` 与 `git diff --check` 通过。PR 切片增加跨平台文件权限断言与验证记录；依据仓库 CI 红线，已删除 PR 触发的 Actions workflow。Windows ACL 断言仍待 Windows 环境执行。当前授权服务端文件和路由未随本切片修改。
 - 覆盖边界：确定性 Agent 客户端与 Room 的并发授权、越权拒绝、凭据摘要/权限、撤销和重启状态；不连接真实 Provider/OAuth，不验证真实 MCP host，也不提供同一 OS 用户恶意进程隔离。
 
+
+- 改动：删除被完全遮蔽的死规则 `.pi-task-output`（旧 :439，全部属性被 :502 覆盖）；`.pi-task-output.from-pi` 移除被 :504 覆盖的死 `background`（保留 border、左下圆角与 color）；`.pi-task-event` 两处基础声明合并为一条（保留存活的 `border-left` 与后者的 padding/line-height）。
+
+- 计算样式矩阵：真实 Electron 注入 renderer 同构节点，读取 `.pi-task-output.from-pi`/`.from-user`/`.pi-task-event` 的 max-width、padding、border-radius、color、background、border-left、line-height——`origin/main` 与本分支 JSON 逐字节一致（实测 maxWidth 92% 等，证明被删规则确为死规则）。
+
+- 截图：注入节点元素截图 `docs/qa/screenshots/issue-211-b-branch-workbench-synthetic.png`（SHA-256 前 16 位 `9ea7d00faa8082d0`）与 main 对照逐字节相同；为合成注入节点，非真实会话内容。
+
+- E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 C（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-hover-convergence`（基于 `main` `bc8bb78`）。
+
+- 改动：renderer `button()` 助手统一 `b.type='button'`（动态按钮：空间条、菜单、pi 取消/发送/登出等）；静态 index.html 为 21 个未声明 type 的按钮补 `type="button"`（全部位于表单外：侧栏、chrome-tools、查找条、site-tools 菜单、关闭面板）；删除冗余的 `#pi-task-form .pi-model-action:hover` 声明（与全局 hover 同值）。
+
+- 关键更正（相对拆解方案预判）：`:not([type="submit"])` 为属性字面匹配，未声明 type 的按钮**从未被排除**在全局 hover 之外——全局 hover 交互面本就统一，不存在「补 type 后 hover 面扩大」的视觉变化。审计时未识别该语义，子切片 A/B 的探针不受影响（未涉及 hover 规则）。
+
+- 验证：hover 终态探针（等待 400ms > 120ms 过渡）读取 sidebar-nav-item / icon-button / subtle-icon-button / room-strip 项的 hover 背景，`origin/main` 与本分支四项全部一致；80ms 早期采样曾显示 icon-button 0.482→0.96 差异，确认为过渡采样伪差。工具栏 hover 截图 `docs/qa/screenshots/issue-211-c-branch-toolbar-hover.png`（SHA-256 前 16 位 `e619b94ef61ff1e4`）与 main 对照逐字节相同。`interaction-states-e2e.cjs`（含 hover 底色断言）、`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`git diff --check` 通过。
+
+- 表单语义收益：动态按钮显式 `type='button'` 后，即使未来被移入真实 `<form>` 也不会隐式提交（当前 `#pi-task-form` 为 `<section>`、唯一动态真表单 :623 已显式 `type='submit'` + `onsubmit` preventDefault，无既有 bug）。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版；查找条/菜单/关闭面板按钮未逐一 hover 探测（同类全局规则覆盖，工具栏代表已证一致）。
+
+- 2026-11-05 集成重放补充（PR #294，integrate-glm-01）：前向合并最新 main（含 #290/#291 squash 后内容），styles.css 三处冲突取 main token 版并保留本切片对 `.pi-model-action` hover 冗余声明的删除（已核实现行通用 `button:hover:not(:disabled):not([type="submit"])` 同值接管，且 renderer `button()` helper 与静态按钮均已带 `type="button"`）；base 改为 main。定向：`interaction-states-e2e`、`pi-workbench-e2e`、`pi-workbench-e2e` 与 `agent-rooms-panel-e2e` 三者 PASS。本地 `git merge-tree --write-tree origin/main HEAD` 干净（单一 merge-base `8e492bb`）；GitHub CONFLICTING 为服务端缓存误报，重算后合并。
