@@ -651,6 +651,7 @@ async function renderPiModelControls(target){
   const version=(piModelControlVersions.get(target)||0)+1;piModelControlVersions.set(target,version);
   target.replaceChildren();
   const status=document.createElement('span');status.className='pi-model-status';status.setAttribute('role','status');status.textContent=extensionMessages.t('modelCatalogLoading');
+  target.append(status);
   try{
     const catalog=await api.invoke('piModels');if(piModelControlVersions.get(target)!==version)return;const choice=document.createElement('div');choice.className='pi-model-choice';const select=document.createElement('select');select.className='pi-model-select';select.setAttribute('aria-label',extensionMessages.t('agentModel'));
     for(const provider of catalog.providers){
@@ -916,7 +917,7 @@ document.querySelector('#agent-client-form').onsubmit=async event=>{event.preven
 document.querySelector('#copy-agent-client-token').onclick=async()=>{const status=document.querySelector('#agent-client-copy-status');try{await api.invoke('copyTextToClipboard',{text:document.querySelector('#agent-client-token').value});status.textContent=extensionMessages.t('copiedToClipboard');}catch(error){status.textContent=extensionMessages.t('copyFailed',{message:userFacingAgentError(error)});}};
 document.querySelector('#search-preset').onchange=event=>{if(event.target.value!=='custom')document.querySelector('#search-template').value=event.target.value;};
 document.querySelector('#search-template').oninput=()=>{document.querySelector('#search-preset').value='custom';};
-async function saveSettingsDraft(){const submit=document.querySelector('#settings-form button[type=submit]');submit.disabled=true;try{const draft=collectSettingsDraft();await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:draft.searchTemplate});await api.invoke('setBrowserPreferences',{startupBehavior:draft.startupBehavior,newTabBehavior:draft.newTabBehavior,downloadDirectory:draft.downloadDirectory,askWhereToSave:draft.askWhereToSave});settingsBaseline=draft;document.querySelector('#settings-error').textContent='';return true;}catch(error){document.querySelector('#settings-error').textContent=userFacingAgentError(error);return false;}finally{submit.disabled=false;}}
+async function saveSettingsDraft(){const submit=document.querySelector('#settings-form button[type=submit]');submit.disabled=true;let searchSettingsSaved=false;try{const draft=collectSettingsDraft();await api.invoke('saveSettings',{profileId:settingsProfileId,searchTemplate:draft.searchTemplate});searchSettingsSaved=true;await api.invoke('setBrowserPreferences',{startupBehavior:draft.startupBehavior,newTabBehavior:draft.newTabBehavior,downloadDirectory:draft.downloadDirectory,askWhereToSave:draft.askWhereToSave});settingsBaseline=draft;document.querySelector('#settings-error').textContent='';return true;}catch(error){document.querySelector('#settings-error').textContent=searchSettingsSaved?extensionMessages.t('settingsPartialSaveFailed',{message:userFacingAgentError(error)}):userFacingAgentError(error);return false;}finally{submit.disabled=false;}}
 async function leaveSettingsFor(destination,trigger){const settingsDialog=document.querySelector('#settings');if(!settingsDraftIsDirty()){settingsDialog.close();await destination();return;}pendingSettingsNavigation=destination;pendingSettingsDraft=collectSettingsDraft();pendingSettingsTarget=document.querySelector('[data-settings-target][aria-current]')?.dataset.settingsTarget||'settings-general';pendingSettingsTrigger=trigger?.id?'#'+trigger.id:null;settingsDialog.close();await openShellDialog('#settings-leave-dialog','#settings-leave-stay');}
 async function resolveSettingsLeave(action){const leaveDialog=document.querySelector('#settings-leave-dialog'),draft=pendingSettingsDraft,navigate=pendingSettingsNavigation,targetId=pendingSettingsTarget,focusSelector=pendingSettingsTrigger;if(action==='save'&&!document.querySelector('#settings-form').reportValidity()){leaveDialog.close();pendingSettingsNavigation=null;pendingSettingsDraft=null;pendingSettingsTrigger=null;await showSettings({draft,targetId,focusSelector});return;}if(action==='save'&&!await saveSettingsDraft()){const message=document.querySelector('#settings-error').textContent;leaveDialog.close();pendingSettingsNavigation=null;pendingSettingsDraft=null;pendingSettingsTrigger=null;await showSettings({draft,targetId,focusSelector});document.querySelector('#settings-error').textContent=message;return;}leaveDialog.close();pendingSettingsNavigation=null;pendingSettingsDraft=null;pendingSettingsTrigger=null;if(action==='stay'){await showSettings({draft,targetId,focusSelector});return;}if(navigate)await navigate();}
 for(const [id,action] of [['settings-leave-stay','stay'],['settings-leave-discard','discard'],['settings-leave-save','save']])document.querySelector('#'+id).onclick=()=>void resolveSettingsLeave(action);
@@ -1039,7 +1040,13 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
     if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();
     if(document.querySelector('#settings').open)void renderProfileExtensions();
   }
-  catch(reason){error.textContent=userFacingAgentError(reason);if(reason.message.includes('回滚未完整完成'))error.dataset.partial='true';}
+  catch(reason){
+    const message=String(reason?.message||reason||'');
+    const timedOut=reason?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT'||message.includes('CORVID_COOKIE_PERSISTENCE_TIMEOUT');
+    const partial=timedOut||message.includes('回滚未完整完成');
+    error.textContent=timedOut?extensionMessages.t('cookiePersistenceTimeoutPartial'):userFacingAgentError(reason);
+    if(partial)error.dataset.partial='true';
+  }
 };
 document.querySelectorAll('input[name="chrome-category"]').forEach(input=>input.onchange=updateChromeImportButton);
 document.querySelector('#chrome-import-target-profile').onchange=event=>{if(!chromeImportProfileLocked)chromeImportProfileId=event.target.value;};

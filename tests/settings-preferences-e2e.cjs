@@ -22,7 +22,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   let app;
   const waitFor=async(fn,label)=>{for(let i=0;i<240;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   async function start(){
-    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_DOWNLOAD_DIR:downloadDir,CORVID_TEST_DOWNLOAD_DIALOG_RESULT:'cancel'}});
+    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_DOWNLOAD_DIR:downloadDir,CORVID_TEST_DOWNLOAD_DIALOG_RESULT:'cancel',CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE:process.env.CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE||'0'}});
     const shell=await app.firstWindow();
     const config=await waitFor(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'Corvid control endpoint');
     const request=async route=>{const response=await fetch(config.baseUrl+route,{headers:{Authorization:`Bearer ${config.token}`}});assert.ok(response.ok);return response.json();};
@@ -142,6 +142,20 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await waitFor(()=>shell.locator('#settings-title').textContent().then(value=>value==='Settings'),'English settings labels');
     const invalidFolderEnglish=await shell.evaluate(async folder=>{try{await window.browserShell.invoke('setBrowserPreferences',{startupBehavior:'restore',newTabBehavior:'home',downloadDirectory:folder,askWhereToSave:false});return null;}catch(error){return {code:error.code,message:error.message};}},path.join(temp,'missing-english-folder'));
     assert.match(invalidFolderEnglish.message,/The selected download folder is unavailable/);
+    const originalSearch=(await shell.evaluate(()=>window.browserShell.invoke('settings',{}))).searchTemplate;
+    await shell.locator('#search-template').fill('https://search.example/?q={query}');
+    await shell.locator('#download-directory').evaluate((input,folder)=>{input.value=folder;},path.join(temp,'missing-save-folder'));
+    await shell.locator('#settings-form button[type="submit"]').click();
+    await waitFor(()=>shell.locator('#settings-error').textContent().then(text=>text.includes('Search settings were saved, but the other browser preferences were not')),'partial settings save feedback');
+    const partialState=await shell.evaluate(()=>window.browserShell.invoke('settings',{}));
+    assert.equal(partialState.searchTemplate,'https://search.example/?q={query}','the first save step is retained if the second preference write fails');
+    assert.notEqual(partialState.searchTemplate,originalSearch);
+    await shell.locator('#search-template').fill(originalSearch);
+    await shell.locator('#settings-nav-downloads').click();
+    await shell.locator('#choose-download-directory').click();
+    await waitFor(()=>shell.locator('#download-directory').inputValue().then(value=>value===downloadDir),'restore valid download directory after partial-save check');
+    await saveSettings(shell);
+    await openSettings(shell);
     await screenshot(shell,'en',1024,700);
     await shell.locator('#settings-nav-downloads').click();
     await screenshot(shell,'en',700,420);
@@ -205,8 +219,15 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await openSettings(shell);
     assert.equal(await shell.locator('#startup-behavior').inputValue(),'restore');
     assert.equal(await shell.locator('#new-tab-behavior').inputValue(),'home');
+    await shell.locator('#settings-nav-appearance').click();
+    const theme= shell.locator('#theme-preference');
+    await theme.selectOption('light');
+    await waitFor(()=>app.evaluate(({nativeTheme})=>nativeTheme.themeSource==='light'),'immediate light theme application');
     await shell.locator('#cancel-settings').click();
-    console.log('PASS settings preferences: schema migration, localized UI, startup restore/new-tab, home/blank behavior, save cancellation and automatic downloads');
+    await openSettings(shell);
+    assert.equal(await shell.locator('#theme-preference').inputValue(),'light','theme changes persist immediately when the settings dialog is canceled');
+    await shell.locator('#cancel-settings').click();
+    console.log('PASS settings preferences: schema migration, localized UI, startup restore/new-tab, home/blank behavior, immediate theme persistence across cancel, save cancellation and automatic downloads');
   }finally{
     if(app)await app.close().catch(()=>{});
     await new Promise(resolve=>server.close(resolve));

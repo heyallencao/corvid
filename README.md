@@ -20,7 +20,7 @@ npm ci
 npm start
 ```
 
-默认数据目录是 `~/.corvid`；设置 `CORVID_DATA_DIR` 可以使用独立目录。`npm test` 会使用临时数据目录和本地网页 fixture 启动真实 Electron 进程，逐项验证桌面和 Agent 接口行为（测试索引见 [QA 目录](docs/qa/e2e-suites.md)）。在 Apple Silicon 上可用 `npm run package:mac:dir` 构建未签名的 Corvid `.app` 开发包，再运行 `npm run test:packaged:mac` 验证打包后启动；这不代表已完成签名、公证或公众安装分发，边界见[桌面打包说明](docs/architecture/distribution.md)。
+默认数据目录是 `~/.corvid`；设置 `CORVID_DATA_DIR` 可以使用独立目录。`npm test` 会使用临时数据目录和本地网页 fixture 启动真实 Electron 进程，逐项验证桌面和 Agent 接口行为（测试索引见 [QA 目录](docs/qa/e2e-suites.md)）。在 Apple Silicon 上可用 `npm run package:mac:dir` 构建未签名的 Corvid `.app` 开发包，再运行 `npm run test:packaged:mac` 验证打包后启动。已有 Developer ID 证书时，可通过 `CORVID_MAC_SIGNING_IDENTITY` 和 `npm run package:mac:signed:dir` 构建签名包，并运行 `npm run test:packaged:signed:mac` 检查签名启动与系统凭据往返；本地签名不代表已公证或完成公众安装分发，边界见[桌面打包说明](docs/architecture/distribution.md)。
 
 ## 日常使用
 

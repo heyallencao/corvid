@@ -5,6 +5,7 @@ const path = require('node:path');
 const { _electron } = require('playwright-core');
 const { execFileSync } = require('node:child_process');
 const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
+const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const root = path.resolve(__dirname, '..');
 const appBundle = path.join(root, 'dist', 'mac-arm64', 'Corvid.app');
@@ -14,6 +15,7 @@ const executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
   assert.equal(process.platform, 'darwin', 'packaged macOS smoke test requires macOS');
   assert.equal(process.arch, 'arm64', 'this build validates the native Apple Silicon package');
   assert.ok(fs.statSync(executablePath).isFile(), `packaged executable exists: ${executablePath}`);
+  if (process.env.CORVID_REQUIRE_PACKAGED_SIGNATURE === '1') assertDeveloperIdSignature(appBundle);
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-packaged-app-'));
   let app;
