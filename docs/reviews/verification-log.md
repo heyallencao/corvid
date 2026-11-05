@@ -1561,3 +1561,21 @@
 - 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
 - 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
 - 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 A（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-cascade-convergence`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+
+- 改动：删除 4 处失效 `!important`（`.pi-consent`、`.agent-room-choice`、`.pi-endpoint-clear-key`、`#pi-task-form .pi-create-room` 窄窗 padding）；`.pi-consent` 规则删除冗余声明，`gap: 8px` 并入同特异性后置规则 `#pi-task-form .pi-consent`；`dialog label`、`:where(.settings-import p, .import-intro, .import-limitation)`、`.profile-extension :where(p)` 零特异性化，使 `.extension-load-error` 去重要化后仍保持 danger 色；`prefers-reduced-motion` 块的 `!important` 为无障碍标准写法，保留。
+
+- 计算样式矩阵：同一 Playwright 探针分别运行 `origin/main` 与本分支（真实 Electron，注入 renderer 同构节点），读取 agent-room-choice / pi-consent / extension-load-error / import-limitation / pi-endpoint-clear-key / 窄窗（≤480px 高）pi-create-room 六个组件的 display、align-items、gap、color、padding——两份 JSON 矩阵除标签字段外逐字节一致。
+
+- 截图：`docs/qa/screenshots/issue-211-a-branch-agent-access-light-1024x700.png`（SHA-256 前 16 位 `c08969d5fd9c94fc`）与 `issue-211-a-branch-chrome-import-dark-1024x700.png`（`716bfa0525686f7a`）与 main 对照截图逐字节相同（像素级不变）。
+
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 chrome-import-e2e.cjs` 通过；`agent-rooms-panel-e2e.cjs` 在本分支与 `origin/main` 对照同点失败（等待 `我的空间` 精确按钮名超时），为 main 上既有的测试与 DOM 失配（PR #273 修正对象），非本切片引入。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版；hover 规则按组件/状态收敛（条目 1 剩余）与死规则合并（条目 3）在后续子切片 B/C。
