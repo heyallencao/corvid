@@ -516,12 +516,13 @@ async function renderPiTasks(){
   if(piContinueTaskId&&!piTasks.some(task=>task.id===piContinueTaskId)){piContinueTaskId=null;piContinuationPreview=null;}
   const list=document.querySelector('#pi-task-list');
   if(!list)return;
+  const toolbar=document.querySelector('#pi-workbench-content .pi-chat-toolbar');
+  if(!toolbar)return;
   const historyTop=list.scrollTop,historyAtEnd=historyTop+list.clientHeight>=list.scrollHeight-24;
   list.replaceChildren();
-  const toolbar=document.createElement('div');toolbar.className='pi-chat-toolbar';
   const historyButton=button(`${extensionMessages.t('conversationHistory')} · ${extensionMessages.formatNumber(piTasks.length)}`,()=>{piHistoryOpen=!piHistoryOpen;renderPiTasks();});historyButton.setAttribute('aria-expanded',String(piHistoryOpen));historyButton.setAttribute('aria-label',extensionMessages.t('conversationHistory'));
   const newChat=button(extensionMessages.t('newConversation'),()=>{piSelectedTaskId=null;piShowNewChat=true;piContinueTaskId=null;piContinuationPreview=null;piContinuationDraft='';piContinuationConsent=false;piBinding=null;piContextPreview=null;piPromptDraft='';renderPiWorkbench();});newChat.className='pi-new-chat';
-  toolbar.append(historyButton,newChat);list.append(toolbar);
+  toolbar.replaceChildren(historyButton,newChat);
   const labels={preparing:extensionMessages.t('preparing'),running:extensionMessages.t('taskRunning'),waiting_for_user:extensionMessages.t('waitingForTakeover'),completed:extensionMessages.t('taskCompleted'),failed:extensionMessages.t('needsAttention'),interrupted:extensionMessages.t('waitingForReview')};
   if(piSelectedTaskId&&!piTasks.some(task=>task.id===piSelectedTaskId))piSelectedTaskId=null;
   const visibleTasks=piShowNewChat?[]:piTasks.filter(task=>task.id===(piSelectedTaskId||piTasks.at(-1)?.id));
@@ -744,8 +745,9 @@ function renderPiWorkbench(){
   }
   const workspace=document.createElement('div');workspace.id='pi-workbench-content';workspace.dataset.newChat=String(piShowNewChat);
   const list=document.createElement('div');list.id='pi-task-list';
+  const toolbar=document.createElement('div');toolbar.className='pi-chat-toolbar';
   const announcement=document.createElement('div');announcement.id='pi-task-announcer';announcement.className='visually-hidden';announcement.setAttribute('role','status');announcement.setAttribute('aria-live','polite');announcement.setAttribute('aria-atomic','true');
-  workspace.append(list,form,announcement);panel.append(workspace);void renderPiTasks();
+  workspace.append(toolbar,list,form,announcement);panel.append(workspace);void renderPiTasks();
 }
 function setLibraryPanel(kind,trigger=null){
   libraryKind=kind;libraryTrigger=kind?trigger:null;
