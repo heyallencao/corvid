@@ -16,6 +16,14 @@
 - 全量门禁：候选首次 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0。之后将定向用例纳入默认 npm test 链并登记为 suite 76；该链尾变更后的最终完整门禁待重跑。
 - 限制：只覆盖 zh-CN、1024×700 和开发版 Electron；未验证英文、窄窗、辅助技术、Windows/Linux、签名打包版或网页合成像素。完整 issue 中其他对比度/字号事项仍开放。测试刷新的八张既有 QA 截图已恢复；PR 中附带的两张新截图来自隔离旧 head，保留为该状态证据，不宣称是当前完整门禁新采集。
 
+## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16，PR #178 前向集成复验）
+
+- 候选：从 #178 的菜单交互提交重放到 live main `06ca32b12826f67f0d221830f36d0e8e2c47f765`，集成提交 `523b2016f5a216b77403bf9232ab4a268bb972d8`；只含菜单源码、E2E 与对应功能板/QA 记录，不携带其他 PR 内容。保留 main 的 SVG 菜单按钮、本地化 accessible name 与三个右键入口。
+- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1，`env -u ELECTRON_RUN_AS_NODE ELECTRON_OVERRIDE_DIST_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules/electron/dist node tests/agent-rooms-panel-e2e.cjs` EXIT 0。覆盖 Profile/空间按钮键盘打开、方向键/Home/End/Escape/Tab、焦点恢复、三个 contextmenu 入口与 ARIA 状态；使用本地 fixture/隔离数据，不调用真实模型或 OAuth。
+- 全量门禁：同一候选执行标准 `npm test`（`env -u ELECTRON_RUN_AS_NODE ELECTRON_OVERRIDE_DIST_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules/electron/dist npm test`）EXIT 0；串行全链 34/34 `node:test` 与其后所有 E2E/合同脚本通过，包含 `agent-rooms-panel-e2e`、原生应用菜单、browser、dialogs、uploads、Pi workbench、Chrome import、localization、settings 与 hover 回归。无测试跳过参数。
+- 运行环境：隔离 worktree 的 `npm ci` 因本机 npm install-script 策略未下载 Electron；通过 `ELECTRON_OVERRIDE_DIST_PATH` 指向同版本本机 Electron 45.2.1 后，测试真实启动并全链通过。`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check origin/main...HEAD` 通过。未验证 VoiceOver 实播、Windows/Linux 与签名打包版。
+- 状态：候选通过规定完整门禁，待同步到 PR 并按集成协议核对 main 后合并；Issue #16 综合范围继续开放。
+
 ## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
 
 - 变更：基于 PR #172 精确 head `11abfb56dbfda818a4f5b53f08d31392b0a3b1a6` 前向集成 main `f443531b2cc6553b69f1677f1aae3b8431817d04`；解决 `package.json` 与本记录冲突并保留两侧历史。修正两阶段设置保存第二步失败时的部分保存反馈，明确主题立即保存且取消不回滚；设置分类下补齐 Chrome 导入、Agent 访问和本地化窄窗测试所需分类入口。
