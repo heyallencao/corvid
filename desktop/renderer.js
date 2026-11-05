@@ -330,6 +330,7 @@ async function answerPageDialog(accept) {
 }
 document.querySelector('#page-dialog-form').onsubmit=event=>{event.preventDefault();void answerPageDialog(true);};
 document.querySelector('#page-dialog-dismiss').onclick=()=>answerPageDialog(false);
+document.querySelector('#page-dialog-close').onclick=()=>answerPageDialog(false);
 document.querySelector('#page-dialog').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let libraryRenderVersion=0,libraryProfileId=null;
 function historyLocalDayKey(value){const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
@@ -823,13 +824,16 @@ document.addEventListener('keydown',event=>{if(event.key==='Tab')for(const {menu
 document.querySelector('#new-room-form').onsubmit = async event => { event.preventDefault(); const input=document.querySelector('#room-name'); const name=input.value.trim(); if(!name) return; await api.invoke('createRoom',{name,ownership:'user'}); input.value=''; document.querySelector('#new-room').close(); };
 document.querySelector('#create-room-trigger').onclick=async()=>{await openShellDialog('#new-room','#room-name');};
 document.querySelector('#cancel-room').onclick = () => document.querySelector('#new-room').close();
+document.querySelector('#new-room-close').onclick = () => document.querySelector('#new-room').close();
 document.querySelector('#new-room').onclose = () => api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 document.querySelector('#new-profile-form').onsubmit = async event => {event.preventDefault();const input=document.querySelector('#profile-name');const name=input.value.trim();if(!name)return;const profile=await api.invoke('createProfile',{name});await api.invoke('activateProfile',{id:profile.id});input.value='';document.querySelector('#new-profile').close();};
 document.querySelector('#cancel-profile').onclick=()=>document.querySelector('#new-profile').close();
+document.querySelector('#new-profile-close').onclick=()=>document.querySelector('#new-profile').close();
 document.querySelector('#new-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let renameProfileId;
 document.querySelector('#rename-profile-form').onsubmit=async event=>{event.preventDefault();try{const profile=state.profiles.find(item=>item.id===renameProfileId),entered=document.querySelector('#renamed-profile-name').value,name=profile&&entered===profileDisplayName(profile)?profile.name:entered;await api.invoke('renameProfile',{id:renameProfileId,name});document.querySelector('#rename-profile').close();}catch(error){document.querySelector('#rename-profile-error').textContent=error.message;}};
 document.querySelector('#cancel-rename-profile').onclick=()=>document.querySelector('#rename-profile').close();
+document.querySelector('#rename-profile-close').onclick=()=>document.querySelector('#rename-profile').close();
 document.querySelector('#rename-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 document.querySelector('#profile-deletion-select').onchange=()=>void refreshProfileDeletionPreview();
 document.querySelector('#profile-deletion-form').onsubmit=async event=>{
