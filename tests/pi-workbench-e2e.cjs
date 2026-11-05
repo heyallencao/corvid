@@ -9,12 +9,18 @@ const path = require('node:path');
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
+const queueEvidenceDirectory = process.env.CORVID_ISSUE194_QA_DIR;
 const saveScreenshot = async (page, fileName) => {
   const directory = evidenceDirectory || os.tmpdir();
   fs.mkdirSync(directory, { recursive: true });
   const outputPath = path.join(directory, fileName);
   await page.screenshot({ path: outputPath });
   return outputPath;
+};
+const saveQueueScreenshot = async (page, fileName) => {
+  if (!queueEvidenceDirectory) return;
+  fs.mkdirSync(queueEvidenceDirectory, { recursive: true });
+  await page.screenshot({ path: path.join(queueEvidenceDirectory, fileName) });
 };
 const readSavedTasks = dataDir => {
   const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
@@ -116,12 +122,10 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     assert.equal(await start.isDisabled(), false);
     await shell.keyboard.press('Tab');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'发送','Tab reaches the enabled send action after consent');
-    const startElement=await start.elementHandle();
+    await shell.evaluate(()=>{window.__corvidStartFeedback=new Promise(resolve=>document.addEventListener('click',event=>{const button=event.target instanceof Element?event.target.closest('#pi-task-form .pi-primary-action'):null;if(button)setTimeout(()=>resolve({text:button.textContent,disabled:button.disabled,busy:button.getAttribute('aria-busy')}),0);},{capture:true,once:true}));});
     await shell.keyboard.press('Enter');
-    const startFeedback=await startElement.evaluate(element=>({disabled:element.disabled,busy:element.getAttribute('aria-busy'),text:element.textContent}));
-    assert.equal(startFeedback.disabled, true, 'starting a task immediately disables repeat submissions');
-    assert.equal(startFeedback.busy, 'true', 'the pending start is announced as busy');
-    assert.equal(startFeedback.text, '正在启动 Agent 任务…', 'the send action gives immediate localized progress feedback');
+    const startFeedback=await shell.evaluate(async()=>window.__corvidStartFeedback);
+    assert.deepEqual(startFeedback,{text:'正在启动 Agent 任务…',disabled:true,busy:'true'},'the send action immediately disables repeat submissions and announces localized progress');
     await saveScreenshot(shell, 'issue-200-agent-task-sending-1280x850.png');
     const firstTaskCard=shell.locator('.pi-task-entry').first();
     await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
@@ -202,14 +206,24 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       await queueForm.getByRole('button',{name:'加入队列'}).click();
     }
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),3,'running task presents persisted follow-up messages in its own conversation');
-    await queuedTask.locator('.pi-message-queue-item').nth(2).getByRole('button',{name:'上移'}).click();
-    await queuedTask.locator('.pi-message-queue-item').nth(1).getByRole('button',{name:'上移'}).click();
+    const thirdQueueItem=queuedTask.locator('.pi-message-queue-item').nth(2),thirdQueueMenu=thirdQueueItem.locator('.pi-message-queue-more');
+    await thirdQueueMenu.locator('summary').focus();await shell.keyboard.press('Enter');
+    assert.equal(await thirdQueueMenu.evaluate(menu=>menu.open),true,'keyboard can reveal lower-frequency queue actions');
+    await shell.keyboard.press('Tab');
+    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'上移','keyboard focus moves from the disclosure to its first available action');
+    await shell.keyboard.press('Enter');
+    const secondQueueItem=queuedTask.locator('.pi-message-queue-item').nth(1);
+    await secondQueueItem.locator('.pi-message-queue-more summary').click();
+    await secondQueueItem.getByRole('button',{name:'上移'}).click();
     const firstQueueItem=queuedTask.locator('.pi-message-queue-item').first();
+    await firstQueueItem.locator('.pi-message-queue-more summary').click();
     await firstQueueItem.getByRole('button',{name:'编辑'}).click();
     await firstQueueItem.getByRole('textbox',{name:'编辑'}).fill('整理成要点');
     await firstQueueItem.getByRole('button',{name:'保存'}).click();
     assert.match(await firstQueueItem.innerText(),/整理成要点/);
-    await queuedTask.locator('.pi-message-queue-item').nth(1).getByRole('button',{name:'移除'}).click();
+    const secondAfterEdit=queuedTask.locator('.pi-message-queue-item').nth(1);
+    await secondAfterEdit.locator('.pi-message-queue-more summary').click();
+    await secondAfterEdit.getByRole('button',{name:'移除'}).click();
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'editing, reordering, and removing queue entries leaves the intended order');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await queuedTask.locator('.pi-task-state[data-status="interrupted"]').waitFor();
@@ -221,12 +235,26 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await queuedTask.locator('.pi-task-elapsed').getByText(/^Turn elapsed/).waitFor();
     await queuedTask.getByText('Follow-up queue',{exact:false}).waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell,'English follow-up queue');
+    const primaryQueueAction=queuedTask.locator('.pi-message-queue-send').first(),moreQueueMenu=queuedTask.locator('.pi-message-queue-item').first().locator('.pi-message-queue-more');
+    assert.equal(await primaryQueueAction.isVisible(),true,'the explicit page-review action stays visible outside the management disclosure');
+    assert.equal(await primaryQueueAction.evaluate(action=>action.closest('.pi-message-queue-more')),null,'the primary queue action is not mixed into the low-frequency menu');
+    assert.equal(await moreQueueMenu.evaluate(menu=>menu.open),false,'low-frequency actions remain collapsed by default');
+    await saveQueueScreenshot(shell,'issue-194-message-queue-en-1280x850.png');
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
+    await saveQueueScreenshot(shell,'issue-194-message-queue-zh-CN-1280x850.png');
     await saveScreenshot(shell, 'issue-180-agent-message-queue-1280x850.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(700,420));await delay(150);
     await queueInput.focus();
     const narrowQueueVisible=await queueInput.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-list').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
     assert.equal(narrowQueueVisible,true,'the queue composer remains reachable inside the task history scroller at short height');
+    for(const locale of ['zh-CN','en']){
+      await shell.evaluate(value=>window.corvidI18n.setLocale(value),locale);await delay(120);
+      const primaryFits=await primaryQueueAction.evaluate(action=>{const scroller=action.closest('#pi-task-list'),clip=scroller.getBoundingClientRect(),box=action.getBoundingClientRect();scroller.scrollTop+=box.top-clip.top-8;const visible=action.getBoundingClientRect();return visible.top>=clip.top&&visible.bottom<=clip.bottom&&visible.left>=clip.left&&visible.right<=clip.right;});
+      assert.equal(primaryFits,true,`${locale} primary queue action is fully visible in the task history viewport at the minimum window size`);
+      assert.equal(await moreQueueMenu.evaluate(menu=>menu.open),false,`${locale} secondary queue actions start collapsed at the minimum window size`);
+      await saveQueueScreenshot(shell,`issue-194-message-queue-${locale}-704x420.png`);
+    }
+    await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     await saveScreenshot(shell, 'issue-180-agent-message-queue-700x420.png');
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));await delay(100);
     await queuedTask.locator('.pi-message-queue-send').first().click();
@@ -334,7 +362,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     const transcriptTask={...savedTasks[0],status:'completed',prompt:'总结当前页面内容',output:'这是之前保存的摘要。',conversation:[{role:'user',text:'总结当前页面内容'},{role:'assistant',text:'这是之前保存的摘要。',status:'completed'}],sessionRef:{runtimeId:'retired-runtime',runtimeVersion:'9.0.0',data:{handle:'opaque-retired-session'}}};
     await app.close();app=null;
     fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:2,tasks:[transcriptTask]}),{mode:0o600});
-    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_DISPOSE_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     const migrationShell=await app.firstWindow();
     restoredShell=migrationShell;
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for transcript continuation');})();
@@ -394,7 +422,27 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
     await runtimeErrorCard.getByRole('button',{name:'移除记录'}).click();
     assert.deepEqual(readSavedTasks(dataDir),[]);
 
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
+    await restoredShell.getByRole('button',{name:/新建对话/}).click();
+    await restoredShell.getByRole('button',{name:'连接当前页面'}).click();
+    await restoredShell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill('[fixture:dispose-failure] 清理失败后保留的回复');
+    await restoredShell.getByRole('button',{name:'检查并预览页面上下文'}).click();
+    await restoredShell.getByText(/将分享给 Agent：/).waitFor();
+    await restoredShell.getByLabel(/我已检查/).check();
+    await restoredShell.getByRole('button',{name:'发送'}).click();
+    const cleanupFailureCard=restoredShell.locator('.pi-task-entry').filter({hasText:'[fixture:dispose-failure] 清理失败后保留的回复'});
+    await cleanupFailureCard.locator('.pi-task-state[data-status="completed"]').waitFor();
+    const cleanupFailureAlert=cleanupFailureCard.locator('.pi-task-event[role="alert"]');
+    await cleanupFailureAlert.waitFor();
+    await cleanupFailureCard.getByText('这是已生成且保留的回复。',{exact:true}).waitFor();
+    assert.equal(await cleanupFailureAlert.innerText(),'Agent 会话清理失败。本轮回复已保留，请检查页面状态后再启动新任务；此任务暂不可继续。');
+    assert.equal(await cleanupFailureCard.getByRole('button',{name:'继续对话'}).count(),0,'an unconfirmed cleanup state cannot continue the completed session');
+    assert.equal(readSavedTasks(dataDir).find(task=>task.prompt.includes('[fixture:dispose-failure]'))?.stopUnconfirmed,true);
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await cleanupFailureAlert.getByText('The Agent session could not be cleaned up. This response was kept; check the page state before starting another task. This task cannot continue.').waitFor();
+
     await app.close();app=null;
+    fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:2,tasks:[]}),{mode:0o600});
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_TEST_PI_INIT_FAILURE_ONCE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
     control=await (async()=>{for(let i=0;i<200;i++){try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{await delay(25);}}throw new Error('Corvid control service did not restart for the no-transcript fixture');})();
@@ -498,7 +546,7 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
       return row.top>=bounds.top&&row.bottom<=bounds.bottom;
     },undefined,{timeout:10_000});
     assert.equal(await roomSummaryItem.isVisible(),true,'the current Agent room summary is visible in the scrollable sidebar');
-    const roomSummaryBounds=await roomSummaryItem.evaluate(node=>({row:node.parentElement.getBoundingClientRect(),strip:node.parentElement.parentElement.getBoundingClientRect()}));
+    const roomSummaryBounds=await roomSummaryItem.evaluate(node=>({row:node.parentElement.getBoundingClientRect(),strip:document.querySelector('#room-strip').getBoundingClientRect()}));
     assert.ok(roomSummaryBounds.row.top>=roomSummaryBounds.strip.top&&roomSummaryBounds.row.bottom<=roomSummaryBounds.strip.bottom,'the Agent room summary row fits inside the sidebar without clipping');
     const roomSummary=await roomSummaryItem.locator('xpath=..').innerText();
     assert.match(roomSummary,/比较页面重点并检查 token=\[已隐藏\]/,'the generic Agent room label is replaced by its clipped, redacted task summary');
