@@ -1,13 +1,13 @@
 # 验证记录
 
-## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16）
+## 2026-11-05 PR #273 Release workflow 前向重放（候选，未合并）
 
-- 基线与候选：基于 GitHub `main` `266418fc27217e86b51994efdada92702ed899da`，集成提交 `6f49bc0`（含 `15dcfcc` 菜单修复及 #314 前向合并），保留当前 main 的 SVG 按钮、本地化菜单名称和 Profile/空间标题/空间列表三个 contextmenu 入口。
-- 修复：contextmenu 与触发按钮共用打开逻辑，关闭另一菜单、设置 `aria-expanded` 并聚焦首个 menuitem；菜单项不进入普通 Tab 顺序。方向键/Home/End 导航，Escape 关闭并还焦点，Tab 与点外关闭。trigger 增加 `aria-haspopup` / `aria-controls`，保留 main 当前菜单的本地化 `aria-label`。
-- 定向验证：基于最新 main `266418f` 执行 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check` 均通过。
-- 全量门禁：基于 merge 候选 `2cb6056` 执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1。Node/Electron 首段 34/34 通过，串行后续用例通过至 `tests/application-menu-e2e.cjs:44`，随后报 `Timed out waiting for Corvid application window focus`。这是标准门禁失败，不能记为通过；该用例与本 PR 菜单无关。按现有 QA 记录使用 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1 node tests/application-menu-e2e.cjs` 单独复核 EXIT 0，其余应用菜单合同通过，但明确跳过原生窗口焦点与路由；此结果不替代失败的标准全量门禁。
-- 视觉证据：[隔离 Profile 菜单截图](../qa/screenshots/issue-16-profile-room-menu-keyboard-2560x1636.png)，状态为首项焦点、2560×1636 PNG；无网页主体或个人数据。视觉与辅助技术限制见[视觉检查](../qa/ui-visual-check.md#2026-11-05-profile-与空间菜单键盘交互-issue-16)。未验证 VoiceOver 实播、Windows/Linux、打包版。
-- 状态：修复已推送 PR #178；待在最新 base 上重验并由集成 lane 复核合并。本 slice 不代表 Issue #16 整体关闭。
+- 候选基线：GitHub `main` `266418fc27217e86b51994efdada92702ed899da`；从 PR #273 精确差异重放发布 workflow、macOS x64/Windows 打包设置与跨平台打包 smoke 支持，保留 main 的签名打包路径、完整 npm test 链及更新后的窗口/Agent E2E 断言。为生成 arm64/x64 DMG/ZIP，在 main 的默认目录 target 上叠加 DMG/ZIP targets。
+- 安全与来源修正：workflow 仅 `workflow_dispatch`；preflight 拒绝非 `refs/heads/main` 触发，checkout 事件 SHA 并在版本校验时查询远端 main SHA、要求仍相同，取完整 tag history；首个版本仅允许无历史 release tag 时使用 `0.2.0`，之后要求同一 major/minor 下 patch 连续递增；build 与 publish 固定使用 preflight 输出的同一 SHA。重复 tag 检查保留。publish 输入默认 false，只有显式选择后才运行；发布 job 独占 `contents: write`，校验五个精确资产名及无额外安装资产，再生成 SHA-256 清单。
+- 可见性修正：GitHub 仓库 API 返回 `PUBLIC`。架构和 Release notes 改为明确下载公开可见；workflow 未启用签名/公证，也未生成 GitHub artifact provenance/attestation。SHA-256 清单只能检测下载后字节变化，不证明构建来源。Windows smoke 实际启动 `win-unpacked` 应用，不验证 NSIS 安装交互。
+- 本机候选验证：隔离 `npm ci` 375 packages，0 vulnerabilities；`npm run package:mac:dir` arm64 `.app` 构建成功，`npm run test:packaged:mac` PASS（macOS 15.5 arm64、Electron 45.2.1）；最终代码版本规定的完整 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（34 项 node:test 与全部串行 E2E 脚本通过）。`npm run package:mac:release` 产出 `Corvid-0.2.0-mac-arm64.dmg` 与 `.zip`。macOS x64 目录构建成功；本机 smoke 首次发现测试路径与 electron-builder 输出目录命名不一致，已将测试路径修正为 `dist/mac/Corvid.app`，并在修正后重跑完整门禁通过。本机 arm64 进程无法启动 x64 packaged app；x64 启动需 Intel hosted runner 结果。
+- 静态验证：Ruby YAML parser 解析 workflow 成功；`node --check scripts/package-mac-dir.cjs`、`node --check tests/packaged-app-e2e.cjs`、`git diff --check` 通过。`load-state-e2e` 在一次全量运行中因找不到地址栏超时；该测试随后连续独立通过两次，最终完整链通过。macOS x64/Windows runner、实际 NSIS 安装、公开 Release、签名/公证、provenance 均未验证。
+- 限制：PR 尚未更新或合并。孤儿 Electron 进程（PID 78990，worktree `/private/tmp/corvid-integrate-pr172-support`）在父进程 PID 1 下运行超过 4 小时，无 npm/node 测试父进程；本轮对该 Electron 进程及其两个 renderer 发送 TERM 后退出，之后才执行候选门禁。macOS x64 与 Windows hosted runner、NSIS 安装器安装交互均未验证；静态检查与本机 arm64 结果不能替代跨平台执行。
 
 ## 2026-11-05 Issue #204 onboarding 主要操作 hover 对比（PR #255 前向集成复验）
 
@@ -15,6 +15,14 @@
 - 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/button-hover-contrast-e2e.cjs` PASS；macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离 `CORVID_DATA_DIR`，1024×700 CSS px。浅/深主题主要按钮 hover 对比度均 4.88:1，次要操作维持中性 hover。`node --check tests/button-hover-contrast-e2e.cjs` 与 `git diff --check` PASS。
 - 全量门禁：候选首次 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0。之后将定向用例纳入默认 npm test 链并登记为 suite 76；该链尾变更后的最终完整门禁待重跑。
 - 限制：只覆盖 zh-CN、1024×700 和开发版 Electron；未验证英文、窄窗、辅助技术、Windows/Linux、签名打包版或网页合成像素。完整 issue 中其他对比度/字号事项仍开放。测试刷新的八张既有 QA 截图已恢复；PR 中附带的两张新截图来自隔离旧 head，保留为该状态证据，不宣称是当前完整门禁新采集。
+
+## 2026-11-05 Profile 与空间菜单键盘交互（Issue #16，PR #178 前向集成复验）
+
+- 候选：从 #178 的菜单交互提交重放到 live main `06ca32b12826f67f0d221830f36d0e8e2c47f765`，集成提交 `523b2016f5a216b77403bf9232ab4a268bb972d8`；只含菜单源码、E2E 与对应功能板/QA 记录，不携带其他 PR 内容。保留 main 的 SVG 菜单按钮、本地化 accessible name 与三个右键入口。
+- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1，`env -u ELECTRON_RUN_AS_NODE ELECTRON_OVERRIDE_DIST_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules/electron/dist node tests/agent-rooms-panel-e2e.cjs` EXIT 0。覆盖 Profile/空间按钮键盘打开、方向键/Home/End/Escape/Tab、焦点恢复、三个 contextmenu 入口与 ARIA 状态；使用本地 fixture/隔离数据，不调用真实模型或 OAuth。
+- 全量门禁：同一候选执行标准 `npm test`（`env -u ELECTRON_RUN_AS_NODE ELECTRON_OVERRIDE_DIST_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules/electron/dist npm test`）EXIT 0；串行全链 34/34 `node:test` 与其后所有 E2E/合同脚本通过，包含 `agent-rooms-panel-e2e`、原生应用菜单、browser、dialogs、uploads、Pi workbench、Chrome import、localization、settings 与 hover 回归。无测试跳过参数。
+- 运行环境：隔离 worktree 的 `npm ci` 因本机 npm install-script 策略未下载 Electron；通过 `ELECTRON_OVERRIDE_DIST_PATH` 指向同版本本机 Electron 45.2.1 后，测试真实启动并全链通过。`node --check desktop/renderer.js`、`node --check tests/agent-rooms-panel-e2e.cjs`、`git diff --check origin/main...HEAD` 通过。未验证 VoiceOver 实播、Windows/Linux 与签名打包版。
+- 状态：候选通过规定完整门禁，待同步到 PR 并按集成协议核对 main 后合并；Issue #16 综合范围继续开放。
 
 ## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
 
