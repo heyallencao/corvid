@@ -7,6 +7,14 @@
 - 视觉判断：沿用当前主线图标、尺寸、颜色与菜单表面；本切片只补足焦点交接和 ARIA 关联，不改变菜单视觉样式。竞品参考不作为验收依据，本轮未执行 REA；布局与样式沿用已存在的 Corvid chrome。
 - 未覆盖：VoiceOver 实播、其他平台与打包版；截图是 shell renderer，不代表 macOS 原生标题栏或网页 WebContentsView 合成画面。
 
+## 2026-11-04 地址栏占位文字对比度（Issue #192）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR` 与本地 HTTP fixture。Electron 逻辑窗口 1024×700，Retina PNG 2048×1336；分别记录浅/深主题与 `zh-CN`/`en`：[浅色中文](screenshots/issue-192-address-light-zh-CN-1024x700.png)（SHA-256 `1871ec3021b548b72724a84b443db3e0d0ff85ea5258ebfdc1b700d61c88c68c`）、[浅色英文](screenshots/issue-192-address-light-en-1024x700.png)（`c3a1415ea264049f0ba31cf957af46b90ad5f1fef7282e694070746e1d8bbbbb`）、[深色中文](screenshots/issue-192-address-dark-zh-CN-1024x700.png)（`56abdcb4ccf1783c2797cf58332121a5c4f6a15433cefb4f07a794f6618656ae`）、[深色英文](screenshots/issue-192-address-dark-en-1024x700.png)（`0a71627e055c52228a781d185b902522eee1cd3a6f963042226c3b59ac254e24`）。页面为空白本地 `about:blank`，截图不含个人资料或浏览历史。
+- 直接观察与测量：输入框分别在未聚焦和聚焦状态读取 Chromium 计算后的 `::placeholder` 前景色及 `#address-form` 背景色，并按 WCAG 相对亮度算法断言至少 4.5:1。原浅色 `#9aa1ad` 在 `#f7f8fa` 上为 2.45:1；改用主题 `--text-muted` 后浅色为 `#5f6878`，非聚焦 `#f7f8fa` 为 5.29:1、聚焦白底为 5.62:1。深色 `#8490a3` 在 `#222833` 上为 4.58:1；改用 `#a4afbf` 后，非聚焦为 6.67:1、聚焦 `#181c24` 为 7.69:1。四种主题/语言截图均由 E2E 生成，测试同时验证真实 placeholder 文案。
+- 视觉判断与最小调整：地址栏提示是帮助开始导航的次级文本；原浅色值过淡，难以满足普通字号文字的 4.5:1 目标。沿用已有主题 `text-muted` token 只增强可读性并减少重复颜色；截图显示文字仍与地址栏图标层级相近，没有压过输入后的正文。修改影响全局输入 placeholder（`input` 与 `textarea`），保持同一语义 token；本 Issue 的真实界面验收聚焦浏览器地址栏。
+- UI/UE 参考与 REA 证据：Kobra <https://kobra.systems/components/ai-editor>，2026-11-04 受控 Chromium 156 回放，视口 1280×720。REA 页面/DOM 证据 `ev_62b9ec7c1740992fded011a1063d6821c7579a6bc5a92af67edefd088939e898`，截图证据 `ev_40c0e8548f80293c2de0012fe58901d9bfecb5904009d09e0da3f9cfc45fc45a`（截图 SHA-256 `50df545ed4031cf9d7faae36c66f49959c98e666571a3e69ea4ef9ccd969750b`；采集约 04:10 UTC）。**直接观察**：该组件页的三栏文档布局、预览/代码区域和右侧组件说明。**静态页面证据**：AI Editor 输入使用 `text-foreground`，placeholder 使用 `text-muted-foreground`；本次没有激活 ask 模式，故没有声称直接验证其输入行为或颜色对比度。**推断**：语义化的 muted token 可作为 placeholder 的层级表达参考；Corvid 的 4.5:1 是本地验收合同，并非从 Kobra 推得。**未知/限制**：未分析 Kobra 源码；Rare UI、EasyUI、Pin UI、Aceternity UI 本轮未扫描；没有复制代码、样式或素材。REA 页面证据来自其可达运行页面，未覆盖屏幕阅读器及其他视口。
+- 实现后视觉工具检查：Impeccable detector 对 `desktop/index.html` 的单次扫描报告既有小字号、侧边强调线、字体与层级等全页建议；这些不由本次 token 修改引入，未扩大本 Issue 范围。此次针对性自动验收覆盖地址栏两个焦点状态、双语与两种主题；不代表完整视觉审计，也未检查屏幕阅读器或其他平台。
+
 ## 2026-11-04 对话框提交按钮悬停状态（Issue #211 子项）
 
 - 当前 Corvid 运行态：隔离 Electron 中打开“新建空间”原生 HTML dialog；鼠标悬停提交按钮时，浅色和深色主题都保留 `--accent-solid`。截图显示输入框焦点、主/次操作层级与 backdrop；没有个人网页或 Profile 数据。[实施与测试记录](issue-211-submit-hover.md)
@@ -40,7 +48,6 @@
 - UI/UE 参考与 REA 证据：本判断使用项目已有 EGO 原生窗口观察 `ev_3a5609d1eb705ccdf3c5071061a8a6b7aafa5a604f570f210b9c81a8a5c86e5e`（2026-11-02，EGO 0.6.2.5，窗口 18761，截图 1450×833）。直接观察只支持“日常浏览 chrome 与书签入口处于常规浏览器布局”这一产品语境；当时没有操作书签按钮，因此不把它当作星标切换、反馈气泡或成功文案的证据。已安装 EGO 当前进程仍在运行，本轮未读取或操作其个人页面。Kaze 的本地工具栏快照和 Rare UI、Kobra、EasyUI、Pin UI、Aceternity UI 均未用于该交互细节；本切片按 Corvid 现有组件体系实现，不移植第三方样式或资产。REA 证据不支持对竞品书签反馈行为作本轮结论。
 - 证据分类：**直接观察**为本轮隔离真实 Electron 的 zh-CN/en 添加/移除操作、可访问名称与星标状态、两种窗口视口及截图；**静态证据**为 renderer 按活动标签 URL 和 Profile 查询现有书签记录，add/remove 使用 Profile 显式参数，操作期间禁用按钮，提示文案取自双语 locale 资源；**推断/设计判断**为短消息沿用浏览器既有状态区，比 toast/modal 更少遮挡页面并适合浏览器 chrome；**未知**包括 VoiceOver 实播、其他平台、深色模式和打包版表现。
 - 未覆盖：本地 fixture，不验证真实网站或实际网页画布像素；仅本机开发版 Electron，不代表全量 `npm test`；没有读取 EGO/Kaze 的个人页面，也没有验证它们的书签按钮行为、慢磁盘下的响应时间或平台差异。
-
 ## 2026-11-04 最小窗口与紧凑工具栏（Issue #219）
 
 - 环境与截图：macOS arm64、Electron 45.2.1、隔离 `CORVID_DATA_DIR`；窗口逻辑尺寸 704×420，Retina PNG 1408×776。[中文最小窗口截图](screenshots/issue-219-window-minimum-zh-CN-704x420.png)，SHA-256 `04a78147606bb0b9a4ae8fb5d12c1af5d3324227469451cc22463e9170666487`。窗口显示合成的 `about:blank`，不含个人浏览数据或账号信息。

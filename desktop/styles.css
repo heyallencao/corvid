@@ -39,7 +39,7 @@
   --line-input: #dfe2e8;
   --line-accent: #dfe3f6;
   --line-error: #f3d2d2;
-  --text-placeholder: #9aa1ad;
+  --text-placeholder: var(--text-muted);
   --text-icon: #697282;
   --text-address-icon: #8991a0;
   --icon-size-small: 16px;
@@ -137,7 +137,7 @@
     --line-input: #3b4554;
     --line-accent: #3b446c;
     --line-error: #644040;
-    --text-placeholder: #8490a3;
+    --text-placeholder: var(--text-muted);
     --text-icon: #a4afbf;
     --text-address-icon: #9aa7ba;
     --text-code: #b4bfd0;
