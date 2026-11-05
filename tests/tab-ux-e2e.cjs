@@ -196,6 +196,22 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await sendShortcut('W',primary);
     await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==replacementId;},'Cmd/Ctrl+W replaces the last user tab');
     await until(()=>homeEval("document.visibilityState==='visible'"),'keyboard-created user start page is ready');
+    // Issue #130-A1：起始页文案跟随 uiLocale；closed shadow 不可探测，断言 host dataset 镜像。
+    const homeMirror=source=>homeEval(`(()=>{const host=document.querySelector('[data-corvid-home-surface]');return host?{locale:host.dataset.homeLocale,heading:host.dataset.homeHeading}:null;})()`);
+    await until(async()=>(await homeMirror())?.locale==='zh-CN','zh start page declares its locale');
+    assert.match((await homeMirror()).heading,/想去哪里/,'zh start page heading');
+    await shell.locator('html').evaluate((element,next)=>window.browserShell.invoke('setUiLocale',{locale:next}),'en');
+    await shell.waitForFunction(expected=>document.documentElement.lang===expected,'en');
+    await shell.locator('#new-tab').click();
+    await until(async()=>(await call('/rooms')).rooms.find(room=>room.id===userRoom.id)?.tabs.length===2,'localized start tab created');
+    await until(async()=>(await homeMirror())?.locale==='en','en start page follows the switched locale');
+    const enHeading=(await homeMirror()).heading;
+    assert.match(enHeading,/Where to next/,'en start page heading');
+    assert.equal(/[\u4e00-\u9fff]/.test(enHeading),false,'en start page heading has no Chinese residue');
+    await shell.locator('html').evaluate((element,next)=>window.browserShell.invoke('setUiLocale',{locale:next}),'zh-CN');
+    await shell.waitForFunction(expected=>document.documentElement.lang===expected,'zh-CN');
+    await tabs.nth(1).locator('.tab-close').click();
+    await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank';},'localized start tab closed, single blank tab restored');
     await homeEval(`window.browserHome.action('navigate',${JSON.stringify(base+'/edit')})`);
     await until(async()=>(await call('/rooms')).rooms.find(room=>room.id===userRoom.id)?.tabs[0]?.url===base+'/edit','guarded final tab navigation');
     const guardedTabId=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id).tabs[0].id;
