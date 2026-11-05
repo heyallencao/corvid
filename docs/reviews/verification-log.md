@@ -5,7 +5,8 @@
 - 候选基线：精确 PR head `fa92fe9` 合并至最新 `origin/main` `926a9e1`；文档冲突以最新 main 为底，再补回本 PR 的 QA 入口、测试索引、D16 状态和页面菜单测试脚本。`package.json` 保留 main 的 Release/签名配置与完整测试链，并将网页菜单合同和 E2E 纳入默认 `npm test`。
 - 定向验收：`node --test tests/page-context-menu.test.mjs` 3 项通过；网页菜单真实 Electron fixture 后续随完整 `npm test` 执行。初次全量运行在既有 `profile-deletion-e2e.cjs:99` 的同名 Profile 新 ID 断言失败，该脚本独立复跑通过；失败前新增的网页菜单合同 3 项全部通过。
 - 环境与边界：macOS arm64、隔离 Electron 数据目录、本地网页 fixture；不读真实浏览数据、不调用模型或 OAuth。菜单 E2E 将 `Menu.prototype.popup` 替换为捕获器，不能据此声称原生菜单绘制、系统焦点、VoiceOver、图片目标实际操作或打包版通过。竞品行为依据见既有 QA 记录，本轮未重新进行竞品逆向。
-- 最终全量：在同一集成候选上，`env -u ELECTRON_RUN_AS_NODE npm test` 最终 EXIT 0：37 项 node:test、65 条串行 Electron/契约脚本全部通过。前四次全量曾分别在 `profile-deletion-e2e.cjs:99`、`interaction-states-e2e.cjs:34`、`pi-workbench-e2e.cjs:617`、`profiles-e2e.cjs:12` 失败；四个脚本各自独立复跑通过，最终完整重跑通过。`git diff --check origin/main...HEAD` 通过。
+- 最终全量：在集成候选（含远端新增双语断言和工作区取整断言修正）上，`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0：37 项 node:test、65 条串行 Electron/契约脚本全部通过。此前全量曾分别在 `profile-deletion-e2e.cjs:99`、`interaction-states-e2e.cjs:34`、`pi-workbench-e2e.cjs:617`、`profiles-e2e.cjs:12` 失败；四个脚本各自独立复跑通过。`window-state-e2e.cjs` 严格高度相等断言在 main 与候选上均因原生取整差失败，容差修正后定向与最终全量通过。`git diff --check origin/main...HEAD` 通过。
+- 工作区原生取整修正：最新 main 与 PR 候选均可复现 `window-state-e2e.cjs` 的严格高度相等断言因 macOS workArea 取整差 1–3px 失败；窗口仍完整包含在工作区中。测试现在允许高度最多比 workArea 计算值小 4px，同时保留完整边界包含断言。定向 `window-state-e2e.cjs` 与修正后的全量套件通过。
 
 ## 2026-11-05 PR #273 Release workflow 前向重放（候选，未合并）
 
