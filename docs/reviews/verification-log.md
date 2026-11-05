@@ -1615,3 +1615,5 @@
 - 表单语义收益：动态按钮显式 `type='button'` 后，即使未来被移入真实 `<form>` 也不会隐式提交（当前 `#pi-task-form` 为 `<section>`、唯一动态真表单 :623 已显式 `type='submit'` + `onsubmit` preventDefault，无既有 bug）。
 
 - 未覆盖：VoiceOver、Windows/Linux、打包版；查找条/菜单/关闭面板按钮未逐一 hover 探测（同类全局规则覆盖，工具栏代表已证一致）。
+
+- 2026-11-05 集成重放补充（PR #294，integrate-glm-01）：前向合并最新 main（含 #290/#291 squash 后内容），styles.css 三处冲突取 main token 版并保留本切片对 `.pi-model-action` hover 冗余声明的删除（已核实现行通用 `button:hover:not(:disabled):not([type="submit"])` 同值接管，且 renderer `button()` helper 与静态按钮均已带 `type="button"`）；base 改为 main。定向：`interaction-states-e2e`、`pi-workbench-e2e`、`pi-workbench-e2e` 与 `agent-rooms-panel-e2e` 三者 PASS。本地 `git merge-tree --write-tree origin/main HEAD` 干净（单一 merge-base `8e492bb`）；GitHub CONFLICTING 为服务端缓存误报，重算后合并。
