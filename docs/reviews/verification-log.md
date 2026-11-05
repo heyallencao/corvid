@@ -1398,6 +1398,13 @@
 - 按 PR #242 live head `3046f5ceabb498fd758a78f5a5988888702a0662` 向 main `266418fc27217e86b51994efdada92702ed899da` 普通 merge；picker 定向入口为 `env -u ELECTRON_RUN_AS_NODE node tests/pi-model-picker-ui-e2e.cjs`，并可配合 `node tests/pi-workbench-short-height-e2e.cjs`。
 - PR 原分支记录的定向 E2E 与静态检查结果见 [模型选择器 QA 记录](../qa/issue-208-model-picker.md)。本次集成准备只执行 `node --check` 和 `git diff --check`；没有运行定向 E2E 或全量门禁。credential E2E 与 main 的并行改动冲突，本次保留 main 版本，PR 原报告的 Key 保存失败结论仍然适用。
 
+## 2026-11-05 PR #242 最新 main 集成验收
+
+- 候选：PR #242 head `3046f5c` 及其模型 picker 修改已融合到当时 main，随后继续合并最新 `origin/main` `faaaa02`；最终测试候选 `4e32ae3`。环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离 Electron 数据目录与本地合成页面/模型目录。
+- 定向与全量：模型 picker UI、未连接模型双语标签、Pi 工作台、短窗、凭据安全存储、自定义端点及其余主线 Electron/契约脚本均在 `env -u ELECTRON_RUN_AS_NODE npm test` 中通过；全量 34 项 node:test 与整条串行 Electron/契约链 EXIT 0。合并前一次全量曾在 `page-lifecycle-e2e.cjs:17` 等待标签按钮超时，该脚本独立复跑通过；纳入最新 main 后完整重跑通过。
+- 冲突融合：保留 PR 的搜索式模型选择器和 main 的未连接模型名称隐藏语义；模型 picker 的凭据与工作台 E2E 按 provider/model 选择并等待 locale 重渲染完成。`git diff --check` 通过。
+- 边界：仅 macOS 开发版与本地 fixture；没有 OAuth、真实模型调用或个人凭据操作。未覆盖 Windows、签名包和真实屏幕阅读器输出。测试产生的其他 QA 截图恢复为候选原始文件；模型 picker 截图和 SHA-256 见[模型选择器 QA 记录](../qa/issue-208-model-picker.md#截图)。
+
 ## 2026-11-04 原生菜单焦点测试边界复核（Issue #130）
 
 - 变更：快捷键 E2E 改为向唯一隔离 Electron 窗口发送输入，不再依赖 `BrowserWindow.getFocusedWindow()`；纯 Node 菜单合同增加断言，确认 Window 菜单项回调将选中窗口 ID 交给焦点处理器。
