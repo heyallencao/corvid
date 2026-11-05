@@ -1541,3 +1541,10 @@
 - 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
 - E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
 - 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
+## 2026-11-04 Issue #96 Agent Room 授权权限复验
+
+- 最新主线复验：基于 `origin/main` `9399642` 重放 PR #159 的跨平台验收切片后，在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-access-e2e.cjs`，EXIT 0，输出 `Agent access authorization E2E passed`。使用测试自建临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；没有读取用户资料、访问外网、使用 OAuth 或调用模型；测试退出后无残留 Electron。
+- 历史跨平台证据：PR #159 的 `agent-access-e2e` 在提交 `46a6e7f` 上通过 GitHub Actions [运行 #41633898145](https://github.com/heyallencao/corvid/actions/runs/41633898145)，macOS、Windows、Ubuntu 原生 runner 全部成功。Windows 用 PowerShell 检查授权文件 owner 与允许 ACL 主体；POSIX 检查 0600。此 Actions 运行早于当前主线与本次修订，不能代替当前提交的 Windows 验证。
+- 本次变更后检查：`node --check tests/agent-access-e2e.cjs` 与 `git diff --check` 通过。PR 切片增加跨平台文件权限断言与验证记录；依据仓库 CI 红线，已删除 PR 触发的 Actions workflow。Windows ACL 断言仍待 Windows 环境执行。当前授权服务端文件和路由未随本切片修改。
+- 覆盖边界：确定性 Agent 客户端与 Room 的并发授权、越权拒绝、凭据摘要/权限、撤销和重启状态；不连接真实 Provider/OAuth，不验证真实 MCP host，也不提供同一 OS 用户恶意进程隔离。
+
