@@ -17,7 +17,7 @@
 
 仓库的手动 GitHub Release workflow 在同一已合并 `main` SHA 上构建 macOS arm64/x64 DMG 与 ZIP，以及 Windows x64 当前用户 NSIS 安装器。三个目标均完成构建和打包版启动 smoke 后，发布 job 校验五个安装产物的精确文件名和集合，并附 SHA-256 清单。Windows smoke 从 `win-unpacked` 启动应用，不执行 NSIS 安装器安装流程。版本与 `package.json` 完全一致，格式为 `0.x.x`；首发仅接受 `0.2.0`，之后常规只递增 patch。GitHub 仓库为公开仓库，Release 资产也公开可下载。
 
-workflow 由 `workflow_dispatch` 启动，只允许从 `main` 触发。preflight 固定 main SHA，build 和 publish 都 checkout 同一 SHA；只有 publish job 获得 `contents: write` 权限。
+workflow 由 `workflow_dispatch` 启动，只允许从 `main` 触发。preflight 固定 `workflow_dispatch` 事件对应的 main SHA，build 和 publish 都 checkout 同一 SHA；只有 publish job 获得 `contents: write` 权限。
 
 ## 尚未建立的分发合同
 

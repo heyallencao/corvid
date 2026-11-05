@@ -65,7 +65,9 @@
           "arch": [
             "arm64"
           ]
-        }
+        },
+        "dmg",
+        "zip"
       ],
       "identity": null,
       "hardenedRuntime": false
