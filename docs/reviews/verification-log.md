@@ -1541,3 +1541,10 @@
 - 截图：sidebar 注入 disabled 按钮 `docs/qa/screenshots/issue-210-branch-sidebar-disabled.png` SHA-256 前 16 位 `6278ea1311ec701c`，与 main 对照（`5e7890d76a33c18d`）存在预期像素差异——即 46%→55% 可见度统一的直接视觉证据。
 - E2E：`dialogs-ui-e2e.cjs`、`profile-deletion-e2e.cjs`（含 disabled danger 按钮 opacity:1 特例，未受影响）、`agent-access-ui-e2e.cjs`、`interaction-states-e2e.cjs` 通过；`git diff --check` 通过。
 - 未覆盖：VoiceOver、Windows/Linux、打包版；surface/line/accent/状态色 其余 token 表为后续子切片（与 PR #252 分工见 issue 评论）。
+## 2026-11-04 accent 对比色 token（Issue #210 子切片 D2）
+
+- 分支 `ui/issue-210-accent-contrast`（堆叠于 `ui/issue-210-disabled-token`），改动仅 `desktop/styles.css`。
+- 改动：`:root` 新增 `--accent-contrast: #fff`；4 处 accent 实底上的 `color: #fff`（.pi-model-action 连接 CTA、.pi-create-room/.pi-primary-action、.workspace-empty-action、onboarding 末位主按钮）改为 `color: var(--accent-contrast)`。
+- 复核背景：当前 main 的 `:root` 之外裸 hex 仅剩 `#fff` ×4（issue 基线的 54 值已被合并 PR 波次基本清偿），本切片完成「裸 hex 归并」收尾。
+- 验证：注入 renderer 同构节点读取 `.pi-primary-action`/`.workspace-empty-action` 计算色——main 与分支一致；注入按钮元素截图逐字节相同；`interaction-states-e2e.cjs`、`dialogs-ui-e2e.cjs` 通过；`git diff --check` 通过。
+- 边界：工作台整体截图含堆叠的 disabled 子切片预期差异，隔离验证以注入节点为准；未覆盖 VoiceOver/其他平台/打包版。
