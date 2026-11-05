@@ -12,7 +12,8 @@ const expectedArch = process.env.CORVID_PACKAGED_ARCH ?? process.arch;
 let executablePath;
 let appBundle;
 if (process.platform === 'darwin') {
-  appBundle = path.join(root, 'dist', `mac-${expectedArch}`, 'Corvid.app');
+  const appDir = expectedArch === 'arm64' ? 'mac-arm64' : 'mac';
+  appBundle = path.join(root, 'dist', appDir, 'Corvid.app');
   executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
 } else if (process.platform === 'win32') {
   executablePath = path.join(root, 'dist', 'win-unpacked', 'Corvid.exe');

@@ -5,7 +5,8 @@
 - 候选基线：GitHub `main` `266418fc27217e86b51994efdada92702ed899da`；从 PR #273 精确差异重放发布 workflow、macOS x64/Windows 打包设置与跨平台打包 smoke 支持，保留 main 的签名打包路径、完整 npm test 链及更新后的窗口/Agent E2E 断言。为生成 arm64/x64 DMG/ZIP，在 main 的默认目录 target 上叠加 DMG/ZIP targets。
 - 安全与来源修正：workflow 仅 `workflow_dispatch`；preflight 拒绝非 `refs/heads/main` 触发，checkout main 并取完整 tag history；首个版本仅允许无历史 release tag 时使用 `0.2.0`，之后要求同一 major/minor 下 patch 连续递增；build 与 publish 固定使用 preflight 输出的同一 main SHA。重复 tag 检查保留。publish 独占 `contents: write`，校验五个精确资产名及无额外安装资产，再生成 SHA-256 清单。
 - 可见性修正：GitHub 仓库 API 返回 `PUBLIC`。架构和 Release notes 改为明确下载公开可见；workflow 未启用签名/公证，也未生成 GitHub artifact provenance/attestation。SHA-256 清单只能检测下载后字节变化，不证明构建来源。Windows smoke 实际启动 `win-unpacked` 应用，不验证 NSIS 安装交互。
-- 静态验证：Ruby YAML parser 解析 workflow 成功；`node --check scripts/package-mac-dir.cjs`、`node --check tests/packaged-app-e2e.cjs`、`git diff --check` 通过；尚未运行 workflow、打包或全量 E2E。
+- 本机候选验证：隔离 `npm ci` 375 packages，0 vulnerabilities；`npm run package:mac:dir` arm64 `.app` 构建成功，`npm run test:packaged:mac` PASS（macOS 15.5 arm64、Electron 45.2.1）；规定的完整 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0（34 项 node:test 与全部串行 E2E 脚本通过）。`npm run package:mac:release` 产出 `Corvid-0.2.0-mac-arm64.dmg` 与 `.zip`。macOS x64 目录构建成功；本机 smoke 首次发现测试路径与 electron-builder 输出目录命名不一致，已将测试路径修正为 `dist/mac/Corvid.app`。本机 arm64 进程无法启动 x64 packaged app；x64 启动需 Intel hosted runner 结果。
+- 静态验证：Ruby YAML parser 解析 workflow 成功；`node --check scripts/package-mac-dir.cjs`、`node --check tests/packaged-app-e2e.cjs`、`git diff --check` 通过。Windows runner、实际 NSIS 安装、公开 Release、签名/公证、provenance 均未验证。
 - 阻塞与限制：检查时 `/private/tmp/corvid-integrate-pr172-support` 的 Electron 主进程仍运行（PID 78990，另有 renderer helpers）。为避免并发 Electron 验收相互干扰，本候选定向/全量 E2E 暂缓，未终止其他会话进程。macOS Intel 和 Windows hosted runner、公开 Release 真实发布、签名/公证、NSIS 安装器安装交互均未验证；本记录不构成通过或合并结论。
 
 ## 2026-11-05 Issue #204 onboarding 主要操作 hover 对比（PR #255 前向集成复验）
