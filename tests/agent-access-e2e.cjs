@@ -1,6 +1,7 @@
 const { _electron } = require('playwright-core');
 const electronPath = require('electron');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
@@ -8,6 +9,32 @@ const path = require('node:path');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function assertAgentClientStoreIsOwnerOnly(filePath) {
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(filePath).mode & 0o777, 0o600, 'agent client grants are owner-only on POSIX');
+    return;
+  }
+
+  const script = [
+    "$path = [Environment]::GetEnvironmentVariable('CORVID_AGENT_ACL_PATH')",
+    '$acl = Get-Acl -LiteralPath $path',
+    '$userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value',
+    '$owner = New-Object System.Security.Principal.NTAccount -ArgumentList $acl.Owner',
+    '$ownerSid = $owner.Translate([System.Security.Principal.SecurityIdentifier]).Value',
+    '$rules = @($acl.Access | ForEach-Object { $sid = try { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value } catch { $_.IdentityReference.Value }; [pscustomobject]@{ sid = $sid; access = $_.AccessControlType.ToString(); rights = $_.FileSystemRights.ToString() } })',
+    '[pscustomobject]@{ userSid = $userSid; ownerSid = $ownerSid; rules = $rules } | ConvertTo-Json -Depth 4 -Compress',
+  ].join('; ');
+  const output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    env: { ...process.env, CORVID_AGENT_ACL_PATH: filePath },
+  }).replace(/^\uFEFF/, '').trim();
+  const acl = JSON.parse(output);
+  const privilegedSids = new Set([acl.userSid, 'S-1-5-18', 'S-1-5-32-544']);
+  assert.equal(acl.ownerSid, acl.userSid, 'the Windows grant file is owned by the current user');
+  assert.ok(acl.rules.some(rule => rule.sid === acl.userSid && rule.access === 'Allow' && rule.rights.includes('FullControl')), 'the current user can manage the Windows grant file');
+  assert.deepEqual(acl.rules.filter(rule => rule.access === 'Allow' && !privilegedSids.has(rule.sid)), [], 'Windows grant file access is limited to the current user, SYSTEM, and local Administrators');
+}
 
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-agent-access-'));
@@ -157,7 +184,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(grants.clients.find(client => client.id === grantA.id).revoked, true);
     const grantStore = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-clients.json'), 'utf8'));
     assert.equal(grantStore.clients.some(client => client.tokenHash === grantA.token), false, 'plaintext credential is never persisted');
-    assert.equal((fs.statSync(path.join(dataDir, 'agent-clients.json')).mode & 0o777), 0o600);
+    assertAgentClientStoreIsOwnerOnly(path.join(dataDir, 'agent-clients.json'));
     await app.close();
     app = await _electron.launch({ executablePath: electronPath, args: [project], env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' } });
     await app.firstWindow();
