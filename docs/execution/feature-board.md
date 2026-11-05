@@ -132,3 +132,7 @@
 6. **测试替身与人工验证**：自动化中的系统对话框是测试替身；真实保存对话框、原生权限提示、原生 beforeunload 必须单独做人工验证并写入验证记录。
 7. **CLI**：先启动桌面，并使用相同的 `CORVID_DATA_DIR`，再运行 `node cli/corvid.mjs run < script.mjs`；脚本在 Node 中执行（`AsyncFunction`，无静态 `import`/`export`），拥有本地用户权限。`node cli/corvid.mjs help` 查看入口说明。
 8. **索引与记录**：逐项测试说明见 [端到端测试索引](../qa/e2e-suites.md)；每次全量或新增测试后，按时间倒序追加到 [验证记录](../reviews/verification-log.md)。
+
+## D21 子项跟踪：Issue #203 菜单危险操作
+
+已完成关闭标签、关闭其他标签、关闭当前空间、清理此站点数据的危险样式子项；浅/深主题隔离 Electron 运行态验收与截图见[视觉检查记录](../qa/ui-visual-check.md#2026-11-04-菜单破坏性动作语义-issue-203)。Issue #203 的覆盖体系一致性等其余范围仍开放。

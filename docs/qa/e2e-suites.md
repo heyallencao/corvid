@@ -135,3 +135,9 @@
 | 74 | `tests/settings-preferences-e2e.cjs` | 真实 Electron 设置中心：schemaVersion 1 主题迁移到 schemaVersion 2 并保持 0600；中英文启动/新标签/下载选项读取与保存；启动新标签在恢复普通网页期间仍能创建，连续重启复用已有空白标签；新标签起始页/空白页开关；下载询问取消、自动保存到选择目录、目录失效的中英文错误；700×420 下载路径/文件夹操作首屏完整可见、设置分类 Tab 焦点可见；主题立即应用并在取消设置后保持；注入第二步浏览器偏好保存失败，断言搜索设置已保存且 UI 明确报告部分保存；1024×700 与 700×420 中英文设置截图。 | 临时 `CORVID_DATA_DIR`、本地 HTTP 下载/网页 fixture、测试目录选择器和保存对话框结果、测试模式一次性保存失败注入；不验证真实系统文件夹/保存对话框、Windows/Linux、打包版、屏幕阅读器；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
 | 75 | `tests/settings-site-e2e.cjs` | 真实 Electron 设置中心“当前网站”分类：空白页禁用站点操作；本地 HTTP 来源与权限/数据按钮状态；权限查看取消；站点数据取消保持 localStorage，确认后清理活动来源；默认按钮为非破坏选项；切换英语后动态来源与状态仍正确；1024×700 与 700×420 中英文截图，窄窗滚动可达操作按钮。 | 临时 `CORVID_DATA_DIR` 与本地合成网页；原生确认框由替身返回取消/确认，不验证原生对话框像素/辅助技术/跨平台；权限实际授予/撤销的服务合同由 `permissions-e2e` 覆盖，浏览数据作用范围由 `site-data-e2e` 覆盖；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
 | 76 | `tests/button-hover-contrast-e2e.cjs` | 真实 Electron 首次启动 Chrome 导入引导：浅/深主题 hover 时主要操作保留强调色背景，文字对比度均≥4.5:1；次要中性操作仍使用 hover 表面。 | 隔离 `CORVID_DATA_DIR`、测试模式合成 onboarding；1024×700、zh-CN；不验证 Windows/Linux、打包版、屏幕阅读器或网页合成像素。 |
+
+## Issue #203 菜单破坏性动作定向覆盖
+
+- `tab-pin-menu-e2e.cjs`：标签菜单打开、键盘导航、关闭标签/关闭其他标签危险颜色与 hover，浅/深主题。
+- `room-close-e2e.cjs`：关闭当前空间危险颜色与 hover，浅/深主题，并覆盖取消、期间标签变化、关闭竞态、书签/历史保留与重启。
+- `permissions-e2e.cjs`：清理此站点数据危险颜色与 hover，浅/深主题，并覆盖站点权限菜单键盘操作及 Profile 隔离。
