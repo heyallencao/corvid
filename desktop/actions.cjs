@@ -267,7 +267,22 @@ module.exports = async function runAction(contents, operation, args = {}) {
   if (operation === 'screenshot') {
     if(args.fullPage!==undefined && typeof args.fullPage!=='boolean')throw new Error('fullPage must be boolean');
     if(args.fullPage && args.clip!==undefined)throw new Error('fullPage and clip cannot be combined');
-    if(!args.fullPage && args.clip===undefined)return {base64:(await contents.capturePage()).toPNG().toString('base64')};
+    if(!args.fullPage && args.clip===undefined) {
+      try { return {base64:(await contents.capturePage()).toPNG().toString('base64')}; }
+      catch(error) {
+        if(!String(error?.message || error).includes('UnknownVizError'))throw error;
+        // Some macOS runners have no capturable Viz surface even though the
+        // page debugger is available. Capture the visible CSS viewport via CDP.
+        if(!pageDebugger.available(contents))await pageDebugger.ensure(contents);
+        const metrics=await contents.debugger.sendCommand('Page.getLayoutMetrics');
+        const viewport=metrics.cssVisualViewport || metrics.cssLayoutViewport;
+        if(!viewport || !Number.isFinite(viewport.clientWidth) || !Number.isFinite(viewport.clientHeight))throw new Error('Page viewport size is unavailable');
+        const {devicePixelRatio}=await run('viewport',{});
+        if(!Number.isFinite(devicePixelRatio) || devicePixelRatio<=0)throw new Error('Page device scale factor is unavailable');
+        const result=await contents.debugger.sendCommand('Page.captureScreenshot',{format:'png',captureBeyondViewport:false,clip:{x:0,y:0,width:viewport.clientWidth,height:viewport.clientHeight,scale:1/devicePixelRatio}});
+        return {base64:result.data};
+      }
+    }
     if(!pageDebugger.available(contents))throw new Error('Page debugger is unavailable');
     let clip=args.clip;
     if(args.fullPage) {const metrics=await contents.debugger.sendCommand('Page.getLayoutMetrics');const size=metrics.cssContentSize;if(!size)throw new Error('Page content size is unavailable');clip={x:0,y:0,width:Math.ceil(size.width),height:Math.ceil(size.height)};}
