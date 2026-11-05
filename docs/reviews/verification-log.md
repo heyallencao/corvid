@@ -1939,3 +1939,10 @@
 - 验证：`node tests/pr-description-images.test.cjs` 10 项通过；`node --check scripts/check-pr-description-images.cjs`、`node --check tests/pr-description-images.test.cjs`、`git diff --check` 通过。没有在 GitHub 正文中上传或替换图片，因为当前开放正文没有图片目标。
 - 全量回归：首次运行因隔离 worktree 尚未安装依赖，node:test 的 browser/dialogs/uploads 三个入口报 `ERR_MODULE_NOT_FOUND: electron`，不是产品测试失败；随后 `npm ci` 安装 375 个包，再运行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，37/37 node:test 与后续全部串行 E2E/合同脚本通过。Pi Workbench 重绘修复后的历史项键盘焦点断言通过。启动前另有 #217 worktree 的 E2E 进程存活；本次链自身完整退出。
 - 边界：检查器只验证链接形式，不下载/渲染图片，也不检查图像脱敏。当前开放 PR 的 GitHub 渲染检查无图片可覆盖；本轮改动未触及应用代码。完整全量结果仅代表当前 macOS 开发环境。
+
+## 2026-11-06 Release hosted macOS follow-up（Issue #319，PR 前）
+
+- 候选：`821fb01`，从最新 `origin/main` `4ec3a88` 干净 worktree 重放；修复 electron-builder 的 `dist/mac` 输出归一为架构目录，并在 `capturePage()` 遇到 `UnknownVizError` 时回退 CDP viewport 截图。原 follow-up worktree 含有既存 QA 截图修改，保留未动；本轮验证在 `infra/issue-319-release-hosted-v2`。
+- 定向验证：`node tests/package-mac-dir-contract.cjs`、`node tests/screenshot-fallback-contract.cjs` 通过；`node --check desktop/actions.cjs`、`node --check scripts/package-mac-dir.cjs`、`git diff --check origin/main...HEAD` 通过。另在同一最新主线基线运行 `env -u ELECTRON_RUN_AS_NODE node --test tests/electron-startup.e2e.mjs`，8/8 通过；`node tests/pr-description-images.test.cjs` 10 项通过。`npm ci` 成功安装 375 个包，0 vulnerabilities。
+- 全量状态：本候选尚未取得 `env -u ELECTRON_RUN_AS_NODE npm test` 的最终结果。此前旧候选运行时，CUA 报告 macOS 已锁屏，browser input focus、page dialogs、file chooser 三项失败；锁屏后原生窗口/焦点不可交互，不能将该结果归因于本次代码，也不能记为通过。当前机器仍报告锁屏，需解锁后在本候选完整重跑。Issue #319 已加 `blocked:user` 并请求手工解锁，后续不得以定向测试替代全量门禁。
+- hosted 状态与限制：workflow `workflow_dispatch` 的 preflight 明确只接受 `refs/heads/main`，因此候选需按本地门禁完成 PR 自检与 squash merge 后，才能从 main 以 `version=0.2.0`、`publish=false` 复验 hosted x64 packaged smoke、arm64 全量重试门禁及 Windows packaged smoke。当前尚未创建 follow-up PR、尚未合并或发布。
