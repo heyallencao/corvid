@@ -110,6 +110,15 @@
 - 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，Node 阶段 34 项中 31 PASS、3 FAIL：`browser.e2e.mjs:99` 输入焦点 HTTP 400，`dialogs.e2e.mjs:26` renderer alert 超时，`uploads.e2e.mjs:40` file chooser 超时。三项在干净 `origin/main` `fe77898` 以相同签名复现，归于 Issue #289；本 PR 未观察到特有失败。运行时临时借用主工作区已安装依赖，测试后移除链接。
 - 限制：未通过原生 popup blur 子场景、未运行真实 Chrome 用户资料/系统钥匙串、真实网站、Windows/Linux 或打包版；全量命令未通过，Issue #18 仍开放跟踪其余跨平台与窄窗验收。
 
+## 2026-11-04 Agent 工作台校验错误本地化（Issue #130，PR 前验证）
+
+- 变更：Agent 工作台的页面同意、任务输入、页面已变化、续聊资格、停止未确认、历史不足及控制权已交回错误改为稳定 Corvid 错误码，并补齐中英文资源。真实 IPC 测试确认 Electron 对业务 Error 的包装形式仍能映射到 locale 文案。同步更新本地化架构、D24、E2E 索引与 QA 记录；Issue #130/D24 仍为开放/部分。
+- 环境：独立 worktree `/private/tmp/corvid-issue130-agent-error-localization`，已重放到当时最新 `origin/main` 的 `25e97aa`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。测试使用临时 `CORVID_DATA_DIR` 和 loopback HTTP fixture；没有访问外网/真实浏览数据，没有调用模型或 OAuth。
+- 验证：`node tests/agent-task-continuation-contract.cjs`、`node --check desktop/locales.js`、`node --check tests/pi-workbench-errors-e2e.cjs` 与 `git diff --check` 通过。`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-errors-e2e.cjs` 在真实 Electron 中通过：英文界面确认页面上下文后导航 Agent Room 绑定页，再提交旧预览，显示英文“Message not sent: The page changed. Review and confirm its content again.”，且没有创建任务。首次 E2E 运行发现 IPC 包装使既有仅匹配字符串开头的本地化逻辑漏译；测试改为导航 Agent 实际绑定的标签并保留回归断言后通过。全量 `npm test` 未运行。
+- GitHub Actions：PR #249 的六个 macOS、Ubuntu、Windows job 均未启动，`steps=[]`；GitHub annotation 指向近期账户付款失败或支出限额。跨平台 CI 未执行，不属于代码测试失败，也不能记为通过。
+- 本轮没有运行签名包、钥匙串或 notarization 诊断；不据此宣称打包签名运行态已验证。未测其他主进程/Provider 错误、Windows/Linux、VoiceOver 或完整双语工作台全流程。错误文案切片不改视觉结构，因此未做竞品 UI/REA 比较。
+- 2026-11-05/06 重放与全量门禁（本会话）：PR 净差异随当日主线推进共重放七轮，最终基线 `origin/main` `83f2aa2`（当日 #227/#229/#238/#242/#246/#232/#318/#237/#320/#321/#322/#323/#324 先后合入，候选逐一跟进重放）。冲突融合三处语义：`agent-workbench.cjs` 控制权交回分支保留 main 的 `await disposeSession(task, session)` 并叠加本 PR 错误码；`locales.js` `userFacingError` 保留 main 去锚定正则并叠加本 PR 的 Electron IPC 包装剥离，映射表同时保留 main 的 chrome-sqlite 三键与本 PR 七键；`package.json` 在 main 现行全链尾部（`native-controls-e2e.cjs` 后）追加 `pi-workbench-errors-e2e.cjs`（e2e-suites 表头 77/75→78/76、独立脚本 65→66、共 102→103 项，新增行 78）。重放环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1、临时 `CORVID_DATA_DIR` 与本地 fixture。定向：`node tests/agent-task-continuation-contract.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-errors-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 在最终候选均 EXIT 0。全量 `env -u ELECTRON_RUN_AS_NODE npm test` 在最终基线完整链 EXIT 0（node:test 37/37 与全部串行 Electron/E2E/合同脚本通过，含本 PR 新用例）。此前基线 `926a9e1` 亦有一次完整链 EXIT 0；期间 13 轮链内散点失败涉及 8 个与本 PR 无交集的套件（sdk 截图 400、tab-pin/room-close/application-menu/permissions/evaluation-risk/fullscreen/chrome-import 原生外点、pi-workbench 摘要行与键盘断言），全部逐套件隔离复跑 EXIT 0，多次失败时实测 4–29 个并行会话 Electron 进程，与 Issue #289 及同夜 #204（对照实验证明 pi-workbench 键盘断言在未改动 main 上 3/3 复现）、#318、#246 合并记录的口径一致。门禁后仅更新本条目并还原门禁链误写的范围外截图。
+
 ## 2026-11-04 Issue #205 扩展提示文案复核
 
 - 现状核对：`desktop/renderer.js` 中的「页面上下文」错字已在当前主分支修复；不重复改动。扩展工具栏弹窗也已实现：`desktop/main.cjs` 的 `openExtensionPopup` 与 `tests/chrome-import-e2e.cjs` 覆盖弹窗打开、隔离和关闭；能力记录见 `docs/execution/feature-board.md` D14 及 PR #131。

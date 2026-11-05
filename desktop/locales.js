@@ -330,6 +330,13 @@
       startingTask: '正在启动 Agent 任务…',
       agentTaskRoomBusy: '此空间已有 Agent 任务正在启动或运行。请等待完成，或在其他空间并行开始。',
       agentControlUnavailable: '当前空间、浏览身份或页面已变化，请交还控制或重新检查页面后重试。',
+      agentPageContextRequired: '请先检查并确认要分享的页面内容。',
+      agentTaskContentInvalid: '任务内容不能为空，且最多为 8000 个字符。',
+      agentPageContextChanged: '页面已变化。请重新检查并确认页面内容。',
+      agentTaskContinuationUnavailable: '此对话当前无法继续。请检查任务状态，或开始新对话。',
+      agentTaskStopUnconfirmed: '无法确认上一轮已停止。请检查模型服务和页面状态，再开始新对话。',
+      agentTaskHistoryUnavailable: '没有足够的已保存对话可供继续；原记录已保留。请开始新对话。',
+      agentControlReturned: '空间已交还给你。请检查页面后重新开始。',
       agentQueueChanged: '队列顺序或消息内容已变化，请刷新队列并重新检查页面。',
       agentQueueMissing: '这条后续消息已不存在，请刷新队列后重试。',
       agentQueueUnavailable: '这段对话当前无法继续，不能添加后续消息。',
@@ -841,6 +848,13 @@
       startingTask: 'Starting Agent task…',
       agentTaskRoomBusy: 'An Agent task is already starting or running in this space. Wait for it to finish, or start a parallel task in another space.',
       agentControlUnavailable: 'This space, profile, or page has changed. Return control or review the page again before retrying.',
+      agentPageContextRequired: 'Review and confirm the page content before sharing it.',
+      agentTaskContentInvalid: 'Task text cannot be empty and must be 8,000 characters or fewer.',
+      agentPageContextChanged: 'The page changed. Review and confirm its content again.',
+      agentTaskContinuationUnavailable: 'This conversation cannot continue right now. Check its status or start a new conversation.',
+      agentTaskStopUnconfirmed: 'The previous run could not be confirmed as stopped. Check the model service and page, then start a new conversation.',
+      agentTaskHistoryUnavailable: 'There is not enough saved conversation to continue. The original record was kept; start a new conversation.',
+      agentControlReturned: 'The space has been returned to you. Review the page before starting again.',
       agentQueueChanged: 'The queue order or message changed. Refresh the queue and review the page again.',
       agentQueueMissing: 'This follow-up message is no longer available. Refresh the queue and try again.',
       agentQueueUnavailable: 'This conversation cannot continue, so follow-up messages cannot be added.',
@@ -1071,7 +1085,9 @@
     formatDate(value, options) { return new Intl.DateTimeFormat(locale, options).format(value instanceof Date ? value : new Date(value)); },
       formatList(values, options) { return new Intl.ListFormat(locale, options).format(values); },
     userFacingError(message) {
-      const match = String(message || '').match(/\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
+      const rawMessage = String(message || '');
+      const ipcError = rawMessage.match(/^Error invoking remote method '[^']+': Error: ([\s\S]*)$/);
+      const match = (ipcError ? ipcError[1] : rawMessage).match(/\[\[corvid-error:([a-z0-9-]+)\]\]\s*/i);
       if (!match) return null;
       const key = {
         'secure-storage-unavailable': 'secureStorageUnavailable',
@@ -1086,6 +1102,13 @@
         'chrome-sqlite-corrupt': 'chromeSqliteCorrupt',
         'chrome-sqlite-busy': 'chromeSqliteBusy',
         'chrome-sqlite-read-failed': 'chromeSqliteReadFailed',
+        'agent-page-context-required': 'agentPageContextRequired',
+        'agent-task-content-invalid': 'agentTaskContentInvalid',
+        'agent-page-context-changed': 'agentPageContextChanged',
+        'agent-task-continuation-unavailable': 'agentTaskContinuationUnavailable',
+        'agent-task-stop-unconfirmed': 'agentTaskStopUnconfirmed',
+        'agent-task-history-unavailable': 'agentTaskHistoryUnavailable',
+        'agent-control-returned': 'agentControlReturned',
         'agent-control-unavailable': 'agentControlUnavailable',
         'agent-queue-changed': 'agentQueueChanged',
         'agent-queue-missing': 'agentQueueMissing',

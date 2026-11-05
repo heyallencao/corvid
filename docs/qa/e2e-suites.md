@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 77 项入口：`npm test` 包含 75 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（10 个文件、37 个 `node:test` 用例）和 65 条独立脚本命令，共 102 项自动化检查；原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 78 项入口：`npm test` 包含 76 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（10 个文件、37 个 `node:test` 用例）和 66 条独立脚本命令，共 103 项自动化检查；原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 test 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）和 `tests/electron-startup.e2e.mjs`（启动/清理诊断替身）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -136,6 +136,7 @@
 | 75 | `tests/settings-preferences-e2e.cjs` | 真实 Electron 设置中心：schemaVersion 1 主题迁移到 schemaVersion 2 并保持 0600；中英文启动/新标签/下载选项读取与保存；启动新标签在恢复普通网页期间仍能创建，连续重启复用已有空白标签；新标签起始页/空白页开关；下载询问取消、自动保存到选择目录、目录失效的中英文错误；700×420 下载路径/文件夹操作首屏完整可见、设置分类 Tab 焦点可见；主题立即应用并在取消设置后保持；注入第二步浏览器偏好保存失败，断言搜索设置已保存且 UI 明确报告部分保存；1024×700 与 700×420 中英文设置截图。 | 临时 `CORVID_DATA_DIR`、本地 HTTP 下载/网页 fixture、测试目录选择器和保存对话框结果、测试模式一次性保存失败注入；不验证真实系统文件夹/保存对话框、Windows/Linux、打包版、屏幕阅读器；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
 | 76 | `tests/settings-site-e2e.cjs` | 真实 Electron 设置中心“当前网站”分类：空白页禁用站点操作；本地 HTTP 来源与权限/数据按钮状态；权限查看取消；站点数据取消保持 localStorage，确认后清理活动来源；默认按钮为非破坏选项；切换英语后动态来源与状态仍正确；1024×700 与 700×420 中英文截图，窄窗滚动可达操作按钮。 | 临时 `CORVID_DATA_DIR` 与本地合成网页；原生确认框由替身返回取消/确认，不验证原生对话框像素/辅助技术/跨平台；权限实际授予/撤销的服务合同由 `permissions-e2e` 覆盖，浏览数据作用范围由 `site-data-e2e` 覆盖；截图需 `CORVID_CAPTURE_QA_SCREENSHOTS=1`。 |
 | 77 | `tests/button-hover-contrast-e2e.cjs` | 真实 Electron 首次启动 Chrome 导入引导：浅/深主题 hover 时主要操作保留强调色背景，文字对比度均≥4.5:1；次要中性操作仍使用 hover 表面。 | 隔离 `CORVID_DATA_DIR`、测试模式合成 onboarding；1024×700、zh-CN；不验证 Windows/Linux、打包版、屏幕阅读器或网页合成像素。 |
+| 78 | `tests/pi-workbench-errors-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：将 UI 切换到英文，在 Agent Room 中预览并同意页面上下文后导航绑定页面，再提交旧预览；断言错误以英文呈现，且校验失败前未创建任务。 | 使用临时 `CORVID_DATA_DIR` 和本地合成页面；不访问外网/真实浏览数据，不调用模型或 OAuth；仅覆盖页面已变化错误和英文界面。 |
 
 ## Issue #203 菜单破坏性动作定向覆盖
 
