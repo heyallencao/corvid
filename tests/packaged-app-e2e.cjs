@@ -52,7 +52,8 @@ if (process.platform === 'darwin') {
     const architectures = process.platform === 'darwin'
       ? execFileSync('/usr/bin/lipo', ['-archs', executablePath], { encoding: 'utf8' }).trim().split(/\s+/)
       : [process.arch];
-    assert.deepEqual(architectures, [expectedArch]);
+    const normalizedArchitectures = architectures.map(arch => ({ x86_64: 'x64', aarch64: 'arm64' })[arch] ?? arch);
+    assert.deepEqual(normalizedArchitectures, [expectedArch]);
     assert.match(info.appPath, /\.asar$/,'desktop assets resolve from the packaged application archive');
 
     await shell.locator('#rooms').waitFor();

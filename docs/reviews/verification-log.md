@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Release macOS runner 失败复核（Issue #319）
+
+- 改动：macOS `lipo` 的 `x86_64`/`aarch64` 架构名先归一为 Node/Electron 的 `x64`/`arm64` 再断言；手动 Release workflow 的 arm64 全量回归现在允许完整链失败后重跑一次，仍需某一整轮全链成功，不跳过失败项。
+- Hosted runner 对照：原 run `41995765574` 的 x64 smoke 复跑仍命中旧架构断言；arm64 复跑未重现 socket 失败，而在 `window-state-e2e.cjs:37` 状态文件等待超时。两项复跑均使用 main SHA `06ca32b`，不含本修复。
+- 全量稳定性补强：复跑定位到 `pi-workbench-e2e.cjs:642` 的元素在 `loadAgentTaskSummaries()` 完成时随 `draw()` 重建 room strip，导致 scroll action 短暂拿到已脱离节点。测试只对这一 detached locator 错误有界重取（最多 4 次、50ms 间隔），其他错误直接失败；Pi Workbench 定向 E2E 连续 2 次 EXIT 0。
+- 最新主线全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，37/37 `node:test` 与其后完整串行 Electron/合同链全部通过。运行中刷新生成的 Issue #129/#18/#205/#279 截图已恢复到提交版本；未调用 OAuth 或真实模型服务。
+- Hosted runner 限制：目前两项 runner 复跑均在旧 main SHA `06ca32b`，不能验收本修复。合并后仍须手动 dispatch Release workflow，验证 x64 packaged smoke 和 arm64 全量重试门禁。
+
 ## 2026-11-06 Issue #130 子切片 A1：新标签起始页双语
 
 - 基线：隔离 worktree，候选基于 `origin/main` `83f2aa2`（含 PR #324），分支 `ui/issue-130-newtab-locale`。改动：`desktop/main-locales.cjs`（新增 `newTab*` 双语键 16 项）、`desktop/main.cjs`（起始页注入时按当前 uiLocale 构建文案对象，第二参数注入序列化函数）、`desktop/new-tab-page.cjs`（模板与书签卡可访问名称全部消费注入文案；宿主元素带 `lang` 与 `data-home-locale`/`data-home-heading` 镜像）、`tests/tab-ux-e2e.cjs`（双语断言块）、`docs/architecture/localization.md`。与开放 PR #249（locales.js/agent-workbench 域）无文件交集。
@@ -1878,3 +1886,9 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，串行 E2E 全链完成，其中 `pi-custom-endpoint-e2e.cjs` 与 `agent-rooms-panel-e2e.cjs` 均通过。
 - 并发限制：启动前曾检测到 #204 与 #165 两条隔离 E2E；等待 #204 退出后，在 #165 仍运行时启动本链，总并发为 2。全量链完成后其他会话又启动了新测试，因此本记录不宣称单机无并发或确认了旧失败根因。
 - 边界：当前 macOS 开发版与合成 fixture；未覆盖 Windows、签名包、真实网站或读屏。该全量 EXIT 0 是一次运行证据，不估算稳定失败率。
+
+## 2026-11-06 Release macOS gate 修复全量验证（Issue #319）
+
+- 候选：`1f7ad0b`（x64 架构名称归一与 arm64 全量回归失败重试）及 `1bbe5d0`（Pi Workbench 异步重绘时 detached locator 有界重取），基于最新 `origin/main` `25f28d6`。环境：独立 worktree `infra/issue-319-release-macos-gate`，macOS arm64、Node.js v24.22.1、Electron 45.2.1；全量命令 `env -u ELECTRON_RUN_AS_NODE npm test`，使用 `caffeinate` 防止系统休眠。
+- 验证：重放后首次全量运行在地址建议 E2E 的 `window.browserShell.invoke` 未就绪时失败，期间检测到另一 worktree #217 的全量 E2E 正在运行；未据此归因代码问题。随后第二次完整运行 `EXIT 0`，37/37 node:test 与后续全部串行 E2E/合同脚本通过，包括地址建议、Pi Workbench、启动诊断和 Agent 工作区用例。
+- 清理与边界：完整运行更新的 9 张已跟踪 QA 截图已恢复为分支原始字节。仅本机 macOS 开发版、合成数据和本地 fixture；未覆盖 Intel runner 实际打包产物、签名包、公证和 publish。手动 Release workflow 仍需通过 `workflow_dispatch` 验证 x64 packaged smoke 与 arm64 retry gate。

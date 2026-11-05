@@ -22,6 +22,19 @@ const saveQueueScreenshot = async (page, fileName) => {
   fs.mkdirSync(queueEvidenceDirectory, { recursive: true });
   await page.screenshot({ path: path.join(queueEvidenceDirectory, fileName) });
 };
+const scrollRoomMarkAfterSummaryRefresh = async page => {
+  const selector = '#room-strip button[data-room-mark]';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await page.locator(selector).first().scrollIntoViewIfNeeded();
+      return;
+    } catch (error) {
+      if (!/not attached to the DOM/.test(error.message) || attempt === 3) throw error;
+      // Agent summaries can replace the room strip while the compact layout is settling.
+      await page.waitForTimeout(50);
+    }
+  }
+};
 const readSavedTasks = dataDir => {
   const saved = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8'));
   return Array.isArray(saved) ? saved : saved.tasks;
@@ -639,7 +652,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(704,420));
     await restoredShell.waitForFunction(()=>window.innerWidth<=720);
     const compactRoom=restoredShell.locator('#room-strip button[data-room-mark]').first();
-    await compactRoom.scrollIntoViewIfNeeded();
+    await scrollRoomMarkAfterSummaryRefresh(restoredShell);
     await restoredShell.waitForFunction(()=>getComputedStyle(document.querySelector('#room-strip button[data-room-mark]'),'::after').display==='grid');
     await restoredShell.locator('#pi-task-list').evaluate(element=>{element.scrollTop=0;});
     assert.equal(await restoredShell.locator('.pi-chat-history').isVisible(),true,'conversation history remains visible in the narrow window');
