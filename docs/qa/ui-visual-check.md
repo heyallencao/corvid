@@ -551,3 +551,12 @@
 - UI/UE 参考与 REA：延用 EasyUI 首页有限的分区/命名状态参考，REA Evidence `ev_d2996c2ec957254fbbdaf189ae26cd41f3bf738048af3abad217259da86f4755`（站点 `https://easyui.site/`、首页；2026-11-03；具体观察限制见本节上方“设置中心首个切片”）。本轮没有重新访问参考页或创建新 REA Evidence；站点分类、焦点、滚动与状态只依据 Corvid 隔离运行态直接观察。EasyUI 没有被当作浏览器权限或清理流程证据，也未复制其代码/素材。
 - 未知与限制：通知权限请求与站点清理确认由 Electron `dialog.showMessageBox` 替身驱动；本地 fixture 已通过设置分类完成授权后保留/撤销检查，不证明原生系统权限/确认对话框的焦点与像素表现，也未覆盖屏幕阅读器、真实鼠标、Windows/Linux、打包版或全产品键盘顺序。
 
+
+
+## 2026-11-04 菜单破坏性动作语义（Issue #203）
+
+- 局部调整：`#tab-menu` 的关闭标签/关闭其他标签、`#room-menu` 的关闭当前空间、`#site-tools` 的清理此站点数据使用 `--danger`，hover 使用 `--surface-error`。历史/书签行删除按钮已使用同一语义色，Profile 删除确认继续使用现有 `.danger-button`；普通菜单动作保持中性。语义提示不替代既有确认、站点/Room 控制权检查。
+- 运行态证据：隔离 Electron、临时 Corvid 数据目录、本地 HTTP fixture；默认窗口 1280×850 CSS px，Playwright renderer 截图栅格 2560×1622。`tab-pin-menu-e2e.cjs` 对浅/深主题分别核对实际文字色与 hover 背景和 CSS tokens；`room-close-e2e.cjs` 验证空间关闭菜单危险态及取消/页面变化/关闭恢复回归；`permissions-e2e.cjs` 验证清理站点数据菜单危险态并保留焦点/键盘菜单回归。三项 EXIT 0。截图：![浅色标签菜单](screenshots/issue-203/tab-menu-destructive-light-1280x850.png)、![深色标签菜单](screenshots/issue-203/tab-menu-destructive-dark-1280x850.png)、![空间菜单](screenshots/issue-203/room-menu-destructive-1280x850.png)、![站点工具菜单](screenshots/issue-203/site-tools-destructive-1280x850.png)。均来自本地 fixture，不含用户浏览内容。
+- 设计参照：REA 在 Kobra `https://kobra.systems/components/command-menu` 读取页面可见的命令菜单源码面板，其中展示 `role=dialog`、`aria-modal=true`、Escape 关闭与减少动态效果；这是静态源码展示，不是该菜单完整运行行为。REA Evidence `ev_d72a8b14c30d4f87fbad13f3247133180bbadd80fb2c160e7ecc4fc386a4efe6`。该命令菜单是模态搜索；Corvid 此处是轻量上下文菜单，因此仅用于区分覆盖层类别，不移植模态语义。另一次开启参考菜单的运行态尝试未成功，不作为行为证据。
+- 验证环境：Node.js v24.22.1、Electron 45.2.1、Playwright Core 1.64.1；通过共享只读依赖目录 `NODE_PATH` 启动隔离 worktree。未启动签名包或触发钥匙串流程；未访问用户资料、真实站点、OAuth 或模型。
+- 剩余范围：此 Issue 还有覆盖体系一致性等更大议题，本子项只交付明确的破坏性菜单动作样式。截图来自 shell renderer，不覆盖上层 WebContentsView 的网页合成像素，也不代表 macOS 原生窗口/Windows/Linux验收。对 `desktop/index.html`、`desktop/renderer.js`、`desktop/styles.css` 的最终 Impeccable detector 扫描退出码为 2：报告 3 条侧边强调线 warning（其中 1 条来自既有 inline CSS，另 2 条指向其他组件的既有 CSS）、1 条层级 warning 和 11 条细描边/宽阴影 advisory；这些是跨页面启发式结果，均未指向本子项新增的菜单规则，因此不能表述为全站通过。
