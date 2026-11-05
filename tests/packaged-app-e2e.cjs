@@ -12,7 +12,7 @@ const expectedArch = process.env.CORVID_PACKAGED_ARCH ?? process.arch;
 let executablePath;
 let appBundle;
 if (process.platform === 'darwin') {
-  const appDir = expectedArch === 'arm64' ? 'mac-arm64' : 'mac';
+  const appDir = `mac-${expectedArch}`;
   appBundle = path.join(root, 'dist', appDir, 'Corvid.app');
   executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
 } else if (process.platform === 'win32') {
@@ -33,7 +33,7 @@ if (process.platform === 'darwin') {
   try {
     const launched = await launchElectron(_electron, {
       executablePath,
-      args: [],
+      args: ['--inspect=0'],
       env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' },
     }, { label: 'packaged-app-e2e', dataDir });
     app = launched.app;
@@ -78,6 +78,8 @@ if (process.platform === 'darwin') {
       child.once('exit', () => { clearTimeout(timer); resolve(); });
       if (child.exitCode !== null || child.signalCode) { clearTimeout(timer); resolve(); }
     });
+    assert.equal(child.signalCode, null, 'packaged app exits normally, not by signal');
+    assert.equal(child.exitCode, 0, 'packaged app exits successfully after graceful shutdown');
     app = null;
     assert.equal(fs.existsSync(path.join(dataDir, 'control.json')), false, 'graceful shutdown removes the scoped control credential');
     console.log(`PASS packaged Corvid app starts and exits (${process.platform} ${expectedArch}, Electron ${electronVersion})`);
