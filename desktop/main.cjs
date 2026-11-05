@@ -351,7 +351,7 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
-const MIN_WINDOW_WIDTH = 704;
+const MIN_WINDOW_WIDTH = 719;
 const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
@@ -1624,6 +1624,9 @@ async function startServer() {
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
+  // The Agent panel's scrollable list may reserve a 15px scrollbar. Keep the
+  // minimum window wide enough for 320px of web content plus 280px of panel
+  // content after that platform-dependent gutter is accounted for.
   const minimumWidth=Math.min(MIN_WINDOW_WIDTH,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
