@@ -179,7 +179,8 @@ button { border: 0; border-radius: var(--radius-sm); background: transparent; cu
 button:where(:hover:not(:disabled):not([type="submit"])) { background: var(--surface-hover); }
 button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.94); }
 button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
-button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a[href]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+input[type="checkbox"]:not(:disabled), select:not(:disabled) { cursor: pointer; }
 input, select, textarea { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
 input::placeholder, textarea::placeholder { color: var(--text-placeholder); }
 svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke-width); stroke-linecap: round; stroke-linejoin: round; }

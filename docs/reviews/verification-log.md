@@ -26,6 +26,15 @@
 - 环境与数据：macOS arm64（darwin 25.5）、Node.js v24.22.1、npm 11.19.1、Electron 45.2.1；隔离临时 Corvid 数据目录、真实隔离 Room/Tab ID 与合成历史记录。没有读取真实网页/浏览器资料，也没有调用 Provider、OAuth 或模型。两张 658×440 PNG 位于 `tests/fixtures/issue-217/`；zh-CN SHA-256 `ef4d525fef82e1797b18a99c16e7840d47da16838fb5572a8585d0c8cf5d80ad`，en SHA-256 `809fc7e2e0105cd98a8570911c71f3876f74460f36e8da9f2d499bf089bfdd4e`。
 - 限制：只覆盖 macOS 开发版、浅色主题与 704×568 外框；未覆盖 Windows/Linux、打包版、暗色主题、VoiceOver/读屏实播或其他窗口尺寸。Issue #217 仍开放。
 
+## 2026-11-05 键盘链接焦点与原生控件指针反馈 Issue #218
+
+- 基线与范围：候选基于 GitHub `main` `6b9f4580453c25aaac717fdc0071e3422a0e53ae`（PR #232 合并后）。PR #237 首个切片将 `a[href]:focus-visible` 纳入共享 2px `--focus-ring`，并为启用态原生 select/checkbox 提供指针反馈；Issue #218 其余 dialog/tooltip 项保持开放。
+- 定向验证：macOS arm64、Node.js v24.22.1、npm 11.19.1、Electron 45.2.1；`env -u ELECTRON_RUN_AS_NODE CORVID_ISSUE218_QA_DIR=docs/qa/screenshots node tests/history-panel-e2e.cjs` PASS。Tab 可将焦点从关闭历史面板按钮移至历史链接，computed outline 为 `solid`/`2px`；启用态 select/checkbox 为 `pointer`，disabled 控件不是 `pointer`。`node --check tests/history-panel-e2e.cjs` 与 `git diff --check` PASS。
+- 首次截图等待失败与修正：第一次定向运行的所有焦点/控件断言均通过，但旧截图等待条件错误地要求 renderer viewport 至少为 BrowserWindow 外框 1024×700，因两种尺寸不同而超时。改为设置并核对 BrowserWindow 外框、等待 200ms 后记录实际 renderer viewport；修正后定向 E2E 与截图采集 PASS，外框 1024×700、viewport 1024×668 CSS px、DPR 2。该首次失败不是产品断言失败。
+- 全量门禁：在本 PR 候选上执行 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37、后续串行 Electron E2E 和合同脚本全部通过，skipped 0。没有新增或触发 PR Actions。
+- 环境与截图：隔离临时 Corvid 数据目录、合成旧历史与本地 HTTP fixture；截图只显示合成记录和本地地址，不读取真实浏览记录，不调用 Provider、OAuth 或模型。zh-CN 历史面板中“Beta Today”链接获得键盘焦点；PNG 2048×1336，对应 BrowserWindow 1024×700、DPR 2。截图及 SHA-256：`docs/qa/screenshots/issue-218-history-link-keyboard-focus-zh-CN-1024x700.png`，`90bf1b272eb35fdd38521f57a931ac30ba4f201b35bdd98cd99b963276063ce5`。
+- 限制：仅验证 macOS 开发版、浅色主题、zh-CN 和单一窗口尺寸；未验证 Windows/Linux、打包版、暗色主题、英文焦点环、VoiceOver/读屏实播或完整辅助技术流程。Issue #218 仍开放。
+
 ## 2026-11-05 PR #273 Release workflow 前向重放（候选，未合并）
 
 - 候选基线：GitHub `main` `266418fc27217e86b51994efdada92702ed899da`；从 PR #273 精确差异重放发布 workflow、macOS x64/Windows 打包设置与跨平台打包 smoke 支持，保留 main 的签名打包路径、完整 npm test 链及更新后的窗口/Agent E2E 断言。为生成 arm64/x64 DMG/ZIP，在 main 的默认目录 target 上叠加 DMG/ZIP targets。
