@@ -1017,7 +1017,7 @@ function showChromePreview(preview){
     const title=document.createElement('strong');title.textContent=`${extension.name} · v${extension.version}`;details.append(title);
     const grantList=[...(extension.permissions?.required||[]),...(extension.permissions?.hosts||[])];
     const optionalList=[...(extension.permissions?.optional||[]),...(extension.permissions?.optionalHosts||[])];
-    const permission=document.createElement('small');permission.textContent=extensionMessages.t('permissionSummary',{required:grantList.join(extensionMessages.locale==='zh-CN'?'、':', ')||extensionMessages.t('permissionsNotDeclared'),optional:optionalList.length?extensionMessages.t('optionalPermissions',{permissions:optionalList.join(extensionMessages.locale==='zh-CN'?'、':', ')}):'',warning:extension.warning||''});details.append(permission);
+    const permission=document.createElement('small');permission.textContent=extensionMessages.t('permissionSummary',{required:grantList.join(extensionMessages.locale==='zh-CN'?'、':', ')||extensionMessages.t('permissionsNotDeclared'),optional:optionalList.length?extensionMessages.t('optionalPermissions',{permissions:optionalList.join(extensionMessages.locale==='zh-CN'?'、':', ')}):''});details.append(permission);
     label.append(input,details);choices.append(label);
   }
   document.querySelector('#chrome-import-categories').disabled=false;

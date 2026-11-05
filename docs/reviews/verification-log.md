@@ -57,6 +57,13 @@
 - 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1，Node 阶段 34 项中 31 PASS、3 FAIL：`browser.e2e.mjs:99` 输入焦点 HTTP 400，`dialogs.e2e.mjs:26` renderer alert 超时，`uploads.e2e.mjs:40` file chooser 超时。三项在干净 `origin/main` `fe77898` 以相同签名复现，归于 Issue #289；本 PR 未观察到特有失败。运行时临时借用主工作区已安装依赖，测试后移除链接。
 - 限制：未通过原生 popup blur 子场景、未运行真实 Chrome 用户资料/系统钥匙串、真实网站、Windows/Linux 或打包版；全量命令未通过，Issue #18 仍开放跟踪其余跨平台与窄窗验收。
 
+## 2026-11-04 Issue #205 扩展提示文案复核
+
+- 现状核对：`desktop/renderer.js` 中的「页面上下文」错字已在当前主分支修复；不重复改动。扩展工具栏弹窗也已实现：`desktop/main.cjs` 的 `openExtensionPopup` 与 `tests/chrome-import-e2e.cjs` 覆盖弹窗打开、隔离和关闭；能力记录见 `docs/execution/feature-board.md` D14 及 PR #131。
+- 修复：删除设置与导入提示中“工具栏弹窗未集成”的过时陈述；将扩展兼容边界改写为用户可理解的 API 支持限制；移除每个扩展条目上重复的旧 warning。`zh-CN`、`en` 与 `desktop/index.html` 回退文案保持一致。
+- UI/UE 范围：只改用户可见文案，不改布局、色彩、组件或交互；因此没有套用 Rare UI、Kobra、EasyUI、Pin UI 或 Aceternity UI 的视觉细节。截图用于展示修改后的中文文案，没有声称前后视觉对比。
+- 验证：隔离 `zh-CN` / `en` 资源 smoke check、`node --check`（`desktop/locales.js`、`desktop/renderer.js`、`desktop/chrome-extensions.cjs`）、旧文案 `rg` 搜索和 `git diff --check` 均通过。`env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 通过，覆盖完整合成 Chrome 导入、扩展启停/移除/重启恢复、中文和英文设置说明、两种语言的导入兼容性提示；macOS 原生父窗口外点分支按测试现有开关跳过。GitHub Actions 的凭据矩阵与 Chrome 导入矩阵未启动 runner，GitHub 报告账户付款失败或支出限额，未执行测试。截图：[issue-205-extension-settings-zh-CN.png](../qa/screenshots/issue-205-extension-settings-zh-CN.png)，2560×1626，SHA-256 `d61b6a1e8ef6b3484ff481160500dfd65969edd79bfb78420becad7e1f4f7252`。截图来自隔离临时 Profile 与本地扩展夹具，无真实账号或浏览数据。
+- 2026-11-05 重放与全量门禁：PR 净差异重放到 `origin/main`（重放期间主线先后含 `ec9effa`、#238（#202）合并，最终基线 `374c262`，与本 PR 在 `desktop/index.html`、QA 共享文档冲突并按上述方式解决）。`tests/chrome-import-e2e.cjs` 新增断言段按现行设置中心导航模式适配：`#show-settings` 会把分区重置回「常规」，需再点 `#settings-nav-profile` 切回浏览身份分区（与该用例其他段落既有模式一致）。重放环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离临时 Profile 与本地 fixture；截图因主线窗口 chrome 变化重新生成（2560×1626，SHA 见上）。定向 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` EXIT 0。在 `e7f528e` 基线上：全量 `npm test` 第 1、2 次串行链分别中止于 `pi-workbench-e2e.cjs` 清理失败提示断言与 `fullscreen-e2e.cjs` 全屏状态等待（两用例隔离复跑均 EXIT 0，失败断言文案与本 PR 无关，与 Issue #289 链内环境敏感失败同型），第 3 次完整链 EXIT 0（34/34 与全部串行 E2E）；#238（#202）合入后在最终基线 `374c262` 重跑：定向 chrome-import E2E EXIT 0，全量 `env -u ELECTRON_RUN_AS_NODE npm test` 完整链 EXIT 0（node:test 34/34 与全部串行 E2E 通过，截图字节与上一基线一致）。未覆盖：Windows/Linux、打包版、屏幕阅读器、原生弹窗外点。
 ## 2026-11-04 Issue #279 Chrome 导入对话框布局（PR 前验证）
 
 - 问题：Chrome 导入长预览时，整个 dialog 随内容滚动，初始窗口内可能找不到取消与主操作。实现将内容区设为唯一滚动区，标题和底部操作常驻；底部取消复用原 dialog 关闭/来源清理路径，Cookie 同意和类别启用规则不变。
@@ -140,6 +147,12 @@
 - 覆盖：应用启动并获取 Electron focused window；菜单动作、Agent-owned Room 权限门禁、双窗口 Window 菜单目标选择及动作路由、切换英文和重启后的菜单语言持久化、隐藏内部调试菜单。E2E 输出 `PASS Corvid native menu actions, Agent Room guard, bilingual persistence, and no runtime/debug menu exposure`。
 - 限制：Window 菜单项由测试通过 Electron `MenuItem.click` 触发，焦点与路由由 Electron `BrowserWindow`/应用 API 及 Room 状态断言核验；本次未通过 CUA 实际点击 macOS 菜单栏，也未覆盖 VoiceOver、其他平台、打包版本或其他窗口管理器行为。该结果只关闭解锁 macOS 开发版中的 Electron 焦点/路由待验项，不表示完整双语覆盖或所有原生交互均已验收。
 
+## 2026-11-04 地址栏占位文字主题对比度（Issue #192）
+
+- 实现：`--text-placeholder` 在浅色与深色主题均引用现有 `--text-muted`，移除与主题文字层级脱节的专用浅灰值。未新增用户可见文案；E2E 核对 `zh-CN`“搜索或输入网址”与 `en`“Search or enter address”。
+- 验证：macOS arm64、Node.js v24.14.1、Electron 45.2.1；真实 Electron、隔离临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。运行 `env -u ELECTRON_RUN_AS_NODE CORVID_PLACEHOLDER_CONTRAST_QA_DIR=docs/qa/screenshots node tests/address-suggestions-e2e.cjs`，通过地址栏历史/搜索建议原有检查，以及浅/深主题 × 中/英文 × 聚焦/未聚焦的计算后颜色对比断言（均 ≥4.5:1）。生成 4 张 1024×700 逻辑窗口截图，逐张目检。`node --check tests/address-suggestions-e2e.cjs` 与 `git diff --check` 通过。依赖通过临时 `node_modules` 符号链接接入并在运行后移除；没有读取真实用户资料，没有使用模型或 OAuth。
+- 视觉、色值计算、截图哈希、REA 参考 Evidence 与覆盖限制见[地址栏占位文字对比度检查](../qa/ui-visual-check.md#2026-11-04-地址栏占位文字对比度-issue-192)。Impeccable 对 `desktop/index.html` 的一次 detector 扫描发现既有全页建议，本轮未修改无关区域。没有运行全量 `npm test`；没有验证真实网站、VoiceOver/Narrator/Orca、Windows/Linux、打包分发。
+- 2026-11-05 重放与全量门禁：PR 净差异重放到 `origin/main` `9b829d5`（含 #165 设置中心、#238 导航状态与 #227 扩展文案后的主线；共享 QA 文档按「保留 main 侧 + 按日期插入本条目」解决冲突）。重放环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；四张截图在重放 head 重新生成（2048×1336，SHA 见上文，逐字节稳定复现）。定向 `env -u ELECTRON_RUN_AS_NODE CORVID_PLACEHOLDER_CONTRAST_QA_DIR=docs/qa/screenshots node tests/address-suggestions-e2e.cjs` EXIT 0：#191 原有断言全部保持，且浅/深主题 × 中/英文 × 聚焦/未聚焦的计算后对比度均 ≥4.5:1。全量 `env -u ELECTRON_RUN_AS_NODE npm test`：第 1 次串行链中止于 `room-close-e2e.cjs`（隔离复跑 EXIT 0，与 Issue #289 链内环境敏感失败同型）；第 2 次完整链 EXIT 0（node:test 34/34 与全部串行 E2E 通过）。门禁后仅更新本条目并还原门禁链误写的范围外截图；未覆盖：真实网站、VoiceOver/Narrator/Orca、Windows/Linux、打包分发。
 
 ## 2026-11-04 地址栏历史与搜索建议（Issue #191）
 
