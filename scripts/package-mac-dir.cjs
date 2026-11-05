@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const project = path.join(__dirname, '..');
-const appPath = path.join(__dirname, '..', 'dist', 'mac-arm64', 'Corvid.app');
+const arch = process.argv.find(arg => arg === 'arm64' || arg === 'x64') ?? 'arm64';
+const appPath = path.join(project, 'dist', `mac-${arch}`, 'Corvid.app');
 const signed = process.argv.includes('--signed');
 const identity = process.env.CORVID_MAC_SIGNING_IDENTITY?.trim();
 if (signed && (!identity || identity.startsWith('Developer ID Application:'))) {
@@ -12,7 +13,7 @@ if (signed && (!identity || identity.startsWith('Developer ID Application:'))) {
 } else {
   fs.rmSync(appPath, { recursive: true, force: true });
 
-  const args = ['--mac', '--arm64', '--dir'];
+  const args = ['--mac', `--${arch}`, '--dir'];
   if (signed) args.push(`-c.mac.identity=${identity}`, '-c.mac.hardenedRuntime=true', '-c.mac.forceCodeSigning=true');
   const result = spawnSync('electron-builder', args, {
     cwd: project,
