@@ -11,6 +11,8 @@ const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
 const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
+// Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
+const INITIAL_BROWSER_CHROME_HEIGHT = 90;
 let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
@@ -68,6 +70,7 @@ const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDi
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-auth-event', event);
 } });
 let failNextPiFixtureInitialization = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_INIT_FAILURE_ONCE === '1';
+let failNextPiFixtureDisposal = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_DISPOSE_FAILURE_ONCE === '1';
 const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(failNextPiFixtureInitialization){failNextPiFixtureInitialization=false;throw new Error('本地 fixture 模拟 Pi Session 初始化失败');}
   const directory=path.join(dataDir,'agent-sessions',taskId);
@@ -76,12 +79,14 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(sessionFile && !path.resolve(sessionFile).startsWith(`${path.resolve(directory)}${path.sep}`))throw new Error('Fixture transcript must remain inside the task directory');
   const listeners=new Set();
   let abortActive;
+  let failDispose=false;
   const session={
     sessionFile:transcript,
     subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
     async prompt(message){
       const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;
       fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});
+      if(message.includes('[fixture:dispose-failure]')&&failNextPiFixtureDisposal){failDispose=true;failNextPiFixtureDisposal=false;}
       if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');
       if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('pi runtime could not be resumed');
       if(message.includes('[fixture:hold-stop-late]'))return new Promise(resolve=>{abortActive=async()=>{
@@ -102,10 +107,11 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
         for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'页面要点已整理。'}});
         return {stopReason:'stop'};
       }
-      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});
+      const reply=message.includes('[fixture:dispose-failure]')?'这是已生成且保留的回复。':`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`;
+      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:reply}});
       return {stopReason:'stop'};
     },
-    dispose(){},
+    dispose(){if(failDispose)throw new Error('本地 fixture 模拟会话清理失败');},
     async abort(){await abortActive?.();}
   };
   return {session,sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
@@ -133,6 +139,7 @@ const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
   revokeAgentCredential: credentialId => agentClients.revokeInternal(credentialId),
   onChange: tasks => {
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-task-state', tasks);
+  for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('agent-task-summary-state', {profileId:record.activeProfileId,tasks:agentWorkbench.listSummaries(record.activeProfileId)});
 } });
 let panelOpen = false;
 const selectedChromeSources = new Map();
@@ -223,6 +230,8 @@ function applicationMenuHandlers() {
     forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
     reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
     find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    findNext:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:false});}),
+    findPrevious:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:true});}),
     print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
     fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
     zoomIn:()=>adjustZoom(0.1),
@@ -699,7 +708,7 @@ function layout(record = activeRecord()) {
   const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
   const tab = room && tabs.get(room.activeTabId);
   const [width,height] = browserWindow.getContentSize();
-  const top = 112;
+  const top = record.browserChromeHeight ?? INITIAL_BROWSER_CHROME_HEIGHT;
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
     ? width > 720
@@ -948,6 +957,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
     case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
+    case 'agentTaskSummaries': {if(fromApi)throw new Error('Agent task summaries are available only from Corvid UI');const profileId=findProfile(args.profileId ?? activeProfileId).id;return {profileId,tasks:agentWorkbench.listSummaries(profileId)};}
     case 'openPiAuthUrl': { if(fromApi) throw new Error('OAuth links can only be opened from Corvid UI'); const url=new URL(args.url); if(url.protocol!=='https:' || !['auth.openai.com','login.openai.com'].includes(url.hostname)) throw new Error('OAuth 地址无效'); return shell.openExternal(url.toString()); }
     case 'resolvePiAuthPrompt': { if(fromApi) throw new Error('Authentication prompts can only be answered in Corvid UI'); const pending=pendingPiAuthPrompts.get(args.id); if(!pending) throw new Error('账号授权请求已失效'); pendingPiAuthPrompts.delete(args.id); if(args.cancelled) pending.reject(new Error('用户取消了账号授权')); else pending.resolve(args.value); return {ok:true}; }
     case 'piModels': { if(fromApi) throw new Error('Model settings are available only from Corvid UI'); return piModelManager.list(); }
@@ -1541,7 +1551,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
@@ -1600,6 +1610,15 @@ app.whenReady().then(async () => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
     if (record) { focusWindow(record); syncRecordFromAliases(record); }
     return dispatchQueued(method,args);
+  });
+  // Native page bounds follow each trusted shell window's measured chrome; remote page renderers have no sender match.
+  ipcMain.on('shell-browser-chrome-height',(event,value)=>{
+    const record=[...windowRecords.values()].find(item=>!item.browserWindow.isDestroyed()&&item.browserWindow.webContents===event.sender);
+    if(!record||typeof value!=='number'||!Number.isFinite(value)||value<1||value>600)return;
+    const height=Math.ceil(value);
+    if(record.browserChromeHeight===height)return;
+    record.browserChromeHeight=height;
+    layout(record);
   });
   ipcMain.handle('browser-home-action',(event,action,value)=>{
     const tab=[...tabs.values()].find(item=>item.view.webContents===event.sender);

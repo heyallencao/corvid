@@ -32,8 +32,14 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await tabs.count(),1);
     assert.equal(await shell.locator('#tab-scroll-left').isHidden(),true,`single tab has no scroll controls: ${JSON.stringify(await shell.locator('#tabs').evaluate(element=>({client:element.clientWidth,scroll:element.scrollWidth,tabs:element.children.length,hidden:[...document.querySelectorAll('.tab-scroll-control')].map(item=>item.hidden)})))}`);
     assert.equal(await shell.locator('#tab-scroll-right').isHidden(),true,'single tab has no scroll controls');
-    const fallback=await tabs.first().locator('.favicon').getAttribute('src');
-    assert.match(fallback,/^data:image\/svg\+xml,/,'a site without an icon gets a local deterministic fallback');
+    await tabs.first().locator('.favicon-fallback').waitFor({state:'visible'});
+    const fallback=await tabs.first().locator('.favicon').evaluate(icon=>({tag:icon.localName,classes:icon.className.baseVal||icon.className,source:icon.dataset.source,background:getComputedStyle(icon.querySelector('rect')).fill,foregroundAttribute:icon.querySelector('text').getAttribute('fill'),label:icon.querySelector('text').textContent}));
+    assert.equal(fallback.tag,'svg','a site without an icon gets an inline SVG fallback');
+    assert.match(fallback.classes,/favicon-fallback/);
+    assert.ok(fallback.source===`domain:127.0.0.1`||fallback.source===`url:${base}/favicon.ico`,'the fallback identity is stable for the host or its failed favicon URL');
+    assert.match(fallback.background,/^rgb\(/,'the site color comes from a CSS hue variable');
+    assert.equal(fallback.foregroundAttribute,null,'the foreground comes from the CSS theme token, not a hardcoded SVG color');
+    assert.ok(fallback.label,'the generated favicon contains a safe local hostname initial');
 
     for(let number=2;number<=5;number++){
       await shell.locator('#new-tab').click();
