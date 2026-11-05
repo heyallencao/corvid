@@ -577,7 +577,7 @@
 
 ## 2026-11-05 Agent 工作台窄窗工具栏滚动验收（Issue #217）
 
-- 环境与截图：macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 Corvid 数据目录与 18 条长合成任务记录，BrowserWindow 外框 704×568、Electron shell viewport 719×428 CSS px。截图裁切为 658×440 PNG，仅含 Corvid Agent 面板：[中文](../../tests/fixtures/issue-217/issue-217-workbench-zh-CN-704x568.png)，SHA-256 `b373d7724716768c8a52ae39d3b2c3ba4dc012a5bdb69310948e5c87bd7063ba`；[英文](../../tests/fixtures/issue-217/issue-217-workbench-en-704x568.png)，SHA-256 `809fc7e2e0105cd98a8570911c71f3876f74460f36e8da9f2d499bf089bfdd4e`。页面内容、真实浏览数据、Provider、OAuth 和模型均未使用。
+- 环境与截图：macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 Corvid 数据目录与 18 条长合成任务记录，BrowserWindow 外框 704×568、Electron shell viewport 719×428 CSS px。截图裁切为 658×440 PNG，仅含 Corvid Agent 面板：[中文](../../tests/fixtures/issue-217/issue-217-workbench-zh-CN-704x568.png)，SHA-256 `ef4d525fef82e1797b18a99c16e7840d47da16838fb5572a8585d0c8cf5d80ad`；[英文](../../tests/fixtures/issue-217/issue-217-workbench-en-704x568.png)，SHA-256 `809fc7e2e0105cd98a8570911c71f3876f74460f36e8da9f2d499bf089bfdd4e`。页面内容、真实浏览数据、Provider、OAuth 和模型均未使用。
 - 直接观察：`pi-workbench-header-e2e.cjs` 在 zh-CN/en 分别把真实任务列表滚到底部；scrollHeight/clientHeight 为 350/99 与 376/99，实际 scrollTop 为 250 与 276.5。工具栏在两种语言滚动前后的 y 坐标均为 171px，且是工作台的子节点、不是任务列表的子节点。两个按钮均完整落在工作区右边界 x=700 内；中英文新建按钮宽 84/131.6px，历史按钮宽 92/148px。截图显示工具栏位于独立滚动列表上方，右侧动作无遮挡。
 - 视觉判断：只调整工具栏与列表的滚动归属，保留 Corvid 的按钮层级、间距、颜色和双语标签；窄窗下固定动作仍可见，长任务内容在下方区域滚动。当前截图已检查，未发现文字、边框或布局裁切。
 - UI/UE 参考与 REA：沿用 Kobra AI Editor 文档页既有 Evidence `ev_eed2234f92bb4dee43563c6d18dc2209dafec1dd7f373f3782c554a9c2299afb`（2026-11-04，REA Chromium 156.0.8078.80，1280×720）。直接观察仅限三列文档导航/示例/属性区；把固定操作与滚动内容分开是结合 Corvid 工作流作出的推断，不代表 Kobra 的窄窗/键盘行为。本轮未重新访问参考页，也未复制代码或素材。
