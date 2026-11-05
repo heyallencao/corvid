@@ -93,6 +93,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           toolbarTopBeforeScroll,
           toolbarTopAfterScroll,
           toolbar: rect(toolbar),
+          toolbarScrollWidth: toolbar.scrollWidth,
+          toolbarClientWidth: toolbar.clientWidth,
+          manageInModelRow: Boolean(document.querySelector('.pi-model-choice .pi-model-manage')),
+          manageInToolbar: Boolean(toolbar.querySelector('.pi-model-manage')),
           toolbarIsOutsideList: !list.contains(toolbar),
           toolbarParentIsWorkspace: toolbar.parentElement === workspace,
           button: rect(button),
@@ -107,6 +111,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       assert.ok(geometry.listScrollHeight > geometry.listClientHeight, `${locale} fixture must exercise an overflowing task list: ${JSON.stringify(geometry)}`);
       assert.ok(geometry.listScrollTop > 0, `${locale} fixture actually scrolls the task list: ${JSON.stringify(geometry)}`);
       assert.equal(geometry.toolbarTopAfterScroll, geometry.toolbarTopBeforeScroll, `${locale} toolbar stays fixed while the task list scrolls`);
+      assert.ok(
+        geometry.toolbarScrollWidth <= geometry.toolbarClientWidth + 1,
+        `${locale} toolbar keeps both actions inside the panel without horizontal clipping: ${geometry.toolbarScrollWidth}/${geometry.toolbarClientWidth}`
+      );
+      assert.equal(geometry.manageInModelRow, true, `${locale} manage-models lives in the model row as a secondary action`);
+      assert.equal(geometry.manageInToolbar, false, `${locale} header toolbar carries no orphan manage-models button`);
       assert.ok(
         geometry.button.width > 0 && geometry.visibleButtonWidth >= geometry.button.width - 1,
         `${locale} new-conversation action remains fully visible outside the 704px task-list scrollport: ${JSON.stringify(geometry)}`

@@ -1,5 +1,11 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 Agent 工作台窄窗头部操作行换行保护（Issue #217）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、18 条合成历史、719×568 最小窗口（视口 704/719 CSS px），由 `pi-workbench-header-e2e` 生成（仅 Agent 面板区域）：[zh-CN](screenshots/issue-217/issue-217-workbench-zh-CN-704x568.png)（SHA-256 前缀 `b373d772`）、[en（换行态）](screenshots/issue-217/issue-217-workbench-en-704x568.png)（`30c28251`）。
+- 直接观察：en 在 299px 工作区宽度下「Conversation history · 18」与「+ New conversation」不再塞同一行——后者换行到第二行右对齐（`margin-left:auto`），完整可见、无右缘裁切（历史截图右缘半截的问题形态）；zh 保持单行。短高窗口（≤520px，如 704×420）改为按钮紧凑化（26px 高、micro 字号）保持单行，避免换行行高挤压欢迎态与任务列表（`pi-workbench-short-height-e2e` 断言欢迎标题完整可见）。
+- 断言与边界：`pi-workbench-header-e2e` 双语断言 toolbar `scrollWidth ≤ clientWidth`（无横向裁切）、`.pi-model-manage` 位于 `.pi-model-choice` 模型行且头部工具栏无孤儿「管理模型」按钮（该项由 #200 系重构已迁入模型行，本轮补合同）；`pi-workbench-e2e`、`typography-e2e`、`localization-e2e` 定向 EXIT 0。未覆盖：Windows、打包版、VoiceOver。
+
 ## 2026-11-06 新标签起始页双语（Issue #130 子切片 A1）
 
 - 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`、BrowserWindow 1024×700，`capturePage` 渲染真实像素：[zh-CN 起始页](screenshots/issue-130/issue-130-startpage-zh-CN-1024x700.png)（SHA-256 前缀 `bbe20d67`）、[en 起始页（切换语言后新建标签）](screenshots/issue-130/issue-130-startpage-en-1024x700.png)（`3b20b659`）。页面为空白起始页无个人数据。

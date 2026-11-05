@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #217 窄窗头部操作行换行保护
+
+- 基线：隔离 worktree，分支 `ui/issue-217-toolbar-wrap`；开发基于 `25f28d6`，合并前 rebase 到 `origin/main` `25c8d76`（#326/#328/#87/#244 文档与 Release 提交，其中 #326 为 pi-workbench-e2e 642 行 detach 竞态加重试包装；rebase 仅 verification-log 文档冲突，两侧条目均保留）。改动：`desktop/styles.css`（`.pi-chat-toolbar` 加 `flex-wrap:wrap` + `row-gap`，`.pi-new-chat` 加 `margin-left:auto` 保证换行后右对齐；`max-height:520px` 媒体内按钮紧凑化 26px/micro 并 `nowrap`，防止短高换行挤压欢迎态）、`tests/pi-workbench-header-e2e.cjs`（新增 toolbar 无横向溢出、管理模型在模型行/不在头部两组断言）。
+- 现状核对：issue 第 2 项「管理模型孤行」在当前 main 已由 #200 系重构迁入模型行（renderer `pi-model-manage` 位于 `.pi-model-choice`），本轮以合同固化；第 1 项裁切由 #232 的 toolbar 出滚动层迁移大幅缓解，但 en + 多位历史计数在 299px 工作区宽度余量不足，本轮以 wrap 提供结构性保证。
+- 定向验证：`pi-workbench-header-e2e`（双语，en 实测换行为两行右对齐、按钮完整可见）、`pi-workbench-e2e`、`pi-workbench-short-height-e2e`（en 欢迎标题完整可见）、`typography-e2e`、`localization-e2e` 均 EXIT 0。回归修正记录：首轮 wrap 方案曾令 `pi-workbench-short-height-e2e`（en 欢迎标题被裁）与 `pi-workbench-e2e`（en 队列主操作不可见）失败，短高紧凑化后三者全部通过。
+- 全量门禁：见 PR 描述。
+- 截图：zh/en 面板区域截图入库 `docs/qa/screenshots/issue-217/`，SHA-256 见 [UI 视觉检查条目](../qa/ui-visual-check.md#2026-11-06-agent-工作台窄窗头部操作行换行保护issue-217)。
+- 边界：仅 macOS 开发版、719×568 最小窗口与 704×420 短高；未覆盖 Windows、打包版、VoiceOver。
 ## 2026-11-06 Issue #165 D25-2 macOS 原生下载对话框
 
 - 环境：macOS 26.5.1 arm64、Node.js v24.22.1、Electron 45.2.1 开发版；独立 worktree、临时 `CORVID_DATA_DIR`、合成目标目录和本地 `file://` 下载夹具。

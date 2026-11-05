@@ -467,9 +467,9 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #library[data-kind="pi-workbench"] .panel-header h2 { font-size: 16px; }
 #library[data-kind="pi-workbench"] .panel-eyebrow { display: none; }
 #pi-task-list { gap: 8px; }
-.pi-chat-toolbar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; }
+.pi-chat-toolbar { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; row-gap: 6px; }
 .pi-chat-toolbar button { min-height: 30px; padding: 5px 9px; color: var(--text-secondary); font-size: var(--font-size-small); }
-.pi-chat-toolbar .pi-new-chat { border: 1px solid var(--line-accent); background: var(--surface-accent); color: var(--accent-ink); font-weight: 600; }
+.pi-chat-toolbar .pi-new-chat { margin-left: auto; border: 1px solid var(--line-accent); background: var(--surface-accent); color: var(--accent-ink); font-weight: 600; }
 .pi-chat-toolbar .pi-new-chat:hover { background: var(--surface-accent-hover); }
 .pi-chat-history { display: grid; flex: none; gap: 4px; max-height: 150px; overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-inset); }
 .pi-chat-history[hidden] { display: none; }
@@ -502,6 +502,9 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 @media (max-height: 520px) {
   #pi-task-form { max-height: 76%; gap: 5px; padding: 7px; overflow: auto; overscroll-behavior: contain; }
   #pi-task-form textarea { min-height: 42px; max-height: 74px; }
+  /* 短高窗口保持头部操作单行：紧凑按钮优先于换行，避免挤压欢迎态与任务列表。 */
+  .pi-chat-toolbar { flex-wrap: nowrap; }
+  .pi-chat-toolbar button { min-height: 26px; padding: 4px 6px; font-size: var(--font-size-micro); }
   .pi-page-binding { min-height: 30px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pi-context { max-height: 110px; }
 }
