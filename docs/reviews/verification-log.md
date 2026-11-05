@@ -1554,6 +1554,58 @@
 - 2026-11-05 Agent Room 面板 E2E 断言同步（Issue #304，PR #309 集成重放）：基于最新 main 合并后定向验证 `env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs`；测试断言与现行面板对比度/可访问名称一致。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0；截图 SHA-256 见 PR 描述。未验证 Windows、打包版或读屏实际播报。
 
 - 2026-11-05 SDK popup 用例先激活 opener（Issue #306，PR #311 集成重放）：`sdk/e2e.js` 将无关 `newPage()` 移到 popup 断言之后，确保可信点击发生在活动 opener 标签；设置 `CORVID_SDK_POPUP_QA_SCREENSHOT_PATH` 可保存本地 popup 页截图。原作者证据：e46cc39 加 #303–#306 组合 worktree 上完整 `npm test` EXIT 0。集成合并后定向与全量结果见本日记录。
+## 2026-11-04 应用菜单补挂查找下一个/上一个 accelerator（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-menu-accelerators`（基于 `main` `02244ff`），改动 `desktop/application-menu.cjs` 与 `desktop/main.cjs`。
+- 审计更正：早前「应用菜单仅 2 个 accelerator」为 grep 伪结果（计数到 helper 定义行）——当前 main 菜单已挂 T/N/W/Shift+W、前进后退、R/F/P、缩放三档、全屏等 accelerator 并有 `syncApplicationMenuState` 动态启用与「键盘快捷键」帮助项。对照 `installShortcuts` 合同的真实缺口为 **Cmd/Ctrl+G 查找下一个、Cmd/Ctrl+Shift+G 查找上一个**（及浏览器惯例不列菜单的 Cmd+1..9、Ctrl+Tab，维持不列）。
+- 改动：View 菜单新增「查找下一个/查找上一个」（accelerator CmdOrCtrl+G / CmdOrCtrl+Shift+G，enabled 随 `canUseActiveTab` 同步）；`applicationMenuHandlers` 补 `findNext`/`findPrevious`（复用 `shell-find-next` 通道与 `runApplicationMenuAction` 守卫）。
+- 验证：主进程菜单结构探针——zh（查找下一个/查找上一个）与 en（Find Next/Find Previous）label、accelerator、enabled 全部正确；点击路径端到端（`clickMenuItemById('corvid-find-next')`）查找条成功弹出；`browser-shortcuts-e2e.cjs` 通过（键盘合同无回归，无双重触发）；`node --check`、`git diff --check` 通过。
+- 已知失败（与 main 对照非本切片引入）：`application-menu-e2e.cjs` 在本机于「等待应用窗口聚焦」超时，`origin/main` `02244ff` 对照同点同因失败（issue #288 环境敏感家族第 3 例，该套件未跑到菜单断言即中断）。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 A（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-cascade-convergence`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+
+- 改动：删除 4 处失效 `!important`（`.pi-consent`、`.agent-room-choice`、`.pi-endpoint-clear-key`、`#pi-task-form .pi-create-room` 窄窗 padding）；`.pi-consent` 规则删除冗余声明，`gap: 8px` 并入同特异性后置规则 `#pi-task-form .pi-consent`；`dialog label`、`:where(.settings-import p, .import-intro, .import-limitation)`、`.profile-extension :where(p)` 零特异性化，使 `.extension-load-error` 去重要化后仍保持 danger 色；`prefers-reduced-motion` 块的 `!important` 为无障碍标准写法，保留。
+
+- 计算样式矩阵：同一 Playwright 探针分别运行 `origin/main` 与本分支（真实 Electron，注入 renderer 同构节点），读取 agent-room-choice / pi-consent / extension-load-error / import-limitation / pi-endpoint-clear-key / 窄窗（≤480px 高）pi-create-room 六个组件的 display、align-items、gap、color、padding——两份 JSON 矩阵除标签字段外逐字节一致。
+
+- 截图：`docs/qa/screenshots/issue-211-a-branch-agent-access-light-1024x700.png`（SHA-256 前 16 位 `c08969d5fd9c94fc`）与 `issue-211-a-branch-chrome-import-dark-1024x700.png`（`716bfa0525686f7a`）与 main 对照截图逐字节相同（像素级不变）。
+
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 chrome-import-e2e.cjs` 通过；`agent-rooms-panel-e2e.cjs` 在本分支与 `origin/main` 对照同点失败（等待 `我的空间` 精确按钮名超时），为 main 上既有的测试与 DOM 失配（PR #273 修正对象），非本切片引入。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版；hover 规则按组件/状态收敛（条目 1 剩余）与死规则合并（条目 3）在后续子切片 B/C。
+
+
+
+## 2026-11-04 CSS 级联债务收敛子切片 B（Issue #211）
+
+
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-211-dead-rules`（基于 `main` `bc8bb78`），改动仅 `desktop/styles.css`。
+
+- 改动：删除被完全遮蔽的死规则 `.pi-task-output`（旧 :439，全部属性被 :502 覆盖）；`.pi-task-output.from-pi` 移除被 :504 覆盖的死 `background`（保留 border、左下圆角与 color）；`.pi-task-event` 两处基础声明合并为一条（保留存活的 `border-left` 与后者的 padding/line-height）。
+
+- 计算样式矩阵：真实 Electron 注入 renderer 同构节点，读取 `.pi-task-output.from-pi`/`.from-user`/`.pi-task-event` 的 max-width、padding、border-radius、color、background、border-left、line-height——`origin/main` 与本分支 JSON 逐字节一致（实测 maxWidth 92% 等，证明被删规则确为死规则）。
+
+- 截图：注入节点元素截图 `docs/qa/screenshots/issue-211-b-branch-workbench-synthetic.png`（SHA-256 前 16 位 `9ea7d00faa8082d0`）与 main 对照逐字节相同；为合成注入节点，非真实会话内容。
+
+- E2E：`tests/pi-workbench-e2e.cjs` 在本分支与 `origin/main` 对照同点同因失败（:64，「模型设置不可用」状态）——main 既有环境依赖失败，与 issue #288 同模式，非本切片引入。未运行全量 `npm test`。
+
+- 未覆盖：VoiceOver、Windows/Linux、打包版、深色主题注入节点截图。
+## 2026-11-04 侧栏右键第二入口（Issue #214 子切片）
+
+- 环境：macOS arm64（darwin 25.5.0）、Electron 45.2.1、隔离临时 `CORVID_DATA_DIR`；分支 `ui/issue-214-sidebar-context`（基于 `main` `02244ff`），改动仅 `desktop/renderer.js`（+1 行，零新 IPC、零新 locale key）。
+- 改动：右键 `.profile-switcher` / `.sidebar-section-heading`（空间标题） / `#room-strip` 时，打开既有的 profile-menu / room-menu 并同步触发器 `aria-expanded`——右键作为既有菜单动作的第二入口，菜单动作语义不变（空间菜单仍作用于当前空间）。
+- 行为探针矩阵（真实 Electron）：右键打开（hidden=false + aria-expanded=true）、Escape 关闭并复位、点击外部关闭并复位、标题区右键打开、从右键打开的菜单点「新建浏览身份」对话框正常弹出——7/7 项通过。
+- 截图：`docs/qa/screenshots/issue-214-sidebar-context-menu.png`（SHA-256 前 16 位 `aeff9ca880c16ed3`，隔离数据目录，菜单为「创建空间/关闭当前空间」既有动作）。
+- E2E：`dialogs-ui-e2e.cjs`、`agent-access-ui-e2e.cjs` 通过；`node --check`、`git diff --check` 通过。
+- 兼容性：新增行为基于 main 现行菜单机制；PR #178（菜单键盘重构，重写同区域触发器行）合并时本切片为新增独立行，预期无冲突。
+- 未覆盖：VoiceOver、Windows/Linux、打包版；键盘等价入口已由既有触发器按钮承担（Tab 可达）。本轮未运行全量 `npm test`。
 ## 2026-11-04 Issue #96 Agent Room 授权权限复验
 
 - 最新主线复验：基于 `origin/main` `9399642` 重放 PR #159 的跨平台验收切片后，在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 运行 `env -u ELECTRON_RUN_AS_NODE NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules node tests/agent-access-e2e.cjs`，EXIT 0，输出 `Agent access authorization E2E passed`。使用测试自建临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；没有读取用户资料、访问外网、使用 OAuth 或调用模型；测试退出后无残留 Electron。
