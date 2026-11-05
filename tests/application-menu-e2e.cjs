@@ -5,11 +5,14 @@ const fs=require('node:fs');
 const os=require('node:os');
 const path=require('node:path');
 const {closeElectron,launchElectron,waitForControl}=require('./electron-test-startup.cjs');
+const {applyMacLockScreenSkip}=require('./native-window-e2e-preflight.cjs');
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 (async()=>{
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-application-menu-'));
   let app,config,shell;
-  const skipNativeWindowFocus=process.env.CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS==='1';
+  const nativeFocusPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS'});
+  const skipNativeWindowFocus=nativeFocusPreflight.skip;
+  if(nativeFocusPreflight.reason==='macos-lock-screen')console.log('SKIPPED_NATIVE_WINDOW_FOCUS','reason=macOS lock screen; native focus/routing requires an unlocked desktop');
   const until=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   const api=async(route,body,method)=>{
     const response=await fetch(config.baseUrl+route,{method:method||(body?'POST':'GET'),headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});

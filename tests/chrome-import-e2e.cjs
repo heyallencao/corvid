@@ -9,6 +9,10 @@ const os=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
 const chromeImport=require('../desktop/chrome-import.cjs');
+const {applyMacLockScreenSkip}=require('./native-window-e2e-preflight.cjs');
+
+const nativePopupPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NATIVE_POPUP_BLUR'});
+if(nativePopupPreflight.reason==='macos-lock-screen')console.log('SKIPPED_NATIVE_EXTENSION_POPUP_OUTSIDE_CLICK','reason=macOS lock screen; fixture popup is closed directly and the import flow continues');
 
 const project=path.resolve(__dirname,'..');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));

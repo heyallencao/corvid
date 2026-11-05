@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 78 项入口：`npm test` 包含 76 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（11 个文件、39 个 `node:test` 用例）和 75 条独立脚本命令，共 114 项自动化检查；原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 `test:serial` 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）、`tests/electron-startup.e2e.mjs`（启动/清理诊断替身）和 `tests/e2e-suite-lock.test.cjs`（全量门禁互斥合同）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 78 项入口：`npm test` 包含 76 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（11 个文件、43 个 `node:test` 用例）和 75 条独立脚本命令，共 118 项自动化检查；原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 `test:serial` 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）、`tests/electron-startup.e2e.mjs`（启动/清理诊断替身及原生窗口锁屏预检合同）和 `tests/e2e-suite-lock.test.cjs`（全量门禁互斥合同）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -112,14 +112,13 @@
 
 ## 单独运行
 
-- Chrome 导入完整 E2E 包含“激活原生父窗口后扩展弹窗关闭”的检查；macOS 锁屏时窗口无法完成原生激活，测试会在导入流程之前超时。锁屏结果不作为导入功能失败或通过的证据，需在已解锁桌面重跑。
-- 如桌面锁屏导致原生父窗口激活检查无法通过，可用 `CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 运行 Chrome 导入完整流程；该模式只直接关闭测试扩展弹窗以继续导入验收，不验证原生点外/失焦关闭，不能替代解锁桌面下的默认 E2E。
-- 如 macOS 锁屏导致原生菜单焦点不可用，可用 `CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1` 运行 `application-menu-e2e.cjs`，验证菜单语言切换与重启持久化；该模式显式跳过 Window 菜单原生焦点及动作路由，不能替代默认模式或 Issue #167 的现场验收。
-- 11 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs tests/chrome-import-sqlite.test.mjs tests/page-context-menu.test.mjs tests/e2e-suite-lock.test.cjs`，共 39 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件、`application-menu.test.mjs` 与 `chrome-import-sqlite.test.mjs` 使用纯 Node 合同测试。
+- macOS 前台 bundle 被 `lsappinfo` 确认为 `com.apple.loginwindow` 时，`fullscreen-e2e.cjs` 输出 `SKIPPED_NATIVE_FULLSCREEN` 并整项跳过；`application-menu-e2e.cjs` 和 `chrome-import-e2e.cjs` 仅跳过各自原生焦点/失焦子场景，其余合同继续运行。预检不可用或无法确定前台应用时不跳过，照常运行默认路径。
+- 可分别用 `CORVID_TEST_SKIP_NATIVE_FULLSCREEN=1`、`CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1`、`CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 显式跳过对应原生场景。所有 skip 输出都不是原生焦点/全屏验收通过证据；这些场景仍需解锁的 macOS 桌面运行默认路径。
+- 11 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs tests/chrome-import-sqlite.test.mjs tests/page-context-menu.test.mjs tests/e2e-suite-lock.test.cjs`，共 43 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件、`application-menu.test.mjs` 与 `chrome-import-sqlite.test.mjs` 使用纯 Node 合同测试。
 - 75 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 的 `test:serial` 顺序运行。
 - Issue #208 模型选择器定向回归：`env -u ELECTRON_RUN_AS_NODE node tests/pi-model-picker-ui-e2e.cjs`；与短窗工作台回归 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-short-height-e2e.cjs` 配合运行。两者使用隔离 Electron 数据目录和本地模型目录，不连接 OAuth 或真实模型；详见[模型选择器 QA 记录](issue-208-model-picker.md)。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
-- 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。macOS 锁屏或窗口未获桌面焦点时，依赖真实鼠标/原生窗口事件的用例可能间歇失败；出现这类失败须记录具体结果，不能计作通过或静默跳过。
+- 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。macOS 锁屏时三个原生窗口 E2E 会显式跳过全部或原生交互子场景；窗口未获桌面焦点但未检测为锁屏时仍运行默认路径，失败须按真实结果记录。skip 不计通过。
 
 ## 打包应用验证
 
