@@ -1829,3 +1829,10 @@
 - 基线：隔离 worktree，`origin/main` `d1ab9c2`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。首次执行因 worktree 尚无依赖而报 `ERR_MODULE_NOT_FOUND: electron`，随后 `npm ci` 成功（375 packages，0 vulnerabilities）。
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，后续全量 E2E 脚本链均完成，包含 `tests/tab-ux-e2e.cjs` 输出 `PASS tab favicon, find, drag, last-tab recovery and middle-click close`。这是当前主线全量验证，不代表其他平台或打包版。
 - 范围与限制：产品/测试修复 `02244ff` 已在本次基线中；此复验没有修改产品代码。模型相关合同使用测试 fixture；未调用真实 OAuth 或 Provider。测试更新的 9 张已跟踪 QA 截图已恢复到基线字节，本记录未附截图。
+
+## 2026-11-06 当前主线全量门禁复验（Issue #289）
+
+- 基线：隔离 worktree，`origin/main` `ff22d92`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；`npm ci` 成功（375 packages，0 vulnerabilities）。
+- 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，后续串行 E2E 全链完成，包含此前记录的 SDK、标签、全屏、多窗口、Chrome 导入和 Agent 工作区入口。
+- 并发限制：启动检查发现 Issue #165 的一条隔离 Electron E2E 正在运行，因此本次不是零并发环境；本轮全量链启动时总计两条 E2E 链，符合本机并发上限 2。没有精确记录该进程与本链各入口的重叠时长，也不据此推断间歇失败的根因已定位。
+- 清理与边界：测试更新的 9 张已跟踪 QA 截图已恢复为基线字节。仅当前 macOS 开发版与合成 fixture；未覆盖 Windows、签名包、真实网站或读屏。全量退出 0 证明本次运行通过，不构成未来每轮稳定性的统计结论。
