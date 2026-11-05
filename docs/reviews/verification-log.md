@@ -78,6 +78,15 @@
 - 维护更新：Issue #211 已移除仅对应已修复新标签按钮问题的本机截图路径；保留的 CSS 级联问题与截图边界已重新说明。该截图没有上传，因为它不能证明当前仍开放的缺陷。
 - 限制：上述只读盘点不能证明图片内容安全或 GitHub 页面渲染。所有活动 PR 描述本轮均未更改；PR #247 私有仓库页面仍未取得登录态渲染证据。
 
+## 2026-11-05 菜单破坏性动作语义（Issue #203 子项）
+
+- 实现：在 tab、Room 与站点工具菜单中为关闭标签、关闭其他标签、关闭当前空间、清理此站点数据标记 `menu-item-danger`；文字使用 `--danger`，hover 使用 `--surface-error`。保留既有操作处理、二次确认、授权和控制权检查；历史/书签删除与 Profile 删除保持现有危险样式。
+- 重放：从 PR #276 head `e3183db` 以 patch 应用到 `origin/main` `06ca32b12826f67f0d221830f36d0e8e2c47f765`，保留 main 的当前文档内容并解决共享架构、测试索引、视觉记录冲突。替代 PR #316：`https://github.com/heyallencao/corvid/pull/316`；旧 PR #276 已关闭。
+- 静态检查：`node --check` renderer 与三项 E2E、`git diff --check` 通过。
+- 候选定向运行态验证（以下命令均 EXIT 0）：`env -u ELECTRON_RUN_AS_NODE node tests/tab-pin-menu-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/room-close-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/permissions-e2e.cjs`。覆盖浅/深主题菜单颜色/hover、固定标签、关闭确认、空间关闭取消/竞态/重启与站点权限/Profile 隔离。截图由本轮候选隔离 Electron 重采，视口 1280×850 CSS px，位于 `docs/qa/screenshots/issue-203/`。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm --prefix /private/tmp/corvid-pr276-replay test` 两次均 EXIT 1，Node tests 31/34 通过。重复失败为 browser 输入焦点未取得、dialogs `#alert` 超时、uploads file chooser 超时；同三项失败见于此前干净 main `fe77898` 基线记录，不能据此归因本子项。该全量门禁仍未通过。
+- 环境与边界：候选隔离 worktree `/private/tmp/corvid-pr276-replay`，macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用临时数据目录和本地 HTTP fixture。未访问用户资料、真实网站、OAuth 或模型，未覆盖打包应用、Windows/Linux、原生窗口合成与屏幕阅读器；Issue #203 的弹层体系统一仍开放。
+
 ## 2026-11-04 Issue #244 PR 描述截图链接门禁
 
 - 变更：新增 PR 描述图片链接检查器和 `pull_request` 工作流；工作流从目标分支检出受信任检查器，权限仅为 `contents: read` 与 `pull-requests: read`。开放 PR 允许引用自身分支的截图供评审；禁止本机路径、相对图片目标、其他分支图片；合并事件要求图片已迁移到 `main` 或 GitHub 附件。
