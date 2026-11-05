@@ -118,6 +118,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(checked.appearance, 'none', `${locale}: checkboxes use the drawn box`);
         assert.equal(checked.background, checked.expected, `${locale}: checked checkbox adopts the accent surface`);
         await shell.locator('#settings-nav-appearance').click();
+        await shell.locator('#theme-preference').waitFor({ state: 'visible', timeout: 10_000 });
         const themeSelect = await probeStyle(shell, '#theme-preference', '');
         assert.ok(Math.abs(themeSelect.height - 36) <= 2, `${locale}: appearance selects stay on the 36px tier`);
         await capture(`issue-208-settings-${locale}-${colorScheme}.png`);
@@ -127,6 +128,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         // 4. Agent 工作台模型选择器触发器收敛到 32px。
         await shell.locator('#show-pi-workbench').click();
         await shell.locator('#library[data-kind="pi-workbench"]').waitFor({ timeout: 5000 });
+        await shell.locator('#pi-task-form .pi-model-select').waitFor({ state: 'visible', timeout: 10_000 });
         const modelTrigger = await probeStyle(shell, '#pi-task-form .pi-model-select', '');
         assert.ok(Math.abs(modelTrigger.height - 32) <= 2, `${locale}: model picker trigger sits on the 32px tier (observed ${modelTrigger.height.toFixed(1)})`);
         await shell.locator('#close-library').click();
