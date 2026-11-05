@@ -52,6 +52,8 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const requested = process.env.REQUESTED_VERSION;
           const sourceSha = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+          const mainSha = execFileSync('git', ['ls-remote', 'origin', 'refs/heads/main'], { encoding: 'utf8' }).trim().split(/\s+/)[0];
+          if (sourceSha !== mainSha) throw new Error(`main moved during preflight: event SHA ${sourceSha}, current main SHA ${mainSha}`);
           if (!/^0\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(requested)) throw new Error(`Expected a semantic 0.x.x version, got ${requested}`);
           if (pkg.version !== requested) throw new Error(`package.json is ${pkg.version}, requested ${requested}`);
           const latestTag = execFileSync('git', ['tag', '--list', 'v0.*', '--sort=-version:refname'], { encoding: 'utf8' }).trim().split('\n')[0];
