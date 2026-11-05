@@ -1886,3 +1886,9 @@
 - 验证：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 37/37 通过，串行 E2E 全链完成，其中 `pi-custom-endpoint-e2e.cjs` 与 `agent-rooms-panel-e2e.cjs` 均通过。
 - 并发限制：启动前曾检测到 #204 与 #165 两条隔离 E2E；等待 #204 退出后，在 #165 仍运行时启动本链，总并发为 2。全量链完成后其他会话又启动了新测试，因此本记录不宣称单机无并发或确认了旧失败根因。
 - 边界：当前 macOS 开发版与合成 fixture；未覆盖 Windows、签名包、真实网站或读屏。该全量 EXIT 0 是一次运行证据，不估算稳定失败率。
+
+## 2026-11-06 Release macOS gate 修复全量验证（Issue #319）
+
+- 候选：`1f7ad0b`（x64 架构名称归一与 arm64 全量回归失败重试）及 `1bbe5d0`（Pi Workbench 异步重绘时 detached locator 有界重取），基于最新 `origin/main` `25f28d6`。环境：独立 worktree `infra/issue-319-release-macos-gate`，macOS arm64、Node.js v24.22.1、Electron 45.2.1；全量命令 `env -u ELECTRON_RUN_AS_NODE npm test`，使用 `caffeinate` 防止系统休眠。
+- 验证：重放后首次全量运行在地址建议 E2E 的 `window.browserShell.invoke` 未就绪时失败，期间检测到另一 worktree #217 的全量 E2E 正在运行；未据此归因代码问题。随后第二次完整运行 `EXIT 0`，37/37 node:test 与后续全部串行 E2E/合同脚本通过，包括地址建议、Pi Workbench、启动诊断和 Agent 工作区用例。
+- 清理与边界：完整运行更新的 9 张已跟踪 QA 截图已恢复为分支原始字节。仅本机 macOS 开发版、合成数据和本地 fixture；未覆盖 Intel runner 实际打包产物、签名包、公证和 publish。手动 Release workflow 仍需通过 `workflow_dispatch` 验证 x64 packaged smoke 与 arm64 retry gate。
