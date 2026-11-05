@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-06 Issue #204 低对比文字与过小字号系统清理
+
+- 基线：隔离 worktree，候选基于 `origin/main` `d1ab9c2` 开发；分支 `ui/issue-204-contrast-fonts`。环境：macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1；worktree 复用主克隆 `node_modules`（符号链接）。改动仅 `desktop/styles.css`（2 个浅色对比 token、en 字号 token、字面字号归 token、死 token 修正）与 `tests/typography-e2e.cjs`（en 断言 12px/11px + en ≥11px 下限）。
+- 对比度复核：脚本按 WCAG 相对亮度计算 token 配对（详见 [UI 视觉检查](../qa/ui-visual-check.md#2026-11-06-低对比文字与过小字号系统清理issue-204)）：浅色 `--danger` `#bd4b4b`→`#b04141`（正文 4.28→5.71:1）、`--text-address-icon` `#8991a0`→`#6e7786`（图标 2.97→4.25:1）；深色主题全部达标未改动；issue 引用的 3.2:1 等旧实测值对应的 muted/placeholder 位置在当前 main 已为 5.2–5.6:1，无需再改。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/typography-e2e.cjs` EXIT 0（zh ≥12px、en ≥11px 下限断言与 704×420 无溢出均通过）；`node tests/button-hover-contrast-e2e.cjs` 随全量通过（light/dark 4.88:1）。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 第 4 轮独占运行 EXIT 0（node:test 37/37、全部串行 Electron E2E/合同脚本、无跳过）。前 3 轮散点失败均属既有环境敏感族且与本候选无关：第 1 轮 `multi-window-e2e.cjs:38`（原生窗口焦点等待超时，隔离复跑 EXIT 0）；第 2/3 轮 `pi-workbench-e2e.cjs:617/619`（键盘 Tab 后 `activeElement.className` 为空，同族断言）。对照实验：干净 `origin/main` `d6c94c4` 隔离连跑 3 次 `pi-workbench-e2e.cjs` 3/3 失败（621/621 键盘断言、642 元素脱离 DOM），证明该 flake 在未改动的 main 上同样复现；候选分支隔离 3 次为 1 过 2 失败，与 main 同水平。相关键盘断言由 #228（`7887d8f`）引入，本切片无 DOM/焦点结构改动。
+- 截图与文档：8 张验收截图（zh-CN/en × 浅/深，onboarding hover + 设置中心）入库 `docs/qa/screenshots/issue-204/`，SHA-256 与视觉判断见 UI 视觉检查条目。
+- 边界：仅 macOS 开发版、本机字体回退；未覆盖 Windows/Linux、打包版、VoiceOver、11px 等宽代码字与紧凑密度模式（已在视觉检查记录为豁免）。测试期间与另一会话的 #165 隔离 E2E 有并发窗口（第 1 轮），独占复跑通过。
+
 ## 2026-11-05 Issue #182 Fuses 安全配置（PR #318 最新候选）
 
 - 基线与范围：以最新 main `41bb26e36521031ebaed0a5d04580a5267ad0c22`（含 #227、#229、#242、#246）为基线，Fuses/ASAR 切片提交 `7f84ece`。保留 #246 双语网页上下文菜单的文档和 `npm test` 入口，未带入陈旧分支文件。
