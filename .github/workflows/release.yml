@@ -102,7 +102,14 @@ jobs:
       - run: npm ci
       - name: Full Electron regression (macOS arm64 release gate)
         if: matrix.platform == 'mac' && matrix.arch == 'arm64'
-        run: env -u ELECTRON_RUN_AS_NODE npm test
+        run: |
+          for attempt in 1 2; do
+            echo "Full Electron regression attempt ${attempt}/2"
+            if env -u ELECTRON_RUN_AS_NODE npm test; then
+              exit 0
+            fi
+          done
+          exit 1
       - name: Build and smoke test macOS app bundle
         if: matrix.platform == 'mac'
         env:

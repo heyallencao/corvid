@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-06 Release macOS runner 失败复核（Issue #319）
+
+- 改动：macOS `lipo` 的 `x86_64`/`aarch64` 架构名先归一为 Node/Electron 的 `x64`/`arm64` 再断言；手动 Release workflow 的 arm64 全量回归现在允许完整链失败后重跑一次，仍需某一整轮全链成功，不跳过失败项。
+- Hosted runner 对照：原 run `41995765574` 的 x64 smoke 复跑仍命中旧架构断言；arm64 复跑未重现 socket 失败，而在 `window-state-e2e.cjs:37` 状态文件等待超时。两项复跑均使用 main SHA `06ca32b`，不含本修复。
+- 本机先前验证：node:test 37/37 通过；两轮全量分别失败于 `multi-window-e2e.cjs:56` 和 `pi-workbench-e2e.cjs:647`，对应脚本单独复跑曾通过。失败轮与其他 worktree 的 Electron E2E 并发，不能将这些失败归因于本修改，也未取得当时的全量通过结果。
+- 本轮最新主线复验待完成；合并后还须手动 dispatch Release workflow，验证 x64 packaged smoke 与 arm64 重试门禁。不得把旧 SHA 的复跑当成本修复验收。
+
 ## 2026-11-06 Issue #130 子切片 A1：新标签起始页双语
 
 - 基线：隔离 worktree，候选基于 `origin/main` `83f2aa2`（含 PR #324），分支 `ui/issue-130-newtab-locale`。改动：`desktop/main-locales.cjs`（新增 `newTab*` 双语键 16 项）、`desktop/main.cjs`（起始页注入时按当前 uiLocale 构建文案对象，第二参数注入序列化函数）、`desktop/new-tab-page.cjs`（模板与书签卡可访问名称全部消费注入文案；宿主元素带 `lang` 与 `data-home-locale`/`data-home-heading` 镜像）、`tests/tab-ux-e2e.cjs`（双语断言块）、`docs/architecture/localization.md`。与开放 PR #249（locales.js/agent-workbench 域）无文件交集。
