@@ -10,6 +10,16 @@ const project = path.resolve(__dirname, '..');
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-interaction-states-'));
 const qaDir = process.env.CORVID_INTERACTION_QA_DIR;
 let app;
+const selectedTextContrast = {};
+const contrastRatio = (foreground, background) => {
+  const luminance = color => {
+    const channels = color.match(/\d+/g).slice(0, 3).map(value => Number(value) / 255);
+    const linear = channels.map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  const values = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+};
 
 (async () => {
   try {
@@ -22,10 +32,64 @@ let app;
     const shell = launched.shell;
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 732));
     await shell.waitForFunction(() => window.innerWidth === 1024);
+    await shell.locator('#new-tab').waitFor({ state: 'visible' });
     const viewport = await shell.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
 
     for (const colorScheme of ['light', 'dark']) {
       await shell.emulateMedia({ colorScheme, reducedMotion: 'no-preference' });
+
+      const designTokens = await shell.evaluate(() => {
+        const styleOf = selector => {
+          const element = document.querySelector(selector);
+          if (!element) throw new Error(`Missing tokenized component: ${selector}`);
+          const style = getComputedStyle(element);
+          return { radius: style.borderRadius, shadow: style.boxShadow };
+        };
+        const root = getComputedStyle(document.documentElement);
+        const shadowFromToken = token => {
+          const probe = document.createElement('span');
+          probe.style.boxShadow = `var(${token})`;
+          document.body.append(probe);
+          const value = getComputedStyle(probe).boxShadow;
+          probe.remove();
+          return value;
+        };
+        return {
+          radius: Object.fromEntries(['xs', 'sm', 'md', 'lg', 'xl', 'circle'].map(key => [key, root.getPropertyValue(`--radius-${key}`).trim()])),
+          elevation: Object.fromEntries(['card', 'raised', 'popover', 'panel', 'menu', 'dialog'].map(key => [key, shadowFromToken(`--elevation-${key}`)])),
+          profile: styleOf('.profile-switcher'),
+          address: styleOf('#address-form'),
+          newTab: styleOf('#tabs > #new-tab'),
+          profileMenu: styleOf('#profile-menu'),
+          siteTools: styleOf('#site-tools'),
+          findbar: styleOf('#findbar'),
+          library: styleOf('#library'),
+        };
+      });
+      assert.deepEqual(designTokens.radius, { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '20px', circle: '50%' }, `${colorScheme}: radius scale is shared and increments by 4px`);
+      for (const [key, geometry] of Object.entries({
+        card: '0px 1px 2px 0px',
+        raised: '0px 3px 12px 0px',
+        popover: '0px 12px 32px 0px',
+        panel: '0px 12px 36px 0px',
+        menu: '0px 14px 38px 0px',
+        dialog: '0px 24px 80px 0px',
+      })) {
+        assert.match(designTokens.elevation[key], /^rgba?\(.+\) /, `${colorScheme}: ${key} elevation resolves to a theme color`);
+        assert.ok(designTokens.elevation[key].endsWith(geometry), `${colorScheme}: ${key} elevation keeps its semantic geometry`);
+      }
+      assert.equal(designTokens.profile.radius, '12px');
+      assert.equal(designTokens.address.radius, '20px');
+      assert.equal(designTokens.newTab.radius, '8px');
+      assert.equal(designTokens.profileMenu.radius, '12px');
+      assert.equal(designTokens.siteTools.radius, '12px');
+      assert.equal(designTokens.findbar.radius, '12px');
+      assert.equal(designTokens.library.radius, '16px');
+      assert.match(designTokens.profile.shadow, /^rgba?\(.+\) 0px 1px 2px 0px$/);
+      assert.match(designTokens.profileMenu.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
+      assert.match(designTokens.siteTools.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
+      assert.match(designTokens.findbar.shadow, /^rgba?\(.+\) 0px 12px 32px 0px$/);
+      assert.match(designTokens.library.shadow, /^rgba?\(.+\) 0px 12px 36px 0px$/);
 
       const surfaces = await shell.evaluate(() => {
         const nav = document.querySelector('#show-bookmarks');
@@ -76,6 +140,56 @@ let app;
       assert.equal(selected.color, selectedBeforeHover.color, `${colorScheme}: selected navigation text remains stable on hover`);
       assert.equal(selected.background, selectedBeforeHover.background, `${colorScheme}: selected navigation surface remains stable on hover`);
       assert.match(selected.boxShadow, /2px 0px.*inset/, `${colorScheme}: selected navigation keeps its accent marker`);
+      selectedTextContrast[colorScheme] = contrastRatio(selected.color, selected.background).toFixed(2);
+      assert.ok(Number(selectedTextContrast[colorScheme]) >= 4.5, `${colorScheme}: selected navigation text meets WCAG AA`);
+
+      const activeRoom = shell.locator('#room-strip button[aria-current="page"]');
+      assert.equal(await activeRoom.count(), 1, `${colorScheme}: exactly one Room is announced as current`);
+      const roomSelection = await activeRoom.evaluate(element => ({
+        color: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+        boxShadow: getComputedStyle(element).boxShadow,
+      }));
+      assert.equal(roomSelection.color, selected.color, `${colorScheme}: current Room and current navigation use the same selected text color`);
+      assert.equal(roomSelection.background, selected.background, `${colorScheme}: current Room and current navigation use the same selected surface`);
+      assert.match(roomSelection.boxShadow, /2px 0px.*inset/, `${colorScheme}: current Room uses the same accent marker as current navigation`);
+      assert.equal(contrastRatio(roomSelection.color, roomSelection.background).toFixed(2), selectedTextContrast[colorScheme], `${colorScheme}: current Room contrast matches current navigation`);
+      await activeRoom.hover();
+      await shell.waitForTimeout(220);
+      const roomHovered = await activeRoom.evaluate(element => ({
+        color: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+        boxShadow: getComputedStyle(element).boxShadow,
+      }));
+      assert.deepEqual(roomHovered, roomSelection, `${colorScheme}: current Room selection remains stable on hover`);
+      await shell.mouse.move(0, 0);
+
+      await shell.locator('#create-room-trigger').click();
+      const dialogTokens = await shell.locator('#new-room').evaluate(element => ({ radius: getComputedStyle(element).borderRadius, shadow: getComputedStyle(element).boxShadow }));
+      assert.equal(dialogTokens.radius, '16px', `${colorScheme}: dialogs use the large radius token`);
+      assert.match(dialogTokens.shadow, /^rgba?\(.+\) 0px 24px 80px 0px$/);
+      const createRoom = shell.locator('#new-room-form button[type="submit"]');
+      await createRoom.waitFor({ state: 'visible' });
+      const submitBeforeHover = await createRoom.evaluate(element => getComputedStyle(element).backgroundColor);
+      await createRoom.hover();
+      await shell.waitForFunction(() => document.querySelector('#new-room-form button[type="submit"]')?.matches(':hover'));
+      await shell.waitForTimeout(140);
+      const submitHover = await createRoom.evaluate(element => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--accent-solid)';
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { background: getComputedStyle(element).backgroundColor, expected, hovered: element.matches(':hover') };
+      });
+      assert.equal(submitHover.hovered, true, `${colorScheme}: the pointer is over the dialog submit button`);
+      assert.equal(submitHover.background, submitBeforeHover, `${colorScheme}: dialog submit keeps its primary surface while hovered`);
+      assert.equal(submitHover.background, submitHover.expected, `${colorScheme}: dialog submit surface follows the accent token`);
+      if (qaDir) {
+        fs.mkdirSync(qaDir, { recursive: true });
+        await shell.screenshot({ path: path.join(qaDir, `issue-211-submit-hover-${colorScheme}-${viewport.width}x${viewport.height}.png`) });
+      }
+      await shell.locator('#cancel-room').click();
 
       if (qaDir) {
         fs.mkdirSync(qaDir, { recursive: true });
@@ -111,7 +225,25 @@ let app;
       assert.equal(reduced.scroll, 'auto', `${colorScheme}: reduced motion disables smooth scrolling`);
     }
 
-    console.log(`PASS interaction states at ${viewport.width}x${viewport.height}: selected navigation survives hover, press feedback is visible, and themed scrollbars/selection respect reduced motion across light/dark themes`);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(719, 452));
+    await shell.waitForFunction(() => window.innerWidth === 719);
+    for (const colorScheme of ['light', 'dark']) {
+      await shell.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      const compactSelection = await shell.evaluate(() => {
+        const room = document.querySelector('#room-strip button[aria-current="page"]');
+        const nav = document.querySelector('#show-bookmarks[aria-expanded="true"]');
+        const style = element => ({
+          color: getComputedStyle(element).color,
+          background: getComputedStyle(element).backgroundColor,
+          marker: getComputedStyle(element).boxShadow,
+        });
+        return { width: window.innerWidth, height: window.innerHeight, room: style(room), nav: style(nav) };
+      });
+      assert.deepEqual(compactSelection.room, compactSelection.nav, `${colorScheme}: compact Room and navigation selections share the same visual language`);
+      assert.equal(compactSelection.width, 719);
+    }
+
+    console.log(`PASS interaction states at ${viewport.width}x${viewport.height} plus 704x420 compact mode: Room/navigation selection matches across light/dark themes and survives hover (contrast ${JSON.stringify(selectedTextContrast)}), dialog submit keeps its accent on hover, press feedback is visible, and themed scrollbars/selection respect reduced motion`);
   } finally {
     if (app) await closeElectron(app).catch(error => { console.error(error); process.exitCode = 1; });
     fs.rmSync(dataDir, { recursive: true, force: true });

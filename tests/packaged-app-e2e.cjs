@@ -5,15 +5,27 @@ const path = require('node:path');
 const { _electron } = require('playwright-core');
 const { execFileSync } = require('node:child_process');
 const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
+const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const root = path.resolve(__dirname, '..');
-const appBundle = path.join(root, 'dist', 'mac-arm64', 'Corvid.app');
-const executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
+const expectedArch = process.env.CORVID_PACKAGED_ARCH ?? process.arch;
+let executablePath;
+let appBundle;
+if (process.platform === 'darwin') {
+  const appDir = expectedArch === 'arm64' ? 'mac-arm64' : 'mac';
+  appBundle = path.join(root, 'dist', appDir, 'Corvid.app');
+  executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
+} else if (process.platform === 'win32') {
+  executablePath = path.join(root, 'dist', 'win-unpacked', 'Corvid.exe');
+} else {
+  throw new Error(`Unsupported packaged app test platform: ${process.platform}`);
+}
 
 (async () => {
-  assert.equal(process.platform, 'darwin', 'packaged macOS smoke test requires macOS');
-  assert.equal(process.arch, 'arm64', 'this build validates the native Apple Silicon package');
+  assert.ok(['arm64', 'x64'].includes(expectedArch), `supported packaged architecture: ${expectedArch}`);
+  assert.equal(process.arch, expectedArch, `the runner must use the packaged ${expectedArch} architecture`);
   assert.ok(fs.statSync(executablePath).isFile(), `packaged executable exists: ${executablePath}`);
+  if (process.env.CORVID_REQUIRE_PACKAGED_SIGNATURE === '1') assertDeveloperIdSignature(appBundle);
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-packaged-app-'));
   let app;
@@ -29,14 +41,18 @@ const executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
     control = await waitForControl(app, dataDir, { label: 'packaged-app-e2e' });
 
     const info = await app.evaluate(({ app }) => ({
+      arch: process.arch,
       appPath: app.getAppPath(),
       isPackaged: app.isPackaged,
       name: app.getName(),
       version: app.getVersion(),
     }));
     assert.equal(info.isPackaged, true, 'the process runs from an installed app bundle');
-    const architectures = execFileSync('/usr/bin/lipo', ['-archs', executablePath], { encoding: 'utf8' }).trim().split(/\s+/);
-    assert.deepEqual(architectures, ['arm64']);
+    assert.equal(info.arch, expectedArch, `the packaged Corvid process runs as ${expectedArch}`);
+    const architectures = process.platform === 'darwin'
+      ? execFileSync('/usr/bin/lipo', ['-archs', executablePath], { encoding: 'utf8' }).trim().split(/\s+/)
+      : [process.arch];
+    assert.deepEqual(architectures, [expectedArch]);
     assert.match(info.appPath, /\.asar$/,'desktop assets resolve from the packaged application archive');
 
     await shell.locator('#rooms').waitFor();
@@ -64,7 +80,7 @@ const executablePath = path.join(appBundle, 'Contents', 'MacOS', 'Corvid');
     });
     app = null;
     assert.equal(fs.existsSync(path.join(dataDir, 'control.json')), false, 'graceful shutdown removes the scoped control credential');
-    console.log(`PASS packaged Corvid app starts and exits (macOS arm64, Electron ${electronVersion})`);
+    console.log(`PASS packaged Corvid app starts and exits (${process.platform} ${expectedArch}, Electron ${electronVersion})`);
   } finally {
     if (app) await closeElectron(app);
     fs.rmSync(dataDir, { recursive: true, force: true });

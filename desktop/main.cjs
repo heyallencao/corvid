@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu, nativeTheme } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -71,6 +71,7 @@ const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDi
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('pi-auth-event', event);
 } });
 let failNextPiFixtureInitialization = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_INIT_FAILURE_ONCE === '1';
+let failNextPiFixtureDisposal = process.env.CORVID_TEST_MODE === '1' && process.env.CORVID_TEST_PI_DISPOSE_FAILURE_ONCE === '1';
 const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(failNextPiFixtureInitialization){failNextPiFixtureInitialization=false;throw new Error('本地 fixture 模拟 Pi Session 初始化失败');}
   const directory=path.join(dataDir,'agent-sessions',taskId);
@@ -79,12 +80,14 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
   if(sessionFile && !path.resolve(sessionFile).startsWith(`${path.resolve(directory)}${path.sep}`))throw new Error('Fixture transcript must remain inside the task directory');
   const listeners=new Set();
   let abortActive;
+  let failDispose=false;
   const session={
     sessionFile:transcript,
     subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener);},
     async prompt(message){
       const previous=fs.existsSync(transcript)?fs.readFileSync(transcript,'utf8').split('\n').filter(Boolean).length:0;
       fs.appendFileSync(transcript,`${JSON.stringify({message})}\n`,{mode:0o600});
+      if(message.includes('[fixture:dispose-failure]')&&failNextPiFixtureDisposal){failDispose=true;failNextPiFixtureDisposal=false;}
       if(message.includes('[fixture:fail-once]')&&previous===0)throw new Error('本地 fixture 模拟 Provider 断连');
       if(message.includes('[fixture:runtime-name-leak]')&&previous===0)throw new Error('pi runtime could not be resumed');
       if(message.includes('[fixture:hold-stop-late]'))return new Promise(resolve=>{abortActive=async()=>{
@@ -105,10 +108,11 @@ const fixtureSession = async ({ dataDir, taskId, sessionFile }) => {
         for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'页面要点已整理。'}});
         return {stopReason:'stop'};
       }
-      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`}});
+      const reply=message.includes('[fixture:dispose-failure]')?'这是已生成且保留的回复。':`这是本地确定性 Agent fixture 第 ${previous+1} 轮回复。没有调用真实模型。`;
+      for(const listener of listeners)listener({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:reply}});
       return {stopReason:'stop'};
     },
-    dispose(){},
+    dispose(){if(failDispose)throw new Error('本地 fixture 模拟会话清理失败');},
     async abort(){await abortActive?.();}
   };
   return {session,sessionFile:transcript,tools:['corvid_navigate','corvid_page_snapshot'],fixture:true};
@@ -142,13 +146,28 @@ let panelOpen = false;
 const selectedChromeSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
+let hangChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_ONCE==='1';
 let failChromeCookieSetNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'';
 let failChromeCookieRemoveNameForTest=process.env.CORVID_TEST_MODE==='1'?process.env.CORVID_TEST_CHROME_COOKIE_REMOVE_FAIL_NAME:'';
 function normalizeCookieDomain(domain){return String(domain||'').toLowerCase().replace(/^\./,'').replace(/\.$/,'');}
+function chromeCookieStoreTimeoutMs(){
+  const testTimeout=process.env.CORVID_TEST_MODE==='1'?Number(process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_MS):0;
+  return Number.isFinite(testTimeout)&&testTimeout>=100&&testTimeout<=30000?testTimeout:30000;
+}
+async function awaitChromeCookieStoreOperation(operation){
+  let timer;
+  try{
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_,reject)=>{timer=setTimeout(()=>{const error=new Error('CORVID_COOKIE_PERSISTENCE_TIMEOUT');error.code='CORVID_COOKIE_PERSISTENCE_TIMEOUT';reject(error);},chromeCookieStoreTimeoutMs());}),
+    ]);
+  }finally{clearTimeout(timer);}
+}
 async function flushChromeCookies(destinationSession,{rollback=false}={}){
   if(failChromeCookieFlushForTest){failChromeCookieFlushForTest=false;throw new Error('测试注入：Chrome Cookie 持久化失败');}
   if(rollback&&failChromeCookieRollbackFlushForTest){failChromeCookieRollbackFlushForTest=false;throw new Error('测试注入：Chrome Cookie 回滚持久化失败');}
-  await destinationSession.cookies.flushStore();
+  if(hangChromeCookieFlushForTest){hangChromeCookieFlushForTest=false;await awaitChromeCookieStoreOperation(()=>new Promise(()=>{}));}
+  await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.flushStore());
 }
 function verifyChromeCookiesPersisted(destinationSession,addedCookies){
   const persistentCookies=addedCookies.filter(({cookie})=>Number.isFinite(cookie.expirationDate));
@@ -227,6 +246,8 @@ function applicationMenuHandlers() {
     forward:()=>runApplicationMenuAction(()=>dispatchActive('forward')),
     reload:()=>runApplicationMenuAction(()=>dispatchActive('reload')),
     find:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-open');}),
+    findNext:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:false});}),
+    findPrevious:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-find-next',{backward:true});}),
     print:()=>runApplicationMenuAction(()=>{const current=active();if(!current.canUseActiveTab)return;current.record.browserWindow.webContents.focus();current.record.browserWindow.webContents.send('shell-print-page',{id:current.tab.id});}),
     fullscreen:()=>runApplicationMenuAction(()=>{const current=active();if(!current.record||current.record.htmlFullscreen)return;return requestWindowFullscreen(current.record,!current.record.appFullscreen);}),
     zoomIn:()=>adjustZoom(0.1),
@@ -269,6 +290,24 @@ const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
 const uiPreferencesPath = path.join(dataDir, 'ui-preferences.json');
+const browserPreferencesPath = path.join(dataDir, 'browser-preferences.json');
+const defaultBrowserPreferences = {schemaVersion:2,theme:'system',startupBehavior:'restore',newTabBehavior:'home',downloadDirectory:'',askWhereToSave:true};
+let browserPreferences = {...defaultBrowserPreferences};
+try {
+  const savedPreferences = JSON.parse(fs.readFileSync(browserPreferencesPath, 'utf8'));
+  if (savedPreferences?.schemaVersion === 1 && ['system','light','dark'].includes(savedPreferences.theme)) browserPreferences.theme=savedPreferences.theme;
+  else if (savedPreferences?.schemaVersion === 2) {
+    if(['system','light','dark'].includes(savedPreferences.theme))browserPreferences.theme=savedPreferences.theme;
+    if(['restore','new-tab'].includes(savedPreferences.startupBehavior))browserPreferences.startupBehavior=savedPreferences.startupBehavior;
+    if(['home','blank'].includes(savedPreferences.newTabBehavior))browserPreferences.newTabBehavior=savedPreferences.newTabBehavior;
+    if(typeof savedPreferences.downloadDirectory==='string' && (!savedPreferences.downloadDirectory || path.isAbsolute(savedPreferences.downloadDirectory)) && !savedPreferences.downloadDirectory.includes('\0'))browserPreferences.downloadDirectory=savedPreferences.downloadDirectory;
+    if(typeof savedPreferences.askWhereToSave==='boolean')browserPreferences.askWhereToSave=savedPreferences.askWhereToSave;
+  }
+} catch (error) {
+  if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+}
+nativeTheme.themeSource = browserPreferences.theme;
+let themePreference = browserPreferences.theme;
 let uiLocale = process.env.CORVID_TEST_MODE === '1' ? 'zh-CN' : (/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 try {
   const savedPreferences = JSON.parse(fs.readFileSync(uiPreferencesPath, 'utf8'));
@@ -285,6 +324,23 @@ function saveUiLocale(locale) {
   rebuildApplicationMenu();
   mainMessages.setLocale(locale);
 }
+function saveBrowserPreferences(patch) {
+  const next={...browserPreferences,...patch,schemaVersion:2};
+  const invalid=(zh,en)=>Object.assign(new Error(uiLocale==='en'?en:zh),{code:'CORVID_INVALID_ARGUMENT'});
+  if (!['system','light','dark'].includes(next.theme)) throw invalid('主题选项无效。','The theme option is invalid.');
+  if (!['restore','new-tab'].includes(next.startupBehavior)) throw invalid('启动行为选项无效。','The startup option is invalid.');
+  if (!['home','blank'].includes(next.newTabBehavior)) throw invalid('新标签页选项无效。','The new tab option is invalid.');
+  if (typeof next.askWhereToSave!=='boolean') throw invalid('下载保存选项无效。','The download save option is invalid.');
+  if (typeof next.downloadDirectory!=='string' || next.downloadDirectory.includes('\0') || (next.downloadDirectory&&!path.isAbsolute(next.downloadDirectory))) throw invalid('下载文件夹路径无效。','The download folder path is invalid.');
+  if(next.downloadDirectory){try{if(!fs.statSync(next.downloadDirectory).isDirectory())throw invalid('所选下载位置不是文件夹。','The selected download location is not a folder.');}catch(error){if(error.code==='CORVID_INVALID_ARGUMENT')throw error;throw invalid('无法访问所选下载文件夹，请重新选择。','The selected download folder is unavailable. Choose another folder.');}}
+  const temporaryPath = `${browserPreferencesPath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(next), {mode:0o600});
+  fs.renameSync(temporaryPath, browserPreferencesPath);
+  browserPreferences=next;
+  nativeTheme.themeSource=next.theme;
+  themePreference=next.theme;
+  return {...browserPreferences};
+}
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
 try{chromeImportOnboardingState=JSON.parse(fs.readFileSync(chromeImportOnboardingPath,'utf8')).status;}catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
@@ -296,7 +352,7 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
-const MIN_WINDOW_WIDTH = 704;
+const MIN_WINDOW_WIDTH = 719;
 const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
@@ -571,7 +627,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
-    ...(includeExtensionToolbar ? {uiLocale} : {}),
+    ...(includeExtensionToolbar ? {uiLocale,themePreference} : {}),
     profiles,
     extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
     rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
@@ -674,8 +730,16 @@ function installDownloads(partition,profileId) {
     if(retryContext?.cancelRequested){event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
     let destination;
     try {
-      if (process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR) destination=path.join(process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
-      else destination=dialog.showSaveDialogSync(window,{title:mainMessages.t('saveDownloadDialog'),defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
+      const downloadDirectory=browserPreferences.downloadDirectory || (process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_DOWNLOAD_DIR) || app.getPath('downloads');
+      if(browserPreferences.downloadDirectory){let available=false;try{available=fs.statSync(browserPreferences.downloadDirectory).isDirectory();}catch{}if(!available)throw new Error(uiLocale==='en'?'The saved download folder is unavailable. Choose another folder in Settings.':'已保存的下载文件夹不可用，请在设置中重新选择。');}
+      if(process.env.CORVID_TEST_MODE==='1' && browserPreferences.askWhereToSave && process.env.CORVID_TEST_DOWNLOAD_DIALOG_RESULT!==undefined){
+        const simulated=process.env.CORVID_TEST_DOWNLOAD_DIALOG_RESULT;
+        destination=simulated==='cancel' ? undefined : simulated;
+      }else if(process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR){
+        destination=path.join(downloadDirectory || process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
+      }else if(browserPreferences.askWhereToSave){
+        destination=dialog.showSaveDialogSync(window,{title:uiLocale==='en'?'Save download':'保存下载',defaultPath:path.join(downloadDirectory,filename),properties:['createDirectory','showOverwriteConfirmation']});
+      }else destination=path.join(downloadDirectory,filename);
       if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       let exists=false;try {fs.lstatSync(destination);exists=true;} catch(error) {if(error.code!=='ENOENT') throw error;}
       if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
@@ -759,6 +823,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
   const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,isLoading:false,navigationError:null,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[],homeSurfaceInstalled:false,homeInjection:null};
   const installHomeSurface=()=>{
+    if(browserPreferences.newTabBehavior!=='home')return Promise.resolve();
     if(s.ownership!=='user'||openedBy!=='user')return Promise.resolve();
     if(tab.homeSurfaceInstalled)return Promise.resolve();
     if(tab.homeInjection)return tab.homeInjection;
@@ -1008,7 +1073,27 @@ async function dispatch(method, args = {}, fromApi = false) {
       for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
       return result;
     }
-    case 'settings': return profileSettings(args.profileId ?? activeProfileId);
+    case 'settings': return {...profileSettings(args.profileId ?? activeProfileId), themePreference, browserPreferences:{...browserPreferences}};
+    case 'setThemePreference': {
+      if(fromApi) throw new Error('User action required');
+      saveBrowserPreferences({theme:args.theme});
+      for (const record of windowRecords.values()) update(record);
+      return {themePreference};
+    }
+    case 'setBrowserPreferences': {
+      if(fromApi)throw new Error('浏览器偏好只能在 Corvid 界面修改');
+      const preferences=saveBrowserPreferences({startupBehavior:args.startupBehavior,newTabBehavior:args.newTabBehavior,downloadDirectory:args.downloadDirectory,askWhereToSave:args.askWhereToSave});
+      for(const record of windowRecords.values())update(record);
+      return preferences;
+    }
+    case 'chooseDownloadDirectory': {
+      if(fromApi)throw new Error('下载文件夹只能在 Corvid 界面选择');
+      if(process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_DOWNLOAD_DIR)return {canceled:false,path:process.env.CORVID_TEST_DOWNLOAD_DIR};
+      const defaultPath=browserPreferences.downloadDirectory||app.getPath('downloads');
+      const result=await dialog.showOpenDialog(window,{title:uiLocale==='en'?'Choose download folder':'选择下载文件夹',defaultPath,properties:['openDirectory','createDirectory']});
+      if(result.canceled||!result.filePaths[0])return {canceled:true};
+      return {canceled:false,path:result.filePaths[0]};
+    }
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
       if(!needsChromeImportOnboarding)return {ok:true};
@@ -1065,8 +1150,8 @@ async function dispatch(method, args = {}, fromApi = false) {
           if(previous.length){failures.push('为保护目标 Profile 原有 Cookie，跳过无法按路径安全执行的删除回滚');continue;}
           try{
             if(failChromeCookieRemoveNameForTest===cookie.name){failChromeCookieRemoveNameForTest='';throw new Error('测试注入：Chrome Cookie 回滚删除失败');}
-            await destinationSession.cookies.remove(cookie.url,cookie.name);
-          }catch{failures.push('删除本次新增 Cookie');}
+            await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.remove(cookie.url,cookie.name));
+          }catch(error){if(error?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT')throw error;failures.push('删除本次新增 Cookie');}
         }
         if(addedCookies.length){try{await flushChromeCookies(destinationSession,{rollback:true});}catch{failures.push('持久化 Cookie 回滚结果');}}
         if(failures.length)throw new Error(`Chrome Cookie 导入失败后回滚未完整完成（${[...new Set(failures)].join('、')}）。为保护目标 Profile 原有 Cookie，本次跳过无法按路径安全执行的删除回滚；本次导入的 Cookie 可能仍保留在目标 Profile。请在当前对话框中重试；关闭对话框或重启 Corvid 后，请重新选择同一 Chrome 来源和目标 Profile，再次点击“导入”以补写持久化结果。`);
@@ -1076,7 +1161,7 @@ async function dispatch(method, args = {}, fromApi = false) {
           const sourceCookies=await chromeImport.readCookies(path.join(selectedRoot,args.sourceId),{consent:args.cookieConsent});
           cookieResult.unsupported=sourceCookies.unsupported;
           for(const cookie of sourceCookies.cookies){
-            const existing=await destinationSession.cookies.get({url:cookie.url,name:cookie.name});
+            const existing=await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.get({url:cookie.url,name:cookie.name}));
             // Electron omits the leading dot for HostOnly cookies, while Chrome Domain cookies include it.
             const targetDomain=normalizeCookieDomain(cookie.sourceDomain);
             if(existing.some(item=>normalizeCookieDomain(item.domain)===targetDomain && item.path===cookie.path)){cookieResult.skipped++;continue;}
@@ -1084,8 +1169,8 @@ async function dispatch(method, args = {}, fromApi = false) {
             if(!hostOnly)cookieDetails.domain=sourceDomain;
             try{
               if(failChromeCookieSetNameForTest===cookie.name){failChromeCookieSetNameForTest='';throw new Error('测试注入：Chrome Cookie 单项写入失败');}
-              await destinationSession.cookies.set(cookieDetails);addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;
-            }catch{cookieResult.failed++;}
+              await awaitChromeCookieStoreOperation(()=>destinationSession.cookies.set(cookieDetails));addedCookies.push({cookie:cookieDetails,previous:existing});cookieResult.imported++;
+            }catch(error){if(error?.code==='CORVID_COOKIE_PERSISTENCE_TIMEOUT')throw error;cookieResult.failed++;}
           }
           await flushChromeCookies(destinationSession);
           verifyChromeCookiesPersisted(destinationSession,addedCookies);
@@ -1113,7 +1198,7 @@ async function dispatch(method, args = {}, fromApi = false) {
         if(!cookieResult.failed)selectedChromeSources.delete(args.sourceToken);
         return {...result,cookies:cookieResult,extensions,profileId};
       }catch(error){
-        try{await rollbackCookies();}catch(rollbackError){throw new Error(`${error.message}；${rollbackError.message}`);}
+        try{await rollbackCookies();}catch(rollbackError){const combined=new Error(`${error.message}；${rollbackError.message}`);combined.code=error.code||rollbackError.code;throw combined;}
         throw error;
       }
     }
@@ -1282,7 +1367,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     }
     case 'copyTabUrl': {
       if(fromApi) throw new Error('User action required');
-      const url=findTab(target).view.webContents.getURL();
+      const tab=findTab(target),url=tab.navigationError?.url||tab.view.webContents.getURL();
       if(!url || url==='about:blank') throw new Error('当前标签页没有可复制的地址');
       clipboard.writeText(url);
       return {url};
@@ -1555,6 +1640,9 @@ async function startServer() {
 async function createWindowRecord(bounds = {width:1280,height:850},recordId = id()) {
   bounds={x:bounds.x??0,y:bounds.y??0,...bounds};
   const area=screen.getDisplayMatching(bounds).workArea;
+  // The Agent panel's scrollable list may reserve a 15px scrollbar. Keep the
+  // minimum window wide enough for 320px of web content plus 280px of panel
+  // content after that platform-dependent gutter is accounted for.
   const minimumWidth=Math.min(MIN_WINDOW_WIDTH,area.width),minimumHeight=Math.min(MIN_WINDOW_HEIGHT,area.height);
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
@@ -1705,6 +1793,14 @@ app.whenReady().then(async () => {
   focusWindow(primary);
   if (!rooms.length) { startupProgress('create-initial-room'); await createRoom('我的空间','user'); }
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
+  if(saved?.rooms?.length && browserPreferences.startupBehavior==='new-tab'){
+    const record=activeRecord(),room=record&&rooms.find(item=>item.id===record.activeRoomId);
+    if(room){
+      const existing=room.tabIds.map(tabId=>tabs.get(tabId)).find(tab=>tab?.openedBy==='user'&&(tab.restoreUrl==='about:blank'||(!tab.restoringInitial&&tab.view.webContents.getURL()==='about:blank')));
+      if(existing){await existing.initialization;room.activeTabId=existing.id;}
+      else await createTab(room.id,'about:blank',id(),{openedBy:'user',notifyInitialState:true});
+    }
+  }
   restoring = false;
   for (const record of windowRecords.values()) update(record);
   startupProgress('restoration-complete');

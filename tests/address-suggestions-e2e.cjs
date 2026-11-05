@@ -13,7 +13,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 (async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-address-suggestions-'));
   const qaDir = process.env.CORVID_ADDRESS_SUGGESTIONS_QA_DIR;
+  const contrastQaDir = process.env.CORVID_PLACEHOLDER_CONTRAST_QA_DIR;
   if (qaDir) fs.mkdirSync(qaDir, { recursive: true });
+  if (contrastQaDir) fs.mkdirSync(contrastQaDir, { recursive: true });
   const fixture = http.createServer((request, response) => {
     const title = request.url.startsWith('/search?') ? 'Local Search Fixture' : 'Corvid Guide';
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -49,6 +51,51 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     };
     const address = shell.locator('#address');
     const list = shell.getByRole('listbox', { name: '地址建议' });
+
+    const contrastRatio = (foreground, background) => {
+      const luminance = color => {
+        const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => {
+          const channel = value / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      };
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    };
+
+    for (const theme of ['light', 'dark']) {
+      await shell.emulateMedia({ colorScheme: theme });
+      await delay(200);
+      for (const locale of ['zh-CN', 'en']) {
+        await shell.evaluate(async value => window.browserShell.invoke('setUiLocale', { locale: value }), locale);
+        await shell.evaluate(() => document.activeElement?.blur());
+        assert.equal(await address.getAttribute('placeholder'), locale === 'en' ? 'Search or enter address' : '搜索或输入网址');
+        const readColors = () => address.evaluate(input => ({
+          foreground: getComputedStyle(input, '::placeholder').color,
+          background: getComputedStyle(document.querySelector('#address-form')).backgroundColor,
+        }));
+        const assertContrast = async state => {
+          const colors = await readColors();
+          const ratio = contrastRatio(colors.foreground, colors.background);
+          assert.ok(ratio >= 4.5, `${theme}/${locale}/${state} address placeholder contrast ${ratio.toFixed(2)}:1 must meet 4.5:1 (${colors.foreground} on ${colors.background})`);
+        };
+        await assertContrast('unfocused');
+        await address.focus();
+        await delay(200);
+        await assertContrast('focused');
+        await address.blur();
+        await delay(200);
+        if (contrastQaDir) {
+          await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 700));
+          await delay(100);
+          await shell.screenshot({ path: path.join(contrastQaDir, `issue-192-address-${theme}-${locale}-1024x700.png`) });
+        }
+      }
+    }
+    await shell.emulateMedia({ colorScheme: 'light' });
+    await shell.evaluate(async () => window.browserShell.invoke('setUiLocale', { locale: 'zh-CN' }));
+    console.log('PASS address placeholder contrast >= 4.5:1 for light/dark themes and zh-CN/en');
 
     await address.fill(`${base}/guide`);
     await list.waitFor({ state: 'visible' });

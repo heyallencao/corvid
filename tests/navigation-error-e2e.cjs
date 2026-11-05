@@ -48,6 +48,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
   try{
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1'}});
     const shell=await app.firstWindow();
+    await app.evaluate(({clipboard})=>{globalThis.__corvidIssue202CopiedUrl=null;clipboard.writeText=text=>{globalThis.__corvidIssue202CopiedUrl=text;};});
     const connection=await until(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'control connection');
     client=await (await import('../sdk/index.js')).connect({dataDir});
     await shell.locator('#create-room-trigger').click();
@@ -75,25 +76,40 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP error response is still an unencrypted connection, not an unknown connection');
     assert.equal(await shell.locator('#status .navigation-error').textContent(),'服务器返回 HTTP 500','Chinese UI should state the HTTP 500 response without calling the loaded page a navigation failure');
     assert.equal(http500Zh.navigationError.code,'HTTP 500');
+    assert.equal(await shell.locator('#status').getAttribute('data-tone'),'danger','navigation errors should use the danger status tone');
+    assert.equal(await shell.locator('#tabs .tab[data-active="true"] .tab-title').textContent(),`127.0.0.1:${server.address().port}`,'a failed tab should show its site host instead of the raw URL');
+    await shell.locator('#status').getByRole('button',{name:'复制链接'}).click();
+    assert.equal(await app.evaluate(()=>globalThis.__corvidIssue202CopiedUrl),`${base}/status/500`,'copy link should copy the failed navigation URL');
     assert.equal(await shell.locator('#address').inputValue(),`${base}/status/500`,'HTTP response errors should preserve the address for editing');
     await shell.locator('#status').getByRole('button',{name:'重试'}).click();
     await waitForHttpStatus(500,'服务器返回 HTTP 500');
-    const qaDir=process.env.CORVID_NAVIGATION_QA_DIR;
+    const qaDir=process.env.CORVID_NAVIGATION_QA_DIR,issue202QaDir=process.env.CORVID_ISSUE202_QA_DIR;
     if(qaDir){
       fs.mkdirSync(qaDir,{recursive:true});
       await shell.setViewportSize({width:1024,height:700});
       await shell.screenshot({path:path.join(qaDir,'issue-198-http-500-zh-CN-1024x700.png')});
+    }
+    if(issue202QaDir){
+      fs.mkdirSync(issue202QaDir,{recursive:true});
+      await shell.setViewportSize({width:1024,height:700});
+      await shell.screenshot({path:path.join(issue202QaDir,'issue-202-http-500-zh-CN-1024x700.png')});
+      await shell.setViewportSize({width:700,height:420});
+      await shell.screenshot({path:path.join(issue202QaDir,'issue-202-http-500-zh-CN-700x420.png')});
+      await shell.setViewportSize({width:1024,height:700});
     }
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
     await shell.locator('#address').fill(`${base}/status/408`);await shell.locator('#address').press('Enter');
     const http408En=await waitForHttpStatus(408,'Server returned HTTP 408');
     assert.equal(await shell.locator('#status .navigation-error').textContent(),'Server returned HTTP 408','HTTP 408 should explain the server timeout response');
     assert.equal(http408En.navigationError.code,'HTTP 408');
+    assert.equal(await shell.locator('#status').getByRole('button',{name:'Copy link'}).count(),1,'copy link should be localized in English');
     await shell.locator('#address').fill(`${base}/status/500`);await shell.locator('#address').press('Enter');
     await waitForHttpStatus(500,'Server returned HTTP 500');
+    if(issue202QaDir){await shell.setViewportSize({width:1280,height:850});await shell.screenshot({path:path.join(issue202QaDir,'issue-202-http-500-en-1280x850.png')});}
     await shell.setViewportSize({width:700,height:420});
     assert.equal(await shell.locator('#status').evaluate(element=>element.scrollWidth<=element.clientWidth),true,'short-window error status should not overflow horizontally');
     assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).isVisible(),true,'short-window retry should remain visible');
+    assert.equal(await shell.locator('#status').getByRole('button',{name:'Copy link'}).isVisible(),true,'short-window copy link should remain visible');
     assert.equal(await shell.locator('#status .navigation-error-details summary').isVisible(),true,'short-window error-code disclosure should remain visible');
     if(qaDir){
       await shell.screenshot({path:path.join(qaDir,'issue-198-http-500-en-700x420.png')});
@@ -115,6 +131,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     assert.equal(await shell.locator('#address').inputValue(),`${base}/fail`,'failed URL must remain visible for editing');
     assert.equal(await shell.locator('#status').getByRole('button',{name:'Retry'}).count(),1,'user-owned tab should expose retry');
     const failedTabId=(await room.tabs())[0].id;
+    assert.equal(await shell.locator(`#tabs .tab[data-tab-id="${failedTabId}"] .tab-title`).textContent(),`127.0.0.1:${server.address().port}`,'connection errors should also show the site host');
     assert.equal(await shell.locator(`#tabs .tab[data-tab-id="${failedTabId}"] .tab-loading-indicator`).count(),0,'failed navigation must not leave a tab spinner');
     await shell.locator('#new-tab').click();
     const newTab=await until(async()=>(await room.tabs()).find(tab=>tab.id!==failedTabId),'second tab');
@@ -137,11 +154,22 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
 
     await shell.locator('#address').fill(`${base}/cancel`);await shell.locator('#address').press('Enter');
     await Promise.race([cancelStarted,new Promise((_,reject)=>setTimeout(()=>reject(new Error('cancel fixture did not start')),5000))]);
-    await shell.locator('#status .navigation-loading').waitFor();
+    const loadingTab=await waitForTab(tab=>tab.isLoading);
+    await shell.locator(`#tabs .tab[data-tab-id="${loadingTab.id}"] .tab-loading-indicator`).waitFor();
+    assert.equal(await shell.locator('#status .navigation-loading').count(),0,'loading feedback should not add a status-bar row');
+    assert.equal(await shell.locator('#status').isVisible(),false,'loading should not make the status bar appear');
+    assert.equal(await shell.locator('#chrome-tools').evaluate(element=>getComputedStyle(element,'::after').height),'2px','loading should use a two-pixel progress line inside the existing toolbar');
+    assert.equal(await shell.locator('#chrome-tools').evaluate(element=>Number(getComputedStyle(element,'::after').opacity)),1,'the progress line should be visible during navigation');
+    assert.equal(await shell.locator('#chrome-tools').evaluate(element=>element.getBoundingClientRect().height),50,'the progress line should not change toolbar height');
+    await shell.emulateMedia({reducedMotion:'reduce'});
+    assert.equal(await shell.locator('#chrome-tools').evaluate(element=>getComputedStyle(element,'::after').animationName),'none','the progress line should respect reduced motion');
+    if(issue202QaDir)await shell.screenshot({path:path.join(issue202QaDir,'issue-202-loading-tab-spinner-en-1280x850.png')});
+    await shell.emulateMedia({reducedMotion:'no-preference'});
     await shell.locator('#address').fill(`${base}/home`);await shell.locator('#address').press('Enter');
     await waitForTab(tab=>tab.url===`${base}/home`&&tab.loadComplete);
     releaseCancel();
     await delay(150);
+    assert.equal(await shell.locator('#chrome-tools').evaluate(element=>Number(getComputedStyle(element,'::after').opacity)),0,'the progress line should clear after navigation completes');
     assert.equal(await shell.locator('#status .navigation-error').count(),0,'superseded navigation must not leave a stale error');
     assert.equal(await shell.locator('#address').inputValue(),`${base}/home`);
 
