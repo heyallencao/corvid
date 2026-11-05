@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu, nativeTheme } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -289,6 +289,24 @@ const dbPath = path.join(dataDir, 'rooms.json');
 const legacyDbPath = path.join(dataDir, 'spaces.json');
 const profilesPath = path.join(dataDir, 'profiles.json');
 const uiPreferencesPath = path.join(dataDir, 'ui-preferences.json');
+const browserPreferencesPath = path.join(dataDir, 'browser-preferences.json');
+const defaultBrowserPreferences = {schemaVersion:2,theme:'system',startupBehavior:'restore',newTabBehavior:'home',downloadDirectory:'',askWhereToSave:true};
+let browserPreferences = {...defaultBrowserPreferences};
+try {
+  const savedPreferences = JSON.parse(fs.readFileSync(browserPreferencesPath, 'utf8'));
+  if (savedPreferences?.schemaVersion === 1 && ['system','light','dark'].includes(savedPreferences.theme)) browserPreferences.theme=savedPreferences.theme;
+  else if (savedPreferences?.schemaVersion === 2) {
+    if(['system','light','dark'].includes(savedPreferences.theme))browserPreferences.theme=savedPreferences.theme;
+    if(['restore','new-tab'].includes(savedPreferences.startupBehavior))browserPreferences.startupBehavior=savedPreferences.startupBehavior;
+    if(['home','blank'].includes(savedPreferences.newTabBehavior))browserPreferences.newTabBehavior=savedPreferences.newTabBehavior;
+    if(typeof savedPreferences.downloadDirectory==='string' && (!savedPreferences.downloadDirectory || path.isAbsolute(savedPreferences.downloadDirectory)) && !savedPreferences.downloadDirectory.includes('\0'))browserPreferences.downloadDirectory=savedPreferences.downloadDirectory;
+    if(typeof savedPreferences.askWhereToSave==='boolean')browserPreferences.askWhereToSave=savedPreferences.askWhereToSave;
+  }
+} catch (error) {
+  if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+}
+nativeTheme.themeSource = browserPreferences.theme;
+let themePreference = browserPreferences.theme;
 let uiLocale = process.env.CORVID_TEST_MODE === '1' ? 'zh-CN' : (/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 try {
   const savedPreferences = JSON.parse(fs.readFileSync(uiPreferencesPath, 'utf8'));
@@ -304,6 +322,23 @@ function saveUiLocale(locale) {
   uiLocale = locale;
   rebuildApplicationMenu();
   mainMessages.setLocale(locale);
+}
+function saveBrowserPreferences(patch) {
+  const next={...browserPreferences,...patch,schemaVersion:2};
+  const invalid=(zh,en)=>Object.assign(new Error(uiLocale==='en'?en:zh),{code:'CORVID_INVALID_ARGUMENT'});
+  if (!['system','light','dark'].includes(next.theme)) throw invalid('主题选项无效。','The theme option is invalid.');
+  if (!['restore','new-tab'].includes(next.startupBehavior)) throw invalid('启动行为选项无效。','The startup option is invalid.');
+  if (!['home','blank'].includes(next.newTabBehavior)) throw invalid('新标签页选项无效。','The new tab option is invalid.');
+  if (typeof next.askWhereToSave!=='boolean') throw invalid('下载保存选项无效。','The download save option is invalid.');
+  if (typeof next.downloadDirectory!=='string' || next.downloadDirectory.includes('\0') || (next.downloadDirectory&&!path.isAbsolute(next.downloadDirectory))) throw invalid('下载文件夹路径无效。','The download folder path is invalid.');
+  if(next.downloadDirectory){try{if(!fs.statSync(next.downloadDirectory).isDirectory())throw invalid('所选下载位置不是文件夹。','The selected download location is not a folder.');}catch(error){if(error.code==='CORVID_INVALID_ARGUMENT')throw error;throw invalid('无法访问所选下载文件夹，请重新选择。','The selected download folder is unavailable. Choose another folder.');}}
+  const temporaryPath = `${browserPreferencesPath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify(next), {mode:0o600});
+  fs.renameSync(temporaryPath, browserPreferencesPath);
+  browserPreferences=next;
+  nativeTheme.themeSource=next.theme;
+  themePreference=next.theme;
+  return {...browserPreferences};
 }
 const chromeImportOnboardingPath = path.join(dataDir, 'chrome-import-onboarding.json');
 let chromeImportOnboardingState=null;
@@ -591,7 +626,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
-    ...(includeExtensionToolbar ? {uiLocale} : {}),
+    ...(includeExtensionToolbar ? {uiLocale,themePreference} : {}),
     profiles,
     extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
     rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
@@ -694,8 +729,16 @@ function installDownloads(partition,profileId) {
     if(retryContext?.cancelRequested){event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
     let destination;
     try {
-      if (process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR) destination=path.join(process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
-      else destination=dialog.showSaveDialogSync(window,{title:mainMessages.t('saveDownloadDialog'),defaultPath:path.join(app.getPath('downloads'),filename),properties:['createDirectory','showOverwriteConfirmation']});
+      const downloadDirectory=browserPreferences.downloadDirectory || (process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_DOWNLOAD_DIR) || app.getPath('downloads');
+      if(browserPreferences.downloadDirectory){let available=false;try{available=fs.statSync(browserPreferences.downloadDirectory).isDirectory();}catch{}if(!available)throw new Error(uiLocale==='en'?'The saved download folder is unavailable. Choose another folder in Settings.':'已保存的下载文件夹不可用，请在设置中重新选择。');}
+      if(process.env.CORVID_TEST_MODE==='1' && browserPreferences.askWhereToSave && process.env.CORVID_TEST_DOWNLOAD_DIALOG_RESULT!==undefined){
+        const simulated=process.env.CORVID_TEST_DOWNLOAD_DIALOG_RESULT;
+        destination=simulated==='cancel' ? undefined : simulated;
+      }else if(process.env.CORVID_TEST_MODE==='1' && process.env.CORVID_TEST_DOWNLOAD_DIR){
+        destination=path.join(downloadDirectory || process.env.CORVID_TEST_DOWNLOAD_DIR,filename);
+      }else if(browserPreferences.askWhereToSave){
+        destination=dialog.showSaveDialogSync(window,{title:uiLocale==='en'?'Save download':'保存下载',defaultPath:path.join(downloadDirectory,filename),properties:['createDirectory','showOverwriteConfirmation']});
+      }else destination=path.join(downloadDirectory,filename);
       if (!destination) {event.preventDefault();library.updateDownload(downloadId,{status:'cancelled',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
       let exists=false;try {fs.lstatSync(destination);exists=true;} catch(error) {if(error.code!=='ENOENT') throw error;}
       if (exists) {event.preventDefault();library.updateDownload(downloadId,{status:'failed',path:destination,error:'目标文件已存在，未覆盖',finishedAt:new Date().toISOString()});if(retryContext)activeDownloadRetries.delete(retryContext.sourceId);notifyDownloads();return;}
@@ -779,6 +822,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
   const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,isLoading:false,navigationError:null,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[],homeSurfaceInstalled:false,homeInjection:null};
   const installHomeSurface=()=>{
+    if(browserPreferences.newTabBehavior!=='home')return Promise.resolve();
     if(s.ownership!=='user'||openedBy!=='user')return Promise.resolve();
     if(tab.homeSurfaceInstalled)return Promise.resolve();
     if(tab.homeInjection)return tab.homeInjection;
@@ -1013,7 +1057,27 @@ async function dispatch(method, args = {}, fromApi = false) {
       for(const record of windowRecords.values())if(!record.browserWindow.isDestroyed())update(record);
       return result;
     }
-    case 'settings': return profileSettings(args.profileId ?? activeProfileId);
+    case 'settings': return {...profileSettings(args.profileId ?? activeProfileId), themePreference, browserPreferences:{...browserPreferences}};
+    case 'setThemePreference': {
+      if(fromApi) throw new Error('User action required');
+      saveBrowserPreferences({theme:args.theme});
+      for (const record of windowRecords.values()) update(record);
+      return {themePreference};
+    }
+    case 'setBrowserPreferences': {
+      if(fromApi)throw new Error('浏览器偏好只能在 Corvid 界面修改');
+      const preferences=saveBrowserPreferences({startupBehavior:args.startupBehavior,newTabBehavior:args.newTabBehavior,downloadDirectory:args.downloadDirectory,askWhereToSave:args.askWhereToSave});
+      for(const record of windowRecords.values())update(record);
+      return preferences;
+    }
+    case 'chooseDownloadDirectory': {
+      if(fromApi)throw new Error('下载文件夹只能在 Corvid 界面选择');
+      if(process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_DOWNLOAD_DIR)return {canceled:false,path:process.env.CORVID_TEST_DOWNLOAD_DIR};
+      const defaultPath=browserPreferences.downloadDirectory||app.getPath('downloads');
+      const result=await dialog.showOpenDialog(window,{title:uiLocale==='en'?'Choose download folder':'选择下载文件夹',defaultPath,properties:['openDirectory','createDirectory']});
+      if(result.canceled||!result.filePaths[0])return {canceled:true};
+      return {canceled:false,path:result.filePaths[0]};
+    }
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
       if(!needsChromeImportOnboarding)return {ok:true};
@@ -1710,6 +1774,14 @@ app.whenReady().then(async () => {
   focusWindow(primary);
   if (!rooms.length) { startupProgress('create-initial-room'); await createRoom('我的空间','user'); }
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
+  if(saved?.rooms?.length && browserPreferences.startupBehavior==='new-tab'){
+    const record=activeRecord(),room=record&&rooms.find(item=>item.id===record.activeRoomId);
+    if(room){
+      const existing=room.tabIds.map(tabId=>tabs.get(tabId)).find(tab=>tab?.openedBy==='user'&&(tab.restoreUrl==='about:blank'||(!tab.restoringInitial&&tab.view.webContents.getURL()==='about:blank')));
+      if(existing){await existing.initialization;room.activeTabId=existing.id;}
+      else await createTab(room.id,'about:blank',id(),{openedBy:'user',notifyInitialState:true});
+    }
+  }
   restoring = false;
   for (const record of windowRecords.values()) update(record);
   startupProgress('restoration-complete');

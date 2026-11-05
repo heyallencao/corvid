@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-05 Issue #165 设置中心（PR #172 前向集成复验）
+
+- 变更：基于 PR #172 精确 head `11abfb56dbfda818a4f5b53f08d31392b0a3b1a6` 前向集成 main `f443531b2cc6553b69f1677f1aae3b8431817d04`；解决 `package.json` 与本记录冲突并保留两侧历史。修正两阶段设置保存第二步失败时的部分保存反馈，明确主题立即保存且取消不回滚；设置分类下补齐 Chrome 导入、Agent 访问和本地化窄窗测试所需分类入口。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/settings-preferences-e2e.cjs`、`node tests/settings-site-e2e.cjs`、`node tests/localization-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs` 与 `node tests/chrome-import-e2e.cjs` 均通过；覆盖两阶段保存错误提示与已保存搜索设置、主题取消语义、700×420 下载路径首屏、双语滚动/设置分类、隔离 Chrome 导入及 Agent 授权撤销。
+- 全量门禁：在 macOS arm64、Node.js v24.22.1、Electron 45.2.1 环境中，临时链接主工作区依赖后执行规定命令 `env -u ELECTRON_RUN_AS_NODE npm test`，最终 EXIT 0；测试后移除依赖链接。早先全量轮次曾暴露设置分类切换遗漏及本地化窄窗断言仍停留在外观分类，修复后完整链通过。此次门禁使用隔离 `CORVID_DATA_DIR` 与合成 Chrome Profile；未读取真实用户资料、未调用 OAuth 或模型。
+- 限制：未做真实下载目录对话框、辅助技术、Windows、打包版或跨平台手动验收；测试运行刷新过的八张既有 QA 截图已恢复，故这些图片不作为本轮新视觉证据。PR #172 live head、冲突状态与 GitHub 检查仍须在更新前复核。
+
 ## 2026-11-05 Issue #5 启动失败双重故障恢复（PR #287 重放最新主线）
 
 - 变更：按集成裁决，#287 仅承载启动期 `createSession()` 失败且 scoped credential 撤销也失败的独立修复（#156 已收窄为已完成会话异步清理）。原提交 `55386af` 基于 #156 旧 lineage；本次前向合并 `origin/main` `98e4678`（含 #154、#156）为合并提交 `82d81c8`，冲突解决保留 main 的 transcript 回退、pauseRoom finally 与工作台截图断言，叠加启动 catch 块修复、对应合同、`docs/execution/issue-5-startup-cleanup-recovery.md`、D12/索引行及本记录。
@@ -1694,4 +1701,4 @@
 - 定向验收：`env -u ELECTRON_RUN_AS_NODE npm run test:chrome-cookie-disk-full:mac` 通过；覆盖 30 秒 Cookie 操作上限（测试中缩至 1 秒）、未确定状态和同源重试/重启，以及隔离 APFS 实际写至 `ENOSPC`（245 MiB），满盘时旧 Cookie 可读，释放空间后 SQLite `quick_check` 为 `ok`，同源 513 条持久 Cookie 重试并再次重启后仍保留。
 - 当前 PR head 复验（2026-11-04，`e1839516caa7968066a1bdaa10be3dc3898a24a7`）：在该提交上再次运行同一 APFS 满盘命令，EXIT 0；重复观察到约 245 MiB 后 `ENOSPC`、满盘时既有 Cookie 可读、释放空间并重启后同源 513 条 Cookie 重试成功且再次重启保留。测试刷新的一张 Issue #77 截图已恢复为提交原图，本次未新增截图证据。
 - 回归：合并后 `env -u ELECTRON_RUN_AS_NODE CORVID_TEST_HOSTONLY_COOKIE_ONLY=1 node tests/chrome-import-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` 通过。普通 `env -u ELECTRON_RUN_AS_NODE node tests/chrome-import-e2e.cjs` EXIT 1，在 `tests/chrome-import-e2e.cjs:643` 等待扩展弹窗于父窗口原生激活后关闭而超时；本轮没有改该弹窗行为，失败原因仍未查明。`desktop/main.cjs`、`desktop/renderer.js`、`tests/chrome-import-e2e.cjs` 的 `node --check`、`package.json` 解析与 `git diff --check` 通过。
-- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。
+- 证据边界：仅使用合成 Chrome Profile、测试密钥与本地夹具，未读取真实 Chrome Profile/系统钥匙串，未调用 OAuth 或模型；完整 `npm test` 未运行。普通 Chrome 导入 E2E 的父窗口弹窗关闭阶段未通过。真实数据目录、其他文件系统/平台、SQLite 任意写入中断、真实 Chrome 进程锁、核验前断电与打包版仍未覆盖。测试运行后更新的三张 QA 截图已恢复到分支原始版本，没有把未复核截图作为新证据。Issue #77 保持开放。\n\n\n

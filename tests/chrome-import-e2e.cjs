@@ -302,6 +302,7 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,chromeRoot);
     await chooseSource(shell);
@@ -360,6 +361,7 @@ async function verifyCookieFlushTimeoutRecovery(tempRoot,chromeRoot,cookieKey){
       await destination.cookies.flushStore();
     });
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,chromeRoot);
     await chooseSource(shell);
@@ -414,6 +416,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,chromeRoot);
     await chooseSource(shell,'Default');
@@ -446,6 +449,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
 
     ({app,shell}=await boot(appData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_MS:'1000'}));
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,chromeRoot);
     await chooseSource(shell,'Profile 1');
@@ -485,10 +489,10 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     finally{recoveredDatabase.close();}
 
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,chromeRoot);
-    await chooseSource(shell,'Profile 1');
-    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
+    await chooseSource(shell,'Profile 1');    await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
     await shell.locator('input[name="chrome-category"][value="history"]').uncheck();
     await shell.locator('input[name="chrome-category"][value="cookies"]').check();
     await allowCookieImport(shell);
@@ -562,6 +566,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,unreadableHistoryRoot);
     await shell.locator('#choose-chrome-source').click();
@@ -599,6 +604,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.getByRole('heading',{name:'Start using Corvid with Chrome?'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await installDialogFixture(app,unreadableHistoryRoot);
     await shell.locator('#choose-chrome-source').click();
@@ -653,6 +659,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       assert.equal(retriedCookies.find(cookie=>cookie.name==='domain_session')?.value,'corvid-existing-value','Chrome import must skip rather than overwrite a conflicting target Cookie');
       await shell.locator('#cancel-chrome-import').click();
       await shell.locator('#show-settings').click();
+      await shell.locator('#settings-nav-profile').click();
       await shell.locator('#start-chrome-import').click();
       await chooseSource(shell);
     }
@@ -682,6 +689,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     }
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#profile-extension-list').getByText(/必需权限：storage、<all_urls>；可选权限：tabs、https:\/\/\*\.example\.com\/\*/).waitFor();
     await shell.locator('#settings').press('Escape');
     await shell.getByRole('button',{name:'新建标签'}).click();
@@ -748,9 +756,10 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.locator('#more-tools').click();
     await shell.locator('#site-tools').waitFor();
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).length,1,'failed extension copies must not remain in managed state');
-    assert.equal(fs.existsSync(require('../desktop/chrome-extensions.cjs').managedPath(appData,'default',chromeProfiles[0].symlinkExtensionId,'1.0.0')),false,'failed extension copies must be cleaned up');
+    assert.equal(fs.existsSync(require('../desktop/chrome-extensions.cjs').managedPath(appData,'default',chromeProfiles[0].extensionId,'1.0.0')),false,'failed extension copies must be cleaned up');
 
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     await shell.locator('input[name="chrome-category"][value="extensions"]').check();
@@ -772,6 +781,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     }
     await shell.locator('#profile-select').selectOption(work.id);
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     assert.equal(await shell.locator('#chrome-import-target-profile').inputValue(),work.id,'the import dialog should default to the active Corvid Profile');
@@ -786,6 +796,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     assert.equal((await call('/history?profileId=default')).history.some(item=>item.title==='历史 1'),true,'the chosen destination must receive Chrome history');
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.locator('#start-chrome-import').click();
     await chooseSource(shell);
     await shell.locator('#chrome-source-profile').selectOption('Profile 1');
@@ -815,6 +826,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await until(async()=>!await extensionPopupWindowOpen(app,workPopupUrl),'Profile switch should close the open extension popup');
     await shell.locator('#profile-select').selectOption(work.id);
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.getByRole('checkbox',{name:'停用 Corvid Work Marker'}).click();
     await shell.getByRole('checkbox',{name:'启用 Corvid Work Marker'}).waitFor();
     assert.equal(await shell.locator('#extension-toolbar .extension-toolbar-button').count(),0,'disabled extensions should disappear from the toolbar');
@@ -823,6 +835,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.locator('#address').fill(extensionUrl);await shell.locator('#address').press('Enter');
     await until(async()=>await extensionValue(app,extensionUrl,'corvidWorkExtension',`persist:corvid-profile-${work.id}`)==='','disabled extension must not run after navigation');
     await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
     await shell.getByRole('button',{name:'移除',exact:true}).click();
     assert.equal(JSON.parse(fs.readFileSync(path.join(appData,'managed-extensions.json'))).some(item=>item.profileId===work.id),false);
     await shell.locator('#settings').press('Escape').catch(()=>{});
@@ -856,6 +869,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
       await shell.locator('#skip-chrome-import').click();
       await shell.locator('#show-settings').click();
+      await shell.locator('#settings-nav-profile').click();
       await shell.locator('#start-chrome-import').click();
       await installDialogFixture(app,chromeRoot);
       await chooseSource(shell);
@@ -899,6 +913,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
         await shell.locator('#skip-chrome-import').click();
         await shell.locator('#show-settings').click();
+        await shell.locator('#settings-nav-profile').click();
         await shell.locator('#start-chrome-import').click();
         await installDialogFixture(app,chromeRoot);
         await chooseSource(shell);
@@ -933,6 +948,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
           await exited;
           ({app,shell,call}=await boot(rollbackData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
           await shell.locator('#show-settings').click();
+          await shell.locator('#settings-nav-profile').click();
           await shell.locator('#start-chrome-import').click();
           await installDialogFixture(app,chromeRoot);
           await chooseSource(shell);
@@ -960,6 +976,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
         await shell.locator('#skip-chrome-import').click();
         await shell.locator('#show-settings').click();
+        await shell.locator('#settings-nav-profile').click();
         await shell.locator('#start-chrome-import').click();
         await installDialogFixture(app,chromeRoot);
         await chooseSource(shell);
@@ -982,6 +999,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         const beforeDiskRetry=await app.evaluate(async({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/'}));
         assert.equal(beforeDiskRetry.some(cookie=>cookie.name==='persistent_import'),false,'a silently resolved flushStore must not survive a process restart when the store directory is not writable');
         await shell.locator('#show-settings').click();
+        await shell.locator('#settings-nav-profile').click();
         await shell.locator('#start-chrome-import').click();
         await installDialogFixture(app,chromeRoot);
         await chooseSource(shell);
@@ -1018,6 +1036,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       const libraryBeforeCorruptImport=fs.readFileSync(path.join(corruptData,'library.json'));
       await installDialogFixture(app,corruptChromeRoot);
       await shell.locator('#show-settings').click();
+      await shell.locator('#settings-nav-profile').click();
       await shell.locator('#start-chrome-import').click();
       await chooseSource(shell);
       await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
@@ -1050,6 +1069,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         const libraryBeforeLockedImport=fs.readFileSync(path.join(lockedData,'library.json'));
         await installDialogFixture(app,lockedChromeRoot);
         await shell.locator('#show-settings').click();
+        await shell.locator('#settings-nav-profile').click();
         await shell.locator('#start-chrome-import').click();
         await chooseSource(shell);
         await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
