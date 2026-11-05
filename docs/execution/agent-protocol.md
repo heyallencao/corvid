@@ -41,11 +41,12 @@ open ──认领──▶ claimed ──交PR──▶ in-review ──merge─
 ## 3. 认领协议（工人会话每一轮的开工步骤）
 
 ```bash
-# 0. WIP 阈值：开放 PR > 8 时进入「排水模式」——不许停工，只是换活：
-#    a. 先处理自己名下的开放 PR：rebase 到 origin/main、补证据、响应 review
-#    b. 名下没有或做完后，协助消化队列：挑一个冲突 PR 评论 takeover-intent 并 rebase，
-#       或对无冲突 PR 做 COMMENT review + 本地验证，供集成 lane 合并
-#    c. 排水期间禁止创建新 PR；队列回到 ≤8 后恢复下面第 1 步的正常循环
+# 0. 生产节流（两级触发，防 PR 无限堆积；触发后不许停工，转排水）：
+#    触发：本 lane 开放 PR >= 2（持续节流），或全局开放 PR > 8（兜底）
+#    动作：不再领新 issue → 先 rebase/补证据/响应 review 自己名下的 PR
+#          → 名下清空后协助消化队列（takeover-intent 接手冲突 PR 并 rebase，
+#             或对无冲突 PR 做 COMMENT review + 本地验证，供集成合并）
+#    恢复：本 lane < 2 且全局 <= 8 → 回到第 1 步正常循环
 gh pr list --state open --json number --jq 'length'
 
 # 1. 从自己 lane 的队列顶取一个（已排除被认领的）
@@ -103,6 +104,9 @@ progress(codex-fix@studio): E2E 通过，剩余 docs 同步
 
 ```bash
 gh pr list --state open --json number,title,author
+# 处理顺序：按创建时间 FIFO，最老优先（PR 年龄纳入调度日报，超 24h 未审优先处理）
+# 批量验证：一次全量 E2E 通过后可按序连续合并同批最多 3 个已审 PR；
+#   批后发现 main 红 → revert 本批最新一个并复测，逐个定位（revert-first 原则不变）
 # 对每个 PR：
 #  a. 查重：标题 grep【#NNN】，同 issue 多 PR 则关重（留证据全的）
 #  b. review（COMMENT 型；同账号无法 Approve）：对照验收标准与证据

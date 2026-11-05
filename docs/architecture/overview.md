@@ -27,7 +27,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 2 管理；
 | Page label 稳定 | `p1`、`p2` 跨轮次、跨重启保持，已用 label 不复用；Agent 创建的页面与用户页面用 `openedBy` 区分 |
 | 观察结果显式受限 | Snapshot 返回截断标记和覆盖限制；不把近似无障碍树说成完整语义 |
 | 所有 Agent 共用一套协作合同 | 内置 Agent、SDK/CLI 与后续适配器都必须使用同一 Room/Page 生命周期、授权检查、运行状态、任务记录和控制权交接；不能绕开用户控制或制造另一份浏览器状态 |
-| Agent runtime 可替换，Corvid 保持产品合同稳定 | 当前通过适配层使用 Pi SDK 执行会话与模型工具调用；runtime 专属实现留在内部。任务状态、模型偏好、对话记录、浏览器 UI、Profile/Room/Page 绑定、用户控制和恢复由 Corvid 管理。替换或升级 runtime 时，由 Corvid 适配层处理模型配置、授权凭据与会话 checkpoint 的兼容/迁移；不兼容凭据需在 Corvid 界面重新授权，不得要求用户安装、配置或识别底层运行库。验收须保留任务 ID、用户对话记录、模型偏好、上下文授权与 Room/Page 绑定；无法恢复的 checkpoint 要明确说明并允许从 Corvid 对话记录继续，不得静默丢弃。浏览器 Agent 只注册显式授权的 Corvid 工具，不继承第三方文件系统或 shell 工具 |
+| Agent runtime 可替换，Corvid 保持产品合同稳定 | 当前通过适配层使用 Pi SDK 执行会话与模型工具调用；runtime 专属实现留在内部。任务状态、模型偏好、对话记录、浏览器 UI、Profile/Room/Page 绑定、用户控制和恢复由 Corvid 管理。替换或升级 runtime 时，由 Corvid 适配层处理模型配置、授权凭据与会话 checkpoint 的兼容/迁移；不兼容凭据需在 Corvid 界面重新授权，不得要求用户安装、配置或识别底层运行库。验收须保留任务 ID、用户对话记录、模型偏好、上下文授权与 Room/Page 绑定；无法恢复的 checkpoint 要明确说明并允许从 Corvid 对话记录继续，不得静默丢弃。缺少 runtime 版本来源的旧 checkpoint 必须按未知版本处理，不能通过迁移冒充为当前版本。浏览器 Agent 只注册显式授权的 Corvid 工具，不继承第三方文件系统或 shell 工具 |
 | 浏览器日常能力是 Agent 的上下文，不是 Agent 的替代品 | 地址栏、标签、历史、书签、下载、权限与站点数据管理继续属于完整浏览器；Agent 从当前用户明确选择的上下文开始工作，并把执行状态和待用户处理事项呈现在桌面 |
 
 ## 已知限制
