@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 全表面走查与面板焦点抽测（Issue #16 子切片 B1）
+
+- 环境与范围：macOS arm64、隔离真实 Electron 45.2.1、隔离 `CORVID_DATA_DIR`（空书签/零历史合成态）；3 档窗口（719×568 最小 / 1024×700 / 1280×850）× zh-CN/en × {主窗口、书签面板空态、Agent 工作台欢迎态}，共 18 张渲染截图，选摘 8 张入库 [walkthrough/](screenshots/issue-16/walkthrough/)：[zh 主窗窄](screenshots/issue-16/walkthrough/main-zh-CN-narrow.png)（`5fea220f`）、[en 主窗窄](screenshots/issue-16/walkthrough/main-en-narrow.png)（`aa61362e`）、[zh 主窗宽](screenshots/issue-16/walkthrough/main-zh-CN-wide.png)（`a751442b`）、[en 主窗宽](screenshots/issue-16/walkthrough/main-en-wide.png)（`05138d31`）、[zh 书签空态窄](screenshots/issue-16/walkthrough/bookmarks-zh-CN-narrow.png)（`7a832b9f`）、[en 书签空态宽](screenshots/issue-16/walkthrough/bookmarks-en-wide.png)（`659b2172`）、[en 工作台欢迎窄](screenshots/issue-16/walkthrough/workbench-en-narrow.png)（`76635a26`）、[zh 工作台欢迎中](screenshots/issue-16/walkthrough/workbench-zh-CN-mid.png)（`1ffe4caa`）。
+- 直接观察：未发现新可见缺陷。空态结构完整（图标+标题+说明+CTA）；719px 窄窗 64px 图标侧栏与 320px 工作台无裁切；工作台欢迎态页绑定提示、任务输入、未连接状态条与「连接账号」CTA 双语层级正确；主窗口三档布局无溢出。
+- 焦点抽测（运行态 activeElement 探针）：`#show-bookmarks` 打开面板焦点保持触发器；关闭后焦点回归 `show-bookmarks`；`#show-pi-workbench` 开合同理，关闭回归 `show-pi-workbench`——面板开合焦点管理与 `closeLibraryPanel({restoreFocus:true})` 合同一处。
+- 边界：本走查是抽样视觉记录，不等同全量验收；未覆盖工作台六任务状态矩阵（B2）、下载/菜单错误态（B3）、键盘全流程与 VoiceOver（B4，平台边界维持）。桌面合成截图（含原生窗口 chrome）仍缺，历史限制不变。
+
 ## 2026-11-06 Agent 工作台窄窗头部操作行换行保护（Issue #217）
 
 - 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、18 条合成历史、719×568 最小窗口（视口 704/719 CSS px），由 `pi-workbench-header-e2e` 生成（仅 Agent 面板区域）：[zh-CN](screenshots/issue-217/issue-217-workbench-zh-CN-704x568.png)（SHA-256 前缀 `b373d772`）、[en（换行态）](screenshots/issue-217/issue-217-workbench-en-704x568.png)（`30c28251`）。
