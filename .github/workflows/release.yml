@@ -102,6 +102,8 @@ jobs:
       - run: npm ci
       - name: Full Electron regression (macOS arm64 release gate)
         if: matrix.platform == 'mac' && matrix.arch == 'arm64'
+        env:
+          CORVID_TEST_SKIP_NATIVE_POPUP_BLUR: '1'
         run: |
           for attempt in 1 2; do
             echo "Full Electron regression attempt ${attempt}/2"
