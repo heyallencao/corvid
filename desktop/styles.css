@@ -229,6 +229,13 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #room-strip .room-name { font-weight: 600; }
 #room-strip .room-agent-summary { color: var(--text-tertiary); font-size: var(--font-size-micro); line-height: 1.35; font-weight: 400; }
 #room-strip button:has(.room-agent-summary) { min-height: 42px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 1px; padding-left: 27px; }
+#room-strip .room-task-status { position: absolute; top: 5px; right: 7px; display: inline-flex; align-items: center; gap: 5px; max-width: 45%; overflow: hidden; padding: 2px 6px; border-radius: var(--radius-xs); font-size: var(--font-size-micro); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+#room-strip .room-task-status::before { content: ""; width: 6px; height: 6px; flex: none; border: 1px solid currentColor; border-radius: var(--radius-circle); background: currentColor; }
+#room-strip .room-task-status[data-status="running"] { background: var(--surface-running); color: var(--accent-ink); }
+#room-strip .room-task-status[data-status="waiting"] { background: var(--surface-warning); color: var(--warning); }
+#room-strip .room-task-status[data-status="waiting"]::before { border-radius: 1px; transform: rotate(45deg); }
+#room-strip .room-task-status[data-status="completed"] { background: var(--surface-success); color: var(--success); }
+#room-strip .room-task-status[data-status="completed"]::before { width: 7px; height: 4px; border: 0; border-bottom: 1.5px solid currentColor; border-left: 1.5px solid currentColor; border-radius: 0; background: transparent; transform: rotate(-45deg) translateY(-1px); }
 .sidebar-window-action { padding: 2px 4px; }
 .sidebar-window-action button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 8px; color: var(--text-muted); text-align: left; font-size: 12px; }
 .sidebar-window-action button svg { width: var(--icon-size-small); height: var(--icon-size-small); }
@@ -868,6 +875,10 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
   #room-strip button:has(.room-agent-summary) { position: relative; min-height: 40px; align-items: center; padding: 0; }
   #room-strip button:has(.room-agent-summary)::before { display: none; }
   #room-strip button:has(.room-agent-summary)::after { content: attr(data-room-mark); display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent-soft); color: var(--accent-ink); font-size: var(--font-size-small); font-weight: 600; }
+  #room-strip .room-task-status { top: 3px; right: 3px; width: 8px; height: 8px; min-width: 0; max-width: none; padding: 0; border: 1px solid currentColor; border-radius: var(--radius-circle); font-size: 0; }
+  #room-strip .room-task-status::before { width: 4px; height: 4px; }
+  #room-strip .room-task-status[data-status="waiting"]::before { width: 4px; height: 4px; }
+  #room-strip .room-task-status[data-status="completed"]::before { width: 5px; height: 3px; }
   #room-strip .room-name, #room-strip .room-agent-summary { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   #room-strip button::before { width: 10px; height: 10px; }
   .sidebar-agent-section, .sidebar-library { width: 100%; }

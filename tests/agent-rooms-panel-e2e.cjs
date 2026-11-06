@@ -288,6 +288,11 @@ async function readContrastPalette(shell) {
     const parallelRoom=(await call('/rooms')).rooms.find(room=>room.name==='Parallel agent room');
     const secondTaskRoom=await startTask(parallelRoom,'[fixture:hold] second parallel room task');
     assert.equal(secondTaskRoom.roomId,parallelRoom.id,`second task Room mismatch: ${JSON.stringify({expected:parallelRoom.id,actual:secondTaskRoom.roomId,first:firstTaskRoom.roomId,pageBinding:secondTaskRoom.pageBinding,activeRoom:(await call('/rooms')).activeRoomId})}`);
+    const roomButton=name=>shell.locator('#room-strip button').filter({hasText:name});
+    await roomButton('Default agent room').locator('.room-task-status[data-status="running"]').waitFor();
+    await roomButton('Parallel agent room').locator('.room-task-status[data-status="running"]').waitFor();
+    assert.match(await roomButton('Default agent room').getAttribute('aria-label'),/任务运行中/,'Room navigation announces the running task state');
+    assert.match(await roomButton('Default agent room').getAttribute('title'),/任务运行中/,'Room navigation tooltip includes the task state');
     await agentRoomsTrigger.click();
     await shell.getByRole('button',{name:/^\[fixture:hold\] first parallel room task；正在回复；页面：Room task fixture；最近活动：/}).waitFor();
     await shell.getByRole('button',{name:/^\[fixture:hold\] second parallel room task；正在回复；页面：Room task fixture；最近活动：/}).waitFor();
@@ -318,6 +323,8 @@ async function readContrastPalette(shell) {
     assert.match(await roomAnnouncement.textContent(),/等待检查/);
     await shell.getByRole('button',{name:'接管 Parallel agent room'}).click();
     await shell.locator('.agent-room-task-state[data-status="waiting_for_user"]').waitFor();
+    await roomButton('Parallel agent room').locator('.room-task-status[data-status="waiting"]').waitFor();
+    assert.match(await roomButton('Parallel agent room').getAttribute('aria-label'),/等待你处理/,'Room navigation announces the task waiting for user action');
     assert.match(await roomAnnouncement.textContent(),/Parallel agent room/);
     assert.match(await roomAnnouncement.textContent(),/等待你接管/);
     assert.match(await roomAnnouncement.textContent(),/用户控制中/);
@@ -331,6 +338,12 @@ async function readContrastPalette(shell) {
     await agentRoomsTrigger.click();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await shell.locator('.agent-room-task-state[data-status="failed"]').waitFor();
+    await roomButton('Default agent room').locator('.room-task-status[data-status="completed"]').waitFor();
+    assert.match(await roomButton('Default agent room').getAttribute('aria-label'),/任务已完成，待查看/,'Room navigation announces completion awaiting review');
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
+    await shell.waitForFunction(()=>[...document.querySelectorAll('#room-strip button')].some(item=>item.getAttribute('aria-label')?.includes('Completed · ready to review')));
+    assert.equal(await shell.locator('#room-strip .room-task-status').filter({hasText:'Completed · ready to review'}).count(),1,'English navigation marker includes the completed review state');
+    await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     assert.equal(await roomAnnouncement.isHidden(),true,'Agent Room announcement region is hidden outside its panel');
     assert.equal(await roomAnnouncement.textContent(),'','closed Agent Room panel does not retain a stale live announcement');
@@ -342,6 +355,9 @@ async function readContrastPalette(shell) {
     const taskRowLayouts=await shell.locator('.agent-room-entry').evaluateAll(rows=>rows.map(row=>{const tasks=row.querySelector('.agent-room-tasks');return{width:row.clientWidth,scrollWidth:row.scrollWidth,taskWidth:tasks?.clientWidth,taskScrollWidth:tasks?.scrollWidth,taskActions:[...(tasks?.querySelectorAll('button')||[])].map(action=>({left:action.getBoundingClientRect().left,right:action.getBoundingClientRect().right}))};}));
     assert.equal(taskViewport.width>=719&&taskViewport.width<=725,true,`719px minimum viewport applies: ${JSON.stringify(taskViewport)}`);
     assert.equal(await shell.locator('.agent-room-task-state').count(),4,'all parallel and terminal task states remain present in the narrow Agent Room list');
+    const narrowTaskMarker=await roomButton('Default agent room').locator('.room-task-status').evaluate(marker=>{const rect=marker.getBoundingClientRect();return{width:rect.width,height:rect.height,right:rect.right,buttonRight:marker.parentElement.getBoundingClientRect().right,visible:getComputedStyle(marker).display!=='none'};});
+    assert.equal(narrowTaskMarker.visible,true,'the completed task marker remains visible in the compact space rail');
+    assert.ok(narrowTaskMarker.width>=6&&narrowTaskMarker.height>=6&&narrowTaskMarker.right<=narrowTaskMarker.buttonRight,JSON.stringify({taskViewport,narrowTaskMarker}));
     assert.ok(taskRowLayouts.every(row=>row.scrollWidth<=row.width&&(!row.taskWidth||row.taskScrollWidth<=row.taskWidth)&&row.taskActions.every(action=>action.left>=0&&action.right<=taskViewport.width)),JSON.stringify({taskViewport,taskRowLayouts}));
     const minimumViewportLayout=await Promise.all([
       app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return{width:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),

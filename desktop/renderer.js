@@ -227,12 +227,15 @@ function draw(value) {
       const prompt=localizeTaskSummary(summary.promptSummary)||extensionMessages.t('conversationTask'), accessiblePrompt=localizeTaskSummary(summary.promptAccessibleSummary)||prompt, titlePrompt=localizeTaskSummary(summary.promptTitle||summary.promptAccessibleSummary||prompt), page=localizeTaskSummary(summary.pageTitle)||extensionMessages.t('page');
       const time=summary.updatedAt?extensionMessages.formatDate(summary.updatedAt,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'';
       const defaultAgentRoom=s.name==='Corvid Agent 对话';
+      const statusKey={preparing:'taskNavRunning',running:'taskNavRunning',waiting_for_user:'taskNavWaiting',completed:'taskNavCompleted'}[summary.status];
+      const statusLabel=statusKey?extensionMessages.t(statusKey):'';
       const name=document.createElement('span');name.className='room-name';name.textContent=defaultAgentRoom?prompt:displayName;
       const detail=document.createElement('span');detail.className='room-agent-summary';detail.textContent=(defaultAgentRoom?[page,time]:[prompt,page,time]).filter(Boolean).join(' · ');
       item.replaceChildren(name,detail);
+      if(statusKey){const marker=document.createElement('span');marker.className='room-task-status';marker.dataset.status=statusKey.slice('taskNav'.length).toLowerCase();marker.textContent=statusLabel;marker.setAttribute('aria-hidden','true');item.append(marker);}
       item.dataset.roomMark=Array.from(prompt)[0]||'•';
-      item.setAttribute('aria-label',`${displayName} · ${extensionMessages.t('agentConversationSummary',{summary:accessiblePrompt,page,time})}`);
-      item.title=`${displayName} · ${titlePrompt} · ${page}${time?` · ${time}`:''}`;
+      item.setAttribute('aria-label',`${displayName}${statusLabel?` · ${statusLabel}`:''} · ${extensionMessages.t('agentConversationSummary',{summary:accessiblePrompt,page,time})}`);
+      item.title=`${displayName}${statusLabel?` · ${statusLabel}`:''} · ${titlePrompt} · ${page}${time?` · ${time}`:''}`;
     }else{
       item.setAttribute('aria-label',`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`);
       item.title=`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`;

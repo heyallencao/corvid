@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 空间导航的 Agent 任务三态标记（Issue #348）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、合成任务和本地 HTTP 页面 fixture；`agent-rooms-panel-e2e.cjs` 在 BrowserWindow 719×600（Retina 截图 1438×1200）生成[窄栏任务状态截图](screenshots/issue-348-space-task-status-719x600.png)（SHA-256 `07d505c48c6bf4f9961e459d78947aa41b80aaa2e952a6957ccc91cba3d389c7`）。
+- 直接观察：719px 紧凑空间栏保留空间首字母卡片，并在角落显示不同形状的任务状态标记；工作区列表同时显示运行、等待接管、已完成和失败任务，颜色沿用主题状态 token；截图内容全部为合成 Room/任务与本地 fixture URL，无个人资料。
+- 状态与可访问性：任务摘要推送后空间导航标记随任务三态变化；空间按钮的可访问名称和 tooltip 含完整双语状态，标记本身对屏幕阅读器隐藏以避免重复播报；空间导航不增加 live region。
+- 未覆盖：本轮截图展示窄栏最终完成态以及工作区并列任务；宽栏文字徽标、英文渲染、深色主题、实际 VoiceOver、Windows、打包版未在此用例验收。定向用例覆盖三态状态迁移、Profile 隔离和窄栏标记边界；全量验证详见[验证记录](../reviews/verification-log.md#2026-11-06-issue-348-空间导航-agent-任务三态标记)。
+
 ## 2026-11-06 统一对话框标题头与 × 关闭钮（Issue #218）
 
 - 环境与截图：macOS arm64、隔离真实 Electron 45.2.1，`dialogs-ui-e2e` 真实交互（Agent 触发的页面 prompt）生成：[page-dialog 标题头](screenshots/issue-218/issue-218-page-dialog-header.png)（SHA-256 前缀 `416ecdac`，BrowserWindow 默认尺寸）。
