@@ -364,6 +364,7 @@ async function pointerAction(contents,operation,args,run) {
   if(operation==='mouseDown' || operation==='mouseClick') {
     if(state.buttons & mask)throw new Error('Mouse button is already down');
     await send('mousePressed',{button,buttons:state.buttons|mask,clickCount:1});state.buttons|=mask;
+    if(operation==='mouseClick')await new Promise(resolve=>setTimeout(resolve,30));
   }
   if(operation==='mouseUp' || operation==='mouseClick') {
     if(!(state.buttons & mask))throw new Error('Mouse button is not down');

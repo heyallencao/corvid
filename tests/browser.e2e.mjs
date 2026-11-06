@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import electron from 'electron';
+import { _electron } from 'playwright-core';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function eventually(fn, timeout = 15000) {
@@ -47,15 +47,20 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${fixture.address().port}`;
-  const child = spawn(electron, ['.'], {
-    cwd: path.resolve(import.meta.dirname, '..'),
-    env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_PORT: '0', CORVID_TEST_MODE: '1', ELECTRON_RUN_AS_NODE: '' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  let app;
+  let child;
   let output = '';
-  child.stdout.on('data', chunk => { output += chunk; });
-  child.stderr.on('data', chunk => { output += chunk; });
   try {
+    app = await _electron.launch({
+      executablePath: electron,
+      args: [path.resolve(import.meta.dirname, '..')],
+      env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_PORT: '0', CORVID_TEST_MODE: '1', ELECTRON_RUN_AS_NODE: '' },
+    });
+    child = app.process();
+    child.stdout?.on('data', chunk => { output += chunk; });
+    child.stderr?.on('data', chunk => { output += chunk; });
+    await app.firstWindow();
+    await app.evaluate(({ app: electronApp }) => electronApp.focus(process.platform === 'darwin' ? { steal: true } : undefined));
     let connection;
     try {
       connection = await eventually(async () => JSON.parse(await readFile(path.join(dataDir, 'control.json'), 'utf8')));
@@ -79,7 +84,7 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
     };
     const call = async (method, route, body) => {
       const { status, result } = await request(method, route, body);
-      assert.equal(status, 200, JSON.stringify(result));
+      assert.equal(status, 200, `${method} ${route}: ${JSON.stringify(result)}`);
       return result;
     };
     assert.equal((await fetch(connection.baseUrl + '/rooms')).status, 401);
@@ -96,15 +101,17 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
       const secondLoaded = rooms.rooms.find(room => room.id === second.id)?.tabs[0]?.loadComplete;
       return firstLoaded && secondLoaded;
     });
-    await call('POST', `/rooms/${first.id}/activate`);
     const action = async (tabId, operation, args = {}) => call('POST', `/tabs/${tabId}/action`, { operation, args });
     const cookie = await action(secondTab.id, 'evaluate', { expression: 'document.cookie' });
     assert.match(cookie.value, /shared=fixture/);
+    await call('POST', `/rooms/${second.id}/activate`);
+    await eventually(async () => (await call('GET', '/rooms')).activeRoomId === second.id);
     const snapshot = await action(secondTab.id, 'snapshot');
     assert.ok(snapshot.items.some(item => item.name === 'Submit'));
     await action(secondTab.id, 'fill', { target: '#name', value: 'independent browser' });
     await action(secondTab.id, 'click', { target: '#go' });
     assert.equal((await action(secondTab.id, 'text', { target: '#result' })).value, 'independent browser');
+    await call('POST', `/rooms/${first.id}/activate`);
     let state = await call('GET', '/rooms');
     assert.equal(state.activeRoomId, first.id);
     assert.equal(state.rooms.find(s => s.id === second.id).tabs[0].url, `${origin}/form`);
@@ -152,8 +159,8 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
   } finally {
     release();
     releaseLate();
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM');
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await app.close().catch(() => {});
       await Promise.race([once(child, 'exit'), delay(3000)]);
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }
