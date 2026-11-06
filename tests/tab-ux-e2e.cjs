@@ -1,5 +1,6 @@
 const {_electron}=require('playwright-core');
 const electron=require('electron');
+const createLibrary=require('../desktop/library.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const os=require('node:os');
@@ -34,7 +35,21 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   let homeThemeDebuggerAttachedByTest=false;
   const setHomeColorScheme=async colorScheme=>{const tabId=await activeHomeTabId();const result=await app.evaluate(async({webContents},{tabId,colorScheme})=>{for(const contents of webContents.getAllWebContents()){let matches=false;try{matches=await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`);}catch{}if(matches){const attachedByTest=!contents.debugger.isAttached();if(attachedByTest)contents.debugger.attach('1.3');await contents.debugger.sendCommand('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:colorScheme}]});return {found:true,attachedByTest};}}return {found:false,attachedByTest:false};},{tabId,colorScheme});homeThemeDebuggerAttachedByTest ||=result.attachedByTest;return result.found;};
   const captureHome=async output=>{const tabId=await activeHomeTabId();const base64=await app.evaluate(async({webContents},{tabId})=>{for(const contents of webContents.getAllWebContents()){try{if(await contents.executeJavaScript(`document.querySelector('[data-corvid-home-surface]')?.dataset.tabId===${JSON.stringify(tabId)}`))return (await contents.capturePage()).toPNG().toString('base64');}catch{}}return null;},{tabId});assert.ok(base64,'the active blank tab provides a capturable browser start page');fs.writeFileSync(output,Buffer.from(base64,'base64'));};
+  const libraryTestDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-frequent-sites-'));
   try{
+    const seededHistory=[
+      ...[1,2,3].map(index=>({profileId:'default',url:`https://alpha.example/${index}`,title:`Alpha ${index}`,visitedAt:`2026-11-0${index}T10:00:00.000Z`})),
+      ...[1,2,3].map(index=>({profileId:'default',url:`https://beta.example/${index}`,title:`Beta ${index}`,visitedAt:`2026-11-0${index}T11:00:00.000Z`})),
+      ...[1,2,3,4].map(index=>({profileId:'default',url:`https://gamma.example/${index}`,title:`Gamma ${index}`,visitedAt:`2026-11-0${index}T09:00:00.000Z`})),
+      {profileId:'work',url:'https://private.example/',title:'Private site',visitedAt:'2026-11-06T10:00:00.000Z'},
+      {profileId:'default',url:'file:///private/data',title:'Local file',visitedAt:'2026-11-07T10:00:00.000Z'},
+    ];
+    fs.writeFileSync(path.join(libraryTestDir,'library.json'),JSON.stringify({schemaVersion:1,history:seededHistory,bookmarks:[],downloads:[]}));
+    const frequentSites=createLibrary(libraryTestDir).frequentSites('default');
+    assert.deepEqual(frequentSites.map(site=>site.origin),['https://gamma.example','https://beta.example','https://alpha.example'],'visit counts rank sites before recent-visit tie breakers');
+    assert.deepEqual(frequentSites.map(site=>site.visitCount),[4,3,3]);
+    assert.equal(frequentSites[1].url,'https://beta.example/3','the most recent URL represents its origin');
+    assert.deepEqual(createLibrary(libraryTestDir).frequentSites('work').map(site=>site.origin),['https://private.example'],'frequent sites stay scoped to their browsing profile');
     app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     const shell=await app.firstWindow();
     let config;
@@ -79,8 +94,8 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#bookmark-current').click();
     await shell.locator('#bookmarks-bar').getByRole('link',{name:/Saved Fixture/}).waitFor();
 
-    // A new tab shows only bookmarks from its active Profile; another Profile
-    // gets an empty state and cannot see this saved site.
+    // A new tab shows frequently visited sites from its active Profile;
+    // another Profile gets an empty state and cannot see this browsing history.
     await until(async()=>bookmarkFaviconRequests>0,'existing bookmark bar favicon request');
     const faviconRequestsBeforeHome=bookmarkFaviconRequests;
     await shell.locator('#new-tab').click();
@@ -88,7 +103,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#bookmarks-bar').waitFor({state:'hidden'});
     await delay(150);
     assert.equal(bookmarkFaviconRequests,faviconRequestsBeforeHome,'the new-tab surface must not load remote bookmark favicons');
-    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),1,'the new tab lists only current Profile bookmarks');
+    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.frequentSiteCount)"),1,'the new tab lists the current Profile history even when the site is bookmarked');
     const homeTheme=()=>homeEval("(()=>{const host=document.querySelector('[data-corvid-home-surface]');const style=getComputedStyle(host);return {background:style.getPropertyValue('--home-page-background').trim(),text:style.getPropertyValue('--home-text-color').trim()}})()");
     assert.deepEqual(await homeTheme(),{background:'#fbfbfd',text:'#202334'},'the new-tab home starts with its light palette');
     assert.equal(await setHomeColorScheme('dark'),true,'the test can emulate the active page color scheme');
@@ -110,7 +125,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#room-name').fill('隔离空间');
     await shell.locator('#new-room-form button[type="submit"]').click();
     await until(()=>homeEval("document.visibilityState==='visible'"),'new Profile home surface');
-    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.bookmarkCount)"),0,'a new Profile must not see another Profile bookmarks');
+    assert.equal(await homeEval("Number(document.querySelector('[data-corvid-home-surface]').dataset.frequentSiteCount)"),0,'a new Profile must not see another Profile browsing history');
     await shell.locator('#profile-select').selectOption('default');
     await until(async()=>(await tabs.count())===2 && await shell.locator('#profile-select').inputValue()==='default','return to original Profile');
     await shell.locator('.tab[data-active="true"] .tab-close').click();
@@ -197,9 +212,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>{const current=(await call('/rooms')).rooms.find(room=>room.id===userRoom.id);return current?.tabs.length===1&&current.tabs[0].url==='about:blank'&&current.tabs[0].id!==replacementId;},'Cmd/Ctrl+W replaces the last user tab');
     await until(()=>homeEval("document.visibilityState==='visible'"),'keyboard-created user start page is ready');
     // Issue #130-A1：起始页文案跟随 uiLocale；closed shadow 不可探测，断言 host dataset 镜像。
-    const homeMirror=source=>homeEval(`(()=>{const host=document.querySelector('[data-corvid-home-surface]');return host?{locale:host.dataset.homeLocale,heading:host.dataset.homeHeading}:null;})()`);
+    const homeMirror=source=>homeEval(`(()=>{const host=document.querySelector('[data-corvid-home-surface]');return host?{locale:host.dataset.homeLocale,heading:host.dataset.homeHeading,sitesTitle:host.dataset.homeSitesTitle}:null;})()`);
     await until(async()=>(await homeMirror())?.locale==='zh-CN','zh start page declares its locale');
     assert.match((await homeMirror()).heading,/想去哪里/,'zh start page heading');
+    assert.equal((await homeMirror()).sitesTitle,'常访问网站','zh start page labels frequently visited sites');
     await shell.locator('html').evaluate((element,next)=>window.browserShell.invoke('setUiLocale',{locale:next}),'en');
     await shell.waitForFunction(expected=>document.documentElement.lang===expected,'en');
     await shell.locator('#new-tab').click();
@@ -207,6 +223,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>(await homeMirror())?.locale==='en','en start page follows the switched locale');
     const enHeading=(await homeMirror()).heading;
     assert.match(enHeading,/Where to next/,'en start page heading');
+    assert.equal((await homeMirror()).sitesTitle,'Frequently visited','en start page labels frequently visited sites');
     assert.equal(/[\u4e00-\u9fff]/.test(enHeading),false,'en start page heading has no Chinese residue');
     await shell.locator('html').evaluate((element,next)=>window.browserShell.invoke('setUiLocale',{locale:next}),'zh-CN');
     await shell.waitForFunction(expected=>document.documentElement.lang===expected,'zh-CN');
@@ -239,5 +256,6 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     if(app)await app.close().catch(()=>{});
     await new Promise(resolve=>server.close(resolve));
     fs.rmSync(dataDir,{recursive:true,force:true});
+    fs.rmSync(libraryTestDir,{recursive:true,force:true});
   }
 })().catch(error=>{console.error(error);process.exitCode=1;});

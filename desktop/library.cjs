@@ -51,6 +51,21 @@ module.exports = function createLibrary(directory) {
       }
       return suggestions;
     },
+    frequentSites(profileId, limit=8) {
+      const sites=new Map();
+      for(const item of data.history){
+        if((item.profileId ?? 'default')!==profileId||!validUrl(item.url))continue;
+        let url;try{url=new URL(item.url);}catch{continue;}
+        const origin=url.origin,current=sites.get(origin);
+        if(!current){sites.set(origin,{origin,visitCount:1,url:item.url,title:item.title||origin,visitedAt:item.visitedAt||''});continue;}
+        current.visitCount++;
+        if(String(item.visitedAt||'')>=String(current.visitedAt)){current.url=item.url;current.title=item.title||origin;current.visitedAt=item.visitedAt||'';}
+      }
+      const count=Number.isInteger(limit)&&limit>0?Math.min(20,limit):8;
+      return [...sites.values()]
+        .sort((left,right)=>right.visitCount-left.visitCount||String(right.visitedAt).localeCompare(String(left.visitedAt))||left.origin.localeCompare(right.origin))
+        .slice(0,count);
+    },
     bookmarks: profileId => data.bookmarks.filter(item=>(item.profileId ?? 'default')===profileId),
     downloads: profileId => data.downloads.filter(item=>(item.profileId ?? 'default')===profileId).reverse(),
     removeProfile(profileId) {
