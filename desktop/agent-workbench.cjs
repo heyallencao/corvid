@@ -298,7 +298,7 @@ function createAgentWorkbench({ dataDir, runtime, issueAgentCredential, revokeAg
         // 托管模型：本轮自然完成后自动按序发送排队中的后续消息。
         const queuedHead = task.stopUnconfirmed ? null : task.messageQueue?.[0];
         if (queuedHead) void continueTask({ taskId: task.id, queueItemId: queuedHead.id, queueItemRevision: queuedHead.revision })
-          .catch(error => { try { addEvent(task, 'error', `排队消息未能自动发送：${safeError(error)}`); } catch {} });
+          .catch(error => { try { addEvent(task, 'error', safeError(error), 'agentQueueDispatchFailed'); } catch {} });
       }, async error => {
         if (task.status !== 'running') return;
         task.sessionRef = priorConversation ? task.sessionRef || null : session.checkpoint() || task.sessionRef || null;
