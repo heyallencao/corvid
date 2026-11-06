@@ -2014,6 +2014,12 @@
 - 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 连续 3 次通过，使用隔离临时数据目录与本地 fixture；未调用模型/OAuth。没有重跑本机全量套件。
 - 后续：合并后重新执行 `version=0.2.0`、`publish=false` 手动 Release workflow，以 hosted arm64 全量 E2E 和两平台 packaged smoke 复验；本记录不代表该复验已通过，也没有发布 Release。
 
+## 2026-11-06 Issue #319 hosted window work-area follow-up（PR 前）
+
+- Hosted run [42151245763](https://github.com/heyallencao/corvid/actions/runs/42151245763)：preflight、Intel app/DMG/ZIP 与 Windows installer/upload 均通过，publish job skipped；arm64 全量门禁两轮都在 `tests/window-state-e2e.cjs:42` 等待窗口 resize 后 bounds 失败。SDK popup 用例已通过。
+- 调查判断：该用例固定请求 `{x:130,y:150,width:1010,height:720}`，没有根据 hosted 虚拟显示器 work area 限定位置与尺寸；runner 上原生窗口可能受屏幕边界约束，无法达到硬编码目标。修正为从测试已读取的 primary display work area 计算一个可容纳的目标 bounds，并用同一动态目标核对 resize、持久化和重启恢复。
+- 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 2 次通过；覆盖默认最小窗口、work-area bounded resize 与持久化/恢复、坏状态回退、脱屏坐标裁剪和 legacy schema。使用隔离临时数据与本地 fixture；未跑全量本机套件。合入后再以 `version=0.2.0`、`publish=false` hosted Release workflow 做完整复验。没有发布 Release。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。
