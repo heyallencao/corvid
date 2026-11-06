@@ -593,8 +593,12 @@ const chooseModel = async (page, providerId, modelId) => {
     fs.writeFileSync(path.join(dataDir,'agent-tasks.json'),JSON.stringify({schemaVersion:3,tasks:[recentTask,similarTask]}),{mode:0o600});
     app=await _electron.launch({executablePath:electronPath,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     restoredShell=await app.firstWindow();
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1280,850));
-    await restoredShell.waitForFunction(()=>window.innerWidth>=1200);
+    const restoredWorkArea=await app.evaluate(({BrowserWindow,screen})=>{
+      const area=screen.getPrimaryDisplay().workArea,width=Math.min(1280,area.width),height=Math.min(850,area.height);
+      BrowserWindow.getAllWindows()[0].setSize(width,height);
+      return {width,height};
+    });
+    await restoredShell.waitForFunction(minimum=>window.innerWidth>=Math.min(1200,minimum),restoredWorkArea.width);
     await restoredShell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     const roomSummaryItem=restoredShell.locator('.room-name').filter({hasText:'比较页面重点'}).first();
     await restoredShell.waitForFunction(async()=>{
