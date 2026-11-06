@@ -74,8 +74,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     fs.writeFileSync(statePath,JSON.stringify({x:160,y:170,width:1020,height:730}));
     const legacy=await start();
     assert.deepEqual({width:legacy.bounds.width,height:legacy.bounds.height},{width:Math.min(1020,legacy.workArea.width),height:Math.min(730,legacy.workArea.height)});
-    assert.ok(Math.abs(legacy.bounds.x-160)<=4,`expected x near 160, got ${legacy.bounds.x}`);
-    assert.ok(Math.abs(legacy.bounds.y-170)<=24,`expected y near 170, got ${legacy.bounds.y}`);
+    const expectedLegacyX=Math.max(legacy.workArea.x,Math.min(160,legacy.workArea.x+legacy.workArea.width-legacy.bounds.width));
+    const expectedLegacyY=Math.max(legacy.workArea.y,Math.min(170,legacy.workArea.y+legacy.workArea.height-legacy.bounds.height));
+    assert.ok(Math.abs(legacy.bounds.x-expectedLegacyX)<=4,`expected x near work-area bounded ${expectedLegacyX}, got ${legacy.bounds.x}`);
+    assert.ok(Math.abs(legacy.bounds.y-expectedLegacyY)<=24,`expected y near work-area bounded ${expectedLegacyY}, got ${legacy.bounds.y}`);
     await stop();
     console.log('PASS window bounds enforce and restore the 719x420 minimum, compact CSS is reachable, corrupt state falls back, detached-monitor position is clamped, legacy single-window state is read');
   }finally{

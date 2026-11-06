@@ -2049,8 +2049,8 @@
 
 ## 2026-11-06 Issue #319 hosted legacy window work-area follow-up（PR 前）
 
-- Hosted run [42157629754](https://github.com/heyallencao/corvid/actions/runs/42157629754)：preflight、Intel app/DMG/ZIP、Windows installer/upload 均通过；arm64 两轮均在 `tests/window-state-e2e.cjs:76` legacy 单对象恢复断言失败，runner 实际高度 684px，测试仍期望 730px。dialog 与 print 用例本轮均通过。
-- 修正：legacy 状态恢复尺寸断言也按 primary display work area 限定；此前 off-screen 数组状态断言已作相同适配。
+- Hosted runs [42157629754](https://github.com/heyallencao/corvid/actions/runs/42157629754) 与 [42158884776](https://github.com/heyallencao/corvid/actions/runs/42158884776)：两平台 packaged checks 通过；第一次 arm64 两轮在 legacy 单对象恢复高度断言失败（runner 实际 684px，固定期望 730px）；第二次两轮在 x 位置断言失败，虚拟屏幕将 x=160 限制为 x=4。dialog、print 与 uploads 用例均通过。
+- 修正：legacy 状态恢复尺寸与原点都按 primary display work area 计算预期，保留 macOS title/menu bar 对 y 位置的 24px 容差；off-screen 数组状态也按 work area 限定尺寸。
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 3 次通过；使用隔离临时数据与本地 fixture，未跑本机全量套件。通过后提交 PR 并再次执行合并后 hosted gate。本地全量未重跑；没有发布 Release。
 
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
