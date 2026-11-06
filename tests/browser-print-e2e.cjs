@@ -19,7 +19,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${fixture.address().port}`;
-  let app, shell;
+  let app;
 
   async function until(fn, message = 'Timed out waiting for browser state') {
     for (let i = 0; i < 200; i++) {
@@ -79,13 +79,26 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     }, { keyCode: key.toUpperCase(), modifiers: [primary] });
   }
 
+  async function printShortcut() {
+    const primary = process.platform === 'darwin' ? 'meta' : 'control';
+    return app.evaluate(({ BrowserWindow }, modifier) => {
+      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+      contents.emit('before-input-event', event, {
+        type: 'keyDown', key: 'p', meta: modifier === 'meta', control: modifier === 'control',
+        shift: false, alt: false, isAutoRepeat: false,
+      });
+      return event.defaultPrevented;
+    }, primary);
+  }
+
   try {
     app = await _electron.launch({
       executablePath: electronPath,
       args: [project],
       env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' },
     });
-    shell = await app.firstWindow();
+    const shell = await app.firstWindow();
     await until(() => fs.existsSync(path.join(dataDir, 'control.json')));
     await shell.locator('#address').fill(`${base}/first`);
     await shell.locator('#address').press('Enter');
@@ -117,7 +130,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until(async () => (await call('/rooms')).rooms.some(room => room.tabs.some(tab => tab.active && tab.url === `${base}/second` && tab.ready)));
     await until(() => requests.includes('/second'));
     await installPrintStub(`${base}/second`);
-    await shortcut('P');
+    assert.equal(await printShortcut(), true, 'platform print shortcut is handled by the BrowserWindow input handler');
     await until(async () => (await printCalls()).length === 4);
     calls = await printCalls();
     assert.equal(calls[3].url, `${base}/second`, 'the platform print shortcut targets the currently selected page');
