@@ -2215,6 +2215,6 @@
 ## 2026-11-06 Issue #16 空间任务状态与长标题避让
 
 - 改动：Room 导航中的 Agent 任务状态从宽栏绝对定位改为标题下方的正常布局流，避免状态徽标遮挡长任务标题；窄侧栏仍用角落圆点表达状态。E2E 检查状态文字与标题矩形不相交。
-- 验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；含截图运行再次 EXIT 0。覆盖 Agent 空态、并行任务 running/waiting/completed/failed、双语状态、窄布局 719×568 @2x，以及 719/720/721/800/860/873/874/900/972/983/984/1024/1280 宽度合同。最终候选全量 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，46/46 `node:test` 与串行 E2E 链全部 PASS。macOS arm64、Node.js v24.22.1、Electron 45.2.1，隔离数据目录及本地 fixture；未调用真实模型、Provider 或 OAuth。测试重写的 9 张既有 QA 截图已恢复。
+- 验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；含截图运行再次 EXIT 0。覆盖 Agent 空态、并行任务 running/waiting/completed/failed、双语状态、窄布局 719×568 @2x，以及 719/720/721/800/860/873/874/900/972/983/984/1024/1280 宽度合同。基于 `origin/main` `bbbcf08` 的最终候选全量 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，47/47 `node:test` 与串行 E2E 链全部 PASS。macOS arm64、Node.js v24.22.1、Electron 45.2.1，隔离数据目录及本地 fixture；未调用真实模型、Provider 或 OAuth。测试重写的 9 张既有 QA 截图已恢复。
 - 截图：1280×850 CSS px 中文运行态 [Room 状态与长标题](../qa/screenshots/issue-16-state-matrix/issue-16-room-status-zh-CN-1280x850.png)，SHA-256 `03b91a40cd1fa2910876878d631eb3c58a74ad5cf94c33c42eb2c69e2c90d7a3`。截图目视确认状态在标题下方，长标题可能省略，但未被徽标遮挡。
 - 限制：仅开发版、浅色主题、macOS 和合成 Agent 任务；未覆盖暗色主题、Windows、打包版或屏幕阅读器实播。此为 Issue #16 的一个布局切片，不代表整单完成。
