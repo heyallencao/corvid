@@ -2057,7 +2057,10 @@
 
 - Hosted run [42159999600](https://github.com/heyallencao/corvid/actions/runs/42159999600)：preflight、Intel 与 Windows packaged checks 通过；arm64 retry 1 在 `pi-workbench-e2e.cjs:597` 等 `innerWidth>=1200`，retry 2 在 `snapshot-e2e.cjs:105` 等 `@ref` 点击后的页面副作用（默认 8 秒）。
 - 修正：Pi Workbench 重启用例按当前 primary display work area 设置窗口，并按可用宽度等待；snapshot 的单次 `@ref` 点击副作用等待放宽为 15 秒，其余快照与动作超时不变。
-- 定向验证待补：运行 Pi Workbench 与 snapshot 两项定向 E2E。工作区其他问题已定向验证；没有本机全量重跑或发布 Release。
+- 合入后定向验证：PR #364 已 squash 合并（`3f99304`），`Closes #319` 自动关闭；`pi-workbench-e2e.cjs` 与 `snapshot-e2e.cjs` 定向测试通过。main 上无冲突标记。
+- Hosted 最终 gate：[run 42161430686](https://github.com/heyallencao/corvid/actions/runs/42161430686)，source SHA `3f99304c1811be5ded35ab5773b738bd40ea4581`，参数 `version=0.2.0`、`publish=false`。Preflight、macOS arm64 全量 `env -u ELECTRON_RUN_AS_NODE npm test` 与 packaged app smoke、Intel macOS app smoke 及 DMG/ZIP 构建、Windows installer smoke 和 artifact upload 全部通过；publish job 按参数跳过。未发布 Release。
+- 这是唯一一次针对最终候选提交执行的全量 gate；此前多轮 hosted 运行中只在发现失败后重跑对应失败项的定向 E2E。全量运行发生在文档证据更新之前，但代码 source SHA 与 PR #364 的合并 SHA 一致；模型/OAuth 与真实 Provider 未调用。
+- 最终合并后本机定向复验：Pi Workbench 首次运行未能在 `#room-strip` 内滚动到目标摘要；将断言前的滚动操作改为直接对目标标签执行 `scrollIntoView({block:'nearest'})` 后，`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0。`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/snapshot-e2e.cjs` EXIT 0。该修正针对测试滚动操作，不改变产品行为；本机没有重复全量套件。
 
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 

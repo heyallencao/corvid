@@ -607,9 +607,10 @@ const chooseModel = async (page, providerId, modelId) => {
     },undefined,{timeout:10_000});
     await roomSummaryItem.waitFor({timeout:5_000});
     await restoredShell.waitForFunction(()=>{
-      const strip=document.querySelector('#room-strip');strip.scrollTop=strip.scrollHeight;
+      const strip=document.querySelector('#room-strip');
       const label=[...strip.querySelectorAll('.room-name')].find(node=>node.textContent.includes('比较页面重点'));
       if(!label)return false;
+      label.scrollIntoView({block:'nearest'});
       const row=label.parentElement.getBoundingClientRect(),bounds=strip.getBoundingClientRect();
       return row.top>=bounds.top&&row.bottom<=bounds.bottom;
     },undefined,{timeout:10_000});
