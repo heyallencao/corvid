@@ -2096,6 +2096,13 @@
 - 定向验证：`single-instance-e2e.cjs` source 模式通过；`beforeunload-e2e.cjs` 通过；`CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1 node tests/chrome-import-e2e.cjs` 输出 `SKIPPED_NATIVE_EXTENSION_POPUP_OUTSIDE_CLICK` 后完整 Chrome import E2E 通过。相关脚本语法检查与 `git diff --check` 通过。
 - 边界：本机无 Windows packaged runtime，新的 Windows CDP 启动分支仍待 Windows hosted gate 验证；原生 popup blur 子场景明确未覆盖。修复尚未合并，最新 hosted gate 仍为失败，没有发布 Release。
 
+## 2026-11-06 Issue #319 Windows packaged UI launcher follow-up
+
+- Hosted run [42169284871](https://github.com/heyallencao/corvid/actions/runs/42169284871)，main `73f90cd`，`publish=false`：preflight、macOS arm64 全量 E2E/app/DMG/ZIP、Intel macOS app/DMG/ZIP 全通过；arm64 完整链输出原生 popup blur 子场景的显式 skip，beforeunload 和剩余 Chrome import 流程通过。Windows packaged launcher 与单实例脚本通过，但 `browser-shortcuts-e2e.cjs` 再次因 Playwright 无法连接 packaged exe 等待 180 秒而失败。
+- 下一候选将 Windows packaged UI runner 的子项收敛到 CDP launcher 可驱动的 packaged 单实例和新的导航/设置 smoke；开发版 `npm test` 仍覆盖原 browser shortcut 和完整 settings E2E。
+- 定向验证：`node --check tests/packaged-win-ui-e2e.cjs`、`node --check tests/packaged-win-ui-smoke.cjs`、`git diff --check` 通过；本机 `npm run package:mac:dir` 构建隔离 arm64 app 后，以 `CORVID_PACKAGED_APP_PATH=.../Corvid` 运行新 smoke，确认 app.asar 启动、local fixture 导航、英文设置保存及 search template 提交均通过。
+- 边界：以上 packaged smoke 是 macOS arm64 包，用于验证 CDP launcher 和 UI 流程；Windows packaged exe 分支仍待 hosted Windows runner 实测。该失败 run 仍为最新 hosted release gate；没有发布 Release。
+
 ## 2026-11-06 最新开放正文图片审计（Issue #244）
 
 - 基线：当前 `origin/main` `6210595`；`PR #329` 已合入 `25c8d76` 并关闭 Issue #244。
