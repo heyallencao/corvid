@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-06 Issue #344 Microsoft Edge 导入首个来源切片
+
+- 基线与范围：隔离 worktree，候选基于最新 `origin/main` `43942bb`，提交 `24c3c40`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。实现 Chrome/Edge 来源目录枚举、Edge Profile 预览及书签/历史/用户选择扩展导入；Brave、Vivaldi、Opera、Arc 尚未实现，Issue #344 保持开放。
+- 定向 E2E：`node tests/chrome-import-e2e.cjs` 通过。隔离 Edge-shaped fixture 验证来源选择、显式目标 Corvid Profile、书签/历史/扩展导入、重复导入去重、另一个 Profile 无泄漏，以及源书签、History、扩展 manifest 与 Cookie 文件导入后字节不变。Cookie fixture 是故意不可解析的文本；UI 禁用 Edge Cookie，伪造 IPC 类别请求由主进程以“Edge Cookie 导入暂不支持”拒绝，流程未触发该文件的数据库读取。相同脚本中的既有 Chrome 导入、Cookie、扩展与恢复回归通过。
+- 模块合同：`node --test --test-concurrency=1 tests/browser-import-sources.test.mjs tests/chrome-import-categories.test.mjs tests/chrome-import-sqlite.test.mjs` 11/11 通过，覆盖 Chrome/Edge 的 macOS、Windows、Linux 标准目录字符串、Windows `appData` 推导、来源目录探测和现有类别/SQLite 行为；未在 Windows/Linux 运行 Electron UI。
+- 静态检查：变更文件 `node --check` 与 `git diff --check` 通过。无模型、OAuth、真实浏览器 Profile 或真实浏览数据访问。
+- 全量门禁：`npm test` 在 `node:test` 段退出码 1，50 项中 48 通过、2 失败：`tests/dialogs.e2e.mjs` 未观察到前台点击触发页面对话框；`tests/uploads.e2e.mjs` 文件选择器事件超时。两个用例分别独立复跑仍失败。运行期间 Chrome 导入用例明确报告 macOS 锁屏，并跳过仅限原生焦点的子场景；本轮尚不能将全量门禁记为通过，完整串行 E2E 脚本链未运行。
+- 边界：UI、fixture 与目录路径合同在本机 macOS 开发版验证；Windows/Linux 目录路径为纯 Node 单元合同，不代表平台 UI 验收。未读取真实 Edge Profile；Edge Cookie 未实现且不读取；其它多源尚未交付。由于锁屏状态下全量门禁未通过，本候选不合并，等待可交互桌面后重跑全量 `npm test`。
+
 ## 2026-11-06 Issue #348 空间导航 Agent 任务三态标记
 
 - 基线：隔离 worktree 分支 `ui/issue-348-space-task-status`，基于当时 `origin/main` `7ba8026`；macOS arm64，Node.js v24.22.1，Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture，不使用真实模型、OAuth 或个人浏览数据。
