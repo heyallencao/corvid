@@ -2205,6 +2205,14 @@
 - 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用本地页面和确定性 Agent fixture、隔离临时数据目录；没有真实 Provider、模型或 OAuth。`node_modules` 是指向主克隆既有依赖的 worktree 本地符号链接，未修改主克隆文件。
 - 限制：只覆盖浅色主题与 1280×850；未覆盖窄窗、暗色主题、跨平台、打包版或读屏实播。本切片交付 B2 的状态语义/运行态证据，不代表 Issue #16 的 B3 错误态和 B4 完整键盘走查已完成。
 
+## 2026-11-06 Issue #401 Apple Silicon Release 回归 follow-up
+
+- Hosted run [42218805400](https://github.com/heyallencao/corvid/actions/runs/42218805400)，source SHA `bbbcf08951c0b9749fa5ce3e85b4a2c041c02e1b`，参数 `version=0.2.0`、`publish=true`：preflight、Windows installer smoke、Intel macOS app smoke 与 DMG/ZIP 构建通过；Apple Silicon 全量回归两次均失败，publish job skipped。第一次 SIGKILL 恢复查询在标签初始化完成前读到 `about:blank`；第二次该用例通过，`fullscreen-e2e.cjs:145` 仍因关闭后持久化高度 681 与转场后 `getNormalBounds()` 高度 684 不同而失败。
+- 修正：SIGKILL E2E 在比较恢复 URL 前等待目标标签 `ready` 且实际 URL 与保存值一致；全屏 E2E 将精确尺寸比较基准记录在首次进入全屏前，并用该同一快照核对持久化值与重启恢复值。全屏尺寸断言仍为精确比较，不使用容差；未改运行时代码。
+- 定向验证：macOS arm64 上 `env -u ELECTRON_RUN_AS_NODE node tests/sigkill-recovery-e2e.cjs` 与 `env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` 均通过；两个脚本 `node --check` 与 `git diff --check` 通过。
+- 全量本机验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 通过，之后 76 条串行独立脚本全部输出 PASS，包含更新后的 SIGKILL 恢复与全屏 E2E。环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用隔离临时数据目录和本地 fixture，未调用真实模型、Provider 或 OAuth；测试未留下跟踪截图改动。
+- 状态：PR 尚未合并，新的正式 Release gate 尚未运行；本记录不表示 `v0.2.0` 已发布。
+
 ## 2026-11-06 Issue #130 设置校验错误双语映射（A2）
 
 - 修改：无效搜索模板与缺少浏览身份名称分别返回 `search-template-invalid`、`profile-name-required` 稳定错误码，并增加 zh-CN/en 资源；浏览身份重命名界面使用统一 `userFacingError` 映射。合同测试也断言两种 locale 均解析这两个错误码。
