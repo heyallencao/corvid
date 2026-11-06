@@ -18,6 +18,14 @@ await assertDialogHeader('page-dialog','页面请求');
 if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-218-page-dialog-header.png')});}
 await shell.locator('#page-dialog-close').click();await click2;
 const cancelled=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(cancelled.value,null,'× dismisses the page prompt like cancel');
+const clickCancel=call('POST',`/tabs/${tab.id}/action`,{operation:'click',args:{target:'button'}});
+await shell.getByRole('button',{name:/网页对话框/}).click();await shell.locator('#page-dialog[open]').waitFor();
+await shell.locator('#page-dialog-dismiss').click();await clickCancel;
+const buttonCancelled=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(buttonCancelled.value,null,'cancel button returns null to the page prompt');
+const clickEscape=call('POST',`/tabs/${tab.id}/action`,{operation:'click',args:{target:'button'}});
+await shell.getByRole('button',{name:/网页对话框/}).click();await shell.locator('#page-dialog[open]').waitFor();
+await shell.keyboard.press('Escape');await shell.locator('#page-dialog[open]').waitFor({state:'detached'});await clickEscape;
+const escapeCancelled=await call('POST',`/tabs/${tab.id}/action`,{operation:'evaluate',args:{expression:'window.answer'}});assert.equal(escapeCancelled.value,null,'Escape returns null to the page prompt without leaving it pending');
 await call('DELETE',`/rooms/${room.id}`);
 // Issue #218：统一对话框标题头——aria-labelledby 可访问名称与 × 关闭钮。
 // 新建空间：标题头 + × 关闭。
