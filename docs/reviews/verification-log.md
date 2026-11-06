@@ -2174,3 +2174,9 @@
 - 范围：同步 `docs/architecture/overview.md`、`docs/execution/feature-board.md`、`docs/research/browser-reference-analysis.md` 的历史入口、Profile 隔离、最小数据、保留/清理与不记录“已读”决策；实现拆片见 #390。未改运行时代码。
 - 直接源码核对：`desktop/agent-task-store.cjs` 保存版本化任务记录；`desktop/agent-workbench.cjs` 按 Profile 返回脱敏任务摘要，并在移除任务/删除浏览身份时清理关联会话和记录；`desktop/main.cjs` 关闭 Room 不会删除任务记录。`git diff --check` 通过；纯文档评估未运行功能测试。
 - 限制：没有实际 UI、辅助技术、跨平台或 Provider 运行证据；现有摘要正则脱敏不保证识别所有个人信息。未把任务记录解释成“已读页面”证据。
+## 2026-11-06 Issue #370 三个 E2E 就绪等待
+
+- 基线：隔离 worktree `../corvid-issue-370`，候选起点 `origin/main` `12ac6ac`；macOS arm64，Node.js v24.22.1。测试前 `pgrep -af '[Ee]lectron'` 命中两个常驻 crashpad helper（ZCode、VS Code）；`ps` 确认它们不是活动 Electron/E2E 测试，后续单条串行运行。
+- 改动：地址栏建议测试先清空旧查询并等待列表收起，再等当前 URL 建议和单一结果；Agent 授权测试等待设置按钮可见；未连接模型测试等待中英文状态文案就绪后再断言。
+- 定向验证：`node --check tests/address-suggestions-e2e.cjs tests/agent-access-ui-e2e.cjs tests/pi-unconnected-model-label-e2e.cjs` 与 `git diff --check` 通过。分别运行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/address-suggestions-e2e.cjs`（两次通过）、`... node tests/pi-unconnected-model-label-e2e.cjs`（通过；仅合成页面，无 Provider/OAuth/API Key）、`... node tests/agent-access-ui-e2e.cjs`（通过）。
+- 限制：未运行全量 E2E；串行 suite 首错后继续收集结果的 runner 改进单独跟踪于 #392。本轮为测试就绪判定，不改产品运行时代码。

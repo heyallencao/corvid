@@ -97,10 +97,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.evaluate(async () => window.browserShell.invoke('setUiLocale', { locale: 'zh-CN' }));
     console.log('PASS address placeholder contrast >= 4.5:1 for light/dark themes and zh-CN/en');
 
+    await address.fill('');
+    await list.waitFor({ state: 'hidden' });
     await address.fill(`${base}/guide`);
     await list.waitFor({ state: 'visible' });
     const guide = list.getByRole('option', { name: /Corvid Guide/ });
     await guide.waitFor();
+    await shell.waitForFunction(() => document.querySelectorAll('#address-suggestions [role="option"]').length === 1);
     assert.equal(await list.getByRole('option').count(), 1, 'one URL is shown even when history contains duplicate visits');
     assert.doesNotMatch(await guide.innerText(), /fixtureSecret|section/, 'history suggestions hide URL query and fragment values');
     assert.equal(await address.getAttribute('aria-expanded'), 'true');
