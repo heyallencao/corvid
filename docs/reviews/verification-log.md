@@ -2076,6 +2076,13 @@
 - 定向验证：`env -u ELECTRON_RUN_AS_NODE node --test tests/electron-startup.e2e.mjs`，12/12 通过；覆盖测试模式阶段文件、启动失败阶段诊断、`control.json` 等待和有界 Electron 清理合同。
 - 边界：本轮未复现历史真实 Electron 启动挂起，未定位其根因；Issue 原始验收聚焦串行全量回归、启动超时诊断与隔离数据，既有主线有多轮全量回归通过证据。该定向测试不能单独证明历史挂起根因已解决。
 
+## 2026-11-06 Issue #319 Release gate 失败定位 follow-up
+
+- Hosted run [42164473896](https://github.com/heyallencao/corvid/actions/runs/42164473896)，main `08d4780`，参数 `version=0.2.0`、`publish=false`：preflight、Intel macOS app/DMG/ZIP/artifact、Windows installer 构建及 packaged launcher 通过；publish skipped。arm64 完整回归第一次在 `browser-print-e2e.cjs` 等待打印调用超时，整轮重试在 `sdk/e2e.js` 的 5 秒 popup wait 超时；Windows packaged UI job 在 launcher 通过后触发 Playwright 180 秒超时，原 runner 未打印当前子脚本。
+- 本轮仅针对失败可诊断性调整：popup 成功事件预算增至 15 秒，超时时附带 Room tabs 和 popup event 状态；Windows packaged UI runner 在每个子脚本前后输出阶段名和退出状态。未改产品运行逻辑。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/popup-events-e2e.cjs` 通过；两个修改脚本 `node --check`、`git diff --check` 通过。由于本机无 Windows packaged runtime，Windows 阶段标记需由后续 hosted gate 验证。本轮未重跑全量本机 `npm test`。
+- 边界：popup 超时及 Windows 子脚本超时的 hosted 复现阶段仍待新 gate 确认；当前没有 main 最新全绿 Release gate，也没有发布 Release。
+
 ## 2026-11-06 最新开放正文图片审计（Issue #244）
 
 - 基线：当前 `origin/main` `6210595`；`PR #329` 已合入 `25c8d76` 并关闭 Issue #244。

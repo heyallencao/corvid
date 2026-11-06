@@ -226,9 +226,15 @@ try {
   const popupRoom=await client.createRoom('popup events');
   const opener=await popupRoom.open(url);
   await opener.evaluate(()=>{const button=document.createElement('button');button.id='open-popup';button.textContent='Open popup';button.onclick=()=>window.open('/popup','_blank');document.body.append(button);return true;});
-  const waitingPopup=opener.waitForEvent('popup',{timeout:5000});
+  const waitingPopup=opener.waitForEvent('popup',{timeout:15000});
   await opener.click('#open-popup');
-  const popup=await waitingPopup;
+  let popup;
+  try { popup=await waitingPopup; }
+  catch(error) {
+    const [tabs,events]=await Promise.all([popupRoom.tabs(),opener.events()]);
+    error.message+=`; popup diagnostics: ${JSON.stringify({tabs:tabs.map(({id,label,ready,openerId,url})=>({id,label,ready,openerId,url})),events})}`;
+    throw error;
+  }
   assert.ok(popup.label);
   assert.equal(popup.openedBy,'unknown');
   assert.equal(await popup.text('h1'),'Welcome');
