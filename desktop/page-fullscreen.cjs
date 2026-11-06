@@ -4,7 +4,7 @@ function snapshotFullscreenRestoreState(record) {
     record.fullscreenRestoreMaximized = record.browserWindow.isMaximized() || record.lastKnownMaximized;
   }
   if (record.fullscreenRestoreBounds == null && typeof record.browserWindow.getNormalBounds === 'function') {
-    record.fullscreenRestoreBounds = { ...record.browserWindow.getNormalBounds() };
+    record.fullscreenRestoreBounds = { ...(record.normalBounds || record.browserWindow.getNormalBounds()) };
   }
 }
 

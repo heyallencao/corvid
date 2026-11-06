@@ -1,5 +1,12 @@
 # 验证记录
 
+## 2026-11-06 Issue #403 macOS 最大化与全屏 bounds 持久化
+
+- Hosted 证据：Release run [#42223547663](https://github.com/heyallencao/corvid/actions/runs/42223547663)，source `d8e2bad15ac9ba5edc53f6660bd26db5bf47331c`；Windows installer smoke/资产上传及 Intel macOS app smoke、DMG/ZIP/资产上传通过。Apple Silicon 全量 Electron 门禁两次均在 `tests/fullscreen-e2e.cjs:154` 失败，重启实际高度 684、测试期望 681；发布步骤被跳过。运行平台为 macOS 15 arm64，Node.js v22.19.0、Electron 45.2.1。
+- 根因与修正：测试在最大化后取 `getNormalBounds()`，macOS 15 返回了受最大化尺寸影响的 1024×681；恢复窗口时系统报告 1024×684。窗口状态原先在最大化时再次读取该值并持久化。现在 BrowserWindow 只在普通尺寸状态更新 `normalBounds` 快照，最大化/全屏状态保存该快照；全屏 E2E 在最大化前记录常态 bounds 并继续精确比对持久化和重启结果。Issue #403 已认领，PR 尚未创建。
+- 当前验证：`node --test tests/window-fullscreen-state.test.mjs` 12/12 通过；改动 JS 的 `node --check`、`git diff --check` 通过。定向 `fullscreen-e2e.cjs` 在本机因 macOS 前台 bundle 为 `loginwindow` 输出 `SKIPPED_NATIVE_FULLSCREEN`，不计作原生全屏通过。隔离 worktree 的 `env -u ELECTRON_RUN_AS_NODE npm test` 退出码 1，首个 node:test 阶段 46/48：`tests/dialogs.e2e.mjs` 的原生页面对话框未出现、`tests/uploads.e2e.mjs` 的 file chooser 超时；两者均需前台桌面焦点，后续 `test:serial` 未启动。
+- 边界：本机锁屏状态下未执行真实原生全屏转场；修复仍须在 PR 合并后的 Apple Silicon hosted Release 全量门禁确认。此次 hosted run 未发布 `v0.2.0`。
+
 ## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
 
 - 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。

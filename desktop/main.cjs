@@ -414,8 +414,8 @@ function saveWindowState() {
     const fullscreen = isTransientFullscreen(record);
     // 恢复 zoom 态的过渡窗口内 isMaximized() 可能瞬时为 false，按待恢复标记保持
     // 最大化语义与快照 bounds，避免把过渡帧写入持久化状态。
-    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : (record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized());
-    const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : record.browserWindow.getNormalBounds();
+    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : Boolean(record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized() || record.lastKnownMaximized);
+    const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : (maximized && record.normalBounds ? record.normalBounds : record.browserWindow.getNormalBounds());
     states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
   if (!states.length) return;
@@ -1742,7 +1742,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   // backgroundColor 即可让窗口底色透出系统材质。
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(glassChrome?{vibrancy:'under-window',backgroundColor:'#00000000'}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,dockStripHeight:0,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,fullscreenRestoreBounds:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,dockStripHeight:0,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,fullscreenRestoreBounds:null,normalBounds:{...browserWindow.getNormalBounds()},lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
@@ -1752,10 +1752,10 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const clearRestoredBoundsAfterGeometryChange=()=>{
     if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized!==true&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
   };
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
-  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized())record.normalBounds={...browserWindow.getNormalBounds()};settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized())record.normalBounds={...browserWindow.getNormalBounds()};settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
   browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=true;clearTimeout(record.fullscreenRestoreSettleTimer);if(record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;}});
-  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}}});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;record.normalBounds={...browserWindow.getNormalBounds()};}scheduleWindowStateSave();}});
   // macOS transitions are asynchronous; if the user reverses direction during
   // the animation, replay the latest target instead of trusting a stale event.
   browserWindow.on('enter-full-screen',()=>{
