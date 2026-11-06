@@ -25,6 +25,7 @@
 
 - 2026-11-02 D21 窗口宽度合同复核：新回归在旧代码上复现 760px 时网页画布仅 308px；修正主进程/CSS 的间距预算后，13 个宽度点（含 704px 最小窗与 873/874px 侧栏断点）均满足网页 ≥320px、Agent 内容 ≥280px。全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，43 条独立脚本与 3 项 `node:test` 全部通过（46 项）；详见[验证记录](../reviews/verification-log.md)及[视觉检查](../qa/ui-visual-check.md#2026-11-02-窗口空间分配边界复查)。
 - 全量 E2E 的三个顶层 `node:test` 真实 Electron 用例改为串行运行：两次默认并发全量运行中 `dialogs.e2e.mjs` 的 `page.click` 超时且事件监听未观察到点击，而同一用例独立运行及 `--test-concurrency=1` 均通过，表明并行 Electron 窗口争抢前台焦点。此修正限定在 test runner，不改变产品运行时。
+- 2026-11-06 Issue #289：`npm test` 入口增加按 Git remote 归一化的跨 worktree 互斥锁，避免同机全量 Electron 链同时争抢窗口焦点；runner 自动回收 owner PID 已退出的遗留锁，并有合同测试覆盖等待/释放与 stale lock 恢复。直接单跑 E2E 脚本仍由本机协作协议控制并发。
 - 2026-11-03 Issue #16 空间术语收敛与 Issue #86 Electron 测试焦点竞争：隔离真实 Electron/CUA 窗口中观察到导航的 `Spaces`、默认“我的 Room”、菜单“Space 选项”与 Agent 空态“Agent Room”混用；用户可见界面和确认框现统一使用“空间”，Corvid Profile 显示为“浏览身份”，Agent 入口/错误继续使用 Corvid 产品语义，内部 API/存储字段保持兼容。真实 Electron/CUA 检查工作台与空态，未连接模型或 OAuth；最近一次全量 `npm test` 46 项 EXIT 0。E2E 窗口操作改用所属 Electron BrowserWindow，不再依赖系统当前焦点；一次偶发启动挂起仍由 Issue #87 跟踪。视觉与验证边界见[UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-03-空间术语收敛)和[验证记录](../reviews/verification-log.md)。
 - 2026-11-03 Corvid Agent 凭据所有权切片（Issue #78）：标准 OAuth/API Key 与自定义端点 Key 统一写入 Corvid `agent-credentials.json`；旧版 schemaVersion 1 由[Issue #110](https://github.com/heyallencao/corvid/issues/110)迁移至 schemaVersion 2。Pi ModelRuntime 通过适配器读取该凭据接口。首次读取旧 `auth.json` 与 `pi-models.json` 中的明文 Key 时，先合并、加密并解密校验，再清理旧副本；模型目录只保存无密钥端点引用。文件/目录权限为 0600/0700，密文由 Electron 异步 `safeStorage` 保护；Linux 弱后端拒绝凭据访问。`pi-models-e2e` 使用确定性假安全存储验证迁移与失败保护，`pi-custom-endpoint-e2e` 使用本地 HTTP fixture 验证 Electron 集成。未执行真实 OAuth/模型请求，未验证签名打包及 Windows/Linux 原生安全存储和升级恢复。详见[验证记录](../reviews/verification-log.md)。
 - 2026-11-03 Corvid Agent 授权提示运行时品牌隔离：定向真实 Electron 用例从 renderer 事件 fixture 注入带运行时名称的授权提示，检查弹窗文案与取消路径不泄漏；不触发真实 Provider/OAuth 或模型。工作台、模型管理和授权表面回归入口与边界见[端到端测试索引](../qa/e2e-suites.md)及[验证记录](../reviews/verification-log.md)。
@@ -114,7 +115,7 @@
 
 ## 端到端运行方式
 
-1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（53 条串行命令：1 条 `node --test` 与 52 个独立脚本；其中包含 30 个 `node:test` 用例，共 82 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
+1. **环境准备**：Node.js ≥ 22.19；`npm ci` 安装依赖；`npm start` 启动桌面；`npm test` 执行全量回归（76 条串行命令：1 条 `node --test` 与 75 个独立脚本；其中包含 39 个 `node:test` 用例，共 114 项自动化检查；另有 1 项真实模型 smoke 需显式执行）。
 2. **隔离原则**：每项测试自建临时数据目录与本地 HTTP 夹具（`127.0.0.1` 随机端口，必要时用 `localhost` 制造跨来源），结束时清理进程与临时目录；不读写真实用户数据。
 3. **环境变量**：
 
