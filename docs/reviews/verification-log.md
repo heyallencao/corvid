@@ -2192,6 +2192,6 @@
 ## 2026-11-06 Issue #130 设置校验错误双语映射（A2）
 
 - 修改：无效搜索模板与缺少浏览身份名称分别返回 `search-template-invalid`、`profile-name-required` 稳定错误码，并增加 zh-CN/en 资源；浏览身份重命名界面使用统一 `userFacingError` 映射。合同测试也断言两种 locale 均解析这两个错误码。
-- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0；同一脚本以 `CORVID_CAPTURE_QA_SCREENSHOTS=1` 运行 EXIT 0，覆盖设置错误状态与中英文重命名错误状态。`git diff --check` 通过。环境为 macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 `CORVID_DATA_DIR`、本地页面 fixture，未调用模型或 OAuth。
+- 定向验证：`profiles-e2e.cjs` EXIT 0；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0；同一脚本以 `CORVID_CAPTURE_QA_SCREENSHOTS=1` 运行 EXIT 0，覆盖设置错误状态与中英文重命名错误状态。首次全量门禁暴露 profiles E2E 对旧中文原文的断言，恢复原有语义文案并同步双语断言后通过。最终候选 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，46/46 `node:test` 与串行 E2E 链 77 条 PASS。`git diff --check` 通过。环境为 macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 `CORVID_DATA_DIR`、本地页面 fixture，未调用真实模型或 OAuth。
 - 截图：Electron 窗口 1024×700 CSS px，分别呈现 en 与 zh-CN 的设置错误和浏览身份错误。SHA-256：`issue-130-a2-error-en-1024x700.png` `95e69ffe646dc3a518f8b658b66768f279b747bc925362d5099831b082cf53a5`；`issue-130-a2-error-zh-CN-1024x700.png` `f76162ffebfbdd61dd8581ce8b7a21fbe8ff1cb70ab4a84aa743719141331113`；`issue-130-a2-profile-error-en-1024x700.png` `c14849c45d69e8bc97f2f881d18bf88a0b5a2081aa6496d72bafe3321344912b`；`issue-130-a2-profile-error-zh-CN-1024x700.png` `e2b573e163e73b0169cc506ca3ff4275d67903e0f1997c7aea8a8e54bd47097e`。
-- 限制：这只覆盖两类设置校验，不构成主进程错误源或全产品文案扫描；本轮未验证完整窄窗布局、键盘全流程、读屏、Windows/Linux 或打包版。A2 PR 合并门禁仍须在最终候选执行全量验证。
+- 限制：这只覆盖两类设置校验，不构成主进程错误源或全产品文案扫描；完整窄窗布局、键盘全流程、读屏、Windows/Linux 和打包版仍未覆盖。D24 保持“部分”，不据此宣称 Corvid 完成整体双语验收。
