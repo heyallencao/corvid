@@ -2129,3 +2129,10 @@
 - 定向合同：数据目录解析覆盖 POSIX/Windows 默认路径、`CORVID_DATA_DIR` 优先级和缺失 home 拒绝；Windows 菜单合同覆盖无品牌应用菜单、退出、`CmdOrCtrl+T` 与 `F11`。真实 Electron 单实例 E2E 验证第二进程退出、原控制服务持续可用、仅保留一个窗口且首窗口恢复显示。
 - 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例通过，随后完整串行脚本链通过（76 条独立脚本，包含单实例与只读目录 E2E）。启动前检查无活动 Electron E2E；运行期间保持唤醒。`git diff --check` 与新增/修改 JS 入口 `node --check` 通过。
 - 隐私与限制：使用临时 `CORVID_DATA_DIR` 与本地 fixture，不调用真实模型、Provider 或 OAuth。当前机器为 macOS，未在本机运行 Windows packaged executable；合并后仍须执行既有 `release.yml` 手动 workflow（`publish=false`）。Windows 原生文件/保存面板、NSIS 安装交互、DPI/字体/任务栏仍待 Windows 桌面人工验收；未签名 SmartScreen 策略未作产品决策，本轮未签名、公证或发布。
+
+## 2026-11-06 Issue #319 最终 Release gate 复核
+
+- 基线：`origin/main` `baad6429519d81da0818ec0d9179047f2f7bbac6`（含 PR #376）。Hosted workflow [run 42173674375](https://github.com/heyallencao/corvid/actions/runs/42173674375) 使用 `version=0.2.0`、`publish=false`；preflight、macOS arm64 全量 E2E、arm64 app/DMG/ZIP、Intel app/DMG/ZIP、Windows packaged gate 与资产上传全部通过；publish job 按参数跳过，未发布 Release。
+- 定向复核：Mac 解锁后，`env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs`、`node tests/fullscreen-e2e.cjs`（连续 3 次）、`node --test tests/browser.e2e.mjs`、`node tests/dialogs-ui-e2e.cjs` 均通过。使用隔离临时数据与本地 fixture；未调用真实模型或 OAuth。
+- 失败复核：较早 hosted gate 中打印调用超时在完整重试中通过；一次 fullscreen bounds 高度差为 2px 未在解锁后的连续 3 次复跑重现；后续 hosted gate 两轮分别在 browser 输入焦点与 dialogs UI 控件等待处失败，但对应本机定向测试各通过，随后同 SHA gate 全绿。现有证据支持这些为间歇性桌面/E2E 状态问题，未据此放宽断言或改动产品逻辑。
+- 限制：macOS 本机仅运行上述四项定向 E2E，没有再次运行完整套件；完整回归与跨平台 packaged 验收来自 run 42173674375。Windows 仅覆盖 workflow 中的 packaged gate，不代表 NSIS 安装交互、签名/公证或真实 Provider 流程已验收。
