@@ -2136,3 +2136,11 @@
 - 定向复核：Mac 解锁后，`env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs`、`node tests/fullscreen-e2e.cjs`（连续 3 次）、`node --test tests/browser.e2e.mjs`、`node tests/dialogs-ui-e2e.cjs` 均通过。使用隔离临时数据与本地 fixture；未调用真实模型或 OAuth。
 - 失败复核：较早 hosted gate 中打印调用超时在完整重试中通过；一次 fullscreen bounds 高度差为 2px 未在解锁后的连续 3 次复跑重现；后续 hosted gate 两轮分别在 browser 输入焦点与 dialogs UI 控件等待处失败，但对应本机定向测试各通过，随后同 SHA gate 全绿。现有证据支持这些为间歇性桌面/E2E 状态问题，未据此放宽断言或改动产品逻辑。
 - 限制：macOS 本机仅运行上述四项定向 E2E，没有再次运行完整套件；完整回归与跨平台 packaged 验收来自 run 42173674375。Windows 仅覆盖 workflow 中的 packaged gate，不代表 NSIS 安装交互、签名/公证或真实 Provider 流程已验收。
+
+## 2026-11-06 Issue #345 Windows packaged 跨平台验收收尾
+
+- 本机验收：基于 `baad642` 的全量 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，46/46 `node:test` 与完整串行 E2E 链通过；macOS arm64 packaged app 定向运行 `browser-shortcuts-e2e.cjs` 通过，覆盖快捷键、导航、缩放、设置、Profile 隔离和重启持久化。测试使用隔离数据目录及本地 fixture，未调用真实模型、Provider 或 OAuth。
+- Windows 修复与验证过程：run [42170372427](https://github.com/heyallencao/corvid/actions/runs/42170372427) 的 Windows packaged 快捷键阶段因 Playwright Electron launcher 无法连接关闭 Node inspect fuse 的 packaged exe 而超时；已由 issue #374 / PR #376 将 packaged 覆盖改为 loopback CDP 连接 renderer，并通过测试模式受限端点调用目标窗口的真实 `webContents.sendInputEvent()`。最终 runner 保留单实例、快捷键及 packaged UI smoke 三阶段，production fuse 未修改。
+- hosted 中间复验：run [42171503087](https://github.com/heyallencao/corvid/actions/runs/42171503087) 的 Windows 与 macOS Intel 打包通过；macOS arm64 全量回归两次尝试分别遇到打印状态等待超时和 fullscreen 高度相差 2 px 的断言失败，因此此 run 未作为最终门禁通过证据。
+- 最终 hosted 验收：既有手动 `release.yml` run [42173674375](https://github.com/heyallencao/corvid/actions/runs/42173674375)，基线 `baad6429519d81da0818ec0d9179047f2f7bbac6`，参数 `version=0.2.0`、`publish=false`；preflight、Windows packaged installer/launcher/单实例/快捷键/UI smoke、macOS Intel 打包，以及 macOS arm64 全量 E2E 与打包 jobs 全部成功，`publish` job 按配置跳过。Windows 日志确认三个 runner 阶段均执行，快捷键测试输出 `PASS shortcuts, navigation, zoom and per-profile search settings across restart`。本轮未签名、公证或发布。
+- 未覆盖边界：Windows 原生文件与保存对话框、NSIS 安装/卸载交互、DPI/字体/任务栏行为仍需 Windows 桌面人工验收；hosted installer 构建成功不代表这些交互已人工验收。未签名 SmartScreen 策略仍待产品决策。
