@@ -241,8 +241,9 @@ function pageOperation(operation, args, seed) {
   }
   if (operation==='focus-target') {
     if (!element.isConnected || element.disabled) throw new Error('Element is unavailable');
-    element.focus();
-    if (element.getRootNode().activeElement!==element) throw new Error('Input focus was not acquired');
+    const target=editingHostFor(element) || element;
+    target.focus();
+    if (target.getRootNode().activeElement!==target) throw new Error('Input focus was not acquired');
     return {ok:true};
   }
   if (operation==='focus-element') {
@@ -447,7 +448,15 @@ async function trustedInput(contents, operation, args, run, reportInput) {
       const deadline=Date.now()+500;
       for (;;) {
         try { await run('select-text',{target:args.target}); break; }
-        catch (error) { if (!String(error.message).includes('focus was not acquired') || Date.now()>=deadline) throw error; await new Promise(resolve=>setTimeout(resolve,20)); }
+        catch (error) {
+          if (!String(error.message).includes('focus was not acquired')) throw error;
+          if (Date.now()>=deadline) {
+            await run('focus-target',{target:args.target});
+            await run('select-text',{target:args.target});
+            break;
+          }
+          await new Promise(resolve=>setTimeout(resolve,20));
+        }
       }
       await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});
       await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});

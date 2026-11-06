@@ -106,6 +106,33 @@ function observeApp(app, label) {
   child?.stderr?.on('data', chunk => appendLog(app, `[stderr] ${chunk.toString()}`));
 }
 
+async function focusElectronWindow(app, shell, { label = 'Electron E2E', timeoutMs = 5000 } = {}) {
+  if (process.platform !== 'darwin') return;
+  let nativeWindow;
+  try {
+    nativeWindow = await app.browserWindow(shell);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await app.evaluate(({ app: electronApp }) => electronApp.focus({ steal: true }));
+      await nativeWindow.evaluate(window => { window.show(); window.focus(); });
+      await shell.bringToFront();
+      const [windowFocused, pageFocused] = await Promise.all([
+        nativeWindow.evaluate(window => window.isFocused()),
+        shell.evaluate(() => document.hasFocus()),
+      ]);
+      if (windowFocused && pageFocused) return;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    throw new Error('BrowserWindow 与 shell 页面未同时取得焦点');
+  } catch (cause) {
+    const focusState = await Promise.all([
+      nativeWindow?.evaluate(window => ({ visible: window.isVisible(), focused: window.isFocused(), bounds: window.getBounds() })).catch(error => `读取目标窗口失败：${error.message}`) ?? Promise.resolve('目标窗口不可用'),
+      shell.evaluate(() => document.hasFocus()).catch(() => false),
+    ]);
+    throw new Error(`macOS E2E 窗口未取得原生焦点（${label}）；目标窗口=${JSON.stringify(focusState[0])}；document.hasFocus=${focusState[1]}；原因=${cause.message}`, { cause });
+  }
+}
+
 async function launchElectron(launcher, options, { label, dataDir, timeoutMs = 20000 }) {
   const startedAt = Date.now();
   let app;
@@ -115,6 +142,8 @@ async function launchElectron(launcher, options, { label, dataDir, timeoutMs = 2
     observeApp(app, label);
     stage = '首个桌面窗口';
     const shell = await app.firstWindow({ timeout: timeoutMs });
+    stage = 'macOS 原生窗口焦点';
+    await focusElectronWindow(app, shell, { label, timeoutMs: Math.min(timeoutMs, 5000) });
     return { app, shell, startedAt };
   } catch (cause) {
     let cleanupError;
@@ -189,4 +218,4 @@ async function closeElectron(app, { gracefulTimeoutMs = 3000, terminateTimeoutMs
   throw new Error(`Electron E2E 清理异常：${reason}；已发送 ${termination} 结束 pid=${child.pid}；关闭前进程=${processBeforeTermination}；窗口=${windowsBeforeTermination}；日志=${logsBeforeTermination}`);
 }
 
-module.exports = { closeElectron, launchElectron, startupStage, waitForControl };
+module.exports = { closeElectron, focusElectronWindow, launchElectron, startupStage, waitForControl };

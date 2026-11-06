@@ -1,8 +1,16 @@
-function markPageFullscreen(record, tabId, describe) {
-  if (!record || record.closing || record.browserWindow.isDestroyed()) return false;
-  if (record.fullscreenRestoreMaximized === null) {
+function snapshotFullscreenRestoreState(record) {
+  if (!record || record.browserWindow.isDestroyed()) return;
+  if (record.fullscreenRestoreMaximized == null) {
     record.fullscreenRestoreMaximized = record.browserWindow.isMaximized() || record.lastKnownMaximized;
   }
+  if (record.fullscreenRestoreBounds == null && typeof record.browserWindow.getNormalBounds === 'function') {
+    record.fullscreenRestoreBounds = { ...record.browserWindow.getNormalBounds() };
+  }
+}
+
+function markPageFullscreen(record, tabId, describe) {
+  if (!record || record.closing || record.browserWindow.isDestroyed()) return false;
+  snapshotFullscreenRestoreState(record);
   record.htmlFullscreen = true;
   record.htmlFullscreenTabId = tabId;
   record.browserWindow.webContents.send('shell-state', describe(record, true));
@@ -29,4 +37,4 @@ function clearPageFullscreen(record, tabId, describe) {
   return true;
 }
 
-module.exports = { clearPageFullscreen, markPageFullscreen };
+module.exports = { clearPageFullscreen, markPageFullscreen, snapshotFullscreenRestoreState };

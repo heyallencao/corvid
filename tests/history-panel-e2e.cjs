@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { closeElectron, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
+const { closeElectron, focusElectronWindow, launchElectron, waitForControl } = require('./electron-test-startup.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -83,7 +83,9 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
     const yesterdayGroup = items.locator('.history-group[data-history-group="yesterday"]');
     const olderGroup = items.locator(`.history-group[data-history-group="${dayKey(older)}"]`);
     await todayGroup.getByRole('link', { name: 'Beta Today' }).waitFor();
+    await focusElectronWindow(app, shell, { label: 'history-panel-e2e keyboard navigation' });
     await shell.locator('#close-library').focus();
+    assert.equal(await shell.evaluate(() => document.hasFocus() && document.activeElement?.id === 'close-library'), true, 'the shell and starting control own keyboard focus before Tab navigation');
     let historyLinkHasKeyboardFocus = false;
     for (let attempt = 0; attempt < 12 && !historyLinkHasKeyboardFocus; attempt += 1) {
       await shell.keyboard.press('Tab');
