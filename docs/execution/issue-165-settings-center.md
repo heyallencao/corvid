@@ -17,8 +17,9 @@
 ## D25 子项进度
 
 - **D25-1（已合并）**：PR #172 设置中心与 Issue #285 草稿离开语义。
-- **D25-2（本轮验收）**：macOS arm64 开发版真实下载目录选择器与保存位置对话框；中英文标题、取消/确认、偏好持久化和重启恢复已通过人工验收，证据见[QA 记录](../qa/issue-165-native-dialogs.md)。
-- **后续**：全产品键盘/VoiceOver、Windows 和打包版验收仍待处理；Linux 不属于首个大版本支持范围。
+- **D25-2（已合并）**：macOS arm64 开发版真实下载目录选择器与保存位置对话框；中英文标题、取消/确认、偏好持久化和重启恢复已通过人工验收，证据见[QA 记录](../qa/issue-165-native-dialogs.md)及 PR #328。
+- **D25-3（本轮完成的 Chromium 子切片）**：真实 Electron + 本地 HTTP fixture 验证 Tab/Enter 分类导航、当前网站操作的 Tab 顺序与 Enter 取消路径；Chromium AX 树检查中英文设置对话框、分类导航地标、站点操作和保存/取消可访问名称，DOM 检查 `aria-current`。证据见[辅助技术 QA 记录](../qa/issue-165-accessibility.md)。VoiceOver/Narrator 实际屏幕阅读器朗读、全产品键盘审计及原生对话框辅助技术仍未覆盖。
+- **后续 D25-4**：Windows 与已支持的 macOS 打包版复核设置偏好和系统对话框；Linux 不属于首个大版本支持范围。
 
 Issue #165 保持开放；本子项不代表完整设置中心验收完成。
 

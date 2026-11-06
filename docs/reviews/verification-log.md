@@ -1946,3 +1946,11 @@
 - 定向验证：`node tests/package-mac-dir-contract.cjs`、`node tests/screenshot-fallback-contract.cjs` 通过；`node --check desktop/actions.cjs`、`node --check scripts/package-mac-dir.cjs`、`git diff --check origin/main...HEAD` 通过。另在同一最新主线基线运行 `env -u ELECTRON_RUN_AS_NODE node --test tests/electron-startup.e2e.mjs`，8/8 通过；`node tests/pr-description-images.test.cjs` 10 项通过。`npm ci` 成功安装 375 个包，0 vulnerabilities。
 - 全量验证：macOS 解锁后在最新候选执行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test`，EXIT 0；Node.js v24.22.1、Electron 45.2.1、arm64，node:test 37/37 通过，后续完整串行 Electron E2E 与合同脚本全通过，包括之前锁屏期间失败的 browser input focus、page dialogs、file chooser，以及本次两项新合同测试。门禁写入的 9 张已跟踪 QA 截图已恢复为基线字节。该运行使用仓库本地 fixture 与隔离测试数据；未登录 OAuth、未调用真实 Provider/模型、未访问真实用户 Profile。先前锁屏运行的三项失败在解锁后全量重跑未复现，但不足以证明锁屏是此前失败的唯一原因。
 - hosted 状态与限制：workflow `workflow_dispatch` 的 preflight 明确只接受 `refs/heads/main`，因此候选需按本地门禁完成 PR 自检与 squash merge 后，才能从 main 以 `version=0.2.0`、`publish=false` 复验 hosted x64 packaged smoke、arm64 全量重试门禁及 Windows packaged smoke。当前尚未创建 follow-up PR、尚未合并或发布。
+
+## 2026-11-06 Issue #165 D25-3 设置中心键盘与 Chromium 辅助树
+
+- 环境：macOS arm64 开发版、隔离临时 `CORVID_DATA_DIR`、真实 Electron 45.2.1、本地 HTTP 合成网站；未访问真实网站/Profile、未调用模型或 OAuth。
+- 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/settings-accessibility-e2e.cjs`，结果 PASS。
+- 最新主线全量门禁（base `18a4e98`，PR #335）：`caffeinate -d -i -u env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test、macOS 包目录与截图回退合同测试、其后完整串行 Electron/合同 E2E 均通过，包含本测试。首轮全量在等待 Corvid Agent 按钮时超时，单独复跑全屏 E2E PASS；随后无其它 Corvid Electron 进程时完整重跑通过。测试更新的 9 张跟踪 QA 截图已恢复到提交版本。
+- 直接观察：Tab 到达“当前网站”分类；Enter 激活并聚焦内容分区；后续 Tab 依次到权限与站点数据操作；Enter 打开站点数据确认并由测试替身选择取消。非破坏操作为默认项。Chromium AX 树的 zh-CN/en 下对话框、分类导航、站点操作、保存和取消均有可访问名称；活动分类 DOM 使用 `aria-current="location"`。
+- 限制：确认框由替身控制；不代表 VoiceOver/Narrator 实际朗读、全产品键盘审计、Windows、打包版或原生系统对话框无障碍验收。详细步骤见[QA 记录](../qa/issue-165-accessibility.md)，测试索引见[e2e-suites.md](../qa/e2e-suites.md)。
