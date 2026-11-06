@@ -1951,6 +1951,6 @@
 
 - 环境：macOS arm64 开发版、隔离临时 `CORVID_DATA_DIR`、真实 Electron 45.2.1、本地 HTTP 合成网站；未访问真实网站/Profile、未调用模型或 OAuth。
 - 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules env -u ELECTRON_RUN_AS_NODE node tests/settings-accessibility-e2e.cjs`，结果 PASS。
-- 全量门禁（base `4ec3a88`）：一次运行在 `fullscreen-e2e.cjs` 双窗口全屏等待超时；单独复跑同用例时发现另一 worktree 有 Electron 进程，等待其退出后单测 PASS。随后 `caffeinate -d -i -u env -u ELECTRON_RUN_AS_NODE npm test` 在无其它 Corvid Electron 进程时 EXIT 0，37/37 node:test 与其后完整串行 E2E/合同链通过，包含本测试。截图测试产物已恢复到提交版本。
+- 最新主线全量门禁（base `18a4e98`，PR #335）：`caffeinate -d -i -u env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test、macOS 包目录与截图回退合同测试、其后完整串行 Electron/合同 E2E 均通过，包含本测试。首轮全量在等待 Corvid Agent 按钮时超时，单独复跑全屏 E2E PASS；随后无其它 Corvid Electron 进程时完整重跑通过。测试更新的 9 张跟踪 QA 截图已恢复到提交版本。
 - 直接观察：Tab 到达“当前网站”分类；Enter 激活并聚焦内容分区；后续 Tab 依次到权限与站点数据操作；Enter 打开站点数据确认并由测试替身选择取消。非破坏操作为默认项。Chromium AX 树的 zh-CN/en 下对话框、分类导航、站点操作、保存和取消均有可访问名称；活动分类 DOM 使用 `aria-current="location"`。
-- 限制：全量成功结果尚未覆盖随后主线 #335，需 rebase 到最新 main 后再跑。确认框由替身控制；不代表 VoiceOver/Narrator 实际朗读、全产品键盘审计、Windows、打包版或原生系统对话框无障碍验收。详细步骤见[QA 记录](../qa/issue-165-accessibility.md)，测试索引见[e2e-suites.md](../qa/e2e-suites.md)。
+- 限制：确认框由替身控制；不代表 VoiceOver/Narrator 实际朗读、全产品键盘审计、Windows、打包版或原生系统对话框无障碍验收。详细步骤见[QA 记录](../qa/issue-165-accessibility.md)，测试索引见[e2e-suites.md](../qa/e2e-suites.md)。
