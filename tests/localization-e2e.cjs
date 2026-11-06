@@ -33,7 +33,17 @@ assertCatalogSourceHasUniqueKeys();
   };
   const stop=async()=>{await app.close();app=undefined;};
   const waitFor=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(25);}throw new Error(`Timed out waiting for ${label}`);};
-  const capture=async(shell,locale,width,height)=>{if(!captureScreenshots)return;const directory=path.join(root,'docs/qa/screenshots');fs.mkdirSync(directory,{recursive:true});const filename=locale.endsWith('-settings')?`issue-165-settings-${locale.slice(0,-9)}-${width}x${height}.png`:`corvid-localization-${locale}-${width}x${height}.png`;await shell.screenshot({path:path.join(directory,filename)});};
+  const capture=async(shell,locale,width,height)=>{if(!captureScreenshots)return;const directory=path.join(root,'docs/qa/screenshots');fs.mkdirSync(directory,{recursive:true});const filename=locale.startsWith('issue-130-a2-')?`${locale}-${width}x${height}.png`:locale.endsWith('-settings')?`issue-165-settings-${locale.slice(0,-9)}-${width}x${height}.png`:`corvid-localization-${locale}-${width}x${height}.png`;await shell.screenshot({path:path.join(directory,filename)});};
+  const verifyRenameError=async(shell,locale,expected)=>{
+    await shell.locator('#profile-menu-trigger').click();
+    const actionName=locale==='en'?'Rename current browsing profile':'重命名当前浏览身份';
+    await shell.getByRole('menuitem',{name:actionName}).click();
+    await shell.locator('#renamed-profile-name').fill('');
+    await shell.locator('#rename-profile-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+    await waitFor(()=>shell.locator('#rename-profile-error').textContent().then(value=>value===expected),`localized ${locale} browsing-profile error`);
+    await capture(shell,`issue-130-a2-profile-error-${locale}`,1024,700);
+    await shell.locator('#cancel-rename-profile').click();
+  };
   const assertSettingsScrollAtNarrowWindow=async(shell,label)=>{
     const geometry=await shell.locator('#settings').evaluate(dialog=>{
       const rect=dialog.getBoundingClientRect();
@@ -62,6 +72,17 @@ assertCatalogSourceHasUniqueKeys();
     await shell.getByRole('button',{name:'设置'}).click();
     assert.equal(await shell.locator('#settings-nav-general').getAttribute('aria-current'),'location');
     assert.equal(await shell.locator('#settings-site-permissions').isDisabled(),true);
+    const chineseSearchTemplate=await shell.locator('#search-template').inputValue();
+    await shell.locator('#search-template').fill('not a search template');
+    await shell.locator('#settings-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+    await waitFor(()=>shell.locator('#settings-error').textContent().then(Boolean),'Chinese search-template error');
+    assert.equal(await shell.locator('#settings-error').textContent(),'搜索模板必须是 HTTP(S) 地址，并包含查询占位符。','search-template validation should use Chinese Corvid copy');
+    await capture(shell,'issue-130-a2-error-zh-CN',1024,700);
+    await shell.locator('#search-template').fill(chineseSearchTemplate);
+    await shell.locator('#settings-error').evaluate(node=>{node.textContent='';});
+    await shell.locator('#cancel-settings').click();
+    await verifyRenameError(shell,'zh-CN','请输入浏览身份名称。');
+    await shell.getByRole('button',{name:'设置'}).click();
     await shell.locator('#settings-nav-appearance').click();
     assert.equal(await shell.locator('#settings-nav-appearance').getAttribute('aria-current'),'location');
     assert.equal(await shell.locator('#settings-appearance').evaluate(node=>node.matches(':focus')),true);
@@ -87,6 +108,14 @@ assertCatalogSourceHasUniqueKeys();
     await shell.locator('#ui-locale').selectOption('en');
     await waitFor(()=>shell.locator('html').getAttribute('lang').then(value=>value==='en'),'English locale');
     await waitFor(()=>shell.locator('#show-bookmarks').getAttribute('aria-label').then(value=>value==='Bookmarks'),'localized bookmarks name');
+    const englishSearchTemplate=await shell.locator('#search-template').inputValue();
+    await shell.locator('#search-template').fill('not a search template');
+    await shell.locator('#settings-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+    await waitFor(()=>shell.locator('#settings-error').textContent().then(Boolean),'English search-template error');
+    assert.equal(await shell.locator('#settings-error').textContent(),'The search template must be an HTTP(S) address and include the query placeholder.','search-template validation should use English Corvid copy');
+    await capture(shell,'issue-130-a2-error-en',1024,700);
+    await shell.locator('#search-template').fill(englishSearchTemplate);
+    await shell.locator('#settings-error').evaluate(node=>{node.textContent='';});
     assert.equal(await shell.locator('#address').getAttribute('placeholder'),'Search or enter address');
     assert.equal(await shell.locator('.brand-caption').textContent(),'AI browser');
     assert.equal(await shell.locator('#more-tools').getAttribute('aria-label'),'More browsing tools');
@@ -153,6 +182,7 @@ assertCatalogSourceHasUniqueKeys();
     const unchangedData=await shell.evaluate(()=>window.browserShell.invoke('state'));
     assert.equal(unchangedData.profiles.find(profile=>profile.isDefault).name,'默认');
     assert.equal(unchangedData.rooms[0].name,'我的空间');
+    await verifyRenameError(shell,'en','Enter a browsing profile name.');
     const localeHelpers=await shell.evaluate(()=>({
       zhKeys:Object.keys(window.corvidI18n.catalogs['zh-CN']).sort(),
       enKeys:Object.keys(window.corvidI18n.catalogs.en).sort(),

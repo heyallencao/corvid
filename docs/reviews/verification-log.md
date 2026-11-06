@@ -2188,3 +2188,10 @@
 - 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 通过；`node --check tests/browser-print-e2e.cjs` 与 `git diff --check` 通过。
 - 全量验证：`env -u ELECTRON_RUN_AS_NODE npm --prefix /Users/allen/Workspace/projects/personal/corvid-release-fix test` 退出码 0；46/46 node:test 与串行链 77 条脚本 PASS。环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时数据目录和本地 fixture，未调用真实模型、Provider 或 OAuth。测试生成的 9 张既有 QA 截图已恢复。
 - 限制：PR 尚未合并；这次本机全量结果不替代合并后 `main` 上的手动 Release workflow。Intel macOS 与 Windows packaged build/smoke 尚待 hosted workflow。本记录不代表 Release 已创建。
+
+## 2026-11-06 Issue #130 设置校验错误双语映射（A2）
+
+- 修改：无效搜索模板与缺少浏览身份名称分别返回 `search-template-invalid`、`profile-name-required` 稳定错误码，并增加 zh-CN/en 资源；浏览身份重命名界面使用统一 `userFacingError` 映射。合同测试也断言两种 locale 均解析这两个错误码。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0；同一脚本以 `CORVID_CAPTURE_QA_SCREENSHOTS=1` 运行 EXIT 0，覆盖设置错误状态与中英文重命名错误状态。`git diff --check` 通过。环境为 macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 `CORVID_DATA_DIR`、本地页面 fixture，未调用模型或 OAuth。
+- 截图：Electron 窗口 1024×700 CSS px，分别呈现 en 与 zh-CN 的设置错误和浏览身份错误。SHA-256：`issue-130-a2-error-en-1024x700.png` `db16b91e5301b6ead7d2b38d968079f170be2253cebfc9a08d7b5fe0ce712ce2`；`issue-130-a2-error-zh-CN-1024x700.png` `f76162ffebfbdd61dd8581ce8b7a21fbe8ff1cb70ab4a84aa743719141331113`；`issue-130-a2-profile-error-en-1024x700.png` `1de3398bfe68ad9e970dba07ab120b380aef991243b4fc6ac0f33e5b4956f227`；`issue-130-a2-profile-error-zh-CN-1024x700.png` `8aecb3d653c36bd63c4e2838df07f3c54d5f1425224a4ff15b8082413924966c`。
+- 限制：这只覆盖两类设置校验，不构成主进程错误源或全产品文案扫描；本轮未验证完整窄窗布局、键盘全流程、读屏、Windows/Linux 或打包版。A2 PR 合并门禁仍须在最终候选执行全量验证。

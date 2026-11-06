@@ -635,3 +635,10 @@
 - 直接观察：真实 Electron E2E 从关闭历史面板按钮继续按 Tab，直到历史链接取得焦点；链接 computed style 为 `outlineStyle: solid`、`outlineWidth: 2px`。截图中链接周围可见共享焦点环。启用态原生 select 与 checkbox 的 computed cursor 为 `pointer`；disabled select 与 checkbox 不会被新规则设为 `pointer`。
 - 视觉判断与参考：复用 Corvid 已有 `--focus-ring` 颜色和 2px 焦点环，不引入新的控件色彩；截图中焦点边界清楚，历史行文字和操作仍可见。本轮未重新检查外部 UI/UE 参考或采集 REA 证据；验收依据为 Corvid 的真实 Electron 渲染与 computed style。
 - 未覆盖：只覆盖 macOS 开发版、浅色主题、zh-CN 和 1024×700 外框；未验证 Windows/Linux、打包版、暗色主题、英文焦点环、VoiceOver/其他读屏实播或辅助技术完整流程。Issue #218 的 dialog/tooltip 等其余范围保持开放。命令与全量结果见[验证记录](../reviews/verification-log.md#2026-11-05-键盘链接焦点与原生控件指针反馈-issue-218)。
+
+## 2026-11-06 设置校验错误双语截图（Issue #130 A2）
+
+- 运行态与状态：隔离真实 Electron 设置窗口，1024×700 CSS px；四张截图分别显示英文/简体中文的无效搜索模板提示及浏览身份重命名必填提示。使用本地夹具和隔离数据目录，不含个人网页、账号或凭据。截图文件与 SHA-256 见[验证日志](../reviews/verification-log.md#2026-11-06-issue-130-设置校验错误双语映射-a2)。
+- 视觉检查：两种语言均在输入错误附近显示本地化提示；错误状态保留输入控件和操作路径，没有替换为内部错误信息。此次是既有设置表单中的校验反馈，没有改变层级、色彩或动效。
+- UI/UE 参考与 REA：本切片没有使用外部参考站点作为错误提示布局依据，也没有采集新的 REA Evidence；判断来自 Corvid 真实 Electron 渲染和现有错误/表单组件。
+- 未覆盖：仅检查常规窗口中四个具体状态；未检查 700×420、暗色主题、完整键盘顺序、屏幕阅读器实播及其他平台。截图不证明其他错误源均已双语化。

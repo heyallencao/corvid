@@ -41,6 +41,8 @@ async function until(predicate, label) {
       ['agent-task-stop-unconfirmed','agentTaskStopUnconfirmed'],
       ['agent-task-history-unavailable','agentTaskHistoryUnavailable'],
       ['agent-control-returned','agentControlReturned'],
+      ['search-template-invalid','searchTemplateInvalid'],
+      ['profile-name-required','profileNameRequired'],
     ]) {
       assert.equal(context.window.corvidI18n.userFacingError(`[[corvid-error:${code}]] internal details`), context.window.corvidI18n.t(key), `${language} maps ${code} to its resource`);
     }
