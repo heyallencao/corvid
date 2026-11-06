@@ -2053,6 +2053,12 @@
 - 修正：legacy 状态恢复尺寸与原点都按 primary display work area 计算预期，保留 macOS title/menu bar 对 y 位置的 24px 容差；off-screen 数组状态也按 work area 限定尺寸。
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 3 次通过；使用隔离临时数据与本地 fixture，未跑本机全量套件。通过后提交 PR 并再次执行合并后 hosted gate。本地全量未重跑；没有发布 Release。
 
+## 2026-11-06 Issue #319 hosted Pi Workbench 与 snapshot gate follow-up（PR 前）
+
+- Hosted run [42159999600](https://github.com/heyallencao/corvid/actions/runs/42159999600)：preflight、Intel 与 Windows packaged checks 通过；arm64 retry 1 在 `pi-workbench-e2e.cjs:597` 等 `innerWidth>=1200`，retry 2 在 `snapshot-e2e.cjs:105` 等 `@ref` 点击后的页面副作用（默认 8 秒）。
+- 修正：Pi Workbench 重启用例按当前 primary display work area 设置窗口，并按可用宽度等待；snapshot 的单次 `@ref` 点击副作用等待放宽为 15 秒，其余快照与动作超时不变。
+- 定向验证待补：运行 Pi Workbench 与 snapshot 两项定向 E2E。工作区其他问题已定向验证；没有本机全量重跑或发布 Release。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。
