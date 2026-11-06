@@ -2168,3 +2168,9 @@
 - 范围：仅同步 `docs/architecture/overview.md`、`docs/execution/feature-board.md` 与 `docs/research/browser-reference-analysis.md` 中对外部 Agent 对话框、下载、上传和 adapter 的现状与决策；未改 SDK、IPC 或运行时合同。
 - 直接源码核对：`sdk/README.md` 公开 page dialog、`setInputFiles` 与 `waitForFileChooser`；`desktop/agent-downloads.cjs` 实现受 tab 绑定的一次性下载等待及 Corvid 临时目录；`desktop/main.cjs` 维护常规下载历史。测试：`git diff --check`；本次为文档变更，未运行功能测试。
 - 限制：未运行真实外部 MCP host、真实网站、模型/OAuth 或跨平台 UI；现有绝对路径上传缺少逐次用户确认，已记录为独立安全切片，不宣称该路径已满足产品授权红线。
+
+## 2026-11-06 Issue #347 跨 Room 活动历史范围评估
+
+- 范围：同步 `docs/architecture/overview.md`、`docs/execution/feature-board.md`、`docs/research/browser-reference-analysis.md` 的历史入口、Profile 隔离、最小数据、保留/清理与不记录“已读”决策；实现拆片见 #390。未改运行时代码。
+- 直接源码核对：`desktop/agent-task-store.cjs` 保存版本化任务记录；`desktop/agent-workbench.cjs` 按 Profile 返回脱敏任务摘要，并在移除任务/删除浏览身份时清理关联会话和记录；`desktop/main.cjs` 关闭 Room 不会删除任务记录。`git diff --check` 通过；纯文档评估未运行功能测试。
+- 限制：没有实际 UI、辅助技术、跨平台或 Provider 运行证据；现有摘要正则脱敏不保证识别所有个人信息。未把任务记录解释成“已读页面”证据。
