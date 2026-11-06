@@ -1,5 +1,17 @@
 # 验证记录
 
+## 2026-11-06 Issue #165 D25-4 macOS arm64 打包版设置与原生对话框
+
+- 基线：main `57e3a74`，macOS arm64，Electron 45.2.1；隔离临时 `CORVID_DATA_DIR` 与本地 HTTP 下载 fixture。
+- 打包 smoke：`npm run package:mac:dir` EXIT 0；`npm run test:packaged:mac` EXIT 0，覆盖 Fuses、app.asar 完整性及打包应用正常启动/退出。
+- 人工验收：打包应用设置中心显示预期分类和应用级下载偏好；真实目录选择器选中隔离 Downloads，schemaVersion 2 路径持久化文件权限为 `0600`；真实保存面板将合成 fixture 写入隔离目录，随后取消第二次保存回到 fixture 页面。使用同一隔离数据目录重启后，fixture 标签、下载路径与询问保存偏好恢复。操作步骤与限制见[QA 记录](../qa/issue-165-packaged-macos.md)。
+- 隐私与限制：原生选择器默认展示宿主 Downloads 内容；操作期间未采集或分享选择器截图，先导航到隔离目录。仅 macOS arm64 未签名打包 `.app` 完成设置/原生对话框验收；Windows x64 settings UI 与真实原生对话框、macOS x64 设置、签名公证、DMG/ZIP 安装及实际屏幕阅读器未覆盖。Windows packaged smoke 的范围另见下方记录。
+
+## 2026-11-06 Issue #165 D25-4 Windows packaged smoke 边界
+
+- 运行：main `57e3a74` 手动 dispatch 现有 `release.yml`（run [42139187287](https://github.com/heyallencao/corvid/actions/runs/42139187287)，version `0.2.0`，`publish=false`）。Windows 2022 x64 的 NSIS/`win-unpacked` 构建及 `test:packaged:win` 启动/退出 smoke 通过；没有发布 GitHub Release。
+- 边界：该 Windows smoke 只验证 packaged 启动、架构、资源、Room/control 与退出清理，不运行设置偏好 E2E、不打开 Windows 原生目录或保存对话框，因此不等同于 D25-4 Windows 设置验收。整体 workflow 失败：macOS arm64 全量门禁在 `page-context-menu-e2e.cjs` 超时，macOS x64 packaged launcher 因 hosted runner 返回 `x86_64` 与期望 `x64` 不一致失败；均未归因于 D25-4 设置改动。
+
 ## 2026-11-06 Issue #218 统一对话框标题头与 × 关闭钮
 
 - 基线：隔离 worktree，候选基于 `origin/main` `a6cb3fc`（含 PR #331），分支 `ui/issue-218-dialog-headers`。改动：`desktop/index.html`（`#new-room`/`#new-profile`/`#rename-profile`/`#page-dialog` 四个对话框加 `header.dialog-header`（h2 + `.close-button` ×）、`aria-labelledby` 与 `data-i18n-aria-label="closeDialog"`）、`desktop/locales.js`（`newRoomTitle`/`newProfileTitle`/`renameProfileTitle`/`pageDialogTitle`/`closeDialog` 双语键 5 项）、`desktop/styles.css`（`.dialog-header` 样式，flex 独占一行）、`desktop/renderer.js`（4 个 × 处理器：三个镜像取消语义 `.close()`，page-dialog × 等价 `answerPageDialog(false)`）、`tests/dialogs-ui-e2e.cjs`（标题头合同：aria-labelledby、`getByRole('dialog',{name})`、aria-label、page-dialog × 取消 prompt 收到 null、三对话框 × 关闭）。
