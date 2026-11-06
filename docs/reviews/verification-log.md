@@ -2083,6 +2083,12 @@
 - 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 通过；`env -u ELECTRON_RUN_AS_NODE node tests/popup-events-e2e.cjs` 通过；两个修改脚本 `node --check`、`git diff --check` 通过。由于本机无 Windows packaged runtime，Windows 阶段标记需由后续 hosted gate 验证。本轮未重跑全量本机 `npm test`。
 - 边界：popup 超时及 Windows 子脚本超时的 hosted 复现阶段仍待新 gate 确认；当前没有 main 最新全绿 Release gate，也没有发布 Release。
 
+## 2026-11-06 Issue #319 PR 候选全量本机门禁
+
+- 候选：`infra/audit-319-87-244`，提交 `ff04a2f` 与 `decc5f9`，基于 `origin/main` `08d4780`；测试前主克隆的未提交改动未触碰。执行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test`，等待同仓库另一条全量 E2E 释放锁后取得互斥锁；最终 EXIT 0，46/46 `node:test` 与其后全串行脚本链均通过，包含修改后的 SDK popup 用例。
+- 结果处理：全量套件改写的 9 张已跟踪 QA 截图已恢复到候选提交基线。与本轮改动相关的 `sdk-e2e.cjs`、`popup-events-e2e.cjs` 定向 E2E 也均通过；无真实模型/OAuth 调用。
+- 边界：此为本机 macOS arm64 的全量门禁，不覆盖 Windows packaged UI；仍须由后续 `publish=false` hosted Release gate 验证 Windows 阶段日志及 arm64 hosted 回归。尚无 latest main 全绿 hosted gate，也没有发布 Release。
+
 ## 2026-11-06 最新开放正文图片审计（Issue #244）
 
 - 基线：当前 `origin/main` `6210595`；`PR #329` 已合入 `25c8d76` 并关闭 Issue #244。
