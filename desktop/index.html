@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Corvid</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="agent-ui/agent-workbench.css">
 </head>
 <body>
   <aside id="rooms" aria-label="Corvid 导航" data-i18n-aria-label="browserNavigation">
@@ -169,6 +170,7 @@
   <dialog id="page-dialog" aria-labelledby="page-dialog-title"><form id="page-dialog-form"><header class="dialog-header"><h2 id="page-dialog-title" data-i18n="pageDialogTitle">页面请求</h2><button type="button" class="close-button" id="page-dialog-close" aria-label="关闭对话框" data-i18n-aria-label="closeDialog"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></header><span id="page-dialog-message"></span><label id="page-dialog-prompt-label"><span data-i18n="reply">回复</span> <input id="page-dialog-prompt"></label><button type="submit" data-i18n="confirm">确定</button><button type="button" id="page-dialog-dismiss" data-i18n="cancel">取消</button></form></dialog>
   <dialog id="pi-auth-dialog" aria-labelledby="pi-auth-title"><form id="pi-auth-form"><span class="panel-eyebrow" data-i18n="modelSignInEyebrow">模型账号授权</span><h2 id="pi-auth-title" data-i18n="modelSignIn">完成模型账号授权</h2><p id="pi-auth-message"></p><a id="pi-auth-open-url" hidden data-i18n="openChatgptAuth">打开 ChatGPT 授权页</a><label id="pi-auth-input-label"><span data-i18n="authorizationInfo">授权信息</span> <input id="pi-auth-input" autocomplete="off"></label><button type="submit" data-i18n="continueAuthorization">继续授权</button><button type="button" id="pi-auth-cancel" data-i18n="cancel">取消</button></form></dialog>
   <script src="locales.js"></script>
+  <script src="agent-ui/agent-workbench.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

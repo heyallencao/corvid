@@ -1,0 +1,98 @@
+@import "tailwindcss/theme.css";
+@import "../vendor/theme.css";
+@import "../vendor/typography.css";
+@import "tailwindcss/utilities.css";
+
+@source "../vendor";
+@source ".";
+
+/* BoardUI free Agent Chat utilities, scoped behavior to Corvid's workbench. */
+.pi-boardui-composer { min-width: 0; }
+#pi-task-form.pi-boardui-form {
+  display: block;
+  flex: none;
+  max-height: 58%;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+}
+#pi-task-form.pi-boardui-form:focus-within { border-color: transparent; box-shadow: none; }
+@media (max-height: 480px) {
+  #pi-task-form.pi-boardui-form { max-height: 48%; }
+}
+#pi-task-form.pi-boardui-form textarea {
+  width: auto;
+  min-height: 0;
+  max-height: none;
+  resize: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+#pi-task-form.pi-boardui-form button { min-height: 0; padding: 0; font-size: inherit; }
+#pi-task-form.pi-boardui-form .pi-primary-action { min-width: 0; min-height: 0; border: 0; border-radius: 9999px; }
+.pi-boardui-model-row { min-width: 0; }
+.pi-boardui-transcript { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.pi-boardui-transcript .pi-task-output { max-width: 100%; }
+.pi-boardui-error { margin: 0; color: var(--danger); font-size: 12px; }
+
+@keyframes ai-chat-text-shimmer {
+  from { background-position: 200% center; }
+  to { background-position: -100% center; }
+}
+@keyframes bui-agent-thinking-star {
+  0%, 100% { transform: scale(0); opacity: 0; }
+  40% { transform: scale(1); opacity: 1; }
+  60% { transform: scale(.8); opacity: .9; }
+}
+@keyframes bui-agent-thinking-dash { to { stroke-dashoffset: -100; } }
+@keyframes bui-composer-loader-dash {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -100; }
+}
+.bui-agent-thinking-label {
+  color: transparent;
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in oklab, var(--bui-agent-thinking-tone) 55%, transparent) 30%,
+    var(--bui-agent-thinking-tone) 50%,
+    color-mix(in oklab, var(--bui-agent-thinking-tone) 55%, transparent) 70%
+  );
+  background-position: 200% center;
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: ai-chat-text-shimmer 2.6s linear infinite;
+  will-change: background-position;
+}
+.bui-agent-thinking-star {
+  transform: scale(0);
+  animation-name: bui-agent-thinking-star;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.bui-agent-thinking-comet {
+  animation-name: bui-agent-thinking-dash;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.bui-agent-thinking-stars { color: color-mix(in oklab, currentColor 75%, transparent); }
+.dark .bui-agent-thinking-stars { color: inherit; }
+@media (prefers-reduced-motion: reduce) {
+  .bui-agent-thinking-label {
+    color: var(--bui-agent-thinking-tone);
+    background-image: none;
+    animation: none;
+  }
+  .bui-agent-thinking-star { animation: none; transform: none; opacity: .7; }
+  .bui-agent-thinking-comet,
+  .bui-composer-loader-rect { animation: none !important; }
+}

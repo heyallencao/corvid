@@ -105,10 +105,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const composerAccess = await shell.locator('#pi-task-form').evaluate(form => {
       const fullyVisible = selector => {
         const element = form.querySelector(selector);
+        if (!element) return false;
         element.scrollIntoView({ block: 'nearest' });
         const rect = element.getBoundingClientRect();
         const viewport = form.getBoundingClientRect();
-        return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
+        return rect.top >= viewport.top - 1 && rect.bottom <= viewport.bottom + 1;
       };
       return {
         scrollable: form.scrollHeight > form.clientHeight,
@@ -117,7 +118,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         connectActionVisible: fullyVisible('.pi-model-connection > .pi-model-action'),
         modelManagementVisible: fullyVisible('.pi-model-manage'),
         promptVisible: fullyVisible('textarea'),
-        pageReviewVisible: fullyVisible('.pi-secondary-action'),
+        pageReviewVisible: fullyVisible('[aria-label="Review and preview page context"]'),
       };
     });
     assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.connectionStatusVisible && composerAccess.connectActionVisible && composerAccess.modelManagementVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,

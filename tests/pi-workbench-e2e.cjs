@@ -190,7 +190,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await shell.keyboard.press('Tab');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'连接账号','the visible disconnected state has a direct account connection action');
     await shell.keyboard.press('Tab');
-    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'检查并预览页面上下文','page context review follows the task and model controls');
+    assert.equal(await shell.evaluate(()=>document.activeElement.getAttribute('aria-label')),'检查并预览页面上下文','page context review follows the task and model controls');
     await shell.keyboard.press('Enter');
     await shell.getByText(/将分享给 Agent：/).waitFor();
     assert.equal(await shell.evaluate(()=>document.activeElement.id),'pi-context-consent','preview rerender moves keyboard focus to the required consent checkbox');
@@ -203,7 +203,7 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.equal(await shell.getByLabel(/我已检查/).isChecked(),true,'Space confirms the explicit page-context consent');
     assert.equal(await start.isDisabled(), false);
     await shell.keyboard.press('Tab');
-    assert.equal(await shell.evaluate(()=>document.activeElement.textContent),'发送','Tab reaches the enabled send action after consent');
+    assert.equal(await shell.evaluate(()=>document.activeElement.getAttribute('aria-label')),'发送','Tab reaches the enabled send action after consent');
     await shell.evaluate(()=>{window.__corvidStartFeedback=new Promise(resolve=>document.addEventListener('click',event=>{const button=event.target instanceof Element?event.target.closest('#pi-task-form .pi-primary-action'):null;if(button)setTimeout(()=>resolve({text:button.textContent,disabled:button.disabled,busy:button.getAttribute('aria-busy')}),0);},{capture:true,once:true}));});
     await shell.keyboard.press('Enter');
     const startFeedback=await shell.evaluate(async()=>window.__corvidStartFeedback);
@@ -211,7 +211,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await saveScreenshot(shell, 'issue-200-agent-task-sending-1280x850.png');
     const firstTaskCard=shell.locator('.pi-task-entry').first();
     await firstTaskCard.getByText('正在读取当前页面',{exact:true}).waitFor({timeout:3_000});
-    await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor();
+    await firstTaskCard.getByText('正在读取页面；',{exact:true}).waitFor({ state: 'attached' });
     assert.equal(await firstTaskCard.locator('.pi-task-state').getAttribute('data-status'),'running','the first text delta is visible while the task is still running');
     await firstTaskCard.getByText('当前页面读取完成',{exact:true}).waitFor({timeout:3_000});
     await firstTaskCard.getByText('正在读取页面；页面要点已整理。',{exact:true}).waitFor();
@@ -256,6 +256,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await shell.getByRole('textbox',{name:'继续这项浏览任务'}).fill('请用一句话补充结论');
     await shell.getByRole('button',{name:'检查页面内容'}).click();
     await shell.getByText(/将分享给 Agent：/).waitFor();
+    await saveScreenshot(shell,'issue-398-agent-chat-continuation-1280x850.png');
     await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button',{name:'发送',exact:true}).click();
     await shell.getByText('这是本地确定性 Agent fixture 第 2 轮回复。没有调用真实模型。').waitFor();
@@ -320,7 +321,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await secondAfterEdit.locator('.pi-message-queue-more summary').click();
     await secondAfterEdit.getByRole('button',{name:'移除'}).click();
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'editing, reordering, and removing queue entries leaves the intended order');
-    await shell.getByRole('button',{name:'停止任务'}).click();
+    await queuedTask.getByRole('button',{name:'停止任务'}).click();
     await queuedTask.locator('.pi-task-state[data-status="interrupted"]').waitFor();
     await assertTaskStateVisual(queuedTask,'interrupted','--surface-neutral','等待检查');
     await queuedTask.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
@@ -403,7 +404,7 @@ const chooseModel = async (page, providerId, modelId) => {
     const shortPrompt=shell.getByRole('textbox',{name:'描述要完成的浏览任务'});
     await shortPrompt.focus();
     const promptVisible=await shortPrompt.evaluate(input=>{const box=input.getBoundingClientRect(),clip=input.closest('#pi-task-form').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
-    const shortReview=shell.locator('#pi-task-form .pi-secondary-action');
+    const shortReview=shell.getByRole('button',{name:'检查并预览页面上下文'});
     await shortReview.focus();
     const reviewVisible=await shortReview.evaluate(button=>{const box=button.getBoundingClientRect(),clip=button.closest('#pi-task-form').getBoundingClientRect();return box.top>=clip.top&&box.bottom<=clip.bottom;});
     assert.ok(promptVisible&&reviewVisible,`short-height prompt and page review are reachable in the independently scrollable composer: ${JSON.stringify({promptVisible,reviewVisible})}`);
@@ -626,7 +627,7 @@ const chooseModel = async (page, providerId, modelId) => {
     await restoredShell.getByRole('button',{name:'继续对话'}).click();
     await restoredShell.getByRole('textbox',{name:'继续这项浏览任务'}).fill('结合我刚才切换到的页面继续任务');
     await restoredShell.getByRole('button',{name:'检查页面内容'}).click();
-    await restoredShell.getByText(afterHandoffUrl).waitFor();
+    await restoredShell.getByText(afterHandoffUrl,{exact:true}).waitFor();
     await restoredShell.getByLabel(/我已检查/).check();
     await restoredShell.getByRole('button',{name:'发送',exact:true}).click();
     await restoredShell.getByText('这是本地确定性 Agent fixture 第 2 轮回复。没有调用真实模型。').waitFor();

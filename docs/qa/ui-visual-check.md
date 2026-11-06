@@ -1,5 +1,12 @@
 # 桌面 UI 视觉检查记录
 
+## 2026-11-06 BoardUI Agent Chat 工作台重构（Issue #398）
+
+- 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、本地 HTTP fixture；窗口 1280×850 与 704×420。主工作台首任务态 [1280×850](screenshots/issue-398-agent-chat-1280x850.png)（SHA-256 `34ba5ffe3ec3a9d331c184b5429092563f5b8ec6f15c4836e2ab53b97b879be7`）；任务启动中 [1280×850](screenshots/issue-398-agent-chat-running-1280x850.png)（`b5fb9849e04c40bedd3dc2976f0eb70115c563d833ed56826fb982cbde6f2b90`）；续聊页面复核与同意 [1280×850](screenshots/issue-398-agent-chat-continuation-1280x850.png)（`8d008f12ab558c4a40585c1200282333d735e2506fe0881f553d61a305d3769a`）；短高双语欢迎态 [704×420](screenshots/issue-398-agent-chat-short-height-704x420.png)（`e1bdba9d5c39666542b95f1e697390549f8e844e8abb466a41565897ba1dcef9`）。页面与任务数据均为合成内容。
+- 直接观察：输入区使用 BoardUI pill composer 几何，模型选择、连接状态、页面来源、明确同意和发送仍显示 Corvid 控件与语义；运行态 transcript 呈现任务状态、消息和就近操作。短高 704×420 下欢迎标题/完整说明位于消息区且未被 composer 遮挡，输入卡内部可滚动访问模型与复核控件；该窗口高度不能让所有 composer 控件同时首屏可见。
+- 对照与判断：采用 BoardUI 官方免费 MIT `agent-chat` 源码的 composer/message/thinking/loading 结构，不照搬其 Next.js `useChat`、API 路由、Demo transport 或账户流程。圆角输入与消息卡片在 Corvid 右侧面板中保持独立层级；页面共享前的预览和同意仍位于 Corvid 输入流程内。截图背景为本地白色 fixture，不代表网页合成或暗色状态。
+- 验收与边界：`pi-workbench-e2e.cjs` 覆盖隔离页面预览、明确同意、焦点、双语运行时、续聊/恢复与用户接管；`pi-workbench-short-height-e2e.cjs` 覆盖 704×420 zh-CN/en 欢迎态与滚动访问。未覆盖深色主题、Windows、打包版、VoiceOver、桌面原生合成截图和真实 Provider；全量 `npm test` 首阶段 45/47，失败及环境信息见[验证记录](../reviews/verification-log.md#2026-11-06-issue-398-boardui-agent-chat-工作台重构)。
+
 ## 2026-11-06 空间导航的 Agent 任务三态标记（Issue #348）
 
 - 环境与截图：macOS arm64、隔离真实 Electron 45.2.1、合成任务和本地 HTTP 页面 fixture；`agent-rooms-panel-e2e.cjs` 在 BrowserWindow 719×600（Retina 截图 1438×1200）生成[窄栏任务状态截图](screenshots/issue-348-space-task-status-719x600.png)（SHA-256 `07d505c48c6bf4f9961e459d78947aa41b80aaa2e952a6957ccc91cba3d389c7`）。

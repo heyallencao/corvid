@@ -11,7 +11,8 @@
   },
   "main": "desktop/main.cjs",
   "scripts": {
-    "start": "electron .",
+    "build:agent-ui": "esbuild desktop/agent-ui/src/workbench.tsx --bundle --format=iife --global-name=CorvidAgentUiBundle --outfile=desktop/agent-ui/agent-workbench.js --target=chrome132 --jsx=automatic --minify && tailwindcss -i desktop/agent-ui/src/styles.css -o desktop/agent-ui/agent-workbench.css --minify",
+    "start": "npm run build:agent-ui && electron .",
     "package:mac:dir": "node scripts/package-mac-dir.cjs",
     "package:mac:dir:x64": "node scripts/package-mac-dir.cjs x64",
     "package:mac:release": "electron-builder --mac --arm64 --publish never",
@@ -20,7 +21,7 @@
     "test:packaged:mac": "node tests/packaged-fuses-e2e.cjs && node tests/packaged-asar-integrity-e2e.cjs && node tests/packaged-app-launcher-e2e.cjs",
     "test:packaged:mac:x64": "CORVID_PACKAGED_ARCH=x64 node tests/packaged-fuses-e2e.cjs && CORVID_PACKAGED_ARCH=x64 node tests/packaged-asar-integrity-e2e.cjs && CORVID_PACKAGED_ARCH=x64 node tests/packaged-app-launcher-e2e.cjs",
     "test:packaged:win": "node tests/packaged-app-launcher-e2e.cjs && node tests/packaged-win-ui-e2e.cjs",
-    "test": "node tests/run-e2e-suite.cjs",
+    "test": "npm run build:agent-ui && node tests/run-e2e-suite.cjs",
     "package:mac:signed:dir": "node scripts/package-mac-dir.cjs --signed",
     "test:packaged:signed:mac": "CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/packaged-fuses-e2e.cjs && CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/packaged-app-launcher-e2e.cjs && CORVID_PACKAGED_APP_PATH=dist/mac-arm64/Corvid.app CORVID_REQUIRE_PACKAGED_SIGNATURE=1 node tests/pi-credential-os-store-e2e.cjs",
     "test:chrome-cookie-disk-full:mac": "CORVID_TEST_CHROME_DISK_FULL=1 node tests/chrome-import-e2e.cjs",
@@ -30,6 +31,11 @@
   "dependencies": {
     "@earendil-works/pi-coding-agent": "1.4.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "@remixicon/react": "^4.9.0",
+    "motion": "^12.43.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
     "zod": "4.6.7"
   },
   "engines": {
@@ -41,9 +47,12 @@
     "minimatch": "11.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.4",
     "electron": "45.2.1",
     "electron-builder": "26.18.1",
-    "playwright-core": "1.64.1"
+    "esbuild": "^0.25.12",
+    "playwright-core": "1.64.1",
+    "tailwindcss": "^4.3.4"
   },
   "build": {
     "appId": "com.heyallencao.corvid",

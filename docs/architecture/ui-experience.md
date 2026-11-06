@@ -55,6 +55,12 @@ Corvid 首个面向用户版本必须完整支持简体中文（`zh-CN`）与英
 - **Corvid Agent 对话工作区：** 右侧并行面板采用持续聊天布局，空态引导、单线程消息流、活动与状态位于上方，固定输入框、当前页面来源和模型选择位于底部；历史按对话收起，可选中后续聊。发送页面内容前提供可检查的预览和明确同意。运行、失败、停止、接管和继续状态就近显示在对话中，conversation 与 Agent Room/task/transcript 保持清晰对应。交互密度参考 REA 可见的 Kaze Agent 面板和模型/输入相对位置，Corvid 保留自己的视觉语言、EGO 式日常浏览主线及授权合同。当前切片由 [Issue #56](https://github.com/heyallencao/corvid/issues/56) 跟踪。2026-11-06 起输入区分层为页面来源胶囊、无边框输入、模型/连接行与同意+发送行，任务卡把状态行与操作行分开；布局依据与证据见 [#377](https://github.com/heyallencao/corvid/issues/377)、[#378](https://github.com/heyallencao/corvid/issues/378)、[#381](https://github.com/heyallencao/corvid/issues/381) 与[工作台布局重构视觉检查](../qa/issue-377-workbench-layout-refactor.md)。
 - **通用列表与设置：** 复用统一的标题、搜索、空态、条目、错误和确认组件。
 
+### Corvid Agent 对话工作台的组件边界（Issue #398）
+
+2026-11-06 起，新任务与继续对话共用的工作台输入区以及消息 transcript 采用 BoardUI 官方免费 `agent-chat` 源码中的 `AgentComposer`、`AgentMessage`、`AgentThinking` 与 `ComposerLoader`，遵循其 MIT 许可并随源码保留版权与许可文本；不引入 Pro 组件、Demo 后端、账户或 `useChat`。通过 React UI island 适配现有 Corvid renderer 和 `window.browserShell`：任务、模型、Profile/Room/Tab 绑定、持久化、运行状态、控制权与授权仍由 Corvid 管理，React 不建立第二份任务或页面授权状态。
+
+Composer 继续要求用户先预览当前页面内容，再明确同意后发送；页面/Room/Profile/Tab 或会话变化会使旧预览与同意失效。新建 Room 尚在绑定期间不能触发页面预览。用户可见的语言、任务阶段和操作名称沿用 Corvid 资源；BoardUI 的复制文案通过 locale adapter 映射到 Corvid 双语资源。工作台从系统浅/深色偏好读取 BoardUI token；动效遵守 `prefers-reduced-motion`。当前仅在 macOS 开发版、浅色主题和本地 fixture 验收工作台主路径、预览同意焦点与 704×420 短高欢迎态；深色主题、VoiceOver、Windows、打包版及桌面原生合成截图仍待验证，证据见 [Issue #398 QA](../qa/ui-visual-check.md#2026-11-06-boardui-agent-chat-工作台重构-issue-398)。
+
 ## 交付顺序与当前进度
 
 1. **首轮已实现**：统一 CSS token、结构化样式文件、持久左侧 Profile/Space/常用入口、收敛浏览器顶部工具层级，并将 Corvid Agent 工作区放到右侧；保持现有浏览和 Room 合同。浏览器壳层默认跟随系统配色，也可由应用级主题偏好切换浅色/深色；网页画布保留网站自身配色。设置中心按应用、当前网站、浏览身份分组，当前含语言、主题、搜索、启动/新标签、下载目录与保存询问、站点操作、导入/扩展和 Agent 连接入口；新增启动/下载行为已通过 macOS 隔离 Electron 与本地 fixture 验收，真实系统对话框和其他平台仍待检查，见 [Issue #165 设置中心切片](../execution/issue-165-settings-center.md)。早前隔离 Electron 下已人工检查书签/历史/下载/设置和约 770px 窄窗；修复 HTML modal 被网页 view 覆盖的问题。证据见[桌面 UI 视觉检查记录](../qa/ui-visual-check.md#2026-11-02-corvid-浏览器壳与-pi-工作区人工检查)、[系统深色主题检查](../qa/ui-visual-check.md#2026-11-03-系统深色主题适配)及本轮 Issue #165 记录。

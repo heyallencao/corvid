@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #398 BoardUI Agent Chat 工作台重构
+
+- 基线与实现：隔离 worktree `glm/boardui-agent-chat`，macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1。加入 BoardUI 官方免费 `agent-chat` MIT 源码组件与完整许可文本，使用 React UI island 将 composer 和 transcript 接到现有 Corvid renderer；不含 Pro/Demo/useChat 后端。任务、模型和页面授权仍由 Corvid 原状态源管理。
+- 截图与视觉：在隔离数据目录和本地 HTTP fixture 中运行真实 Electron。工作台主流程、任务启动中、续聊页面复核与同意、双语短高欢迎态截图见[视觉检查](../qa/ui-visual-check.md#2026-11-06-boardui-agent-chat-工作台重构-issue-398)。图像为合成页面，不含真实账号或浏览数据。
+- 定向验证：`npm run build:agent-ui` 成功；`env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/tmp/corvid-issue-398-evidence node tests/pi-workbench-e2e.cjs` PASS，覆盖页面预览与明确同意、键盘焦点、多轮 transcript、恢复、用户接管与同一任务续聊；`env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_PATH=/tmp/corvid-issue-398-evidence/issue-398-short-height-704x420.png node tests/pi-workbench-short-height-e2e.cjs` PASS，覆盖 704×420 窗口 zh-CN/en 欢迎内容和控件滚动可达。没有调用真实模型、Provider、OAuth 或密钥验证 UI。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 的第一阶段 47 项中 45 项通过、2 项失败，后续串行链未运行。失败为 `tests/dialogs.e2e.mjs` 页面点击未派发（`clickCompleted=false`、`clicks=[]`）及 `tests/uploads.e2e.mjs` 文件选择器超时；两者独立重跑仍失败，当前证据尚不能把根因归为纯环境问题。`tests/pi-workbench-header-e2e.cjs` 三次因 macOS 原生 BrowserWindow 未取得系统焦点失败；最新诊断为 `document.hasFocus=true` 但 `BrowserWindow focused=false`。保持唤醒桌面（`caffeinate -dimsu`）后 dialogs/uploads 两项仍复现相同失败。不得将本轮描述为全量回归通过，PR 合并门禁仍未满足。
+- 限制：仅 macOS 开发版和本地 fixture；深色主题运行态、Windows、打包版、VoiceOver/屏幕阅读器、完整桌面合成画面与真实 Provider 未覆盖。MIT 授权保留在 `desktop/agent-ui/vendor/LICENSE`；npm 安装包/发布包完整许可呈现仍需在打包验收中确认。
+
 ## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
 
 - 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。
