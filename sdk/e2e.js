@@ -226,7 +226,7 @@ try {
   const popupRoom=await client.createRoom('popup events');
   const opener=await popupRoom.open(url);
   await opener.evaluate(()=>{const button=document.createElement('button');button.id='open-popup';button.textContent='Open popup';button.onclick=()=>window.open('/popup','_blank');document.body.append(button);return true;});
-  const waitingPopup=opener.waitForEvent('popup',{timeout:2000});
+  const waitingPopup=opener.waitForEvent('popup',{timeout:5000});
   await opener.click('#open-popup');
   const popup=await waitingPopup;
   assert.ok(popup.label);

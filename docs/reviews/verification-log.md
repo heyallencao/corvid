@@ -2006,3 +2006,10 @@
 - 调查发现这两个用例都通过 Electron/Chromium 合成输入或调用 BrowserWindow 后立即依赖窗口获得系统焦点。测试现显式调用 `app.focus({ steal: true })` 与 `BrowserWindow.focus()` 后发送 Cmd/Ctrl+P；窗口状态用例在写状态前也显式聚焦窗口，并先观察目标 bounds 生效，再检查 debounce 后的持久化文件。
 - 定向命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 与 `... node tests/window-state-e2e.cjs` 各连续 2 次通过。未重复本机全量 `npm test`；等待合并后的手动 Release gate 验收完整 arm64 串行链。
 - 本轮仍无 hosted 全量门禁通过证据，没有发布 Release。
+
+## 2026-11-06 Issue #319 hosted SDK popup wait follow-up（PR 前）
+
+- Hosted run [42149772684](https://github.com/heyallencao/corvid/actions/runs/42149772684)：preflight、Intel app/DMG/ZIP 构建与 artifact upload、Windows installer smoke/upload 均通过，publish job skipped；arm64 全量 E2E 在 `tests/sdk-e2e.cjs` 调用的 `sdk/e2e.js` popup 用例等待 2 秒后超时，SDK 子进程退出 1。此前 37/37 node:test 和前三项 package/screenshot/architecture 合同检查均通过。
+- 修正：把真实 popup 事件用例的等待窗口从 2 秒延长到 5 秒；其余负向超时与控制权场景保持原等待值。原因判断是 hosted runner 上 popup 创建/通知的时序超过原 2 秒预算；当前日志不能证明这属于 SDK 功能故障。
+- 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 连续 3 次通过，使用隔离临时数据目录与本地 fixture；未调用模型/OAuth。没有重跑本机全量套件。
+- 后续：合并后重新执行 `version=0.2.0`、`publish=false` 手动 Release workflow，以 hosted arm64 全量 E2E 和两平台 packaged smoke 复验；本记录不代表该复验已通过，也没有发布 Release。
