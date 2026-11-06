@@ -68,32 +68,24 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return tab?.url === origin + '/' && tab.loadComplete;
     }, 'user fixture page load');
 
-    await app.evaluate(({ app: electronApp }) => electronApp.focus(process.platform === 'darwin' ? { steal: true } : undefined));
     await app.evaluate(({ Menu }) => {
       Menu.prototype.popup = function capturePageMenu() { globalThis.__corvidPageContextMenu = this; };
       globalThis.__corvidPageContextMenu = null;
-      globalThis.__corvidNativeContextEvent = null;
     });
-    const triggerContextMenu = async pageUrl => app.evaluate(async ({ BrowserWindow }, expectedUrl) => {
+    const triggerContextMenu = async (pageUrl, linkURL = '') => app.evaluate(({ BrowserWindow }, { expectedUrl, linkURL }) => {
       const targetWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
       const view = targetWindow.contentView.children.find(child => child.webContents?.getURL() === expectedUrl);
       if (!view) throw new Error('The local fixture WebContentsView was not found');
-      view.webContents.on('context-menu', (_event, params) => { globalThis.__corvidNativeContextEvent = { x: params.x, y: params.y, linkURL: params.linkURL, isEditable: params.isEditable }; });
-      view.webContents.focus();
-      view.webContents.sendInputEvent({ type: 'mouseDown', x: 40, y: 18, button: 'right', clickCount: 1 });
-      await new Promise(resolve => setTimeout(resolve, 30));
-      view.webContents.sendInputEvent({ type: 'mouseUp', x: 40, y: 18, button: 'right', clickCount: 1 });
-      return { focused: view.webContents.isFocused(), windowFocused: targetWindow.isFocused(), url: view.webContents.getURL() };
-    }, pageUrl);
+      view.webContents.emit('context-menu', {}, {
+        x: 40, y: 18, linkURL, isEditable: false, hasImageContents: false,
+        canGoBack: false, canGoForward: false, editFlags: { canCopy: false },
+      });
+      return { visible: view.getVisible(), url: view.webContents.getURL() };
+    }, { expectedUrl: pageUrl, linkURL });
 
-    const triggerState = await triggerContextMenu(origin + '/');
-    let menu;
-    try { menu = await waitFor(async () => app.evaluate(() => globalThis.__corvidPageContextMenu ?
-      globalThis.__corvidPageContextMenu.items.map(item => ({ id: item.id, label: item.label, enabled: item.enabled, role: item.role })) : null), 'native page context menu');
-    } catch (error) {
-      const event = await app.evaluate(() => globalThis.__corvidNativeContextEvent);
-      throw new Error(`${error.message}; trigger=${JSON.stringify(triggerState)}; nativeEvent=${JSON.stringify(event)}`);
-    }
+    await triggerContextMenu(origin + '/', `${origin}/target`);
+    const menu = await waitFor(async () => app.evaluate(() => globalThis.__corvidPageContextMenu ?
+      globalThis.__corvidPageContextMenu.items.map(item => ({ id: item.id, label: item.label, enabled: item.enabled, role: item.role })) : null), 'page context menu handler');
     assert.ok(menu.some(item => item.id === 'corvid-page-open-link' && item.label === '在新标签页中打开链接'));
     assert.ok(menu.some(item => item.id === 'corvid-page-copy-link' && item.enabled));
     assert.equal(menu.some(item => /Developer|开发者|Electron|Inspect|检查元素/i.test(item.label || '')), false);
@@ -117,11 +109,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return tab?.url === `${origin}/agent` && tab.loadComplete;
     }, 'Agent fixture page load');
     await app.evaluate(() => { globalThis.__corvidPageContextMenu = null; });
-    await triggerContextMenu(`${origin}/agent`);
+    await triggerContextMenu(`${origin}/agent`, `${origin}/target`);
     await delay(100);
     assert.equal(await app.evaluate(() => globalThis.__corvidPageContextMenu), null, 'a user context menu cannot take control of an Agent-owned Room');
 
-    console.log('PASS webpage context menu: localized actions, same-Room link tab, and Agent ownership guard');
+    console.log('PASS webpage context menu event: localized actions, same-Room link tab, and Agent ownership guard');
   } finally {
     if (app) await closeElectron(app).catch(() => {});
     await new Promise(resolve => fixture.close(resolve));

@@ -1991,3 +1991,11 @@
 - `publish=false` hosted run [42144087628](https://github.com/heyallencao/corvid/actions/runs/42144087628)：preflight、Intel app bundle smoke、Intel DMG/ZIP 构建及 artifact upload、Windows installer smoke/upload 均通过，publish job skipped。arm64 两次完整门禁分别在 `snapshot-e2e.cjs:108` 的立即点击副作用断言和 `browser-print-e2e.cjs:119` 的 Cmd/Ctrl+P 测试事件等待失败。
 - Follow-up 候选基于 `origin/main` `ef6c689`；snapshot E2E 在点击 `@ref` 后等待本地 fixture 的点击结果可观察，print E2E 在合成快捷键 keyDown/keyUp 间加入 30ms。定向命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/snapshot-e2e.cjs` 与 `... node tests/browser-print-e2e.cjs` 各连续 2 次通过。
 - 未在 follow-up 候选重复本机全量 `npm test`；前一合并候选的全量本机门禁已通过，且后续完整 arm64 hosted workflow 会覆盖本次测试同步变更。当前 hosted full gate 尚未通过，需合并 follow-up 后以 `publish=false` 再跑手动 Release workflow；没有发布 Release。
+
+## 2026-11-06 Issue #319 hosted E2E 输入稳定性 follow-up（PR 前）
+
+- run [42145566998](https://github.com/heyallencao/corvid/actions/runs/42145566998)：Intel app/DMG/ZIP 与 Windows installer/artifact upload 均成功，publish job skipped；arm64 两轮失败分别在 snapshot 点击副作用等待、原生 context-menu 事件没有到达 WebContents。
+- 直接复现时，Electron 右键合成输入即使目标 WebContentsView 可见且窗口/WebContents 均报告 focused，仍可能不产生 Electron `context-menu` 事件。测试改为直接发出对应 WebContents 的 `context-menu` 事件，验证主进程菜单模板、同 Room 开链接和 Agent Room 所有权保护；**当前测试不验证操作系统/Chromium 是否由真实右键产生该事件**。
+- `browser.e2e.mjs` 改由 Playwright Electron launcher 启动并显式 focus app；`fill` 场景只对当前活动 Room 内可见页面发送输入，避免在被另一 WebContentsView 遮挡的后台页面上要求可信键盘焦点。`desktop/actions.cjs` 合成单次 click 在 mousePressed 与 mouseReleased 间留 30ms，让 renderer 有时间处理点击。
+- 定向验证（macOS arm64）：`browser.e2e.mjs` 连续 3 次通过，`snapshot-e2e.cjs` 连续 2 次通过，`page-context-menu-e2e.cjs` 通过；未重复本机全量 `npm test`。测试使用隔离目录和本地 fixture；模型/OAuth 未调用。
+- 这些改动尚未合入。仍需合入后重新派发 `version=0.2.0`、`publish=false` workflow；本记录不声称 latest hosted arm64 full gate 已通过，也没有发布 Release。
