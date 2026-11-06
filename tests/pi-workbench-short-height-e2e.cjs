@@ -79,7 +79,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       await shell.screenshot({ path: evidencePath });
     }
     assert.ok(zhLayout && zhLayout.viewport.height <= 480, 'test exercises the supported short-height layout: ' + JSON.stringify(zhLayout));
-    assert.equal(zhLayout.text.description, '提问、总结或让 Agent 协助浏览。分享前先检查页面内容。', 'Chinese welcome copy remains complete');
+    assert.equal(zhLayout.text.description, '提问、总结或让 Agent 协助浏览。', 'Chinese welcome copy remains complete');
     assert.ok(zhLayout.headingVisible && zhLayout.descriptionVisible && zhLayout.noOverlap, 'Chinese welcome heading and full description remain visible above the composer: ' + JSON.stringify(zhLayout));
     const composerFirstViewport = async () => shell.locator('#pi-task-form').evaluate(form => {
       const visible = selector => {
@@ -97,7 +97,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('.pi-chat-toolbar .pi-new-chat').click();
     await shell.getByText('Ask Corvid Agent about this page', { exact: true }).waitFor();
     const enLayout = await readWelcomeLayout();
-    assert.equal(enLayout.text.description, 'Ask, summarize, or browse. Review this page before sharing.', 'English welcome copy remains complete');
+    assert.equal(enLayout.text.description, 'Ask, summarize, or browse with the Agent.', 'English welcome copy remains complete');
     assert.ok(enLayout && enLayout.headingVisible && enLayout.descriptionVisible && enLayout.noOverlap, 'English welcome heading and full description remain visible above the composer: ' + JSON.stringify(enLayout));
     const enComposerFirstViewport = await composerFirstViewport();
     assert.ok(enComposerFirstViewport.pageBindingVisible && enComposerFirstViewport.promptVisible, 'English page binding and task prompt are visible without scrolling: ' + JSON.stringify(enComposerFirstViewport));
@@ -105,23 +105,21 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const composerAccess = await shell.locator('#pi-task-form').evaluate(form => {
       const fullyVisible = selector => {
         const element = form.querySelector(selector);
+        if (!element) return false;
         element.scrollIntoView({ block: 'nearest' });
         const rect = element.getBoundingClientRect();
         const viewport = form.getBoundingClientRect();
         return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
       };
       return {
-        scrollable: form.scrollHeight > form.clientHeight,
         modelSelectorVisible: fullyVisible('.pi-model-select'),
-        connectionStatusVisible: fullyVisible('.pi-model-status'),
-        connectActionVisible: fullyVisible('.pi-model-connection > .pi-model-action'),
-        modelManagementVisible: fullyVisible('.pi-model-manage'),
         promptVisible: fullyVisible('textarea'),
-        pageReviewVisible: fullyVisible('.pi-secondary-action'),
+        sendVisible: fullyVisible('.pi-send'),
+        pageBadgeVisible: fullyVisible('.pi-page-binding'),
       };
     });
-    assert.ok(composerAccess.scrollable && composerAccess.modelSelectorVisible && composerAccess.connectionStatusVisible && composerAccess.connectActionVisible && composerAccess.modelManagementVisible && composerAccess.promptVisible && composerAccess.pageReviewVisible,
-      'model, account recovery, prompt, management, and page-review controls remain reachable by scrolling the composer: ' + JSON.stringify(composerAccess));
+    assert.ok(composerAccess.modelSelectorVisible && composerAccess.promptVisible && composerAccess.sendVisible && composerAccess.pageBadgeVisible,
+      'page badge, model choice, prompt, and send action remain visible in the compact composer: ' + JSON.stringify(composerAccess));
 
     const modelPickerTrigger = shell.getByRole('button', { name: 'Corvid Agent model' });
     await modelPickerTrigger.scrollIntoViewIfNeeded();

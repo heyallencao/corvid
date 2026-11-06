@@ -105,8 +105,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill('[fixture:hold] 在强制退出时保留未知任务状态');
-    await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
-    await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button', { name: '发送' }).click();
     await shell.locator('.pi-task-state[data-status="running"]').waitFor();
 
