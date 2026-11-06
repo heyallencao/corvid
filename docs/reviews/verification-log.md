@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-07 Issue #410 新标签页常访问网站
+
+- 候选：隔离 worktree `browser/issue-410-frequent-sites`，基于 `origin/main` `d8e2bad`；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1；开发版临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。
+- 改动：新标签页从当前浏览身份的本地历史聚合常访问来源，按访问次数及最近访问时间排序，并用最近访问的完整 URL 导航；双语标题与空状态同步。起始页只对用户拥有且由用户打开的空白标签显示这些数据。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/tab-ux-e2e.cjs` EXIT 0，覆盖来源访问频次、最近访问排序/URL、Profile 隔离、起始页状态与中英文标题及现有标签交互；`env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0；`git diff --check` 与改动 JS `node --check` 通过。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1；Node 阶段 47/47 通过，后续串行 E2E 在 `tests/fullscreen-e2e.cjs:144` 失败：最大化前宽度实测 1470px，断言预期 1280px。与本切片无关，对应既有 Issue #403 / 开放 PR #404；本次门禁未通过，故不能作为合并通过证据。
+- 边界：未覆盖 Windows、打包版、屏幕阅读器与真实网站；没有调用 OAuth 或真实模型。起始页闭合 Shadow DOM 无法由现有 DOM 探针检查卡片绘制细节，本轮通过真实 Electron 状态/locale 合同和资料库模块数据断言；未采集截图。
+
 ## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
 
 - 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。

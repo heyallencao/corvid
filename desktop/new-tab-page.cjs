@@ -8,6 +8,7 @@ function installNewTabPage(tabId, strings) {
   host.dataset.tabId=tabId;
   host.dataset.homeLocale=strings.locale||'';
   host.dataset.homeHeading=strings.heading;
+  host.dataset.homeSitesTitle=strings.sitesTitle;
   host.setAttribute('lang',strings.locale||'');
   host.style.cssText='display:block;width:100%;height:100%;';
   document.body.append(host);
@@ -33,8 +34,8 @@ function installNewTabPage(tabId, strings) {
       button{font:inherit;cursor:pointer}
       .all{padding:5px 7px;border:0;background:transparent;color:var(--home-link-color);font-size:10px}
       .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-      .bookmark{min-width:0;min-height:68px;display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--home-line-soft);border-radius:12px;background:var(--home-card-background);text-align:left}
-      .bookmark:hover{border-color:var(--home-mark-color);background:var(--home-card-hover);box-shadow:0 5px 18px var(--home-shadow)}
+      .site{min-width:0;min-height:68px;display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--home-line-soft);border-radius:12px;background:var(--home-card-background);text-align:left}
+      .site:hover{border-color:var(--home-mark-color);background:var(--home-card-hover);box-shadow:0 5px 18px var(--home-shadow)}
       .badge{width:27px;height:27px;display:grid;flex:none;place-items:center;border-radius:9px;background:var(--home-badge-background);color:var(--home-badge-color);font-size:12px;font-weight:650}
       .label{min-width:0;display:grid;gap:2px}.label strong,.label small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .label strong{color:var(--home-text-color);font-size:10px;font-weight:600}.label small{color:var(--home-muted-color);font-size:9px}
@@ -48,17 +49,17 @@ function installNewTabPage(tabId, strings) {
       <div class="mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M6 20.5C6 12.5 12.2 6 20 6c2.1 0 4 .5 5.8 1.5-5.6 1-9.2 5.4-10.5 10.2-1 3.7-3.8 6.3-7.2 7.8A10 10 0 0 1 6 20.5Z" fill="currentColor"/><path d="M9 25.5c6.8-1.7 12.2-6.8 15.4-14.1.9 1.8 1.4 3.8 1.4 5.9 0 6.1-4.9 11-11 11-2.1 0-4.1-.6-5.8-1.7Z" fill="currentColor" opacity=".55"/></svg></div>
       <p class="eyebrow">CORVID BROWSER</p><h1>${strings.heading}</h1><p class="intro">${strings.intro}</p>
       <form role="search"><span aria-hidden="true">⌕</span><label hidden for="home-search">${strings.searchLabel}</label><input id="home-search" type="search" aria-label="${strings.searchLabel}" placeholder="${strings.searchLabel}" autocomplete="off" spellcheck="false"><button type="submit" aria-label="${strings.searchAction}">↗</button></form>
-      <section aria-labelledby="home-bookmarks-title"><header><h2 id="home-bookmarks-title">${strings.bookmarksTitle}</h2><button class="all" type="button" data-action="bookmarks">${strings.allBookmarks} →</button></header><div class="grid" role="group" aria-label="${strings.bookmarksGroup}"></div><p class="empty" hidden>${strings.emptyState}</p></section>
+      <section aria-labelledby="home-sites-title"><header><h2 id="home-sites-title">${strings.sitesTitle}</h2></header><div class="grid" role="group" aria-label="${strings.sitesGroup}"></div><p class="empty" hidden>${strings.emptyState}</p></section>
       <nav aria-label="${strings.quickActions}"><button type="button" data-action="history"><span aria-hidden="true">◷</span>${strings.historyAction}</button><button type="button" data-action="agent"><span aria-hidden="true">✳</span>${strings.agentAction}</button></nav>
     </main>`;
   const form=root.querySelector('form'),input=root.querySelector('input'),grid=root.querySelector('.grid'),empty=root.querySelector('.empty');
   const state=next=>{
     grid.replaceChildren();
-    const items=(Array.isArray(next?.bookmarks)?next.bookmarks:[]).slice(0,8);
-    host.dataset.bookmarkCount=String(items.length);
+    const items=(Array.isArray(next?.sites)?next.sites:[]).slice(0,8);
+    host.dataset.frequentSiteCount=String(items.length);
     for(const item of items){
       let hostName=strings.siteFallbackName;try{hostName=new URL(item.url).hostname.replace(/^www\./,'')||hostName;}catch{}
-      const card=document.createElement('button');card.type='button';card.className='bookmark';card.title=item.url;card.setAttribute('aria-label',strings.openBookmarkTemplate.replace('{name}',String(item.title||hostName)));
+      const card=document.createElement('button');card.type='button';card.className='site';card.title=item.url;card.setAttribute('aria-label',strings.openSiteTemplate.replace('{name}',String(item.title||hostName)));
       const badge=document.createElement('span');badge.className='badge';badge.setAttribute('aria-hidden','true');badge.textContent=(hostName[0]||strings.siteFallbackMark).toLocaleUpperCase();
       const label=document.createElement('span');label.className='label';const title=document.createElement('strong');title.textContent=item.title||hostName;const domain=document.createElement('small');domain.textContent=hostName;label.append(title,domain);card.append(badge,label);card.addEventListener('click',()=>window.browserHome.action('navigate',item.url));grid.append(card);
     }

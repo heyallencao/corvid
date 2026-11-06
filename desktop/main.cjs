@@ -693,8 +693,8 @@ function update(record = activeRecord()) {
     if (room.windowId !== record.id) continue;
     const tab = tabs.get(room.activeTabId);
     if (tab?.homeSurfaceInstalled && !tab.view.webContents.isDestroyed()) {
-      const bookmarks=room.ownership==='user'&&tab.openedBy==='user'?library.bookmarks(room.profileId).slice(0,8):[];
-      tab.view.webContents.send('browser-home-state', {bookmarks});
+      const sites=room.ownership==='user'&&tab.openedBy==='user'?library.frequentSites(room.profileId,8):[];
+      tab.view.webContents.send('browser-home-state', {sites});
     }
   }
   record.browserWindow.webContents.send('shell-state', describe(record,true));
@@ -855,7 +855,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     if(tab.homeInjection)return tab.homeInjection;
     if(view.webContents.isDestroyed()||view.webContents.getURL()!=='about:blank')return Promise.resolve();
     // 起始页文案在注入时按当前 uiLocale 生成；注入后不随切换重绘（已打开的起始页保留旧语言）。
-    const homeStrings=()=>({locale:mainMessages.locale,ariaLabel:mainMessages.t('newTabAriaLabel'),heading:mainMessages.t('newTabHeading'),intro:mainMessages.t('newTabIntro'),searchLabel:mainMessages.t('newTabSearchLabel'),searchAction:mainMessages.t('newTabSearchAction'),bookmarksTitle:mainMessages.t('newTabBookmarksTitle'),allBookmarks:mainMessages.t('newTabAllBookmarks'),bookmarksGroup:mainMessages.t('newTabBookmarksGroup'),emptyState:mainMessages.t('newTabEmptyState'),quickActions:mainMessages.t('newTabQuickActions'),historyAction:mainMessages.t('newTabHistoryAction'),agentAction:mainMessages.t('newTabAgentAction'),openBookmarkTemplate:mainMessages.t('newTabOpenBookmark'),siteFallbackName:mainMessages.t('newTabSiteFallbackName'),siteFallbackMark:mainMessages.t('newTabSiteFallbackMark')});
+    const homeStrings=()=>({locale:mainMessages.locale,ariaLabel:mainMessages.t('newTabAriaLabel'),heading:mainMessages.t('newTabHeading'),intro:mainMessages.t('newTabIntro'),searchLabel:mainMessages.t('newTabSearchLabel'),searchAction:mainMessages.t('newTabSearchAction'),sitesTitle:mainMessages.t('newTabSitesTitle'),sitesGroup:mainMessages.t('newTabSitesGroup'),emptyState:mainMessages.t('newTabEmptyState'),quickActions:mainMessages.t('newTabQuickActions'),historyAction:mainMessages.t('newTabHistoryAction'),agentAction:mainMessages.t('newTabAgentAction'),openSiteTemplate:mainMessages.t('newTabOpenSite'),siteFallbackName:mainMessages.t('newTabSiteFallbackName'),siteFallbackMark:mainMessages.t('newTabSiteFallbackMark')});
     tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)},${JSON.stringify(homeStrings())})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
     return tab.homeInjection;
   };
