@@ -2062,6 +2062,26 @@
 - 这是唯一一次针对最终候选提交执行的全量 gate；此前多轮 hosted 运行中只在发现失败后重跑对应失败项的定向 E2E。全量运行发生在文档证据更新之前，但代码 source SHA 与 PR #364 的合并 SHA 一致；模型/OAuth 与真实 Provider 未调用。
 - 最终合并后本机定向复验：Pi Workbench 首次运行未能在 `#room-strip` 内滚动到目标摘要；将断言前的滚动操作改为直接对目标标签执行 `scrollIntoView({block:'nearest'})` 后，`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs` EXIT 0。`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/snapshot-e2e.cjs` EXIT 0。该修正针对测试滚动操作，不改变产品行为；本机没有重复全量套件。
 
+## 2026-11-06 PR #365 合入后的 Release gate follow-up（Issue #319，PR 前）
+
+- Hosted run [42162360092](https://github.com/heyallencao/corvid/actions/runs/42162360092)，main `bc4085e`，参数 `version=0.2.0`、`publish=false`：preflight 与 Intel macOS app/DMG/ZIP/artifact 均通过；arm64 retry 1 在 `cli-e2e.cjs` 的 `page.fill()` 报 `Input focus was not acquired`，retry 2 在 `browser-print-e2e.cjs:134` 未观察到第 4 次打印调用；Windows installer 已构建、launcher 通过，但 packaged UI 开始时输出 `Downloading Electron binary...` 并于 180 秒超时。publish job skipped。
+- Windows 根因：三个 packaged UI 子脚本即使设置 `CORVID_PACKAGED_APP_PATH`，仍在模块加载时无条件 `require('electron')`；当 builder 环境中的开发版 Electron dist 缺失时，该 import 尝试另行下载二进制。现改为仅 source 模式加载 Electron，packaged 模式直接使用打包 exe。
+- 打印快捷键：在触发 shortcut handler 前显式聚焦 app、BrowserWindow 与 shell WebContents，并等待焦点确立。`browser-print-e2e.cjs` 当前 macOS arm64 定向连续 3 次通过；同轮失败的 `cli-e2e.cjs` 当前定向连续 3 次通过，未复现 hosted focus 错误。
+- 验证：4 个改动 E2E 文件 `node --check` 与 `git diff --check` 通过。隔离 probe 对三个 packaged 子脚本注入 Electron launcher，并断言它们选择 `CORVID_PACKAGED_APP_PATH` 且不加载 `electron` 模块，3/3 通过。browser-print macOS arm64 定向连续 3 次通过；CLI E2E 连续 3 次通过；启动诊断 12/12、图片合同 10/10 通过。
+- 限制：Windows packaged UI 修正在 Windows runner 上尚未运行；当前 `main` hosted full gate 仍为失败状态。本记录不声称最新 main 全量 gate 已通过，也没有发布 Release。
+
+## 2026-11-06 最新 main 启动诊断复核（Issue #87）
+
+- 基线：当前 `origin/main` `6210595`；`PR #327` 已合入 `748ac53` 并关闭 Issue #87。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node --test tests/electron-startup.e2e.mjs`，12/12 通过；覆盖测试模式阶段文件、启动失败阶段诊断、`control.json` 等待和有界 Electron 清理合同。
+- 边界：本轮未复现历史真实 Electron 启动挂起，未定位其根因；Issue 原始验收聚焦串行全量回归、启动超时诊断与隔离数据，既有主线有多轮全量回归通过证据。该定向测试不能单独证明历史挂起根因已解决。
+
+## 2026-11-06 最新开放正文图片审计（Issue #244）
+
+- 基线：当前 `origin/main` `6210595`；`PR #329` 已合入 `25c8d76` 并关闭 Issue #244。
+- GitHub API/CLI 当前快照：22 个开放 Issue、1 个开放 PR。正文扫描未发现 Markdown/HTML 图片引用，也未发现 `file://`、`/Users/`、`/private/tmp/`、`/tmp/` 路径或非 `main` 的 GitHub blob URL；因开放正文没有图片，本轮没有可做页面渲染核验的目标，也没有上传历史截图。
+- 定向合同：`env -u ELECTRON_RUN_AS_NODE node tests/pr-description-images.test.cjs` 10 项通过。脚本检查链接格式，不下载或渲染图片；截图脱敏由提交者人工把关。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。

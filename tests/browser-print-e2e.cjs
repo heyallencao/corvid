@@ -63,6 +63,20 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     return app.evaluate(() => globalThis.__corvidPrintCalls || []);
   }
 
+  async function focusBrowserWindow() {
+    await app.evaluate(async ({ app: electronApp, BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (process.platform === 'darwin') electronApp.focus({ steal: true });
+      else electronApp.focus();
+      window.focus();
+      window.webContents.focus();
+      for (let attempt = 0; attempt < 120 && (!window.isFocused() || !window.webContents.isFocused()); attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      if (!window.isFocused() || !window.webContents.isFocused()) throw new Error('Browser window did not receive focus before shortcut');
+    });
+  }
+
   async function openPrintMenu(shell) {
     await shell.locator('#more-tools').click();
     await shell.getByRole('menuitem', { name: /打印网页/ }).click();
@@ -70,6 +84,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   async function shortcut(key) {
     const primary = process.platform === 'darwin' ? 'meta' : 'control';
+    await focusBrowserWindow();
     await app.evaluate(async ({ BrowserWindow }, { keyCode, modifiers }) => {
       const window = BrowserWindow.getAllWindows()[0];
       const contents = window.webContents;
@@ -81,6 +96,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   async function printShortcut() {
     const primary = process.platform === 'darwin' ? 'meta' : 'control';
+    await focusBrowserWindow();
     return app.evaluate(({ BrowserWindow }, modifier) => {
       const contents = BrowserWindow.getAllWindows()[0].webContents;
       const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
