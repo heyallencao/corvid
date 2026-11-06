@@ -1582,6 +1582,7 @@ function apiRoute(req, url) {
   if (kind==='agent-clients' && target && req.method==='DELETE' && !action) return ['revokeAgentClient',{clientId:target}];
   if (kind==='rooms' && target && !action && req.method==='GET') return ['roomDetails',{id:target}];
   if (req.method==='POST' && url.pathname==='/shutdown' && process.env.CORVID_TEST_MODE==='1') return ['shutdown',{}];
+  if (req.method==='POST' && url.pathname==='/test/shortcuts' && process.env.CORVID_TEST_MODE==='1') return ['sendTestShortcut',{}];
   if (req.method==='GET' && url.pathname==='/rooms') return ['state',{}];
   if (req.method==='GET' && url.pathname==='/windows') return ['listWindows',{}];
   if (kind==='windows' && target && req.method==='DELETE' && !action) return ['closeWindow',{id:target}];
@@ -1649,6 +1650,20 @@ async function startServer() {
       else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
       else if(method==='profiles'&&principal.kind==='agent') {const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));result={profiles:profiles.filter(profile=>allowedProfileIds.has(profile.id))};}
       else if(method==='shutdown') result={ok:true};
+      else if(method==='sendTestShortcut') {
+        if(principal.kind!=='admin') throw Object.assign(new Error('测试快捷键需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});
+        const keys=new Map([['t','T'],['l','L'],['[','['],[']',']'],['r','R'],['Tab','TAB'],['2','2'],['=','='],['0','0'],['w','W']]);
+        const [modifier,...keyParts]=String(body.combination||'').split('+');
+        const key=keyParts.join('+');
+        const allowedModifier=modifier==='Control'||(modifier==='Meta'&&process.platform==='darwin');
+        if(!allowedModifier||!keys.has(key)) throw Object.assign(new Error('Unsupported test shortcut'),{status:400,code:'CORVID_INVALID_ARGUMENT'});
+        const shortcut={keyCode:keys.get(key),modifiers:[modifier.toLowerCase()]};
+        const record=activeRecord();
+        if(!record||record.browserWindow.isDestroyed()) throw Object.assign(new Error('No active Corvid window'),{status:409,code:'CORVID_NOT_FOUND'});
+        record.browserWindow.webContents.sendInputEvent({type:'keyDown',...shortcut});
+        record.browserWindow.webContents.sendInputEvent({type:'keyUp',...shortcut});
+        result={sent:true};
+      }
       else result=await dispatchQueued(method,{...body,...routeArgs},true);
       res.end(JSON.stringify(result));
       if(method==='shutdown') setImmediate(()=>app.quit());

@@ -3,7 +3,7 @@ const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const executablePath = path.join(root, 'dist', 'win-unpacked', 'Corvid.exe');
-for (const testFile of ['single-instance-e2e.cjs', 'packaged-win-ui-smoke.cjs']) {
+for (const testFile of ['single-instance-e2e.cjs', 'browser-shortcuts-e2e.cjs', 'packaged-win-ui-smoke.cjs']) {
   console.log(`RUN packaged Windows UI: ${testFile}`);
   const result = spawnSync(process.execPath, [path.join(__dirname, testFile)], {
     cwd: root,
