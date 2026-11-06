@@ -233,3 +233,9 @@ Google 官方帮助页另说明：Gemini in Chrome 默认使用当前标签内�
 **设计取舍（推断）：** 观察与既有资料继续支持既定路线：以完整日常浏览壳为 Corvid 的默认落点，Agent/任务工作区作为同一浏览器中的协作层，并让 BrowserMCP 与内置 Agent 共用 Room/Profile/Page、明确页面上下文授权和控制权合同。Kaze 把 Skills、Scheduled、Activity 提升为顶层导航，适合 Agent 管理与任务发现；Corvid 可借鉴其可见任务入口、常驻工作区、模型与上下文控件相邻，但不应因此把用户启动体验改成 Agent 管理台。用户首先打开标签、导航和常用资料，Agent 则从明确选定的页面/空间开始协作。
 
 **限制与未知：** Kaze 本轮仅观察一个窗口和最多 40 个 AX 节点；没有截图、点击、键盘、窗口尺寸变化、错误/空态或运行中任务验证。没有检查 Kaze 的 MCP 行为或实际权限语义，也没有据其可见 Agent 控件推断底层 SDK。EGO 当前版界面未取得新 REA 证据。既有 EGO/Kaze 观察均不证明整套流程稳定或行为完全一致。本轮未读取或记录网页正文/浏览数据；没有创建新 Issue，也不改变 D21 产品方向或交付顺序。
+
+## 2026-11-06 Issue #350 外部 Agent 工具面源码复核
+
+本段是对 Issue #350 及本文件较早 D20 结论的 Corvid 源码复核，不是新的 REA 观察。直接源码证据：`sdk/README.md` 126–130 行公开 page dialog、`setInputFiles` 和 `waitForFileChooser`；`desktop/agent-downloads.cjs` 将下载绑定 tab 与一次性 arm token，保存在 Corvid 临时目录并提供取消/丢弃；`desktop/main.cjs` 的下载监听同时维护常规浏览器下载历史。由此确认旧结论“当前不提供文件上传”已过时：SDK 可以通过本机绝对路径选择文件；该合同没有逐次用户确认，不能据此推断用户已同意上传。
+
+决策：保留现有受管 Page alert/confirm/prompt 应答和桌面用户可见状态；下载限 Page 绑定的一次性等待与临时目录，不开放任意路径；拖拽/通用事件注入不提供；adapter 仅接受人工审查、版本固定、可移除的只读命令，并沿用 Room/Page/接管校验，不引入自学习或页面脚本。文件上传需独立增加逐次明确授权与拒绝/取消用例后才可作为支持能力。本结论反映文档与源码现状，不证明真实 MCP host、辅助技术、跨平台 UI 或真实网站行为。

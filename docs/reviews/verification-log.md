@@ -2162,3 +2162,9 @@
 - 基线：PR #384 已 rebase 到 `origin/main` `43942bb`，分支提交 `9adcf48`；运行命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test`，退出码 0。
 - 结果：46/46 `node:test` 用例通过，串行 E2E 链 76 条独立脚本全部输出 PASS；#289 同机互斥锁成功取得并由 runner 释放。E2E 改写了 9 张跟踪截图，已逐一恢复为基线版本，PR 中只保留本次 `issue-377` 证据截图。
 - 环境与限制：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时数据与本地 fixtures，不调用真实模型、Provider 或 OAuth。Windows packaged 验收不属于此本地门禁范围。
+
+## 2026-11-06 Issue #350 D20 外部 Agent 工具边界文档复核
+
+- 范围：仅同步 `docs/architecture/overview.md`、`docs/execution/feature-board.md` 与 `docs/research/browser-reference-analysis.md` 中对外部 Agent 对话框、下载、上传和 adapter 的现状与决策；未改 SDK、IPC 或运行时合同。
+- 直接源码核对：`sdk/README.md` 公开 page dialog、`setInputFiles` 与 `waitForFileChooser`；`desktop/agent-downloads.cjs` 实现受 tab 绑定的一次性下载等待及 Corvid 临时目录；`desktop/main.cjs` 维护常规下载历史。测试：`git diff --check`；本次为文档变更，未运行功能测试。
+- 限制：未运行真实外部 MCP host、真实网站、模型/OAuth 或跨平台 UI；现有绝对路径上传缺少逐次用户确认，已记录为独立安全切片，不宣称该路径已满足产品授权红线。
