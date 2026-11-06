@@ -2020,3 +2020,10 @@
 - 定向验证：`node --check tests/e2e-suite-lock.cjs`、`node --check tests/run-e2e-suite.cjs` 通过；`node --test tests/e2e-suite-lock.test.cjs` 2/2 通过，覆盖并发等待/释放与死进程锁回收。临时 runner smoke test 确认子命令实际执行、runner 结束释放锁；Issue #289 与 #300 两个 worktree 得到同一锁路径。
 - 全量验证：测试启动前 `pgrep -f [Ee]lectron` 未发现活动 Corvid E2E；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` 完成，node:test 39/39 通过，随后 75 条串行独立脚本全部输出 PASS，互斥锁自动释放。环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离数据目录与本地 fixtures，未调用真实模型/OAuth。全量运行生成的 9 张既有 QA 截图已恢复。
 - 限制：本地全量仅在 macOS 验证；锁在同一 OS 用户、相同 Git remote 的 `npm test` 调用间共享，直接运行单项脚本不受锁保护。并发运行与这些间歇失败的因果关系仍未被单独证明；本次全量通过说明新入口链可完整执行，不估算失败率。
+
+## 2026-11-06 Issue #300 macOS 锁屏原生窗口 E2E 预检
+
+- 修改：新增 `tests/native-window-e2e-preflight.cjs`，通过 `lsappinfo front` 和 `lsappinfo info -only bundleID` 识别 macOS 前台 `com.apple.loginwindow`。锁屏时 `fullscreen-e2e.cjs` 输出 `SKIPPED_NATIVE_FULLSCREEN` 并跳过整项；`application-menu-e2e.cjs` 与 `chrome-import-e2e.cjs` 仅设置对应 skip 开关，跳过原生焦点/失焦子场景并继续其他合同。非 macOS、无法读取或无法识别前台 app 时保持默认测试路径；显式 skip 环境变量仍可单独使用。
+- 定向验证：`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 12/12 通过；`fullscreen-e2e.cjs`、`application-menu-e2e.cjs`、`chrome-import-e2e.cjs` 默认路径均 EXIT 0。未触发锁屏 skip。
+- 全量验证：此前四次全量尝试分别中止在下载入口、工作台摘要边界、页面生命周期和工作台摘要边界；其间相关失败入口的隔离复跑通过，但不足以确定此前失败根因。#289 互斥锁合入后，以 `0ee8563` 为基线 rebase 的候选 `b107d30` 上执行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，43/43 node:test 与其后 75 条串行脚本全部通过；本次未观察到此前失败。该结果不单独证明互斥锁是根因修复。测试生成的 9 张跟踪 QA 截图已恢复。
+- 环境与边界：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离数据目录与本地 fixtures，未调用真实模型/OAuth。当前为解锁默认路径，真实锁屏探测未执行；skip 不证明原生焦点、失焦或全屏功能通过。Windows、签名包、真实网站和读屏未覆盖。

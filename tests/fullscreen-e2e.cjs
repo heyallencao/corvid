@@ -6,8 +6,14 @@ const http=require('node:http');
 const os=require('node:os');
 const path=require('node:path');
 const {closeElectron,launchElectron,waitForControl}=require('./electron-test-startup.cjs');
+const {applyMacLockScreenSkip}=require('./native-window-e2e-preflight.cjs');
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NATIVE_FULLSCREEN'});
 (async()=>{
+  if(fullscreenPreflight.skip){
+    console.log('SKIPPED_NATIVE_FULLSCREEN',fullscreenPreflight.reason==='macos-lock-screen'?'reason=macOS lock screen; native fullscreen requires an unlocked desktop':'explicitly requested');
+    return;
+  }
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-fullscreen-'));
   const server=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end('<!doctype html><meta charset="utf-8"><title>Fullscreen fixture</title>');});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

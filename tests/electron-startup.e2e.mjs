@@ -9,7 +9,43 @@ import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const { closeElectron, launchElectron, startupStage, waitForControl } = require('./electron-test-startup.cjs');
+const { applyMacLockScreenSkip, frontmostBundleId } = require('./native-window-e2e-preflight.cjs');
 const { createStartupProgress } = require('../desktop/startup-progress.cjs');
+
+test('锁屏预检只在 macOS 前台 bundle 为 loginwindow 时识别锁屏', () => {
+  const calls=[];
+  const run=(command,args)=>{
+    calls.push([command,args]);
+    return args[0]==='front'?'ASN:0x0-0x1234:\n':'"CFBundleIdentifier"="com.apple.loginwindow"';
+  };
+  assert.equal(frontmostBundleId({platform:'darwin',run}),'com.apple.loginwindow');
+  assert.equal(calls.length,2);
+  assert.equal(frontmostBundleId({platform:'win32',run}),null);
+});
+
+test('锁屏预检为三个原生 E2E 显式设置跳过开关', () => {
+  const env={};
+  const run=(_command,args)=>args[0]==='front'?'ASN:0x0-0x1234:\n':'"CFBundleIdentifier"="com.apple.loginwindow"';
+  const result=applyMacLockScreenSkip({env,variable:'CORVID_TEST_SKIP_NATIVE_FULLSCREEN',platform:'darwin',run});
+  assert.deepEqual(result,{skip:true,reason:'macos-lock-screen',bundleId:'com.apple.loginwindow'});
+  assert.equal(env.CORVID_TEST_SKIP_NATIVE_FULLSCREEN,'1');
+});
+
+test('锁屏预检不因未知前台应用或 lsappinfo 失败而跳过', () => {
+  const env={};
+  const unknown=applyMacLockScreenSkip({env,variable:'CORVID_TEST_SKIP_NATIVE_FULLSCREEN',platform:'darwin',run:()=>{throw new Error('lsappinfo unavailable');}});
+  assert.equal(unknown.skip,false);
+  assert.equal(env.CORVID_TEST_SKIP_NATIVE_FULLSCREEN,undefined);
+  const unlocked=applyMacLockScreenSkip({env,variable:'CORVID_TEST_SKIP_NATIVE_FULLSCREEN',platform:'darwin',run:(_command,args)=>args[0]==='front'?'ASN:0x0-0x1234:\n':'"CFBundleIdentifier"="com.openai.codex"'});
+  assert.equal(unlocked.skip,false);
+});
+
+test('锁屏预检保留显式跳过开关且不调用系统检测', () => {
+  const env={CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS:'1'};
+  const result=applyMacLockScreenSkip({env,variable:'CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS',platform:'darwin',run:()=>{throw new Error('must not run');}});
+  assert.equal(result.skip,true);
+  assert.equal(result.reason,'explicit');
+});
 
 test('主进程启动阶段仅在测试模式原子记录并限制文件权限', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-startup-progress-'));
