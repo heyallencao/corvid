@@ -2013,3 +2013,10 @@
 - 修正：把真实 popup 事件用例的等待窗口从 2 秒延长到 5 秒；其余负向超时与控制权场景保持原等待值。原因判断是 hosted runner 上 popup 创建/通知的时序超过原 2 秒预算；当前日志不能证明这属于 SDK 功能故障。
 - 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/sdk-e2e.cjs` 连续 3 次通过，使用隔离临时数据目录与本地 fixture；未调用模型/OAuth。没有重跑本机全量套件。
 - 后续：合并后重新执行 `version=0.2.0`、`publish=false` 手动 Release workflow，以 hosted arm64 全量 E2E 和两平台 packaged smoke 复验；本记录不代表该复验已通过，也没有发布 Release。
+
+## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
+
+- 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。
+- 定向验证：`node --check tests/e2e-suite-lock.cjs`、`node --check tests/run-e2e-suite.cjs` 通过；`node --test tests/e2e-suite-lock.test.cjs` 2/2 通过，覆盖并发等待/释放与死进程锁回收。临时 runner smoke test 确认子命令实际执行、runner 结束释放锁；Issue #289 与 #300 两个 worktree 得到同一锁路径。
+- 全量验证：测试启动前 `pgrep -f [Ee]lectron` 未发现活动 Corvid E2E；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` 完成，node:test 39/39 通过，随后 75 条串行独立脚本全部输出 PASS，互斥锁自动释放。环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离数据目录与本地 fixtures，未调用真实模型/OAuth。全量运行生成的 9 张既有 QA 截图已恢复。
+- 限制：本地全量仅在 macOS 验证；锁在同一 OS 用户、相同 Git remote 的 `npm test` 调用间共享，直接运行单项脚本不受锁保护。并发运行与这些间歇失败的因果关系仍未被单独证明；本次全量通过说明新入口链可完整执行，不估算失败率。
