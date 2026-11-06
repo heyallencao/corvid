@@ -81,7 +81,7 @@ assertCatalogSourceHasUniqueKeys();
     await shell.locator('#search-template').fill(chineseSearchTemplate);
     await shell.locator('#settings-error').evaluate(node=>{node.textContent='';});
     await shell.locator('#cancel-settings').click();
-    await verifyRenameError(shell,'zh-CN','请输入浏览身份名称。');
+    await verifyRenameError(shell,'zh-CN','浏览身份名称不能为空');
     await shell.getByRole('button',{name:'设置'}).click();
     await shell.locator('#settings-nav-appearance').click();
     assert.equal(await shell.locator('#settings-nav-appearance').getAttribute('aria-current'),'location');
@@ -182,7 +182,7 @@ assertCatalogSourceHasUniqueKeys();
     const unchangedData=await shell.evaluate(()=>window.browserShell.invoke('state'));
     assert.equal(unchangedData.profiles.find(profile=>profile.isDefault).name,'默认');
     assert.equal(unchangedData.rooms[0].name,'我的空间');
-    await verifyRenameError(shell,'en','Enter a browsing profile name.');
+    await verifyRenameError(shell,'en','Enter a browser identity name.');
     const localeHelpers=await shell.evaluate(()=>({
       zhKeys:Object.keys(window.corvidI18n.catalogs['zh-CN']).sort(),
       enKeys:Object.keys(window.corvidI18n.catalogs.en).sort(),
