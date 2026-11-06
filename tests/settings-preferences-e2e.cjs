@@ -132,6 +132,16 @@ const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.e
     assert.equal(await shell.locator('#new-tab-behavior').inputValue(),'home');
     assert.equal(await shell.locator('#download-directory').inputValue(),downloadDir);
     assert.equal(await shell.locator('#ask-where-to-save').isChecked(),false);
+    await shell.locator('#settings-nav-agent').click();
+    await shell.locator('#open-agent-models-from-settings').click();
+    await waitFor(()=>shell.locator('#pi-model-settings').evaluate(dialog=>dialog.open),'open model manager from clean settings');
+    const visiblePageViews=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].contentView.children.filter(view=>view.webContents?.getURL().startsWith('http')).map(view=>view.isVisible()));
+    assert(visiblePageViews.length>0,'the local fixture page is present behind model management');
+    assert(visiblePageViews.every(visible=>!visible),'model management keeps native webpage views hidden');
+    await shell.locator('#close-pi-model-settings').click();
+    await waitFor(()=>shell.locator('#pi-model-settings').evaluate(dialog=>!dialog.open),'close model manager from clean settings');
+    await openSettings(shell);
+    assert.equal(await shell.locator('#startup-behavior').inputValue(),'restore');
     await screenshot(shell,'zh-CN',1024,700);
     await shell.locator('#settings-nav-downloads').click();
     assert.equal(await shell.locator('#settings-downloads').isVisible(),true);
