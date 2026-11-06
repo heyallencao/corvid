@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #348 空间导航 Agent 任务三态标记
+
+- 基线：隔离 worktree 分支 `ui/issue-348-space-task-status`，基于当时 `origin/main` `7ba8026`；macOS arm64，Node.js v24.22.1，Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture，不使用真实模型、OAuth 或个人浏览数据。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE CORVID_AGENT_PANEL_LAYOUT_SCREENSHOT_PATH=docs/qa/screenshots/issue-348-space-task-status-719x600.png node tests/agent-rooms-panel-e2e.cjs` EXIT 0，覆盖空间任务运行/等待用户/完成的标记更新、空间可访问名称与 tooltip、英中文案切换、浏览身份隔离、719px 紧凑栏标记可见性及边界；截图 SHA-256 `07d505c48c6bf4f9961e459d78947aa41b80aaa2e952a6957ccc91cba3d389c7`。
+- 全量门禁：初始基线全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0。rebase 至 `32c02df` 后首次重验在既有 `fullscreen-e2e.cjs:155` 的窗口恢复高度断言偶发 845/847px 差异；未改该模块。随后同步 `b5fcc5a` 并再次 rebase，第二次全量 `env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；完整串行套件通过，含 Agent Room、Chrome 导入、本地化、交互状态及其他现有检查。
+- 静态检查：`git diff --check` EXIT 0；Impeccable detector 无本切片新增发现，报告两项既有 `side-tab` 警告（`desktop/styles.css:572` 与 `:697`）。
+- 边界：本轮只在 macOS 开发版浅色主题验证；英文通过运行态切换断言但未单独留截图；VoiceOver、深色状态标记、Windows 与打包版未验证。工作区使用主克隆 `node_modules` 软链接，仅供依赖解析。
+
 ## 2026-11-06 Issue #165 D25-4 macOS arm64 打包版设置与原生对话框
 
 - 基线：main `57e3a74`，macOS arm64，Electron 45.2.1；隔离临时 `CORVID_DATA_DIR` 与本地 HTTP 下载 fixture。
