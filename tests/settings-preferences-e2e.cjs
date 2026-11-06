@@ -1,5 +1,4 @@
 const {_electron}=require('playwright-core');
-const electron=require('electron');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const http=require('node:http');
@@ -7,7 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.env.CORVID_PACKAGED_APP_PATH):electron;
+const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.env.CORVID_PACKAGED_APP_PATH):require('electron');
 (async()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-settings-preferences-'));
   const dataDir=path.join(temp,'data'),downloadDir=path.join(temp,'downloads');
