@@ -87,13 +87,12 @@ test('Chrome SQLite errors resolve to matching simplified Chinese and English co
     const chinese = messages.userFacingError(errorCode);
     assert.equal(chinese, messages.t(key));
     assert.equal(messages.userFacingError(`Error invoking remote method 'shell-action': Error: ${errorCode}`), messages.t(key));
-    assert.match(chinese, /Chrome/);
+    assert.match(chinese, /浏览器/);
     assert.match(chinese, /未修改|完全退出|检查文件访问权限/);
 
     messages.setLocale('en');
     const english = messages.userFacingError(errorCode);
     assert.equal(english, messages.t(key));
-    assert.match(english, /Chrome/);
-    assert.match(english, /The Chrome profile database/);
+    assert.match(english, /selected browser profile database/);
   }
 });

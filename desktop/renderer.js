@@ -943,7 +943,7 @@ document.querySelector('#settings-site-permissions').onclick=()=>runSettingsSite
 document.querySelector('#settings-clear-site').onclick=()=>runSettingsSiteAction('clearSiteData');
 document.querySelector('#choose-download-directory').onclick=async()=>{const button=document.querySelector('#choose-download-directory');button.disabled=true;try{const result=await api.invoke('chooseDownloadDirectory');if(!result.canceled)document.querySelector('#download-directory').value=result.path;}catch(error){document.querySelector('#settings-error').textContent=userFacingAgentError(error);}finally{button.disabled=false;}};
 document.querySelector('#reset-download-directory').onclick=()=>{document.querySelector('#download-directory').value='';document.querySelector('#settings-error').textContent='';};
-document.querySelector('#ui-locale').onchange=async event=>{const locale=event.currentTarget.value,previous=state.uiLocale;extensionMessages.setLocale(locale);try{await renderProfileExtensions();await api.invoke('setUiLocale',{locale});renderSettingsCurrentSite();}catch{extensionMessages.setLocale(previous);await renderProfileExtensions();renderSettingsCurrentSite();event.currentTarget.value=state.uiLocale;document.querySelector('#settings-error').textContent=extensionMessages.t('localeSaveFailed');}};
+document.querySelector('#ui-locale').onchange=async event=>{const locale=event.currentTarget.value,previous=state.uiLocale;extensionMessages.setLocale(locale);updateBrowserImportSourceCopy();try{await renderProfileExtensions();await api.invoke('setUiLocale',{locale});renderSettingsCurrentSite();}catch{extensionMessages.setLocale(previous);updateBrowserImportSourceCopy();await renderProfileExtensions();renderSettingsCurrentSite();event.currentTarget.value=state.uiLocale;document.querySelector('#settings-error').textContent=extensionMessages.t('localeSaveFailed');}};
 async function openAgentAccessManager(){document.querySelector('#agent-access-error').textContent='';document.querySelector('#agent-client-token-panel').hidden=true;document.querySelector('#agent-client-token').value='';document.querySelector('#agent-client-form').reset();await renderAgentAccess();await openShellDialog('#agent-access-dialog','#agent-client-name');}
 document.querySelector('#open-agent-access').onclick=event=>void leaveSettingsFor(openAgentAccessManager,event.currentTarget);
 document.querySelector('#close-agent-access').onclick=()=>document.querySelector('#agent-access-dialog').close();
@@ -978,9 +978,25 @@ document.querySelector('#pi-model-endpoint-form').onsubmit=async event=>{
   }catch(cause){error.textContent=extensionMessages.t('savingEndpointFailed',{message:userFacingAgentError(cause)});}
   finally{save.disabled=false;}
 };
-let chromeSources=[],chromeSourceId='',chromeSourceToken='',chromeImportProfileId='',chromeImportProfileLocked=false;
+let chromeSources=[],chromeSourceId='',chromeSourceToken='',chromeImportProfileId='',chromeImportProfileLocked=false,chromeBrowserId='chrome',browserImportCatalog=[];
 const chromeImportDialog=document.querySelector('#chrome-import');
-async function openChromeImportDialog(){
+function browserImportSourceName(id){return extensionMessages.t(id==='edge'?'edgeSourceName':'chromeSourceName');}
+function renderBrowserImportSourceOptions(){
+  const select=document.querySelector('#browser-import-source');
+  select.replaceChildren(...browserImportCatalog.map(source=>new Option(`${browserImportSourceName(source.id)}${source.installed?` · ${extensionMessages.t('sourceDetected')}`:''}`,source.id)));
+  select.value=chromeBrowserId;
+}
+function updateBrowserImportSourceCopy(){
+  const name=browserImportSourceName(chromeBrowserId);
+  document.querySelector('[data-i18n="browserImportTitle"]').textContent=extensionMessages.t('browserImportTitle',{source:name});
+  document.querySelector('#choose-chrome-source').textContent=extensionMessages.t('chooseBrowserDirectory',{source:name});
+  document.querySelector('[data-i18n="browserProfile"]').textContent=extensionMessages.t('browserProfile',{source:name});
+  document.querySelector('#chrome-extension-choices').setAttribute('aria-label',extensionMessages.t('chooseBrowserExtensions',{source:name}));
+  renderBrowserImportSourceOptions();
+}
+async function openChromeImportDialog(preferredSource='chrome'){
+  const listed=await api.invoke('listBrowserImportSources');browserImportCatalog=listed.sources||[];
+  chromeBrowserId=browserImportCatalog.some(source=>source.id===preferredSource)?preferredSource:'chrome';
   chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
   document.querySelector('#chrome-import-error').removeAttribute('data-success');
   document.querySelector('#chrome-import-error').removeAttribute('data-partial');
@@ -989,6 +1005,7 @@ async function openChromeImportDialog(){
   chromeImportProfileId=state.profiles.some(profile=>profile.id===settingsProfileId)?settingsProfileId:state.activeProfileId;
   chromeImportProfileLocked=false;targetProfile.disabled=false;
   targetProfile.value=chromeImportProfileId;
+  document.querySelector('#browser-import-source').disabled=false;
   document.querySelector('#chrome-source-profile').replaceChildren(new Option(extensionMessages.t('chooseChromeProfileFirst'),''));
   document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
   document.querySelector('#chrome-extension-choices').replaceChildren();
@@ -996,6 +1013,7 @@ async function openChromeImportDialog(){
   document.querySelector('#chrome-cookie-consent').hidden=true;
   for(const input of document.querySelectorAll('input[name="chrome-category"]'))input.checked=input.value==='bookmarks'||input.value==='history';
   document.querySelector('#chrome-import-preview').textContent=extensionMessages.t('chooseDirectoryForCounts');
+  updateBrowserImportSourceCopy();
   await openShellDialog('#chrome-import');
 }
 function showChromePreview(preview){
@@ -1007,7 +1025,7 @@ function showChromePreview(preview){
   document.querySelector('#chrome-import-preview').textContent=extensionMessages.t(summaryKey,{source:preview.sourceName,bookmarks:bookmarkCount,history:historyCount,cookies:cookieCount===null?'':extensionMessages.t('cookiePreviewSuffix',{count:cookieCount}),extensions:extensionMessages.t('extensionPreviewSuffix',{count:extensionMessages.formatNumber(preview.extensions.length)})});
   document.querySelector('#chrome-bookmark-count').textContent=errors.bookmarks?unavailable:extensionMessages.t('itemCount',{count:bookmarkCount});
   document.querySelector('#chrome-history-count').textContent=errors.history?unavailable:extensionMessages.t('itemCount',{count:historyCount});
-  document.querySelector('#chrome-cookie-count').textContent=errors.cookies?unavailable:preview.cookies===null?(preview.canImportCookies?extensionMessages.t('databaseUnavailable'):extensionMessages.t('unsupportedPlatform')):extensionMessages.t('itemCount',{count:cookieCount});
+  document.querySelector('#chrome-cookie-count').textContent=errors.cookies?unavailable:preview.cookieSourceUnsupported?extensionMessages.t('edgeCookieUnsupported'):preview.cookies===null?(preview.canImportCookies?extensionMessages.t('databaseUnavailable'):extensionMessages.t('unsupportedPlatform')):extensionMessages.t('itemCount',{count:cookieCount});
   document.querySelector('#chrome-extension-count').textContent=extensionMessages.t('itemCount',{count:extensionMessages.formatNumber(preview.extensions.length)});
   const checks=[...document.querySelectorAll('input[name="chrome-category"]')];
   for(const category of ['bookmarks','history','cookies']){
@@ -1049,19 +1067,28 @@ document.querySelector('#start-chrome-import').onclick=async()=>{
 document.querySelector('#skip-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
 document.querySelector('#begin-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();settingsProfileId=state.activeProfileId;await openChromeImportDialog();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
 document.querySelector('#chrome-import-onboarding').addEventListener('cancel',event=>event.preventDefault());
+document.querySelector('#browser-import-source').onchange=async event=>{
+  chromeBrowserId=event.currentTarget.value;chromeSources=[];chromeSourceId='';
+  if(chromeSourceToken)await api.invoke('releaseBrowserImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';
+  document.querySelector('#chrome-source-profile').replaceChildren(new Option(extensionMessages.t('chooseChromeProfileFirst'),''));
+  document.querySelector('#chrome-source-profile').disabled=true;document.querySelector('#chrome-import-categories').disabled=true;document.querySelector('#confirm-chrome-import').disabled=true;
+  document.querySelector('#chrome-extension-choices').replaceChildren();document.querySelector('#chrome-cookie-consent-check').checked=false;document.querySelector('#chrome-cookie-consent').hidden=true;
+  for(const input of document.querySelectorAll('input[name="chrome-category"]'))input.checked=input.value==='bookmarks'||input.value==='history';
+  document.querySelector('#chrome-import-preview').textContent=extensionMessages.t('chooseDirectoryForCounts');updateBrowserImportSourceCopy();
+};
 document.querySelector('#choose-chrome-source').onclick=async()=>{
   const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
   error.removeAttribute('data-partial');
-  try{const result=await api.invoke('chooseChromeImportSource');if(result.canceled)return;if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSources=result.sources;chromeSourceToken=result.sourceToken;const select=document.querySelector('#chrome-source-profile');select.replaceChildren(...chromeSources.map(source=>new Option(`${source.name} (${source.id})`,source.id)));select.disabled=false;select.value=chromeSources[0]?.id || '';if(select.value){chromeSourceId=select.value;showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}}
+  try{const result=await api.invoke('chooseBrowserImportSource',{browser:chromeBrowserId});if(result.canceled)return;if(chromeSourceToken)void api.invoke('releaseBrowserImportSource',{sourceToken:chromeSourceToken});chromeSources=result.sources;chromeSourceToken=result.sourceToken;const select=document.querySelector('#chrome-source-profile');select.replaceChildren(...chromeSources.map(source=>new Option(`${source.name} (${source.id})`,source.id)));select.disabled=false;select.value=chromeSources[0]?.id || '';if(select.value){chromeSourceId=select.value;showChromePreview(await api.invoke('previewBrowserImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}}
   catch(reason){error.textContent=userFacingAgentError(reason);}
 };
-document.querySelector('#chrome-source-profile').onchange=async event=>{chromeSourceId=event.target.value;document.querySelector('#confirm-chrome-import').disabled=true;try{showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}catch(error){document.querySelector('#chrome-import-error').textContent=userFacingAgentError(error);}};
+document.querySelector('#chrome-source-profile').onchange=async event=>{chromeSourceId=event.target.value;document.querySelector('#confirm-chrome-import').disabled=true;try{showChromePreview(await api.invoke('previewBrowserImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));}catch(error){document.querySelector('#chrome-import-error').textContent=userFacingAgentError(error);}};
 document.querySelector('#chrome-import-form').onsubmit=async event=>{
   event.preventDefault();const categories=[...document.querySelectorAll('input[name="chrome-category"]:checked')].map(input=>input.value);const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');error.removeAttribute('data-partial');
   const extensionIds=[...document.querySelectorAll('#chrome-extension-choices input:checked')].map(input=>input.value);
   try{
     chromeImportProfileLocked=true;document.querySelector('#chrome-import-target-profile').disabled=true;
-    const result=await api.invoke('importChromeData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:chromeImportProfileId,categories,cookieConsent:categories.includes('cookies')&&document.querySelector('#chrome-cookie-consent-check').checked,...(categories.includes('extensions')?{extensionIds}:{})});
+    const result=await api.invoke('importBrowserData',{sourceToken:chromeSourceToken,sourceId:chromeSourceId,profileId:chromeImportProfileId,categories,cookieConsent:categories.includes('cookies')&&document.querySelector('#chrome-cookie-consent-check').checked,...(categories.includes('extensions')?{extensionIds}:{})});
     if(result.cookies.failed)error.dataset.partial='true';else error.dataset.success='true';
     const failed=result.extensions.failed.map(item=>`${item.name}: ${item.error}`).join(extensionMessages.locale==='zh-CN'?'；':'; ');
     const cookieNotes=[];
@@ -1089,7 +1116,7 @@ document.querySelector('#chrome-cookie-consent-check').onchange=updateChromeImpo
 document.querySelector('#chrome-extension-choices').onchange=updateChromeImportButton;
 document.querySelector('#cancel-chrome-import').onclick=()=>chromeImportDialog.close();
 document.querySelector('#cancel-chrome-import-footer').onclick=()=>chromeImportDialog.close();
-chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
+chromeImportDialog.onclose=()=>{if(chromeSourceToken)void api.invoke('releaseBrowserImportSource',{sourceToken:chromeSourceToken});chromeSourceToken='';return api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});};
 function addressLooksLikeUrl(value){const input=value.trim();return /^[a-z][a-z0-9+.-]*:/i.test(input)||/^[^\s.]+(?:\.[^\s.]+)+(?:\:\d+)?(?:[/?#]|$)/.test(input)||/^localhost(?:\:\d+)?(?:[/?#]|$)/.test(input);}
 function closeAddressSuggestions(){addressSuggestionRequest++;addressSuggestionItems=[];addressSuggestionIndex=-1;addressSuggestionOwner=null;const input=document.querySelector('#address'),list=document.querySelector('#address-suggestions');list.replaceChildren();list.hidden=true;input.setAttribute('aria-expanded','false');input.removeAttribute('aria-activedescendant');}
 function selectAddressSuggestion(item){const tab=activeTab(),owner=addressSuggestionOwner;if(!tab||!owner||owner.tabId!==tab.id||owner.profileId!==state.activeProfileId){closeAddressSuggestions();return;}const value=item.kind==='search'?item.query:item.url;closeAddressSuggestions();addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value=value;api.invoke('navigate',{id:tab.id,url:value});}

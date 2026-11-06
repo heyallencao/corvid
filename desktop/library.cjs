@@ -69,7 +69,7 @@ module.exports = function createLibrary(directory) {
     title(id,title) { const item=data.history.find(x=>x.id===id); if(item && title && item.title!==title){item.title=title;save();} },
     removeHistory(id,profileId) { const before=data.history.length; data.history=data.history.filter(x=>x.id!==id || (x.profileId ?? 'default')!==profileId); if(before!==data.history.length) save(); return before!==data.history.length; },
     addBookmark(url,title,profileId) { if(!validUrl(url)) throw new Error('Bookmark URL must be HTTP or HTTPS'); const existing=data.bookmarks.find(x=>x.url===url && (x.profileId ?? 'default')===profileId); if(existing) return existing; const item={id:randomUUID(),profileId,url,title:typeof title==='string' && title ? title : url,createdAt:new Date().toISOString()}; data.bookmarks.push(item);save();return item; },
-    importChromeData({bookmarks=[],history=[]},profileId,categories) {
+    importBrowserData({bookmarks=[],history=[]},profileId,categories) {
       const next={...data,bookmarks:[...data.bookmarks],history:[...data.history]};
       const result={bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
       if(categories.includes('bookmarks')){

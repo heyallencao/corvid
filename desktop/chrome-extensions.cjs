@@ -8,10 +8,10 @@ const chromeIdPattern=/^[a-p]{32}$/;
 function inside(root,candidate){return candidate===root||candidate.startsWith(`${root}${path.sep}`);}
 function safeDirectory(root,relative){
   const base=fs.realpathSync(root),candidate=path.resolve(base,relative);
-  if(!inside(base,candidate)||candidate===base)throw new Error('Chrome 扩展路径超出资料目录');
+  if(!inside(base,candidate)||candidate===base)throw new Error('浏览器扩展路径超出资料目录');
   const actual=fs.realpathSync(candidate);
-  if(!inside(base,actual)||actual===base)throw new Error('Chrome 扩展符号链接超出资料目录');
-  if(!fs.statSync(actual).isDirectory())throw new Error('Chrome 扩展资料不是目录');
+  if(!inside(base,actual)||actual===base)throw new Error('浏览器扩展符号链接超出资料目录');
+  if(!fs.statSync(actual).isDirectory())throw new Error('浏览器扩展资料不是目录');
   return actual;
 }
 function versionParts(version){return String(version).split(/[.+-]/).map(part=>/^\d+$/.test(part)?Number(part):part.toLowerCase());}
@@ -70,24 +70,24 @@ function discover(profileDir){
   return found.sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
 }
 function managedPath(dataDir,profileId,id,version){
-  if(!chromeIdPattern.test(id))throw new Error('Chrome 扩展 ID 无效');
+  if(!chromeIdPattern.test(id))throw new Error('浏览器扩展 ID 无效');
   const profileKey=crypto.createHash('sha256').update(String(profileId)).digest('hex').slice(0,24);
   const safeVersion=String(version).replace(/[^0-9A-Za-z._-]/g,'_');
   return path.join(dataDir,'extensions',profileKey,id,safeVersion);
 }
 function copyTree(source,destination,root,state){
-  if(fs.lstatSync(source).isSymbolicLink())throw new Error('Chrome 扩展包含不支持的符号链接');
+  if(fs.lstatSync(source).isSymbolicLink())throw new Error('浏览器扩展包含不支持的符号链接');
   const actual=fs.realpathSync(source);
-  if(!inside(root,actual))throw new Error('Chrome 扩展包含资料目录外的符号链接');
+  if(!inside(root,actual))throw new Error('浏览器扩展包含资料目录外的符号链接');
   const stat=fs.lstatSync(actual);
   if(stat.isDirectory()){
     fs.mkdirSync(destination,{recursive:true,mode:0o700});
     for(const name of fs.readdirSync(actual))copyTree(path.join(actual,name),path.join(destination,name),root,state);
     return;
   }
-  if(!stat.isFile())throw new Error('Chrome 扩展包含不支持的文件类型');
+  if(!stat.isFile())throw new Error('浏览器扩展包含不支持的文件类型');
   state.bytes+=stat.size;
-  if(state.bytes>MAX_EXTENSION_BYTES)throw new Error('Chrome 扩展超过 64 MiB 导入上限');
+  if(state.bytes>MAX_EXTENSION_BYTES)throw new Error('浏览器扩展超过 64 MiB 导入上限');
   fs.mkdirSync(path.dirname(destination),{recursive:true,mode:0o700});
   fs.copyFileSync(actual,destination,fs.constants.COPYFILE_EXCL);
   fs.chmodSync(destination,0o600);
@@ -95,7 +95,7 @@ function copyTree(source,destination,root,state){
 function copyToCorvid(extension,dataDir,profileId){
   const sourceRoot=fs.realpathSync(path.dirname(path.dirname(extension.sourcePath)));
   const sourcePath=fs.realpathSync(extension.sourcePath);
-  if(!inside(sourceRoot,sourcePath))throw new Error('Chrome 扩展源路径无效');
+  if(!inside(sourceRoot,sourcePath))throw new Error('浏览器扩展源路径无效');
   const destination=managedPath(dataDir,profileId,extension.id,extension.version);
   if(fs.existsSync(destination))return {path:destination,created:false};
   const parent=path.dirname(destination),stage=`${destination}.import-${crypto.randomUUID()}`;

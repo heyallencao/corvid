@@ -163,7 +163,7 @@ const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
   for (const record of windowRecords.values()) if (!record.browserWindow.isDestroyed()) record.browserWindow.webContents.send('agent-task-summary-state', {profileId:record.activeProfileId,tasks:agentWorkbench.listSummaries(record.activeProfileId)});
 } });
 let panelOpen = false;
-const selectedChromeSources = new Map();
+const selectedImportSources = new Map();
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
 let hangChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_ONCE==='1';
@@ -441,6 +441,7 @@ function isWindowFullscreenRequested(record) {
 }
 const library = require('./library.cjs')(dataDir);
 const chromeImport = require('./chrome-import.cjs');
+const browserImportSources = require('./browser-import-sources.cjs');
 const chromeExtensions = require('./chrome-extensions.cjs');
 const managedExtensions = chromeExtensions.createStore(dataDir);
 const { createProfileDeletion, extensionProfileRoot } = require('./profile-deletion.cjs');
@@ -1123,46 +1124,56 @@ async function dispatch(method, args = {}, fromApi = false) {
       fs.writeFileSync(temp,JSON.stringify({status:'completed',completedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);
       chromeImportOnboardingState='completed';needsChromeImportOnboarding=false;update();return {ok:true};
     }
-    case 'chooseChromeImportSource': {
-      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
-      const home=app.getPath('home');
-      const suggested=process.platform==='darwin'?path.join(home,'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(home,'.config','google-chrome');
-      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseChromeDirectoryDialog'),defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
+    case 'listBrowserImportSources': {
+      if(fromApi)throw new Error('导入来源必须由用户在桌面查看');
+      return {sources:browserImportSources.listImportSources({platform:process.platform,home:app.getPath('home'),localAppData:process.env.LOCALAPPDATA,appData:app.getPath('appData')})};
+    }
+    case 'chooseBrowserImportSource': {
+      if(fromApi) throw new Error('浏览器资料导入必须由用户在桌面操作');
+      const importSource=browserImportSources.getImportSource(args.browser);
+      const suggested=browserImportSources.defaultDirectory(importSource.id,{platform:process.platform,home:app.getPath('home'),localAppData:process.env.LOCALAPPDATA,appData:app.getPath('appData')});
+      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseBrowserDirectoryDialog',{source:importSource.name}),defaultPath:fs.existsSync(suggested)?suggested:app.getPath('home'),properties:['openDirectory']});
       if(result.canceled || !result.filePaths[0]) return {canceled:true};
       const root=result.filePaths[0];
-      try { const sources=chromeImport.profiles(root);if(!sources.length)throw new Error('所选目录中没有找到可导入的 Chrome Profile');const sourceToken=id();selectedChromeSources.set(sourceToken,root);return {canceled:false,sourceToken,sources}; }
-      catch(error){throw error;}
+      const sources=chromeImport.profiles(root,importSource.name);
+      if(!sources.length)throw new Error(`所选目录中没有找到可导入的 ${importSource.name} Profile`);
+      const sourceToken=id();selectedImportSources.set(sourceToken,{root,browser:importSource.id});return {canceled:false,sourceToken,sources};
     }
-    case 'releaseChromeImportSource': {
-      if(typeof args.sourceToken==='string')selectedChromeSources.delete(args.sourceToken);
+    case 'releaseBrowserImportSource': {
+      if(typeof args.sourceToken==='string')selectedImportSources.delete(args.sourceToken);
       return {released:true};
     }
-    case 'previewChromeImport': {
-      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
-      const selectedRoot=selectedChromeSources.get(args.sourceToken);
-      if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
-      if(typeof args.sourceId!=='string')throw new Error('请选择 Chrome Profile');
-      const sources=chromeImport.profiles(selectedRoot),source=sources.find(profile=>profile.id===args.sourceId);
-      if(!source)throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readProfilePreview(selectedRoot,args.sourceId);
-      const extensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId)).map(({sourcePath,...extension})=>extension);
-      return {sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,errors:content.errors,canImportCookies:process.platform==='darwin',extensions};
+    case 'previewBrowserImport': {
+      if(fromApi) throw new Error('浏览器资料导入必须由用户在桌面操作');
+      const selected=selectedImportSources.get(args.sourceToken);
+      if(!selected)throw new Error('浏览器导入来源已失效，请重新选择目录');
+      const importSource=browserImportSources.getImportSource(selected.browser),sourceName=importSource.name;
+      if(typeof args.sourceId!=='string')throw new Error('请选择浏览器 Profile');
+      const sources=chromeImport.profiles(selected.root,sourceName),source=sources.find(profile=>profile.id===args.sourceId);
+      if(!source)throw new Error(`${sourceName} Profile 已变化，请重新选择来源`);
+      const canImportCookies=importSource.supportsCookieImport&&process.platform==='darwin';
+      const content=chromeImport.readProfilePreview(selected.root,args.sourceId,{sourceName,includeCookies:canImportCookies});
+      const extensions=chromeExtensions.discover(path.join(selected.root,args.sourceId)).map(({sourcePath,...extension})=>extension);
+      return {browser:selected.browser,sourceName:source.name,bookmarks:content.bookmarks.length,history:content.history.length,cookies:content.cookieCount,errors:content.errors,canImportCookies,cookieSourceUnsupported:!importSource.supportsCookieImport,extensions};
     }
-    case 'importChromeData': {
-      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
-      const selectedRoot=selectedChromeSources.get(args.sourceToken);
-      if(!selectedRoot)throw new Error('Chrome 导入来源已失效，请重新选择目录');
+    case 'importBrowserData': {
+      if(fromApi) throw new Error('浏览器资料导入必须由用户在桌面操作');
+      const selected=selectedImportSources.get(args.sourceToken);
+      if(!selected)throw new Error('浏览器导入来源已失效，请重新选择目录');
+      const importSource=browserImportSources.getImportSource(selected.browser),sourceName=importSource.name;
+      const selectedRoot=selected.root;
       const profileId=findProfile(args.profileId ?? activeProfileId).id;
       if(!Array.isArray(args.categories) || !args.categories.length || args.categories.some(category=>!['bookmarks','history','cookies','extensions'].includes(category)))throw new Error('请选择可导入的资料类别');
+      if(args.categories.includes('cookies')&&!importSource.supportsCookieImport)throw new Error(`${sourceName} Cookie 导入暂不支持；Corvid 未读取 Cookie 数据`);
       chromeImport.assertCookieConsent(args.categories,args.cookieConsent);
-      const sources=chromeImport.profiles(selectedRoot);
-      if(!sources.some(profile=>profile.id===args.sourceId))throw new Error('Chrome Profile 已变化，请重新选择来源');
-      const content=chromeImport.readSelectedProfile(selectedRoot,args.sourceId,args.categories);
+      const sources=chromeImport.profiles(selectedRoot,sourceName);
+      if(!sources.some(profile=>profile.id===args.sourceId))throw new Error(`${sourceName} Profile 已变化，请重新选择来源`);
+      const content=chromeImport.readSelectedProfile(selectedRoot,args.sourceId,args.categories,{sourceName,includeCookies:importSource.supportsCookieImport});
       const sourceExtensions=chromeExtensions.discover(path.join(selectedRoot,args.sourceId));
       const chosenExtensionIds=args.extensionIds;
       if(args.categories.includes('extensions')){
-        if(!Array.isArray(chosenExtensionIds)||!chosenExtensionIds.length||chosenExtensionIds.length>50||chosenExtensionIds.some(extensionId=>typeof extensionId!=='string'))throw new Error('请选择要迁移的 Chrome 扩展');
-        if(chosenExtensionIds.some(extensionId=>!sourceExtensions.some(extension=>extension.id===extensionId)))throw new Error('Chrome 扩展清单已变化，请重新预览');
+        if(!Array.isArray(chosenExtensionIds)||!chosenExtensionIds.length||chosenExtensionIds.length>50||chosenExtensionIds.some(extensionId=>typeof extensionId!=='string'))throw new Error(`请选择要迁移的 ${sourceName} 扩展`);
+        if(chosenExtensionIds.some(extensionId=>!sourceExtensions.some(extension=>extension.id===extensionId)))throw new Error(`${sourceName} 扩展清单已变化，请重新预览`);
       }else if(chosenExtensionIds!==undefined&&(!Array.isArray(chosenExtensionIds)||chosenExtensionIds.length))throw new Error('扩展 ID 只能与扩展导入类别一起提交');
       const destinationSession=session.fromPartition(partitionFor(profileId));
       const cookieResult={imported:0,skipped:0,unsupported:0,failed:0},addedCookies=[];
@@ -1198,7 +1209,7 @@ async function dispatch(method, args = {}, fromApi = false) {
           verifyChromeCookiesPersisted(destinationSession,addedCookies);
         }
         const libraryCategories=args.categories.filter(category=>category!=='extensions');
-        const result=libraryCategories.length?library.importChromeData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
+        const result=libraryCategories.length?library.importBrowserData(content,profileId,libraryCategories):{bookmarks:{imported:0,skipped:0},history:{imported:0,skipped:0}};
         const extensions={imported:[],skipped:[],failed:[]};
         for(const extensionId of chosenExtensionIds||[]){
           const extension=sourceExtensions.find(item=>item.id===extensionId);
@@ -1217,7 +1228,7 @@ async function dispatch(method, args = {}, fromApi = false) {
             extensions.failed.push({id:extension.id,name:extension.name,error:String(error?.message||error).slice(0,300)});
           }
         }
-        if(!cookieResult.failed)selectedChromeSources.delete(args.sourceToken);
+        if(!cookieResult.failed)selectedImportSources.delete(args.sourceToken);
         return {...result,cookies:cookieResult,extensions,profileId};
       }catch(error){
         try{await rollbackCookies();}catch(rollbackError){const combined=new Error(`${error.message}；${rollbackError.message}`);combined.code=error.code||rollbackError.code;throw combined;}

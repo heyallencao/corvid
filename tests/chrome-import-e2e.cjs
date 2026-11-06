@@ -91,6 +91,14 @@ function makeChromeFixture(root){
   return profiles;
 }
 
+function makeEdgeFixture(root){
+  const profiles=makeChromeFixture(root);
+  for(const profile of profiles)profile.name=profile.name.replace('Chrome','Edge');
+  fs.writeFileSync(path.join(root,'Local State'),JSON.stringify({profile:{info_cache:Object.fromEntries(profiles.map(item=>[item.id,{name:item.name}]))}}));
+  fs.writeFileSync(path.join(root,'Default','Cookies'),'Edge Cookie database fixture: this file must remain unread and unchanged.');
+  return profiles;
+}
+
 function fixtureCookieKey(){return crypto.pbkdf2Sync(Buffer.from('fixture chrome key'),Buffer.from('saltysalt'),1003,16,'sha1');}
 function encryptCookie(key,value){
   const cipher=crypto.createCipheriv('aes-128-cbc',key,Buffer.alloc(16,0x20));
@@ -303,7 +311,7 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
   try{
     let shell;
     ({app,shell}=await boot(dataDir,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
     await shell.locator('#settings-nav-profile').click();
@@ -357,7 +365,7 @@ async function verifyCookieFlushTimeoutRecovery(tempRoot,chromeRoot,cookieKey){
   try{
     let shell;
     ({app,shell}=await boot(dataDir,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_MS:'1000',CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_ONCE:'1'}));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await app.evaluate(async({session})=>{
       const destination=session.fromPartition('persist:corvid');
@@ -417,7 +425,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     fs.mkdirSync(appData,{recursive:true});
     let shell;
     ({app,shell}=await boot(appData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
     await shell.locator('#settings-nav-profile').click();
@@ -527,6 +535,14 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
   const tempRoot=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-chrome-import-'));
   const chromeRoot=path.join(tempRoot,'chrome-user-data');fs.mkdirSync(chromeRoot);
   const chromeProfiles=makeChromeFixture(chromeRoot);
+  const edgeRoot=path.join(tempRoot,'edge-user-data');fs.mkdirSync(edgeRoot);
+  const edgeProfiles=makeEdgeFixture(edgeRoot),edgeCookiePath=path.join(edgeRoot,'Default','Cookies');
+  const edgeSourceBefore={
+    bookmarks:crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','Bookmarks'))).digest('hex'),
+    history:crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','History'))).digest('hex'),
+    extension:crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','Extensions',edgeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),
+    cookies:crypto.createHash('sha256').update(fs.readFileSync(edgeCookiePath)).digest('hex'),
+  };
   const cookieKey=fixtureCookieKey(),supportsCookieImport=process.platform==='darwin';
   if(supportsCookieImport)writeChromeCookies(path.join(chromeRoot,'Default'),cookieKey);
   let server;const restrictedPaths=[];
@@ -567,7 +583,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     fs.writeFileSync(path.join(unreadableHistoryRoot,'Default','History'),'not a SQLite database');
     const categoryIsolationData=path.join(tempRoot,'category-isolation-corvid-data');
     ({app,shell,call}=await boot(categoryIsolationData));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
     await shell.locator('#settings-nav-profile').click();
@@ -575,7 +591,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await installDialogFixture(app,unreadableHistoryRoot);
     await shell.locator('#choose-chrome-source').click();
     await shell.locator('#chrome-source-profile').selectOption('Default');
-    await shell.locator('#chrome-history-error').getByText('无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。').waitFor();
+    await shell.locator('#chrome-history-error').getByText('无法读取此类资料，已从本次导入中排除。请检查所选浏览器资料后重试。').waitFor();
     assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),false,'a readable checked category should enable the import action while the fixed footer is visible');
     await shell.locator('input[name="chrome-category"][value="bookmarks"]').uncheck();
     assert.equal(await shell.locator('#confirm-chrome-import').isDisabled(),true,'the import action must remain disabled when no readable category is selected');
@@ -596,8 +612,8 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://fixture.example/0/bookmark'],'selected readable bookmarks should import despite an unreadable unselected History database');
     assert.deepEqual((await call('/history')).history,[],'unselected unreadable History must remain untouched');
     const localeValues=await shell.evaluate(()=>({zh:window.corvidI18n.catalogs['zh-CN'].categoryReadUnavailable,en:window.corvidI18n.catalogs.en.categoryReadUnavailable}));
-    assert.equal(localeValues.zh,'无法读取此类资料，已从本次导入中排除。请检查 Chrome 资料后重试。');
-    assert.equal(localeValues.en,'This data type could not be read and is excluded from this import. Check the Chrome data and try again.');
+    assert.equal(localeValues.zh,'无法读取此类资料，已从本次导入中排除。请检查所选浏览器资料后重试。');
+    assert.equal(localeValues.en,'This data type could not be read and is excluded from this import. Check the selected browser data and try again.');
     await shell.locator('#cancel-chrome-import-footer').click();
     await shell.locator('#chrome-import').waitFor({state:'hidden'});
     await app.close();app=undefined;
@@ -605,7 +621,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     const categoryIsolationEnData=path.join(tempRoot,'category-isolation-en-corvid-data');fs.mkdirSync(categoryIsolationEnData);
     fs.writeFileSync(path.join(categoryIsolationEnData,'ui-preferences.json'),JSON.stringify({schemaVersion:1,uiLocale:'en'}),{mode:0o600});
     ({app,shell}=await boot(categoryIsolationEnData));
-    await shell.getByRole('heading',{name:'Start using Corvid with Chrome?'}).waitFor();
+    await shell.getByRole('heading',{name:'Start using Corvid with another browser?'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await shell.locator('#show-settings').click();
     await shell.locator('#settings-nav-profile').click();
@@ -613,7 +629,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await installDialogFixture(app,unreadableHistoryRoot);
     await shell.locator('#choose-chrome-source').click();
     await shell.locator('#chrome-source-profile').selectOption('Default');
-    await shell.locator('#chrome-history-error').getByText('This data type could not be read and is excluded from this import. Check the Chrome data and try again.').waitFor();
+    await shell.locator('#chrome-history-error').getByText('This data type could not be read and is excluded from this import. Check the selected browser data and try again.').waitFor();
     assert.equal(await shell.locator('input[name="chrome-category"][value="history"]').isDisabled(),true,'English UI should exclude the unreadable category');
     assert.equal(await shell.locator('input[name="chrome-category"][value="bookmarks"]').isDisabled(),false,'English UI should keep the readable category selectable');
     const categoryEnScreenshotDir=path.join(project,'docs','qa','screenshots');fs.mkdirSync(categoryEnScreenshotDir,{recursive:true});
@@ -626,11 +642,68 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       return;
     }
 
+    const edgeData=path.join(tempRoot,'edge-corvid-data');
+    ({app,shell,call}=await boot(edgeData));
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
+    await shell.locator('#skip-chrome-import').click();
+    await shell.getByRole('button',{name:'浏览身份选项'}).click();
+    await shell.getByRole('menuitem',{name:'新建浏览身份'}).click();
+    await shell.locator('#profile-name').fill('Edge Target');
+    await shell.getByRole('button',{name:'新建浏览身份'}).click();
+    const edgeTarget=(await call('/profiles')).profiles.find(profile=>profile.name==='Edge Target');
+    assert.ok(edgeTarget&&edgeTarget.id!=='default','the fixture should have a separate Corvid target Profile');
+    await shell.locator('#show-settings').click();
+    await shell.locator('#settings-nav-profile').click();
+    await installDialogFixture(app,edgeRoot);
+    await shell.locator('#start-chrome-import').click();
+    await shell.locator('#browser-import-source').selectOption('edge');
+    await shell.locator('#chrome-import-target-profile').selectOption(edgeTarget.id);
+    assert.match(await shell.locator('[data-i18n="browserImportTitle"]').textContent(),/Microsoft Edge/,'the selected source name should be reflected in the dialog title');
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('#chrome-import-categories').waitFor({state:'visible'});
+    await shell.waitForFunction(()=>!document.querySelector('#chrome-import-categories').disabled);
+    assert.equal(await shell.locator('#chrome-source-profile').inputValue(),'Default');
+    assert.match(await shell.locator('#chrome-cookie-count').textContent(),/尚未实现|不支持/,'Edge Cookie must be visibly unsupported');
+    assert.equal(await shell.locator('input[name="chrome-category"][value="cookies"]').isDisabled(),true,'Edge Cookie must be disabled in the UI');
+    assert.equal(await shell.locator('#chrome-import-target-profile').inputValue(),edgeTarget.id,'Edge data must target the user-selected Corvid Profile');
+    const forgedCookieImport=await shell.evaluate(async({profileId})=>{
+      const selected=await window.browserShell.invoke('chooseBrowserImportSource',{browser:'edge'});
+      try{await window.browserShell.invoke('importBrowserData',{sourceToken:selected.sourceToken,sourceId:'Default',profileId,categories:['cookies'],cookieConsent:true});return '';}
+      catch(error){return error.message;}
+      finally{await window.browserShell.invoke('releaseBrowserImportSource',{sourceToken:selected.sourceToken});}
+    },{profileId:edgeTarget.id});
+    assert.match(forgedCookieImport,/Edge Cookie 导入暂不支持/,'the main process must reject a forged Edge Cookie category');
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(edgeCookiePath)).digest('hex'),edgeSourceBefore.cookies,'Edge Cookie fixture must remain unreadable data and unchanged through preview and forged import');
+    await shell.locator('input[name="chrome-category"][value="extensions"]').check();
+    await selectAllExtensions(shell);
+    await shell.locator('#confirm-chrome-import').click();
+    await shell.waitForFunction(()=>document.querySelector('#chrome-import-error')?.dataset.success==='true');
+    assert.deepEqual((await call(`/bookmarks?profileId=${edgeTarget.id}`)).bookmarks.map(item=>item.url),['https://fixture.example/0/bookmark'],'Edge bookmarks should import into the explicitly selected Corvid Profile');
+    assert.deepEqual((await call(`/history?profileId=${edgeTarget.id}`)).history.map(item=>item.url),['https://fixture.example/0/history'],'Edge history should import into the selected Corvid Profile');
+    assert.equal((await call('/bookmarks?profileId=default')).bookmarks.length,0,'Edge bookmarks must not leak into the default Corvid Profile');
+    assert.equal((await call('/history?profileId=default')).history.length,0,'Edge history must not leak into the default Corvid Profile');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(edgeData,'managed-extensions.json'),'utf8')).filter(item=>item.profileId===edgeTarget.id).length,1,'selected Edge extensions should be installed into the selected Corvid Profile');
+    await shell.locator('#choose-chrome-source').click();
+    await shell.locator('#chrome-source-profile').selectOption('Default');
+    await shell.locator('input[name="chrome-category"][value="extensions"]').uncheck();
+    await shell.locator('#confirm-chrome-import').click();
+    await shell.waitForFunction(()=>document.querySelector('#chrome-import-error')?.dataset.success==='true');
+    assert.equal((await call(`/bookmarks?profileId=${edgeTarget.id}`)).bookmarks.length,1,'reimporting Edge bookmarks must be idempotent');
+    assert.equal((await call(`/history?profileId=${edgeTarget.id}`)).history.length,1,'reimporting Edge history must be idempotent');
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(edgeCookiePath)).digest('hex'),edgeSourceBefore.cookies,'Edge Cookie source must remain unchanged after import');
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','Bookmarks'))).digest('hex'),edgeSourceBefore.bookmarks,'Edge bookmark source must remain unchanged');
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','History'))).digest('hex'),edgeSourceBefore.history,'Edge history source must remain unchanged');
+    assert.equal(crypto.createHash('sha256').update(fs.readFileSync(path.join(edgeRoot,'Default','Extensions',edgeProfiles[0].extensionId,'2.0.0','manifest.json'))).digest('hex'),edgeSourceBefore.extension,'Edge extension source must remain unchanged');
+    await shell.locator('#cancel-chrome-import').click();
+    await app.close();app=undefined;
+    console.log(`PASS Edge fixture import; source profiles=${edgeProfiles.length}; Edge Cookie read rejected by the main process`);
+
     const appData=path.join(tempRoot,'fresh-corvid-data');
     const testEnv={CORVID_TEST_CHROME_LIBRARY_IMPORT_FAIL_RENAME_ONCE:'1'};
     if(supportsCookieImport)Object.assign(testEnv,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE:'1',CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'});
     ({app,shell,call}=await boot(appData,testEnv));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     assert.equal(await app.evaluate(()=>globalThis.chromeImportDialogCalls||0),0,'first launch must not scan or open Chrome');
     await installDialogFixture(app,chromeRoot);
     await shell.locator('#begin-chrome-import').click();
@@ -680,7 +753,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     assert.deepEqual((await call('/bookmarks')).bookmarks.map(item=>item.url),['https://corvid.fixture/preserved'],'failed import must not partially append Chrome bookmarks');
     assert.equal((await call('/history')).history.length,0,'failed import must not partially append Chrome history');
     await shell.locator('#confirm-chrome-import').click();
-    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*历史新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项 ?[（(]跳过 3 项、不支持 2 项[）)]':''}.*扩展新增 1 项.*未导入：Corvid Symlink[:：] ?Chrome 扩展包含不支持的符号链接`)).waitFor();
+    await shell.locator('#chrome-import-error').getByText(new RegExp(`导入完成：书签新增 1 项.*历史新增 1 项.*${supportsCookieImport?'Cookie 新增 0 项 ?[（(]跳过 3 项、不支持 2 项[）)]':''}.*扩展新增 1 项.*未导入：Corvid Symlink[:：] ?浏览器扩展包含不支持的符号链接`)).waitFor();
     assert.equal((await call('/bookmarks')).bookmarks.length,2);
     assert.equal((await call('/history')).history.length,1);
     assert.equal((await call('/bookmarks')).bookmarks[0].profileId,'default');
@@ -702,7 +775,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     assert.equal(await shell.locator('[data-i18n="profileExtensionsDescription"]').textContent(),'Enablement changes take effect immediately; open pages need to reload.');
     await shell.locator('#start-chrome-import').click();
     const importLimitations=await shell.locator('#chrome-import .import-limitation').textContent();
-    assert.match(importLimitations,/Electron supports only some Chrome extension APIs, so some extension features may be unavailable/);
+    assert.match(importLimitations,/Electron supports only some Chromium extension APIs, so some features may be unavailable/);
     assert.doesNotMatch(importLimitations,/toolbar popups? (are )?not integrated/i);
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
@@ -710,7 +783,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     await shell.locator('#start-chrome-import').click();
     const importLimitationsZh=await shell.locator('#chrome-import .import-limitation').textContent();
-    assert.match(importLimitationsZh,/Electron 仅支持部分 Chrome 扩展 API，个别扩展功能可能不可用/);
+    assert.match(importLimitationsZh,/Electron 仅支持部分 Chromium 扩展 API，个别扩展功能可能不可用/);
     assert.doesNotMatch(importLimitationsZh,/扩展工具栏弹窗暂未集成/);
     await shell.locator('#cancel-chrome-import').click();
     await shell.locator('#show-settings').click();
@@ -890,7 +963,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       const sourceAfterFixture=crypto.createHash('sha256').update(fs.readFileSync(path.join(chromeRoot,'Default','Cookies'))).digest('hex');
       const retryData=path.join(tempRoot,'cookie-write-retry-data');
       ({app,shell,call}=await boot(retryData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex'),CORVID_TEST_CHROME_COOKIE_SET_FAIL_NAME:'write_retry_cookie'}));
-      await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+      await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
       await shell.locator('#skip-chrome-import').click();
       await shell.locator('#show-settings').click();
       await shell.locator('#settings-nav-profile').click();
@@ -934,7 +1007,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
           ...(scenario.injectRollbackFlushFailure?{CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE:'1'}:{}),
         };
         ({app,shell,call}=await boot(rollbackData,injection));
-        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
         await shell.locator('#skip-chrome-import').click();
         await shell.locator('#show-settings').click();
         await shell.locator('#settings-nav-profile').click();
@@ -997,7 +1070,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       ({app,shell,call}=await boot(diskFailureData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
       try{
         assert.throws(()=>fs.writeFileSync(path.join(cookieStorePath,'write-probe'),'x'),error=>error.code==='EACCES','the fixture must actually deny writes to the Cookie store directory');
-        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
         await shell.locator('#skip-chrome-import').click();
         await shell.locator('#show-settings').click();
         await shell.locator('#settings-nav-profile').click();
@@ -1054,7 +1127,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       const corruptCookieBytes=fs.readFileSync(corruptCookieFile);
       const corruptData=path.join(tempRoot,'corrupt-source-corvid-data');
       ({app,shell,call}=await boot(corruptData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
-      await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+      await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
       await shell.locator('#skip-chrome-import').click();
       await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved-corrupt-source','title':'损坏来源前的既有书签'});
       const libraryBeforeCorruptImport=fs.readFileSync(path.join(corruptData,'library.json'));
@@ -1087,7 +1160,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
       const lockedData=path.join(tempRoot,'locked-source-corvid-data');
       try{
         ({app,shell,call}=await boot(lockedData,{CORVID_TEST_CHROME_COOKIE_KEY:cookieKey.toString('hex')}));
-        await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+        await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
         await shell.locator('#skip-chrome-import').click();
         await call('/bookmarks','POST',{url:'https://corvid.fixture/preserved-locked-source','title':'占用来源前的既有书签'});
         const libraryBeforeLockedImport=fs.readFileSync(path.join(lockedData,'library.json'));
@@ -1105,7 +1178,7 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
         await shell.locator('#confirm-chrome-import').click();
         const lockedImportStatus=shell.locator('#chrome-import-error');
         await lockedImportStatus.waitFor({state:'visible'});
-        assert.match(await lockedImportStatus.textContent(),/may still be in use by Chrome/,'an English UI must show localized recovery guidance for a busy database');
+        assert.match(await lockedImportStatus.textContent(),/may still be in use/,'an English UI must show localized recovery guidance for a busy database');
         assert.doesNotMatch(await lockedImportStatus.textContent(),/无法读取|退出 Chrome 后重试/,'an English UI must not show hard-coded Chinese SQLite guidance');
         assert.equal(await lockedImportStatus.getAttribute('data-success'),null,'a locked Cookie database must not be reported as a successful import');
         assert.deepEqual(fs.readFileSync(path.join(lockedData,'library.json')),libraryBeforeLockedImport,'a locked Chrome Cookie database must leave the target library byte-for-byte unchanged');
@@ -1123,11 +1196,11 @@ async function verifyDiskFullCookieRecovery(tempRoot,chromeRoot,cookieKey){
 
     const pendingData=path.join(tempRoot,'pending-corvid-data');
     ({app,shell}=await boot(pendingData));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     assert.equal(JSON.parse(fs.readFileSync(path.join(pendingData,'chrome-import-onboarding.json'))).status,'pending');
     await app.close();app=undefined;
     ({app,shell}=await boot(pendingData));
-    await shell.getByRole('heading',{name:'从 Chrome 开始使用 Corvid？'}).waitFor();
+    await shell.getByRole('heading',{name:'从其他浏览器开始使用 Corvid？'}).waitFor();
     await shell.locator('#skip-chrome-import').click();
     await until(()=>JSON.parse(fs.readFileSync(path.join(pendingData,'chrome-import-onboarding.json'))).status==='completed','onboarding decision');
     await app.close();app=undefined;
