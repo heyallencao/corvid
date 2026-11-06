@@ -63,25 +63,37 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await api('POST', `/rooms/${openRoom.id}/activate`, {});
     await shell.locator('#address').fill(origin);
     await shell.locator('#address').press('Enter');
-    await waitFor(async () => (await api('GET', '/rooms')).rooms.find(room => room.id === openRoom.id)?.tabs[0]?.url === origin + '/', 'user fixture page load');
+    await waitFor(async () => {
+      const tab = (await api('GET', '/rooms')).rooms.find(room => room.id === openRoom.id)?.tabs[0];
+      return tab?.url === origin + '/' && tab.loadComplete;
+    }, 'user fixture page load');
 
     await app.evaluate(({ app: electronApp }) => electronApp.focus(process.platform === 'darwin' ? { steal: true } : undefined));
     await app.evaluate(({ Menu }) => {
       Menu.prototype.popup = function capturePageMenu() { globalThis.__corvidPageContextMenu = this; };
       globalThis.__corvidPageContextMenu = null;
+      globalThis.__corvidNativeContextEvent = null;
     });
-    const triggerContextMenu = async pageUrl => app.evaluate(({ BrowserWindow }, expectedUrl) => {
+    const triggerContextMenu = async pageUrl => app.evaluate(async ({ BrowserWindow }, expectedUrl) => {
       const targetWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
       const view = targetWindow.contentView.children.find(child => child.webContents?.getURL() === expectedUrl);
       if (!view) throw new Error('The local fixture WebContentsView was not found');
+      view.webContents.on('context-menu', (_event, params) => { globalThis.__corvidNativeContextEvent = { x: params.x, y: params.y, linkURL: params.linkURL, isEditable: params.isEditable }; });
       view.webContents.focus();
       view.webContents.sendInputEvent({ type: 'mouseDown', x: 40, y: 18, button: 'right', clickCount: 1 });
+      await new Promise(resolve => setTimeout(resolve, 30));
       view.webContents.sendInputEvent({ type: 'mouseUp', x: 40, y: 18, button: 'right', clickCount: 1 });
+      return { focused: view.webContents.isFocused(), windowFocused: targetWindow.isFocused(), url: view.webContents.getURL() };
     }, pageUrl);
 
-    await triggerContextMenu(origin + '/');
-    const menu = await waitFor(async () => app.evaluate(() => globalThis.__corvidPageContextMenu ?
+    const triggerState = await triggerContextMenu(origin + '/');
+    let menu;
+    try { menu = await waitFor(async () => app.evaluate(() => globalThis.__corvidPageContextMenu ?
       globalThis.__corvidPageContextMenu.items.map(item => ({ id: item.id, label: item.label, enabled: item.enabled, role: item.role })) : null), 'native page context menu');
+    } catch (error) {
+      const event = await app.evaluate(() => globalThis.__corvidNativeContextEvent);
+      throw new Error(`${error.message}; trigger=${JSON.stringify(triggerState)}; nativeEvent=${JSON.stringify(event)}`);
+    }
     assert.ok(menu.some(item => item.id === 'corvid-page-open-link' && item.label === '在新标签页中打开链接'));
     assert.ok(menu.some(item => item.id === 'corvid-page-copy-link' && item.enabled));
     assert.equal(menu.some(item => /Developer|开发者|Electron|Inspect|检查元素/i.test(item.label || '')), false);
@@ -100,7 +112,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const agentTab = agentRoom.tabs[0];
     await api('POST', `/tabs/${agentTab.id}/navigate`, { url: `${origin}/agent` });
     await api('POST', `/rooms/${agentRoom.id}/activate`, {});
-    await waitFor(async () => (await api('GET', '/rooms')).rooms.find(room => room.id === agentRoom.id)?.tabs[0]?.url === `${origin}/agent`, 'Agent fixture page load');
+    await waitFor(async () => {
+      const tab = (await api('GET', '/rooms')).rooms.find(room => room.id === agentRoom.id)?.tabs[0];
+      return tab?.url === `${origin}/agent` && tab.loadComplete;
+    }, 'Agent fixture page load');
     await app.evaluate(() => { globalThis.__corvidPageContextMenu = null; });
     await triggerContextMenu(`${origin}/agent`);
     await delay(100);

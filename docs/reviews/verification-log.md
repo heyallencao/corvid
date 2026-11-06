@@ -1963,3 +1963,12 @@
 - 最新主线重放：`origin/main` 前进到 `57e3a74` 后，分支 rebase 冲突仅涉及 `package.json` 与本记录；两处均先保留 main 单边，再嫁接架构合同与验证条目。该基线上一次全量在 `multi-window-e2e.cjs:56` 观察到控制 API 已登记第二窗口、Playwright `app.windows()` 尚未更新，导致立即断言为 1/2；测试现改为等待第二个 shell page，隔离连续 3 次通过。
 - 最终候选验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` 在基于 `57e3a74` 的最终候选 EXIT 0；37/37 node:test 与完整串行 E2E/合同链通过，包含 package dir、screenshot fallback、架构映射合同和 multi-window。测试生成的 9 张已跟踪 QA 截图已恢复为基线字节。
 - 尚需合入架构别名 follow-up，并从合并后 main 再跑一次 `publish=false` Release workflow，确认 x64 packaged runtime、arm64 full/packaged gate 与 Windows packaged smoke 全部通过；本记录不代表该 hosted 重跑已完成。
+
+## 2026-11-06 Issue #319 hosted Release gate 稳定性 follow-up（PR 前）
+
+- 基线：隔离 worktree `infra/issue-319-release-final`，`origin/main` `cdf07ed`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；`npm ci` 安装 375 个包，0 vulnerabilities。没有改动主克隆已有工作区。
+- Hosted 直接证据：run [42140491907](https://github.com/heyallencao/corvid/actions/runs/42140491907) 的 arm64 回归在 `browser.e2e.mjs` 的页面输入焦点返回 400，并在 `page-context-menu-e2e.cjs` 等待原生 context menu 超时；Intel app bundle smoke 与 Windows packaged smoke 通过，Intel DMG/ZIP 打包完毕后 electron-builder 因缺少 `GH_TOKEN` 退出 1。
+- 修正：本地 E2E 夹具导航后等待 `loadComplete` 再执行页面输入/原生右键；原生合成右键的 `mouseDown` 与 `mouseUp` 增加 30ms 间隔。Release artifact 的 macOS/Windows package 命令显式使用 `--publish never`，避免构建 job 启动独立的自动发布器；合同测试断言三条脚本均禁用自动发布。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/page-context-menu-e2e.cjs` 连续 3 次通过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test tests/browser.e2e.mjs` 连续 4 次通过；`node tests/package-mac-dir-contract.cjs` 通过。E2E 每次启动前检查同机 Corvid Electron 状态并等待并发测试退出。
+- 全量验证：最终候选 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test 通过，包含 package directory、screenshot fallback、architecture alias 三项合同，后续全串行 Electron E2E/合同脚本全部通过。测试更新的 9 张已跟踪 QA 截图恢复为基线字节。测试仅使用隔离目录、合成数据与本地 fixture；未调用真实模型/OAuth或用户 Profile。
+- 边界：以上是本机 macOS arm64 开发环境证据。修正尚未合入；仍需 PR 自检/合并，并由 main 上 `version=0.2.0`、`publish=false` 手动 workflow_dispatch 确认 arm64 全量及 packaged smoke、Intel DMG/ZIP 与 x64 smoke、Windows packaged smoke。当前不能声称 hosted gate 已通过，也没有发布 Release。
