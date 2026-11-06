@@ -2144,3 +2144,10 @@
 - hosted 中间复验：run [42171503087](https://github.com/heyallencao/corvid/actions/runs/42171503087) 的 Windows 与 macOS Intel 打包通过；macOS arm64 全量回归两次尝试分别遇到打印状态等待超时和 fullscreen 高度相差 2 px 的断言失败，因此此 run 未作为最终门禁通过证据。
 - 最终 hosted 验收：既有手动 `release.yml` run [42173674375](https://github.com/heyallencao/corvid/actions/runs/42173674375)，基线 `baad6429519d81da0818ec0d9179047f2f7bbac6`，参数 `version=0.2.0`、`publish=false`；preflight、Windows packaged installer/launcher/单实例/快捷键/UI smoke、macOS Intel 打包，以及 macOS arm64 全量 E2E 与打包 jobs 全部成功，`publish` job 按配置跳过。Windows 日志确认三个 runner 阶段均执行，快捷键测试输出 `PASS shortcuts, navigation, zoom and per-profile search settings across restart`。本轮未签名、公证或发布。
 - 未覆盖边界：Windows 原生文件与保存对话框、NSIS 安装/卸载交互、DPI/字体/任务栏行为仍需 Windows 桌面人工验收；hosted installer 构建成功不代表这些交互已人工验收。未签名 SmartScreen 策略仍待产品决策。
+
+## 2026-11-06 Issue #332 网页对话框 Escape 取消答复
+
+- 修改：`#page-dialog` 监听原生 `cancel` 事件并阻止浏览器只关闭 `<dialog>` 的默认行为，转入既有 `answerPageDialog(false)` 取消路径，使页面等待中的 `prompt` 收到取消结果。
+- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/dialogs-ui-e2e.cjs` 通过。真实 Electron 页面 prompt 的接受路径返回输入文本；取消按钮、标题头 × 与键盘 Escape 均使页面返回 `null`，触发页面动作完成而非挂起。
+- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例通过，之后完整串行 E2E 链全部 PASS。`node --check`（renderer 与 E2E）、`git diff --check` 通过。全量运行改写的 9 张历史 QA 截图已在隔离 worktree 中恢复；PR 不包含截图。
+- 环境与限制：仅在 macOS arm64 source Electron 与本地 fixture 验证，未调用真实模型、Provider 或 OAuth；本次新增专项断言覆盖网页 `prompt`，没有新增 `confirm`/`alert` 页面取消语义断言。截图不适用：本 PR 修改关闭键盘行为与 E2E，不改变可见界面。

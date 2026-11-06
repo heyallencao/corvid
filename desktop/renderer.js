@@ -334,6 +334,7 @@ async function answerPageDialog(accept) {
 document.querySelector('#page-dialog-form').onsubmit=event=>{event.preventDefault();void answerPageDialog(true);};
 document.querySelector('#page-dialog-dismiss').onclick=()=>answerPageDialog(false);
 document.querySelector('#page-dialog-close').onclick=()=>answerPageDialog(false);
+document.querySelector('#page-dialog').oncancel=event=>{event.preventDefault();void answerPageDialog(false);};
 document.querySelector('#page-dialog').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let libraryRenderVersion=0,libraryProfileId=null;
 function historyLocalDayKey(value){const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
