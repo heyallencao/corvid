@@ -1,12 +1,15 @@
 import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, dirname, isAbsolute } from 'node:path';
+import dataDirectory from '../desktop/data-directory.cjs';
 import { urlMatcher } from './url-matcher.js';
 import { fetchInDocument } from './page-fetch.js';
 import { CODES, CorvidError, errorFromResponse } from './errors.js';
 
 /** Connect to the desktop control service without exposing a browser debugging endpoint. */
-export async function connect({ dataDir = process.env.CORVID_DATA_DIR || join(homedir(), '.corvid'), baseUrl, token } = {}) {
+const { resolveDataDirectory } = dataDirectory;
+
+export async function connect({ dataDir = resolveDataDirectory({ override:process.env.CORVID_DATA_DIR, homeDir:homedir() }), baseUrl, token } = {}) {
   let config;
   if (token !== undefined && baseUrl === undefined) {
     if (typeof token !== 'string' || !token) throw new TypeError('A non-empty scoped token is required');

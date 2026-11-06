@@ -2072,3 +2072,10 @@
 - 定向验证：`node --test --test-concurrency=1 tests/electron-startup.e2e.mjs` 12/12 通过；`fullscreen-e2e.cjs`、`application-menu-e2e.cjs`、`chrome-import-e2e.cjs` 默认路径均 EXIT 0。未触发锁屏 skip。
 - 全量验证：此前四次全量尝试分别中止在下载入口、工作台摘要边界、页面生命周期和工作台摘要边界；其间相关失败入口的隔离复跑通过，但不足以确定此前失败根因。#289 互斥锁合入后，以 `0ee8563` 为基线 rebase 的候选 `b107d30` 上执行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，43/43 node:test 与其后 75 条串行脚本全部通过；本次未观察到此前失败。该结果不单独证明互斥锁是根因修复。测试生成的 9 张跟踪 QA 截图已恢复。
 - 环境与边界：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离数据目录与本地 fixtures，未调用真实模型/OAuth。当前为解锁默认路径，真实锁屏探测未执行；skip 不证明原生焦点、失焦或全屏功能通过。Windows、签名包、真实网站和读屏未覆盖。
+
+## 2026-11-06 Issue #345 Windows 平台路径、单实例与打包 UI 合同
+
+- 基线：隔离 worktree 分支 `infra/issue-345-windows-platform`，基于最新 `origin/main` `3f99304`；macOS 26.5.1 arm64、Node.js v24.22.1、Electron 45.2.1。
+- 定向合同：数据目录解析覆盖 POSIX/Windows 默认路径、`CORVID_DATA_DIR` 优先级和缺失 home 拒绝；Windows 菜单合同覆盖无品牌应用菜单、退出、`CmdOrCtrl+T` 与 `F11`。真实 Electron 单实例 E2E 验证第二进程退出、原控制服务持续可用、仅保留一个窗口且首窗口恢复显示。
+- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例通过，随后完整串行脚本链通过（76 条独立脚本，包含单实例与只读目录 E2E）。启动前检查无活动 Electron E2E；运行期间保持唤醒。`git diff --check` 与新增/修改 JS 入口 `node --check` 通过。
+- 隐私与限制：使用临时 `CORVID_DATA_DIR` 与本地 fixture，不调用真实模型、Provider 或 OAuth。当前机器为 macOS，未在本机运行 Windows packaged executable；合并后仍须执行既有 `release.yml` 手动 workflow（`publish=false`）。Windows 原生文件/保存面板、NSIS 安装交互、DPI/字体/任务栏仍待 Windows 桌面人工验收；未签名 SmartScreen 策略未作产品决策，本轮未签名、公证或发布。

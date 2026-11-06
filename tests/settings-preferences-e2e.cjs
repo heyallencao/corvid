@@ -7,6 +7,7 @@ const os=require('node:os');
 const path=require('node:path');
 
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.env.CORVID_PACKAGED_APP_PATH):electron;
 (async()=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-settings-preferences-'));
   const dataDir=path.join(temp,'data'),downloadDir=path.join(temp,'downloads');
@@ -22,7 +23,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
   let app;
   const waitFor=async(fn,label)=>{for(let i=0;i<240;i++){const value=await fn();if(value)return value;await delay(50);}throw new Error(`Timed out waiting for ${label}`);};
   async function start(){
-    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_DOWNLOAD_DIR:downloadDir,CORVID_TEST_DOWNLOAD_DIALOG_RESULT:'cancel',CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE:process.env.CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE||'0'}});
+    app=await _electron.launch({executablePath,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_DOWNLOAD_DIR:downloadDir,CORVID_TEST_DOWNLOAD_DIALOG_RESULT:'cancel',CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE:process.env.CORVID_TEST_BROWSER_PREFERENCES_FAIL_ONCE||'0'}});if(process.env.CORVID_PACKAGED_APP_PATH)assert.equal(await app.evaluate(({app})=>app.isPackaged),true,'settings E2E launches the packaged app');
     const shell=await app.firstWindow();
     const config=await waitFor(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'Corvid control endpoint');
     const request=async route=>{const response=await fetch(config.baseUrl+route,{headers:{Authorization:`Bearer ${config.token}`}});assert.ok(response.ok);return response.json();};
