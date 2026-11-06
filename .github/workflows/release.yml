@@ -191,10 +191,6 @@ jobs:
           if (actual.length !== expected.length || actual.some(name => !expected.includes(name))) {
             throw new Error(`Unexpected release asset set: ${actual.join(', ')}`);
           }
-          const actual = files.filter(name => name.startsWith('Corvid-') && /\.(dmg|zip|exe)$/.test(name)).sort();
-          if (actual.length !== expected.length || actual.some(name => !expected.includes(name))) {
-            throw new Error(`Unexpected release asset set: ${actual.join(', ')}`);
-          }
           NODE
       - name: Create the public GitHub Release
         env:

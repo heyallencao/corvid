@@ -2180,3 +2180,11 @@
 - 改动：地址栏建议测试先清空旧查询并等待列表收起，再等当前 URL 建议和单一结果；Agent 授权测试等待设置按钮可见；未连接模型测试等待中英文状态文案就绪后再断言。
 - 定向验证：`node --check tests/address-suggestions-e2e.cjs tests/agent-access-ui-e2e.cjs tests/pi-unconnected-model-label-e2e.cjs` 与 `git diff --check` 通过。分别运行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/address-suggestions-e2e.cjs`（两次通过）、`... node tests/pi-unconnected-model-label-e2e.cjs`（通过；仅合成页面，无 Provider/OAuth/API Key）、`... node tests/agent-access-ui-e2e.cjs`（通过）。
 - 限制：未运行全量 E2E；串行 suite 首错后继续收集结果的 runner 改进单独跟踪于 #392。本轮为测试就绪判定，不改产品运行时代码。
+
+## 2026-11-06 Issue #319 打印导航等待与 Release publish 脚本修复
+
+- 基线：干净隔离分支 `browser/issue-319-release-gate`，起点 `origin/main` `c555fa1`；macOS arm64，Node.js v24.22.1、Electron 45.2.1。上一 hosted run [42197272387](https://github.com/heyallencao/corvid/actions/runs/42197272387) 在 `browser-print-e2e.cjs:150` 两次超时；失败前仅观察到旧 `tab.ready` 和 fixture 请求，不代表主框架导航已结束。打印主进程仍保留导航期间拒绝打印的保护。
+- 改动：打印 E2E 通过 `/rooms` 等待活动 tab 的 `loadComplete` 且 `isLoading === false`，之后才安装打印 stub 和触发快捷键；首个页面也使用相同就绪条件。移除 release workflow 中重复的 `const actual` 资产集合校验。Release notes 模板补充 Corvid 浏览器、Agent 工作台、Room/Profile 与用户控制权的功能摘要。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 通过；`node --check tests/browser-print-e2e.cjs` 与 `git diff --check` 通过。
+- 全量验证：`env -u ELECTRON_RUN_AS_NODE npm --prefix /Users/allen/Workspace/projects/personal/corvid-release-fix test` 退出码 0；46/46 node:test 与串行链 77 条脚本 PASS。环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时数据目录和本地 fixture，未调用真实模型、Provider 或 OAuth。测试生成的 9 张既有 QA 截图已恢复。
+- 限制：PR 尚未合并；这次本机全量结果不替代合并后 `main` 上的手动 Release workflow。Intel macOS 与 Windows packaged build/smoke 尚待 hosted workflow。本记录不代表 Release 已创建。

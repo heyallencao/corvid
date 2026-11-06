@@ -2,6 +2,10 @@
 
 此 GitHub Release 在公开仓库中可供任何人下载。
 
+## 本版内容
+
+Corvid 将桌面浏览器、内置 Agent 工作台与外部 SDK/CLI 放在统一的 Room、Profile 和控制权模型下。用户可在浏览器中正常浏览，并查看 Agent 在独立 Room 中的任务状态与页面操作。
+
 ## 下载与安装
 
 - **Apple Silicon Mac**：下载 `Corvid-{{VERSION}}-mac-arm64.dmg`，打开磁盘映像并将 Corvid 拖入“应用程序”。
