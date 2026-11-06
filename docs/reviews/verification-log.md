@@ -1999,3 +1999,10 @@
 - `browser.e2e.mjs` 改由 Playwright Electron launcher 启动并显式 focus app；`fill` 场景只对当前活动 Room 内可见页面发送输入，避免在被另一 WebContentsView 遮挡的后台页面上要求可信键盘焦点。`desktop/actions.cjs` 合成单次 click 在 mousePressed 与 mouseReleased 间留 30ms，让 renderer 有时间处理点击。
 - 定向验证（macOS arm64）：`browser.e2e.mjs` 连续 3 次通过，`snapshot-e2e.cjs` 连续 2 次通过，`page-context-menu-e2e.cjs` 通过；未重复本机全量 `npm test`。测试使用隔离目录和本地 fixture；模型/OAuth 未调用。
 - 这些改动尚未合入。仍需合入后重新派发 `version=0.2.0`、`publish=false` workflow；本记录不声称 latest hosted arm64 full gate 已通过，也没有发布 Release。
+
+## 2026-11-06 Issue #319 hosted window focus follow-up（PR 前）
+
+- `publish=false` hosted run [42148049355](https://github.com/heyallencao/corvid/actions/runs/42148049355)：Intel app/DMG/ZIP、Windows installer/upload 均通过；arm64 retry #1 在 `browser-print-e2e.cjs:120` 等快捷键打印调用，retry #2 在 `window-state-e2e.cjs:37` 等 resize 后的状态文件。
+- 调查发现这两个用例都通过 Electron/Chromium 合成输入或调用 BrowserWindow 后立即依赖窗口获得系统焦点。测试现显式调用 `app.focus({ steal: true })` 与 `BrowserWindow.focus()` 后发送 Cmd/Ctrl+P；窗口状态用例在写状态前也显式聚焦窗口，并先观察目标 bounds 生效，再检查 debounce 后的持久化文件。
+- 定向命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 与 `... node tests/window-state-e2e.cjs` 各连续 2 次通过。未重复本机全量 `npm test`；等待合并后的手动 Release gate 验收完整 arm64 串行链。
+- 本轮仍无 hosted 全量门禁通过证据，没有发布 Release。
