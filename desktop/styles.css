@@ -425,7 +425,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-composer-badges { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 2px; }
 #pi-task-form .pi-model-controls { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
 #pi-task-form .pi-model-picker { min-width: 0; }
-#pi-task-form .pi-model-select { width: auto; min-width: 0; max-width: 210px; min-height: 24px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 9px; border: 1px solid var(--line-subtle); border-radius: 999px; background: var(--surface-elevated); color: var(--text); font: inherit; font-size: var(--font-size-micro); text-align: left; }
+#pi-task-form .pi-model-select { width: auto; min-width: 0; max-width: 210px; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 9px; border: 1px solid var(--line-subtle); border-radius: 999px; background: var(--surface-elevated); color: var(--text); font: inherit; font-size: var(--font-size-micro); text-align: left; }
 #pi-task-form .pi-model-select:hover { border-color: var(--line-strong-warm); background: var(--surface-hover); }
 #pi-task-form .pi-model-select:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 2px; }
 #pi-task-form .pi-model-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-muted); }
@@ -513,7 +513,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 .pi-task-output.is-queued { display: flex; align-items: center; gap: 7px; max-width: 88%; outline: 1.5px dashed var(--line-strong); outline-offset: 2px; }
 .pi-queued-text { min-width: 0; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-queued-tag { flex: none; color: var(--text-muted); font-size: var(--font-size-micro); }
-.pi-queued-remove { flex: none; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); }
+.pi-queued-remove { flex: none; width: 28px; height: 28px; margin: -4px -6px -4px 0; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); }
 .pi-queued-remove:hover { background: var(--surface-hover); color: var(--danger); }
 .pi-queued-remove:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .pi-queued-remove svg { width: 10px; height: 10px; }
@@ -566,7 +566,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   #pi-task-form { max-height: 52%; gap: 4px; padding: 5px 7px; }
   #pi-task-form textarea { min-height: 34px; padding: 5px 30px 22px 3px; }
   .pi-composer-badges { gap: 4px; }
-  #pi-task-form .pi-model-select { max-width: 170px; min-height: 22px; padding: 2px 8px 2px 7px; }
+  #pi-task-form .pi-model-select { max-width: 170px; min-height: 28px; padding: 0 8px 0 7px; }
   #pi-task-form .pi-page-binding { min-height: 0; padding: 2px 9px; line-height: 1.2; }
   #pi-task-form .pi-page-binding-name { max-width: 130px; }
   .pi-composer-badges { flex-wrap: nowrap; }
