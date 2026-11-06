@@ -1,9 +1,14 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { connect } = require('../sdk/index.js');
+const {
+  listAgentBrowserCapabilities,
+  assertAgentReadable,
+  executeAgentBrowserCapability,
+} = require('./agent-browser-capabilities.cjs');
 
-const TOOL_SNAPSHOT = 'corvid_page_snapshot';
-const TOOL_NAVIGATE = 'corvid_navigate';
+const AGENT_CAPABILITIES = listAgentBrowserCapabilities();
+const PI_TOOL_NAMES = AGENT_CAPABILITIES.map(capability => capability.piName).sort();
 const MAX_TOOL_OUTPUT_BYTES = 32 * 1024;
 const AGENT_SYSTEM_PROMPT = [
   'You are Corvid, a browser agent working inside one explicitly selected Corvid Room.',
@@ -23,12 +28,6 @@ function toolText(value) {
 
 function localError(code, message) {
   return Object.assign(new Error(message), { code });
-}
-
-function assertReadableRoom(room, profileId) {
-  if (room.info.profileId !== profileId) throw localError('CORVID_NOT_FOUND', 'Room does not belong to the selected Profile');
-  if (room.ownership !== 'agent' || room.info.userResumePending) throw localError('CORVID_CONTROL_LOST', 'Room is under user control or takeover is pending');
-  if (room.info.executionRisk) throw localError('CORVID_EXECUTION_RISK', 'Room has an unresolved execution risk');
 }
 
 async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, agentCredential, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
@@ -65,45 +64,26 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
   await fs.mkdir(sessionDirectory, { recursive: true, mode: 0o700 });
   await fs.chmod(sessionDirectory, 0o700);
 
-  const pageSnapshot = defineTool({
-    name: TOOL_SNAPSHOT,
-    label: 'Read selected page',
-    description: 'Read a semantic snapshot of the page explicitly selected by the user for this Corvid task.',
-    parameters: Type.Object({}),
-    execute: async (_toolCallId, _params, signal) => {
+  const customTools = AGENT_CAPABILITIES.map(capability => defineTool({
+    name: capability.piName,
+    label: capability.label,
+    description: capability.description,
+    parameters: capability.piParameters(Type),
+    execute: async (_toolCallId, args, signal) => {
       if (signal?.aborted) throw signal.reason || new Error('Tool call cancelled');
       const toolClient = await connect({ dataDir, token: agentCredential.token });
       try {
         const targetRoom = await toolClient.room(roomId);
-        assertReadableRoom(targetRoom, profileId);
-        const latestTab = (await targetRoom.tabs()).find(item => item.id === tabId);
-        if (!latestTab || latestTab.label !== context.label) throw localError('CORVID_STALE_REFERENCE', 'Selected tab changed or is no longer managed');
-        return toolText(await targetRoom.page(tabId).snapshot({ scope: 'page' }));
+        return toolText(await executeAgentBrowserCapability(capability.id, {
+          room: targetRoom,
+          tabId,
+          profileId,
+          expectedLabel: context.label,
+          args,
+        }));
       } finally { await toolClient.disconnect(); }
     },
-  });
-
-  const navigate = defineTool({
-    name: TOOL_NAVIGATE,
-    label: 'Navigate selected page',
-    description: 'Navigate only the selected Corvid task tab to an HTTP or HTTPS URL.',
-    parameters: Type.Object({ url: Type.String({ minLength: 1, maxLength: 4096 }) }),
-    execute: async (_toolCallId, { url }, signal) => {
-      if (signal?.aborted) throw signal.reason || new Error('Tool call cancelled');
-      let parsed;
-      try { parsed = new URL(url); } catch { throw new TypeError('url must be an absolute HTTP or HTTPS URL'); }
-      if (!['http:', 'https:'].includes(parsed.protocol)) throw new TypeError('Only HTTP and HTTPS navigation is supported');
-      const toolClient = await connect({ dataDir, token: agentCredential.token });
-      try {
-        const targetRoom = await toolClient.room(roomId);
-        assertReadableRoom(targetRoom, profileId);
-        const latestTab = (await targetRoom.tabs()).find(item => item.id === tabId);
-        if (!latestTab || latestTab.label !== context.label) throw localError('CORVID_STALE_REFERENCE', 'Selected tab changed or is no longer managed');
-        await targetRoom.page(tabId).navigate(parsed.href);
-        return toolText({ navigated: parsed.href, tabId, roomId });
-      } finally { await toolClient.disconnect(); }
-    },
-  });
+  }));
 
   const resourceLoader = new DefaultResourceLoader({
     cwd: dataDir,
@@ -130,8 +110,8 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
     sessionManager,
     ...(modelRuntime ? { modelRuntime, model } : {}),
     noTools: 'all',
-    tools: [TOOL_SNAPSHOT, TOOL_NAVIGATE],
-    customTools: [pageSnapshot, navigate],
+    tools: PI_TOOL_NAMES,
+    customTools,
   });
   const actualModel = session.model;
   if (selectedModel && (actualModel?.provider !== selectedModel.providerId || actualModel?.id !== selectedModel.modelId)) {
@@ -139,7 +119,7 @@ async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId,
     throw new Error(`Corvid 会话使用的模型与当前选择不一致：期望 ${selectedModel.providerId}/${selectedModel.modelId}，实际 ${actualModel?.provider || 'unknown'}/${actualModel?.id || 'unknown'}`);
   }
   const activeTools = session.getActiveToolNames().slice().sort();
-  const expectedTools = [TOOL_SNAPSHOT, TOOL_NAVIGATE].sort();
+  const expectedTools = PI_TOOL_NAMES;
   if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
     session.dispose();
     throw new Error('Corvid Agent 会话的浏览器工具配置不符合安全要求');
@@ -156,7 +136,7 @@ async function readPiPageContext({ dataDir, profileId, roomId, tabId, agentCrede
     const profiles = await client.profiles();
     if (!profiles.some(item => item.id === profileId)) throw localError('CORVID_NOT_FOUND', `Profile not found: ${profileId}`);
     const room = await client.room(roomId);
-    assertReadableRoom(room, profileId);
+    assertAgentReadable(room, profileId);
     const tab = (await room.tabs()).find(item => item.id === tabId);
     if (!tab) throw localError('CORVID_NOT_FOUND', `Tab not found: ${tabId}`);
     if (!tab.label) throw localError('CORVID_CONTROL_LOST', 'Tab is unmanaged; manage it in Corvid before sharing page context');
@@ -167,4 +147,4 @@ async function readPiPageContext({ dataDir, profileId, roomId, tabId, agentCrede
   } finally { await client.disconnect(); }
 }
 
-module.exports = { createPiAgentSession, readPiPageContext, AGENT_SYSTEM_PROMPT, TOOL_NAVIGATE, TOOL_SNAPSHOT };
+module.exports = { createPiAgentSession, readPiPageContext, AGENT_SYSTEM_PROMPT, PI_TOOL_NAMES };

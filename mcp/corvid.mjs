@@ -4,6 +4,10 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { connect } from '../sdk/index.js';
 import { asPngImageContent } from './image-content.mjs';
+import capabilityCore from '../desktop/agent-browser-capabilities.cjs';
+
+const { listAgentBrowserCapabilities, assertAgentReadable, resolveAgentPage, executeAgentBrowserCapability } = capabilityCore;
+const SHARED_CAPABILITIES = new Map(listAgentBrowserCapabilities().map(capability => [capability.id, capability]));
 
 const SERVER_NAME = 'corvid-browser';
 const SERVER_VERSION = '0.1.0';
@@ -76,12 +80,7 @@ async function withManagedPage(roomId, tabId, operation) {
   const client = await connectAgent();
   try {
     const room = await client.room(roomId);
-    assertAgentReadable(room);
-    const tab = (await room.tabs()).find(item => item.id === tabId);
-    if (!tab) throw Object.assign(new Error(`Tab not found: ${tabId}`), { code: 'CORVID_NOT_FOUND' });
-    if (!tab.label) throw Object.assign(new Error('Tab is unmanaged; adopt it in Corvid before operating it'), { code: 'CORVID_CONTROL_LOST' });
-    const page = room.page(tabId);
-    await page.currentTab();
+    const { page, tab } = await resolveAgentPage(room, tabId);
     return await operation(page, tab);
   } finally { await client.disconnect(); }
 }
@@ -93,6 +92,10 @@ async function withAgentRoom(roomId, operation) {
     assertAgentReadable(room);
     return await operation(room);
   } finally { await client.disconnect(); }
+}
+
+async function runSharedCapability(id, roomId, tabId, args = {}) {
+  return withAgentRoom(roomId, async room => executeAgentBrowserCapability(id, { room, tabId, args }));
 }
 
 function createServer() {
@@ -132,32 +135,11 @@ function createServer() {
     } finally { await client.disconnect(); }
   });
 
-  registerReadTool(server, 'page_info', 'Read metadata for a tab in an explicitly selected, Agent-owned Room. User-controlled or risky Rooms are not readable through page tools.', z.object({ roomId: z.string().min(1), tabId: z.string().min(1) }), async ({ roomId, tabId }) => {
-    const client = await connectAgent();
-    try {
-      const room = await client.room(roomId);
-      assertAgentReadable(room);
-      const tab = (await room.tabs()).find(item => item.id === tabId);
-      if (!tab) throw Object.assign(new Error(`Tab not found: ${tabId}`), { code: 'CORVID_NOT_FOUND' });
-      if (!tab.label) throw Object.assign(new Error('Tab is unmanaged; adopt it in Corvid before requesting page data'), { code: 'CORVID_CONTROL_LOST' });
-      return await room.page(tabId).info();
-    } finally { await client.disconnect(); }
-  });
+  const pageInfoCapability = SHARED_CAPABILITIES.get('page_info');
+  registerReadTool(server, pageInfoCapability.mcpName, pageInfoCapability.description, pageInfoCapability.mcpParameters(z, pageScopeSchema), async ({ roomId, tabId }) => runSharedCapability('page_info', roomId, tabId));
 
-  registerReadTool(server, 'page_snapshot', 'Read a bounded semantic snapshot of a tab in an explicitly selected, Agent-owned Room.', z.object({
-    roomId: z.string().min(1), tabId: z.string().min(1),
-    scope: z.enum(['page', 'viewport']).default('page'),
-  }), async ({ roomId, tabId, scope }) => {
-    const client = await connectAgent();
-    try {
-      const room = await client.room(roomId);
-      assertAgentReadable(room);
-      const tab = (await room.tabs()).find(item => item.id === tabId);
-      if (!tab) throw Object.assign(new Error(`Tab not found: ${tabId}`), { code: 'CORVID_NOT_FOUND' });
-      if (!tab.label) throw Object.assign(new Error('Tab is unmanaged; adopt it in Corvid before requesting page data'), { code: 'CORVID_CONTROL_LOST' });
-      return await room.page(tabId).snapshot({ scope });
-    } finally { await client.disconnect(); }
-  });
+  const pageSnapshotCapability = SHARED_CAPABILITIES.get('page_snapshot');
+  registerReadTool(server, pageSnapshotCapability.mcpName, pageSnapshotCapability.description, pageSnapshotCapability.mcpParameters(z, pageScopeSchema), async ({ roomId, tabId, scope }) => runSharedCapability('page_snapshot', roomId, tabId, { scope }));
 
   registerReadTool(server, 'page_wait_for_url', 'Wait until the explicitly selected managed page reaches this exact URL, then return its current page info. This only observes navigation; it does not navigate the page.', pageScopeSchema.extend({ url: z.string().min(1).max(8192), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, url, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
     await page.waitForURL(url, { timeout: timeoutMs });
@@ -169,9 +151,11 @@ function createServer() {
     return await page.info();
   }));
 
-  registerReadTool(server, 'page_wait_for_selector', 'Wait for one explicit locator to become attached, detached, visible, or hidden, then return page info. This only observes the page; it does not run scripts or perform actions.', pageScopeSchema.extend({ target: locatorSchema, state: z.enum(['attached', 'detached', 'visible', 'hidden']).default('visible'), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, target, state, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
-    await page.waitForSelector(target.by === 'ref' ? target.value : target, { state, timeout: timeoutMs });
-    return { ...(await page.info()), waitedFor: { state } };
+  const pageWaitCapability = SHARED_CAPABILITIES.get('page_wait_for_selector');
+  registerReadTool(server, pageWaitCapability.mcpName, pageWaitCapability.description, pageWaitCapability.mcpParameters(z, pageScopeSchema, locatorSchema, pageWaitTimeoutSchema), async ({ roomId, tabId, target, state, timeoutMs }) => runSharedCapability('page_wait_for_selector', roomId, tabId, {
+    target: target.by === 'ref' ? target.value : target,
+    state,
+    timeoutMs,
   }));
 
   registerScreenshotTool(server, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.screenshot()));
@@ -189,11 +173,8 @@ function createServer() {
     return await room.page(tabId).close();
   }));
 
-  registerActionTool(server, 'page_navigate', 'Navigate an explicitly selected managed page to an HTTP or HTTPS URL. This can change site state; inspect the result after acting.', pageScopeSchema.extend({ url: z.string().url().max(8192) }), async ({ roomId, tabId, url }) => {
-    const parsed = new URL(url);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw Object.assign(new Error('Only HTTP and HTTPS navigation without embedded credentials is supported'), { code: 'CORVID_INVALID_INPUT' });
-    return withManagedPage(roomId, tabId, async page => { await page.navigate(parsed.href); return await page.info(); });
-  });
+  const pageNavigateCapability = SHARED_CAPABILITIES.get('page_navigate');
+  registerActionTool(server, pageNavigateCapability.mcpName, pageNavigateCapability.description, pageNavigateCapability.mcpParameters(z, pageScopeSchema), async ({ roomId, tabId, url }) => runSharedCapability('page_navigate', roomId, tabId, { url }));
 
   registerActionTool(server, 'page_back', 'Move back one entry in the navigation history of the explicitly selected managed page. If no prior entry exists, the browser does not navigate. Inspect page_info or page_snapshot after acting.', pageScopeSchema, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.back()));
   registerActionTool(server, 'page_forward', 'Move forward one entry in the navigation history of the explicitly selected managed page. If no forward entry exists, the browser does not navigate. Inspect page_info or page_snapshot after acting.', pageScopeSchema, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, page => page.forward()));
@@ -208,15 +189,6 @@ function createServer() {
   registerActionTool(server, 'page_select_option', 'Select one or more values, labels, or option indexes in a managed page select control. Use null or an empty array to clear selection; inspect the selected values afterwards.', pageScopeSchema.extend({ target: locatorSchema, choices: selectChoicesSchema }), async ({ roomId, tabId, target, choices }) => withManagedPage(roomId, tabId, page => page.selectOption(target.by === 'ref' ? target.value : target, choices)));
 
   return server;
-}
-
-function assertAgentReadable(room) {
-  if (room.ownership !== 'agent' || room.info.userResumePending) {
-    throw Object.assign(new Error('Room is under user control; return control to the Agent in Corvid before reading page data'), { code: 'CORVID_CONTROL_LOST' });
-  }
-  if (room.info.executionRisk) {
-    throw Object.assign(new Error('Room has an unresolved execution risk; review it in Corvid before reading page data'), { code: 'CORVID_EXECUTION_RISK' });
-  }
 }
 
 serveStdio(createServer);
