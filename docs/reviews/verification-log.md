@@ -1984,3 +1984,10 @@
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/page-context-menu-e2e.cjs` 连续 3 次通过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test tests/browser.e2e.mjs` 连续 4 次通过；`node tests/package-mac-dir-contract.cjs` 通过。E2E 每次启动前检查同机 Corvid Electron 状态并等待并发测试退出。
 - 全量验证：最终候选 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；37/37 node:test 通过，包含 package directory、screenshot fallback、architecture alias 三项合同，后续全串行 Electron E2E/合同脚本全部通过。测试更新的 9 张已跟踪 QA 截图恢复为基线字节。测试仅使用隔离目录、合成数据与本地 fixture；未调用真实模型/OAuth或用户 Profile。
 - 边界：以上是本机 macOS arm64 开发环境证据。修正尚未合入；仍需 PR 自检/合并，并由 main 上 `version=0.2.0`、`publish=false` 手动 workflow_dispatch 确认 arm64 全量及 packaged smoke、Intel DMG/ZIP 与 x64 smoke、Windows packaged smoke。当前不能声称 hosted gate 已通过，也没有发布 Release。
+
+## 2026-11-06 Issue #319 PR #338 合入后 hosted follow-up
+
+- PR #338 已 squash 合并至 `origin/main` `ef6c689`，`Closes #319` 自动关闭；合入后 `page-context-menu-e2e.cjs`、`browser.e2e.mjs` 与 `package-mac-dir-contract.cjs` 定向冒烟通过。无全仓冲突标记。
+- `publish=false` hosted run [42144087628](https://github.com/heyallencao/corvid/actions/runs/42144087628)：preflight、Intel app bundle smoke、Intel DMG/ZIP 构建及 artifact upload、Windows installer smoke/upload 均通过，publish job skipped。arm64 两次完整门禁分别在 `snapshot-e2e.cjs:108` 的立即点击副作用断言和 `browser-print-e2e.cjs:119` 的 Cmd/Ctrl+P 测试事件等待失败。
+- Follow-up 候选基于 `origin/main` `ef6c689`；snapshot E2E 在点击 `@ref` 后等待本地 fixture 的点击结果可观察，print E2E 在合成快捷键 keyDown/keyUp 间加入 30ms。定向命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/snapshot-e2e.cjs` 与 `... node tests/browser-print-e2e.cjs` 各连续 2 次通过。
+- 未在 follow-up 候选重复本机全量 `npm test`；前一合并候选的全量本机门禁已通过，且后续完整 arm64 hosted workflow 会覆盖本次测试同步变更。当前 hosted full gate 尚未通过，需合并 follow-up 后以 `publish=false` 再跑手动 Release workflow；没有发布 Release。

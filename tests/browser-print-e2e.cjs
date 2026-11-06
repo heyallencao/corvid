@@ -70,9 +70,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   async function shortcut(key) {
     const primary = process.platform === 'darwin' ? 'meta' : 'control';
-    await app.evaluate(({ BrowserWindow }, { key, primary }) => {
+    await app.evaluate(async ({ BrowserWindow }, { key, primary }) => {
       const contents = BrowserWindow.getAllWindows()[0].webContents;
       contents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: [primary] });
+      await new Promise(resolve => setTimeout(resolve, 30));
       contents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: [primary] });
     }, { key, primary });
   }

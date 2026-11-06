@@ -102,10 +102,10 @@ outer.addEventListener('load',()=>{const inner=outer.contentDocument.createEleme
     // @N references work as action targets.
     const subOne = subtree.items.find(item => item.name === 'Sub one');
     await page.click(subOne.ref);
+    await until(async () => (await page.evaluate(() => window.clicks)).includes('s1'));
     const topInput = pageSnapshot.items.find(item => item.name === 'Top input');
     await page.fill(topInput.ref, 'typed');
     assert.equal(await page.evaluate(() => document.querySelector('#top').value), 'typed');
-    assert.ok((await page.evaluate(() => window.clicks)).includes('s1'));
 
     // Playwright-style selector subset: :has-text, :text-is and >> nth=.
     await page.click('button:has-text("Sub two")');
