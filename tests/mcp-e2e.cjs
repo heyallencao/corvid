@@ -76,7 +76,7 @@ class McpProcess {
   const { asPngImageContent, MAX_SCREENSHOT_BYTES } = await import('../mcp/image-content.mjs');
   assert.throws(() => asPngImageContent(Buffer.alloc(MAX_SCREENSHOT_BYTES + 1)), error => error.code === 'CORVID_OUTPUT_TOO_LARGE');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-mcp-'));
-  let app, mcp, fixture;
+  let app, mcp, fixture, alternateOriginFixture;
   try {
     const fixtureRequestCounts = new Map();
     fixture = http.createServer((request, response) => {
@@ -101,11 +101,15 @@ class McpProcess {
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
+    alternateOriginFixture=http.createServer((_request,response)=>{response.writeHead(200,{'content-type':'text/html; charset=utf-8'});response.end('<!doctype html><title>Alternate origin</title><p>Different origin</p>');});
+    await new Promise(resolve=>alternateOriginFixture.listen(0,'127.0.0.1',resolve));
+    const alternateOriginUrl=`http://127.0.0.1:${alternateOriginFixture.address().port}/`;
     app = await _electron.launch({
       executablePath: electronPath,
       args: [project],
       env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' },
     });
+    const shell=await app.firstWindow();
     const control = await (async () => {
       for (let i = 0; i < 200; i++) {
         try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'control.json'), 'utf8')); }
@@ -155,9 +159,10 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
-    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'site_propose', 'site_run', 'site_search', 'site_try'].sort());
+    assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'site_run', 'site_search'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
     assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['site_propose', 'site_try'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.destructiveHint === false && tool.annotations?.openWorldHint === false));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;
@@ -255,6 +260,55 @@ class McpProcess {
     const navigated = await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
     assert.equal(navigated.result.isError, undefined);
     assert.equal(new URL(navigated.value.url).origin, new URL(fixtureUrl).origin);
+    const candidateResult = await mcp.callTool('site_propose', { roomId: room.id, tabId: tab.id, name: 'Read fixture page', description: 'Read the current fixture page without changing it.', steps: [{ type: 'info' }, { type: 'snapshot', scope: 'viewport' }] });
+    assert.equal(candidateResult.result.isError, undefined, JSON.stringify(candidateResult.value));
+    const candidate = candidateResult.value;
+    assert.equal(candidate.status, 'candidate');
+    assert.equal(candidate.origin, new URL(fixtureUrl).origin);
+    assert.equal((await mcp.callTool('site_search', { roomId: room.id, query: '' })).value.commands.length, 0, 'unretained candidates are not executable/searchable commands');
+    const pageBeforeTrial = (await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value;
+    const trial = await mcp.callTool('site_try', { roomId: room.id, tabId: tab.id, commandId: candidate.id });
+    assert.equal(trial.result.isError, undefined, JSON.stringify(trial.value));
+    assert.equal(trial.value.trial, true);
+    assert.equal(trial.value.results.length, 2);
+    assert.equal(trial.value.results[0].value.url, pageBeforeTrial.url);
+    assert.match(JSON.stringify(trial.value.results[1]), /MCP fixture/);
+    assert.equal((await mcp.callTool('page_info', { roomId: room.id, tabId: tab.id })).value.url, pageBeforeTrial.url, 'a site command trial does not navigate the page');
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: alternateOriginUrl });
+    const wrongOriginTrial=await mcp.callTool('site_try', { roomId: room.id, tabId: tab.id, commandId: candidate.id });
+    assert.equal(wrongOriginTrial.result.isError,true);
+    assert.equal(wrongOriginTrial.value.code,'CORVID_FORBIDDEN','a candidate cannot run on a different website origin');
+    await mcp.callTool('page_navigate', { roomId: room.id, tabId: tab.id, url: fixtureUrl });
+    assert.equal((await call(`/rooms/${ungrantedRoom.id}/site-commands`, 'GET')).commands.length, 0, 'admin reads the empty command list of another Room');
+    const crossRoomCommands = await fetch(`${control.baseUrl}/rooms/${ungrantedRoom.id}/site-commands`, { headers: { authorization: `Bearer ${authorization.token}` } });
+    assert.equal(crossRoomCommands.status, 403, 'a scoped client cannot list commands outside its granted Room');
+    const storedCommands=await shell.evaluate(()=>window.browserShell.invoke('listSiteCommands',{}));
+    assert.equal(storedCommands.commands.length,1,`the desktop review list sees the proposed command: ${JSON.stringify(storedCommands)}`);
+    await shell.locator('#show-settings').click();
+    await shell.locator('#settings').waitFor({ state: 'visible' });
+    await shell.locator('#settings-nav-agent').click();
+    const candidateRow = shell.locator('.site-command-row').filter({ hasText: 'Read fixture page' });
+    await candidateRow.waitFor();
+    assert.equal(await candidateRow.getAttribute('data-status'), 'candidate');
+    await candidateRow.getByRole('button', { name: '保留命令' }).click();
+    await shell.locator('.site-command-row[data-status="retained"]').waitFor();
+    const retained = await mcp.callTool('site_search', { roomId: room.id, query: 'fixture' });
+    assert.equal(retained.value.commands.length, 1);
+    const command = retained.value.commands[0];
+    assert.equal(command.id, candidate.id);
+    const run = await mcp.callTool('site_run', { roomId: room.id, tabId: tab.id, commandId: command.id });
+    assert.equal(run.result.isError, undefined, JSON.stringify(run.value));
+    assert.equal(run.value.trial, false);
+    await shell.evaluate(() => window.browserShell.invoke('setUiLocale', { locale: 'en' }));
+    await shell.locator('#cancel-settings').click();
+    await shell.locator('#show-settings').click();
+    await shell.locator('#settings').waitFor({ state: 'visible' });
+    await shell.locator('#settings-nav-agent').click();
+    await shell.locator('.site-command-row[data-status="retained"]').getByRole('button', { name: 'Delete command' }).click();
+    await shell.locator('.site-command-row').waitFor({ state: 'detached' });
+    assert.equal((await mcp.callTool('site_search', { roomId: room.id, query: '' })).value.commands.length, 0, 'deleting a retained command removes it from MCP search');
+    await shell.evaluate(() => window.browserShell.invoke('setUiLocale', { locale: 'zh-CN' }));
+    await shell.locator('#cancel-settings').click();
     const slowUrl = `${fixtureUrl}slow`;
     await mcp.callTool('page_click', { roomId: room.id, tabId: tab.id, target: { by: 'role', value: 'link', name: 'Open slow page' } });
     const urlWait = await mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: slowUrl, timeoutMs: 5000 });
@@ -411,6 +465,7 @@ class McpProcess {
     if (mcp) await mcp.close();
     if (app) await app.close().catch(() => {});
     if (fixture) await new Promise(resolve => fixture.close(resolve));
+    if (alternateOriginFixture) await new Promise(resolve => alternateOriginFixture.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 

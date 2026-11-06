@@ -665,7 +665,17 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 .settings-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-inline-actions button { min-height: 34px; padding: 7px 10px; background: var(--surface-soft); }
 .settings-import { min-width: 0; }
-.settings-import h4 { margin: 0 0 4px; font-size: 12px; }
+.settings-import h4, .site-command-settings h4 { margin: 0 0 4px; font-size: 12px; }
+.site-command-settings { display: grid; gap: 8px; min-width: 0; }
+.site-command-settings > p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-micro); line-height: 1.5; }
+#site-command-list { display: grid; gap: 8px; }
+.site-command-row { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); min-width: 0; }
+.site-command-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.site-command-heading strong { overflow-wrap: anywhere; }
+.site-command-heading span, .site-command-row p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-micro); overflow-wrap: anywhere; }
+.site-command-row pre { max-height: 120px; overflow: auto; margin: 0; padding: 7px; border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary); font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.site-command-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.site-command-actions button { min-height: 32px; padding: 6px 9px; }
 .settings-actions { justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--line); }
 .settings-actions #settings-error { min-width: 0; flex: 1; color: var(--danger); font-size: var(--font-size-small); overflow-wrap: anywhere; }
 .settings-actions button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }

@@ -40,6 +40,13 @@ function registerActionTool(server, name, description, inputSchema, handler) {
   });
 }
 
+function registerSiteCommandTool(server, name, description, inputSchema, handler, readOnlyHint) {
+  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint, destructiveHint: false, openWorldHint: false } }, async args => {
+    try { return asToolResult(await handler(args)); }
+    catch (error) { return asToolError(error); }
+  });
+}
+
 function registerScreenshotTool(server, handler) {
   server.registerTool('page_screenshot', {
     description: 'Capture the current viewport of one explicitly selected managed page and return a PNG image. This does not navigate, activate its Room, or save the image to disk.',
@@ -70,6 +77,10 @@ const locatorSchema = z.discriminatedUnion('by', [
   z.object({ by: z.literal('ref'), value: z.string().regex(/^@\d+$/) }),
   z.object({ by: z.enum(['css', 'text', 'href']), value: z.string().min(1).max(2048) }),
   z.object({ by: z.literal('role'), value: z.string().regex(/^[a-zA-Z][\w-]*$/), name: z.string().max(2048).optional(), exact: z.boolean().optional() }),
+]);
+const siteCommandStepSchema = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('info') }),
+  z.strictObject({ type: z.literal('snapshot'), scope: z.enum(['page', 'viewport']) }),
 ]);
 
 async function withManagedPage(roomId, tabId, operation) {
@@ -132,6 +143,16 @@ function createServer() {
     } finally { await client.disconnect(); }
   });
 
+  registerReadTool(server, 'site_search', 'Search retained read-only site commands available in one explicitly selected Room. Commands are bound to their saved website origin and still require an explicitly selected managed Page.', z.object({ roomId: z.string().min(1), query: z.string().max(120).default('') }), async ({ roomId, query }) => withAgentRoom(roomId, async room => {
+    const normalized = query.trim().toLowerCase();
+    const commands = (await room.siteCommands()).filter(command => command.status === 'retained' && (!normalized || `${command.name} ${command.description} ${command.origin}`.toLowerCase().includes(normalized)));
+    return { roomId, commands: commands.slice(0, MAX_ITEMS).map(({ id, name, description, origin, steps, retainedAt }) => ({ id, name, description, origin, steps, retainedAt })), truncated: commands.length > MAX_ITEMS };
+  }));
+
+  registerSiteCommandTool(server, 'site_propose', 'Save a bounded read-only site command candidate for user review. This stores a proposal only; it does not operate the page, retain the command, or grant access to another Room or website origin.', pageScopeSchema.extend({ name: z.string().trim().min(1).max(80), description: z.string().max(240), steps: z.array(siteCommandStepSchema).min(1).max(8) }), async ({ roomId, tabId, name, description, steps }) => withAgentRoom(roomId, room => room.proposeSiteCommand({ tabId, name, description, steps })), false);
+
+  registerSiteCommandTool(server, 'site_try', 'Trial one unretained site command candidate against an explicitly selected managed Page in its saved Room and exact website origin. Only page metadata and semantic snapshots can be read; no page action or script runs.', pageScopeSchema.extend({ commandId: z.string().min(1) }), async ({ roomId, tabId, commandId }) => withAgentRoom(roomId, room => room.runSiteCommand(commandId, tabId, { trial: true })), false);
+
   registerReadTool(server, 'page_info', 'Read metadata for a tab in an explicitly selected, Agent-owned Room. User-controlled or risky Rooms are not readable through page tools.', z.object({ roomId: z.string().min(1), tabId: z.string().min(1) }), async ({ roomId, tabId }) => {
     const client = await connectAgent();
     try {
@@ -158,6 +179,8 @@ function createServer() {
       return await room.page(tabId).snapshot({ scope });
     } finally { await client.disconnect(); }
   });
+
+  registerReadTool(server, 'site_run', 'Run one retained read-only site command in its saved Room and exact website origin against an explicitly selected managed Page. Room ownership, user control, execution risk, and Page management are checked for every command step.', pageScopeSchema.extend({ commandId: z.string().min(1) }), async ({ roomId, tabId, commandId }) => withAgentRoom(roomId, room => room.runSiteCommand(commandId, tabId, { trial: false })));
 
   registerReadTool(server, 'page_wait_for_url', 'Wait until the explicitly selected managed page reaches this exact URL, then return its current page info. This only observes navigation; it does not navigate the page.', pageScopeSchema.extend({ url: z.string().min(1).max(8192), timeoutMs: pageWaitTimeoutSchema }), async ({ roomId, tabId, url, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
     await page.waitForURL(url, { timeout: timeoutMs });

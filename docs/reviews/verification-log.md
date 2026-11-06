@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-06 Issue #341 只读站点命令
+
+- 基线与环境：隔离 worktree `agent/issue-341-readonly-site-commands`，重放到 `origin/main` `879c84a`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；真实 Electron 测试使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。未调用真实模型、Provider 或 OAuth，未读取真实浏览数据。
+- 定向验证：`node tests/site-commands-store.cjs` PASS；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` PASS，覆盖 MCP 协议/授权范围与本地 Electron 生命周期；`git diff --check` 和 `git diff --cached --check` PASS。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 1。串行首段 43 个 `node:test` 用例中 41 PASS、2 FAIL；`tests/dialogs.e2e.mjs:26` 等待 `#alert` 超时（`clickCompleted=false`、页面 `clicks=[]`），`tests/uploads.e2e.mjs:40` 等待 file chooser 超时（`CORVID_TIMEOUT`）。全量 runner 因此未继续执行后续 76 条独立脚本命令，本记录不表示全量通过。
+- 归因：当前 `desktop/main.cjs` 的改动只新增站点命令存储/API/执行分支与 scoped 路由；dialog、action 和 chooser 的运行时路径未改。隔离干净 `879c84a` 基线以同一命令 `env -u ELECTRON_RUN_AS_NODE node --test --test-concurrency=1 tests/dialogs.e2e.mjs tests/uploads.e2e.mjs` 复现两项完全相同的失败签名；此前串行复跑亦相同。此次全量门禁失败与本切片无关，属于当前主线已知失败族（Issue #289），但全量结果仍为 EXIT 1。
+- 限制：完整 `npm test` 门禁未通过；虽站点命令定向真实 Electron E2E 通过，尚未在全量 suite 中运行到该项。需在已解锁且前台输入可用的桌面复核 dialog/upload 门禁后再决定全量复验；不使用跳过开关替代验收。
+
 ## 2026-11-06 Issue #348 空间导航 Agent 任务三态标记
 
 - 基线：隔离 worktree 分支 `ui/issue-348-space-task-status`，基于当时 `origin/main` `7ba8026`；macOS arm64，Node.js v24.22.1，Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture，不使用真实模型、OAuth 或个人浏览数据。

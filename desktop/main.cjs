@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { safePageUrl, createPageContextMenuTemplate } = require('./page-context-menu.cjs');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
+const { createSiteCommandsStore } = require('./site-commands.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
@@ -351,6 +352,7 @@ if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
 }
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
+const siteCommands = createSiteCommandsStore(path.join(dataDir, 'site-commands.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
 const MIN_WINDOW_WIDTH = 719;
 const MIN_WINDOW_HEIGHT = 420;
@@ -1030,6 +1032,15 @@ async function dispatch(method, args = {}, fromApi = false) {
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
     case 'listAgentClients': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return {clients:agentClients.list()}; }
+    case 'listSiteCommands': return {commands:siteCommands.list(fromApi?{roomId:args.roomId}:{})};
+    case 'proposeSiteCommand': {
+      if(!fromApi||Object.keys(args).some(key=>!['roomId','tabId','name','description','steps'].includes(key)))throw Object.assign(new Error('Invalid site command candidate request'),{code:'CORVID_INVALID_ARGUMENT'});
+      const {origin}=siteCommandPage(args.roomId,args.tabId);
+      return siteCommands.propose({roomId:args.roomId,name:args.name,description:args.description,origin,steps:args.steps});
+    }
+    case 'runSiteCommand': return runSiteCommand(args,fromApi);
+    case 'retainSiteCommand': {if(fromApi)throw new Error('Site command review must be completed in Corvid');return siteCommands.retain(args.roomId,args.commandId);}
+    case 'deleteSiteCommand': {if(fromApi)throw new Error('Site commands can only be removed in Corvid');return {deleted:siteCommands.remove(args.roomId,args.commandId)};}
     case 'createAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return createAgentClientGrant(args); }
     case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
@@ -1541,11 +1552,52 @@ async function evaluateWithDeadline(tab,args) {
   const deadline=new Promise(resolve=>{timer=setTimeout(()=>{timedOut=true;room.executionRisk={operationId,tabId:tab.id,status:'timed_out',executionStopped:false,mayHaveLateEffects:true};update();resolve({status:'timed_out',operationId,executionStopped:false,mayHaveLateEffects:true});},timeout);});
   try {return await Promise.race([execution,deadline]);} finally {clearTimeout(timer);}
 }
+function siteCommandPage(roomId, tabId) {
+  const room=findRoom(roomId),tab=tabs.get(tabId);
+  if(room.ownership!=='agent'||room.userResumePending)throw Object.assign(new Error('Room is under user control or resumeControl is pending'),{code:'CORVID_CONTROL_LOST'});
+  if(room.executionRisk)throw Object.assign(new Error('Room has an unresolved execution risk; review it in Corvid before reading page data'),{code:'CORVID_EXECUTION_RISK'});
+  if(!tab||tab.roomId!==room.id||!room.tabIds.includes(tab.id))throw Object.assign(new Error('Page is not in the selected Room'),{code:'CORVID_NOT_FOUND'});
+  if(!tab.label)throw Object.assign(new Error('Tab is unmanaged; adopt it in Corvid before reading page data'),{code:'CORVID_CONTROL_LOST'});
+  if(tab.view.webContents.isDestroyed())throw Object.assign(new Error('Page is no longer available'),{code:'CORVID_NOT_FOUND'});
+  const url=tab.view.webContents.getURL();
+  let parsed;
+  try{parsed=new URL(url);}catch{throw Object.assign(new Error('Site commands require an HTTP or HTTPS page'),{code:'CORVID_INVALID_ARGUMENT'});}
+  if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw Object.assign(new Error('Site commands require an HTTP or HTTPS page without embedded credentials'),{code:'CORVID_INVALID_ARGUMENT'});
+  return {room,tab,url,origin:parsed.origin};
+}
+
+async function runSiteCommand(args,fromApi) {
+  if(!fromApi)throw new Error('Site commands can only be proposed or run by an authorized Agent client');
+  if(typeof args.commandId!=='string'||!args.commandId||typeof args.tabId!=='string'||!args.tabId||typeof args.trial!=='boolean')throw Object.assign(new Error('A command ID, Page ID, and trial mode are required'),{code:'CORVID_INVALID_ARGUMENT'});
+  const command=siteCommands.find(args.roomId,args.commandId);
+  if(!command||command.status===(args.trial?'retained':'candidate'))throw Object.assign(new Error('Site command is not available for this operation'),{code:'CORVID_NOT_FOUND'});
+  const initial=siteCommandPage(args.roomId,args.tabId);
+  if(command.origin!==initial.origin)throw Object.assign(new Error('Site command is limited to its saved website origin'),{code:'CORVID_FORBIDDEN'});
+  const results=[];
+  try{
+    for(const step of command.steps){
+      const current=siteCommandPage(args.roomId,args.tabId);
+      if(current.origin!==command.origin)throw Object.assign(new Error('Page changed to a different website origin'),{code:'CORVID_FORBIDDEN'});
+      if(step.type==='info')results.push({type:'info',value:{roomId:current.room.id,targetId:current.tab.id,label:current.tab.label,title:current.tab.view.webContents.getTitle(),url:current.url,ready:current.tab.ready}});
+      else if(step.type==='snapshot')results.push({type:'snapshot',value:await runAction(current.tab.view.webContents,'snapshot',{options:{scope:step.scope}})});
+      else throw Object.assign(new Error('Unsupported site command step'),{code:'CORVID_INVALID_ARGUMENT'});
+      const after=siteCommandPage(args.roomId,args.tabId);
+      if(after.origin!==command.origin)throw Object.assign(new Error('Page changed to a different website origin'),{code:'CORVID_FORBIDDEN'});
+    }
+    if(Buffer.byteLength(JSON.stringify(results))>32*1024)throw Object.assign(new Error('Site command result exceeds the 32 KB limit'),{code:'CORVID_OUTPUT_TOO_LARGE'});
+    if(args.trial)siteCommands.recordTrial(args.roomId,args.commandId,true);
+    return {commandId:command.id,name:command.name,origin:command.origin,results,trial:args.trial};
+  }catch(error){
+    if(args.trial)try{siteCommands.recordTrial(args.roomId,args.commandId,false);}catch{}
+    throw error;
+  }
+}
+
 function dispatchQueued(method,args={},fromApi=false) {
   const roomMethods=['createTab','closeRoom','closeRoomFromUser','activateRoom','yieldControl','resumeControl','returnUserControl','adoptTab','releasePage','finishRoom','claimRoom'];
   const tabMethods=['closeTab','activateTab','navigate','back','forward','reload','action','armDownload'];
   let roomId;
-  try { if(roomMethods.includes(method)) roomId=findRoom(args.id).id; else if(tabMethods.includes(method)) roomId=findTab(args.id).roomId; }
+  try { if(['proposeSiteCommand','runSiteCommand'].includes(method)||(method==='listSiteCommands'&&args.roomId)) roomId=findRoom(args.roomId).id; else if(roomMethods.includes(method)) roomId=findRoom(args.id).id; else if(tabMethods.includes(method)) roomId=findTab(args.id).roomId; }
   catch(error) { return Promise.reject(error); }
   if(fromApi && roomId && findRoom(roomId).userResumePending) return Promise.reject(new Error('User resumeControl is pending'));
   if (!roomId) return dispatch(method,args,fromApi);
@@ -1560,6 +1612,9 @@ function apiRoute(req, url) {
   if (kind==='agent-clients' && !target && req.method==='GET') return ['listAgentClients',{}];
   if (kind==='agent-clients' && !target && req.method==='POST') return ['createAgentClient',{}];
   if (kind==='agent-clients' && target && req.method==='DELETE' && !action) return ['revokeAgentClient',{clientId:target}];
+  if (kind==='rooms' && target && action==='site-commands' && pieces.length===3 && req.method==='GET') return ['listSiteCommands',{roomId:target}];
+  if (kind==='rooms' && target && action==='site-commands' && pieces.length===3 && req.method==='POST') return ['proposeSiteCommand',{roomId:target}];
+  if (kind==='rooms' && target && action==='site-commands' && pieces.length===5 && pieces[4]==='run' && req.method==='POST') return ['runSiteCommand',{roomId:target,commandId:pieces[3]}];
   if (kind==='rooms' && target && !action && req.method==='GET') return ['roomDetails',{id:target}];
   if (req.method==='POST' && url.pathname==='/shutdown' && process.env.CORVID_TEST_MODE==='1') return ['shutdown',{}];
   if (req.method==='GET' && url.pathname==='/rooms') return ['state',{}];
@@ -1613,7 +1668,7 @@ async function startServer() {
         const pieces=url.pathname.split('/').filter(Boolean);
         if(pieces[0]==='rooms'&&pieces[1]) roomId=pieces[1];
         else if(pieces[0]==='tabs'&&pieces[1]) {try{roomId=findTab(pieces[1]).roomId;}catch{}}
-        const permittedMethods=new Set(['state','profiles','roomDetails','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
+        const permittedMethods=new Set(['state','profiles','roomDetails','listSiteCommands','proposeSiteCommand','runSiteCommand','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
         if(!permittedMethods.has(method)||!roomId&&!['state','profiles'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
           res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
         }

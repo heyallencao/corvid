@@ -78,6 +78,15 @@ class Client {
 class Room {
   constructor(client, info) { this.client = client; this.info = info; this.id = info.id; this.roomId=info.id;this.name = info.name;this.ownership=info.ownership; }
   async tabs() { return (await this.client.room(this.id)).info.tabs || []; }
+  async siteCommands() { return (await this.client.api(`/rooms/${encodeURIComponent(this.id)}/site-commands`)).commands; }
+  async proposeSiteCommand({ tabId, name, description, steps } = {}) {
+    if (typeof tabId !== 'string' || !tabId || typeof name !== 'string' || !name.trim() || typeof description !== 'string' || !Array.isArray(steps)) throw new TypeError('proposeSiteCommand requires a Page ID, name, description, and declarative steps');
+    return this.client.api(`/rooms/${encodeURIComponent(this.id)}/site-commands`, { method: 'POST', body: { tabId, name, description, steps } });
+  }
+  async runSiteCommand(commandId, tabId, { trial = false } = {}) {
+    if (typeof commandId !== 'string' || !commandId || typeof tabId !== 'string' || !tabId || typeof trial !== 'boolean') throw new TypeError('runSiteCommand requires a command ID, Page ID, and trial flag');
+    return this.client.api(`/rooms/${encodeURIComponent(this.id)}/site-commands/${encodeURIComponent(commandId)}/run`, { method: 'POST', body: { tabId, trial } });
+  }
   async pages() { return (await this.tabs()).filter(tab=>tab.label).map(tab=>new Page(this.client,tab.id,this.id,tab.label,tab.openedBy)); }
   userPage() {const tab=(this.info.tabs || []).find(item=>item.active);return tab ? new Page(this.client,tab.id,this.id,tab.label,tab.openedBy) : null;}
   async open(url = 'about:blank') {
