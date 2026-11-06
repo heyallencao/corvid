@@ -30,7 +30,7 @@ const executablePath=packagedAppPath||require('electron');
       assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isVisible()),false,'the first window is hidden before the second launch');
     }
 
-    second=spawn(executablePath,[project],{cwd:project,env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'},stdio:'ignore'});
+    second=spawn(executablePath,process.env.CORVID_PACKAGED_APP_PATH?[]:[project],{cwd:project,env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'},stdio:'ignore'});
     const secondExit=await new Promise(resolve=>{
       const timer=setTimeout(()=>resolve(null),10_000);
       second.once('exit',(code,signal)=>{clearTimeout(timer);resolve({code,signal});});
