@@ -65,7 +65,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     // A position on a detached monitor must not open the window off-screen.
     fs.writeFileSync(statePath,JSON.stringify([{x:-99999,y:-99999,width:1000,height:700}]));
     const offscreen=await start();
-    assert.deepEqual({width:offscreen.bounds.width,height:offscreen.bounds.height},{width:1000,height:700});
+    assert.deepEqual({width:offscreen.bounds.width,height:offscreen.bounds.height},{width:Math.min(1000,offscreen.workArea.width),height:Math.min(700,offscreen.workArea.height)});
     assert.ok(offscreen.bounds.x>-5000 && offscreen.bounds.x<5000,`expected a visible x, got ${offscreen.bounds.x}`);
     await stop();
     // The v1 single-object shape must still be read as one window. macOS may
