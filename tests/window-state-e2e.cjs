@@ -33,7 +33,16 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     fs.writeFileSync(statePath,JSON.stringify([{x:130,y:150,width:600,height:400}]));
     const restoredMinimum=await start();
     assert.deepEqual({width:restoredMinimum.bounds.width,height:restoredMinimum.bounds.height},{width:719,height:420},'legacy undersized persisted bounds are normalized before restore');
-    await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({x:130,y:150,width:1010,height:720}));
+    await app.evaluate(({app:electronApp,BrowserWindow})=>{
+      electronApp.focus(process.platform==='darwin'?{steal:true}:undefined);
+      const window=BrowserWindow.getAllWindows()[0];
+      window.focus();
+      window.setBounds({x:130,y:150,width:1010,height:720});
+    });
+    await until(()=>app.evaluate(({BrowserWindow})=>{
+      const bounds=BrowserWindow.getAllWindows()[0].getBounds();
+      return bounds.x===130&&bounds.y===150&&bounds.width===1010&&bounds.height===720;
+    }),'updated window bounds');
     await until(()=>{try{const states=readStates();return states[0]?.x===130&&states[0]?.y===150&&states[0]?.width===1010&&states[0]?.height===720;}catch{return false;}},'window state file');
     await stop();
     const restored=await start();
