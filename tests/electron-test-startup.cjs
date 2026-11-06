@@ -143,7 +143,8 @@ async function launchElectron(launcher, options, { label, dataDir, timeoutMs = 2
     stage = '首个桌面窗口';
     const shell = await app.firstWindow({ timeout: timeoutMs });
     stage = 'macOS 原生窗口焦点';
-    await focusElectronWindow(app, shell, { label, timeoutMs: Math.min(timeoutMs, 5000) });
+    const focusTimeoutMs = Number(process.env.CORVID_TEST_NATIVE_FOCUS_TIMEOUT_MS) || 15000;
+    await focusElectronWindow(app, shell, { label, timeoutMs: Math.min(timeoutMs, focusTimeoutMs) });
     return { app, shell, startedAt };
   } catch (cause) {
     let cleanupError;
