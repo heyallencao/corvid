@@ -2020,6 +2020,13 @@
 - 调查判断：该用例固定请求 `{x:130,y:150,width:1010,height:720}`，没有根据 hosted 虚拟显示器 work area 限定位置与尺寸；runner 上原生窗口可能受屏幕边界约束，无法达到硬编码目标。修正为从测试已读取的 primary display work area 计算一个可容纳的目标 bounds，并用同一动态目标核对 resize、持久化和重启恢复。
 - 定向验证：`NODE_PATH=/Users/allen/Workspace/projects/personal/corvid/node_modules caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 2 次通过；覆盖默认最小窗口、work-area bounded resize 与持久化/恢复、坏状态回退、脱屏坐标裁剪和 legacy schema。使用隔离临时数据与本地 fixture；未跑全量本机套件。合入后再以 `version=0.2.0`、`publish=false` hosted Release workflow 做完整复验。没有发布 Release。
 
+## 2026-11-06 Issue #319 hosted shortcut 与 file chooser follow-up（PR 前）
+
+- Hosted run [42153082880](https://github.com/heyallencao/corvid/actions/runs/42153082880)：preflight、Intel app/DMG/ZIP/artifact upload、Windows installer smoke/upload 均通过，publish job skipped；arm64 retry 1 在 `browser-print-e2e.cjs:123` 等快捷键打印状态，retry 2 的 `uploads.e2e.mjs` 在 file chooser arming 时收到 `File chooser was cancelled while arming`。window-state 和 SDK popup 用例均已通过。
+- 修正：打印快捷键用例在合成 Cmd/Ctrl+P 前等待 BrowserWindow 与 shell WebContents 均获焦点，并增加按键按下/抬起间隔；上传用例等待 iframe `load` 事件后再继续挂载 file chooser，避免将 iframe reload 和后续 CDP 文件选择操作紧邻执行。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 连续 3 次通过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test tests/uploads.e2e.mjs` 连续 3 次通过。使用隔离临时目录与本地 fixture；没有本机全量回归。本地定向结果不能证明 hosted full gate 已通过。
+- 后续：合并后重新执行 `version=0.2.0`、`publish=false` 手动 Release workflow；没有发布 Release。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。

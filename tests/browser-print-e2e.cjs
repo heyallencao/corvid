@@ -74,9 +74,14 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await app.evaluate(async ({ BrowserWindow }, { key, primary }) => {
       const window = BrowserWindow.getAllWindows()[0];
       window.focus();
+      window.webContents.focus();
+      for (let attempt = 0; attempt < 120 && (!window.isFocused() || !window.webContents.isFocused()); attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      if (!window.isFocused() || !window.webContents.isFocused()) throw new Error('Browser window did not receive focus before shortcut');
       const contents = window.webContents;
       contents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: [primary] });
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await new Promise(resolve => setTimeout(resolve, 100));
       contents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: [primary] });
     }, { key, primary });
   }

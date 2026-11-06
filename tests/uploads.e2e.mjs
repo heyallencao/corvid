@@ -34,7 +34,7 @@ test('upload local files with node identity and handle a change-handler dialog',
     await page.setInputFiles(frame.ref,second);await page.setInputFiles(shadow.ref,first);
     assert.equal(await page.evaluate(()=>document.querySelector('#frame').contentDocument.querySelector('input').files[0].name),'second.txt');
     assert.equal(await page.evaluate(()=>document.querySelector('#shadow').shadowRoot.querySelector('input').files[0].name),'first.txt');
-    await page.evaluate(()=>{document.querySelector('#frame').srcdoc='<input type=file>';return true;});
+    await page.evaluate(()=>new Promise(resolve=>{const frame=document.querySelector('#frame');frame.addEventListener('load',resolve,{once:true});frame.srcdoc='<input type=file>';}));
     await until(async()=>page.evaluate(()=>document.querySelector('#frame').contentDocument?.querySelector('input')?.getAttribute('aria-label')===null));
     await assert.rejects(()=>page.setInputFiles(frame.ref,first),/stale/i);
     const pendingChooser=page.waitForFileChooser();await page.click('#choose');const chooser=await pendingChooser;assert.equal(chooser.mode,'selectSingle');
