@@ -86,6 +86,21 @@ All local SDK and CLI clients currently share one desktop credential and an agen
 
 Run `node cli/corvid.mjs run < task.js` while the desktop is running. The script receives `openRoom`, `listRooms`, `resumeRoom`, `claimRoom` and `client`, and supports top-level `await` and dynamic `import()`. Claiming prompts the user in the desktop; a denied request leaves the room user-owned. The input is executed as an async function, not an ESM module: static `import` and `export` declarations are unsupported. It runs with the local user's Node.js permissions. `node cli/corvid.mjs help` prints a concise usage guide; installation into other agents is not automatic.
 
+A composable workflow should bind to one explicit Corvid Room and labeled Page, then observe the result after each action:
+
+```js
+const room = await openRoom('Research task');
+const page = room.page('p1');
+await page.navigate('https://example.com');
+const info = await page.info();
+if (!info.ready) await page.waitForLoadState('domcontentloaded');
+const snapshot = await page.snapshot({ scope: 'page' });
+console.log({ url: info.url, title: info.title, items: snapshot.items });
+await room.yieldControl();
+```
+
+CLI scripts are local Node.js programs with the permissions of the invoking process. They are not a sandbox: only run scripts you trust, and do not treat Corvid Room or Profile scoping as operating-system isolation. The built-in Corvid Agent and Browser MCP adapters share the supported page information, snapshot, selector-wait, and HTTP(S)-navigation contracts; each operation still passes the desktop's credential, Room ownership, user takeover, execution-risk, managed Page, and URL checks.
+
 `page.snapshot(options)` returns `{ url, title, scope, items, truncated, total, limitations, inaccessibleFrames }`. Each item is `{ ref, role, name, frame }` where `ref` is a stable short reference such as `@12` and `frame` is the containing same-origin frame label (or `null` for the top document). References identify actual nodes: a main-frame navigation invalidates them, detached or replaced nodes are rejected, and the same node keeps its reference across snapshots until the document is replaced. Refs are accepted by actions as `@12`, `ref=12`, or the raw string printed by the snapshot.
 
 `options.scope` controls collection:

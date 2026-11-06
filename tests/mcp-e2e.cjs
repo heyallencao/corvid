@@ -156,6 +156,16 @@ class McpProcess {
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
     assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url']);
+    for (const [name, properties] of Object.entries({
+      page_info: ['roomId', 'tabId'],
+      page_snapshot: ['roomId', 'scope', 'tabId'],
+      page_wait_for_selector: ['roomId', 'state', 'tabId', 'target', 'timeoutMs'],
+      page_navigate: ['roomId', 'tabId', 'url'],
+    })) {
+      const tool = listed.tools.find(item => item.name === name);
+      assert.ok(tool.description.length > 0, `${name} has shared capability guidance`);
+      assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), properties, `${name} exposes its shared input contract`);
+    }
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
     assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
