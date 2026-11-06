@@ -7,52 +7,6 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <aside id="rooms" aria-label="Corvid 导航" data-i18n-aria-label="browserNavigation">
-    <div class="sidebar-brand">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" fill="none"><path d="M6 20.5C6 12.5 12.2 6 20 6c2.1 0 4 .5 5.8 1.5-5.6 1-9.2 5.4-10.5 10.2-1 3.7-3.8 6.3-7.2 7.8A10 10 0 0 1 6 20.5Z" fill="currentColor"/><path d="M9 25.5c6.8-1.7 12.2-6.8 15.4-14.1.9 1.8 1.4 3.8 1.4 5.9 0 6.1-4.9 11-11 11-2.1 0-4.1-.6-5.8-1.7Z" fill="currentColor" opacity=".55"/></svg>
-      </span>
-      <span class="brand-name">Corvid</span>
-      <span class="brand-caption" data-i18n="aiBrowser">AI 浏览器</span>
-    </div>
-
-    <section class="profile-switcher" aria-label="浏览身份切换" data-i18n-aria-label="profileSwitcher">
-      <span class="profile-avatar" aria-hidden="true">A</span>
-      <select id="profile-select" aria-label="浏览身份" data-i18n-aria-label="profile"></select>
-      <button type="button" id="profile-menu-trigger" class="subtle-icon-button" aria-haspopup="menu" aria-controls="profile-menu" aria-label="浏览身份选项" title="浏览身份选项" data-i18n-aria-label="profileOptions" data-i18n-title="profileOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg></button>
-      <div id="profile-menu" role="menu" aria-label="浏览身份选项" data-i18n-aria-label="profileOptions" hidden></div>
-    </section>
-
-    <div class="sidebar-section-heading">
-      <span id="spaces-heading" data-i18n="spaces">空间</span>
-      <span class="sidebar-heading-actions">
-        <button type="button" id="create-room-trigger" class="subtle-icon-button" aria-label="新建空间" title="新建空间" data-i18n-aria-label="createSpace" data-i18n-title="createSpace"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
-        <button type="button" id="room-menu-trigger" class="subtle-icon-button" aria-haspopup="menu" aria-controls="room-menu" aria-label="空间选项" title="空间选项" data-i18n-aria-label="spaceOptions" data-i18n-title="spaceOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1"/><circle cx="10" cy="10" r="1"/><circle cx="16" cy="10" r="1"/></svg></button>
-      </span>
-      <div id="room-menu" role="menu" aria-label="空间选项" data-i18n-aria-label="spaceOptions" hidden></div>
-    </div>
-    <div id="room-strip" role="group" aria-label="空间" data-i18n-aria-label="spaces"></div>
-    <div id="room-actions" class="sidebar-window-action"></div>
-
-    <div class="sidebar-agent-section">
-      <div class="sidebar-section-heading"><span data-i18n="agent">Agent</span></div>
-      <button type="button" id="show-pi-workbench" class="sidebar-nav-item" title="Corvid Agent" aria-label="Corvid Agent" data-i18n-title="corvidAgent" data-i18n-aria-label="corvidAgent" aria-expanded="false" aria-controls="library">
-        <span class="nav-symbol ai-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2.5 11.5 8.5 17.5 10 11.5 11.5 10 17.5 8.5 11.5 2.5 10 8.5 8.5 10 2.5Z"/><path d="m15.5 2 .5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5.5-2Z"/></svg></span><span class="nav-label">Agent</span>
-      </button>
-      <button type="button" id="show-agent-rooms" class="sidebar-nav-item" title="Agent 工作区" aria-label="Agent 工作区" data-i18n-title="agentWorkspace" data-i18n-aria-label="agentWorkspace" aria-expanded="false" aria-controls="library">
-        <span class="nav-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3.5" y="3.5" width="9" height="12" rx="1.5"/><path d="M7.5 6.5h2M7.5 9.5h2M7.5 12.5h2M14.5 7.5h2v9h-9v-1"/></svg></span><span class="nav-label" data-i18n="agentWorkspace">Agent 空间</span>
-      </button>
-    </div>
-
-    <div class="sidebar-spacer"></div>
-    <nav class="sidebar-library" aria-label="浏览器资料库" data-i18n-aria-label="browserNavigation">
-      <button type="button" id="show-bookmarks" class="sidebar-nav-item" title="书签" aria-label="书签" data-i18n-title="bookmarks" data-i18n-aria-label="bookmarks" aria-expanded="false" aria-controls="library"><span class="nav-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m10 2.5 2.25 4.6 5.1.75-3.68 3.58.87 5.07L10 14.1l-4.54 2.4.87-5.07L2.65 7.85l5.1-.75L10 2.5Z"/></svg></span><span class="nav-label" data-i18n="bookmarks">书签</span></button>
-      <button type="button" id="show-history" class="sidebar-nav-item" title="浏览历史" aria-label="浏览历史" data-i18n-title="history" data-i18n-aria-label="history" aria-expanded="false" aria-controls="library"><span class="nav-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3.2 8a7 7 0 1 1-.2 2M3 4.5V8h3.5M10 5.5v4.7l3.1 1.8"/></svg></span><span class="nav-label" data-i18n="history">历史记录</span></button>
-      <button type="button" id="show-downloads" class="sidebar-nav-item" title="下载" aria-label="下载" data-i18n-title="downloads" data-i18n-aria-label="downloads"><span class="nav-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M10 2.5v10m-3.5-3L10 13l3.5-3.5M3.5 15v2h13v-2"/></svg></span><span class="nav-label" data-i18n="downloads">下载</span></button>
-      <button type="button" id="show-settings" class="sidebar-nav-item" title="设置" aria-label="设置" data-i18n-title="settings" data-i18n-aria-label="settings"><span class="nav-symbol" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M8.2 2.8h3.6l.5 2a5.6 5.6 0 0 1 1.3.8l1.9-.7 1.8 3.1-1.5 1.4v1.5l1.5 1.4-1.8 3.1-1.9-.7a5.6 5.6 0 0 1-1.3.8l-.5 2H8.2l-.5-2a5.6 5.6 0 0 1-1.3-.8l-1.9.7-1.8-3.1 1.5-1.4V9.4L2.7 8l1.8-3.1 1.9.7a5.6 5.6 0 0 1 1.3-.8l.5-2Z"/><circle cx="10" cy="10.2" r="2.3"/></svg></span><span class="nav-label" data-i18n="settings">设置</span></button>
-    </nav>
-  </aside>
-
   <main id="browser-shell">
     <div id="tab-strip">
       <button id="tab-scroll-left" class="tab-scroll-control" type="button" aria-label="向左滚动标签页" title="向左滚动标签页" data-i18n-aria-label="scrollTabsLeft" data-i18n-title="scrollTabsLeft" hidden><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 4-6 6 6 6"/></svg></button>
@@ -70,11 +24,37 @@
         <div id="address-suggestions" role="listbox" aria-label="地址建议" data-i18n-aria-label="addressSuggestions" hidden></div>
       </form>
       <div id="extension-toolbar" role="group" aria-label="扩展工具栏" data-i18n-aria-label="extensionToolbar"></div>
+      <button type="button" id="show-pi-workbench" class="icon-button" title="Corvid Agent" aria-label="Corvid Agent" data-i18n-title="corvidAgent" data-i18n-aria-label="corvidAgent" aria-expanded="false" aria-controls="library"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5 11.5 8.5 17.5 10 11.5 11.5 10 17.5 8.5 11.5 2.5 10 8.5 8.5 10 2.5Z"/><path d="m15.5 2 .5 2 2 .5-2 .5-.5 2-.5-2-2-.5 2-.5.5-2Z"/></svg></button>
+      <button type="button" id="library-trigger" class="icon-button" title="资料与设置" aria-label="资料与设置" data-i18n-title="libraryMenu" data-i18n-aria-label="libraryMenu" aria-haspopup="menu" aria-expanded="false" aria-controls="library-menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4.5h5.5V16H4zM10.5 4.5H16V16h-5.5zM6.2 7.5h1.1M6.2 10h1.1M12.7 7.5h1.1M12.7 10h1.1"/></svg></button>
+      <div id="library-menu" role="menu" aria-label="资料与设置" data-i18n-aria-label="libraryMenu" hidden>
+        <button type="button" id="show-bookmarks" role="menuitem" tabindex="-1" title="书签" aria-label="书签" data-i18n-title="bookmarks" data-i18n-aria-label="bookmarks" aria-expanded="false" aria-controls="library"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.5 2.25 4.6 5.1.75-3.68 3.58.87 5.07L10 14.1l-4.54 2.4.87-5.07L2.65 7.85l5.1-.75L10 2.5Z"/></svg><span data-i18n="bookmarks">书签</span></button>
+        <button type="button" id="show-history" role="menuitem" tabindex="-1" title="浏览历史" aria-label="浏览历史" data-i18n-title="history" data-i18n-aria-label="history" aria-expanded="false" aria-controls="library"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.2 8a7 7 0 1 1-.2 2M3 4.5V8h3.5M10 5.5v4.7l3.1 1.8"/></svg><span data-i18n="history">历史记录</span></button>
+        <button type="button" id="show-downloads" role="menuitem" tabindex="-1" title="下载" aria-label="下载" data-i18n-title="downloads" data-i18n-aria-label="downloads"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v10m-3.5-3L10 13l3.5-3.5M3.5 15v2h13v-2"/></svg><span data-i18n="downloads">下载</span></button>
+        <button type="button" id="show-agent-rooms" role="menuitem" tabindex="-1" title="Agent 工作区" aria-label="Agent 工作区" data-i18n-title="agentWorkspace" data-i18n-aria-label="agentWorkspace" aria-expanded="false" aria-controls="library"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="12" rx="1.5"/><path d="M7.5 6.5h2M7.5 9.5h2M7.5 12.5h2M14.5 7.5h2v9h-9v-1"/></svg><span data-i18n="agentWorkspace">Agent 工作区</span></button>
+        <div class="menu-separator" role="presentation"></div>
+        <button type="button" id="show-settings" role="menuitem" tabindex="-1" title="设置" aria-label="设置" data-i18n-title="settings" data-i18n-aria-label="settings"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.2 2.8h3.6l.5 2a5.6 5.6 0 0 1 1.3.8l1.9-.7 1.8 3.1-1.5 1.4v1.5l1.5 1.4-1.8 3.1-1.9-.7a5.6 5.6 0 0 1-1.3.8l-.5 2H8.2l-.5-2a5.6 5.6 0 0 1-1.3-.8l-1.9.7-1.8-3.1 1.5-1.4V9.4L2.7 8l1.8-3.1 1.9.7a5.6 5.6 0 0 1 1.3-.8l.5-2Z"/><circle cx="10" cy="10.2" r="2.3"/></svg><span data-i18n="settings">设置</span></button>
+      </div>
       <button type="button" id="more-tools" class="icon-button" title="更多浏览工具" aria-label="更多浏览工具" data-i18n-title="moreTools" data-i18n-aria-label="moreTools" aria-haspopup="menu" aria-expanded="false" aria-controls="site-tools"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/></svg></button>
     </div>
     <div id="bookmarks-bar" aria-label="书签栏" data-i18n-aria-label="bookmarksBar"></div>
     <div id="status" role="status" aria-live="polite"></div>
   </main>
+
+  <nav id="room-dock" aria-label="空间" data-i18n-aria-label="spaces">
+    <div class="dock-profile">
+      <span class="dock-profile-avatar">
+        <span class="profile-avatar" aria-hidden="true">A</span>
+        <select id="profile-select" aria-label="浏览身份" data-i18n-aria-label="profile"></select>
+      </span>
+      <button type="button" id="profile-menu-trigger" class="dock-profile-trigger" aria-haspopup="menu" aria-controls="profile-menu" aria-label="浏览身份选项" title="浏览身份选项" data-i18n-aria-label="profileOptions" data-i18n-title="profileOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5.5 7.5 4.5 4.5 4.5-4.5"/></svg></button>
+      <div id="profile-menu" role="menu" aria-label="浏览身份选项" data-i18n-aria-label="profileOptions" hidden></div>
+    </div>
+    <div class="dock-separator" role="presentation"></div>
+    <div id="room-strip" role="group" aria-label="空间" data-i18n-aria-label="spaces"></div>
+    <button type="button" id="room-menu-trigger" class="dock-add" aria-haspopup="menu" aria-controls="room-menu" aria-label="空间选项" title="空间选项" data-i18n-aria-label="spaceOptions" data-i18n-title="spaceOptions" aria-expanded="false"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h.01M10 10h.01M15 10h.01"/></svg></button>
+    <button type="button" id="create-room-trigger" class="dock-add" aria-label="新建空间" title="新建空间" data-i18n-aria-label="createSpace" data-i18n-title="createSpace"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+    <div id="room-menu" role="menu" aria-label="空间选项" data-i18n-aria-label="spaceOptions" hidden></div>
+  </nav>
 
   <div id="findbar" hidden role="search" aria-label="页内查找" data-i18n-aria-label="pageFind">
     <input id="find-input" aria-label="页内查找" placeholder="在页面中查找" data-i18n-aria-label="pageFind" data-i18n-placeholder="findPlaceholder">
