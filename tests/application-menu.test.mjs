@@ -44,11 +44,16 @@ test('application menu has a branded app menu only on macOS and window items sel
   const handlers = {focusWindow,newTab:()=>{},newWindow:()=>{},closeTab:()=>{},closeWindow:()=>{},back:()=>{},forward:()=>{},reload:()=>{},find:()=>{},print:()=>{},fullscreen:()=>{},zoomIn:()=>{},zoomOut:()=>{},resetZoom:()=>{}};
   const mac = createApplicationMenuTemplate({locale:'en',platform:'darwin',handlers,windows:[{id:'one',label:'Window 1',focused:false}]});
   const linux = createApplicationMenuTemplate({locale:'en',platform:'linux',handlers,windows:[]});
+  const windows = createApplicationMenuTemplate({locale:'en',platform:'win32',handlers,windows:[]});
 
   assert.equal(mac[0].id, 'corvid-app-menu');
   assert.equal(item(mac,'corvid-about').role, 'about');
   assert.equal(linux.some(entry => entry.id === 'corvid-app-menu'), false);
   assert.equal(item(linux,'corvid-quit').role, 'quit');
+  assert.equal(windows.some(entry => entry.id === 'corvid-app-menu'), false);
+  assert.equal(item(windows,'corvid-quit').role, 'quit');
+  assert.equal(item(windows,'corvid-new-tab').accelerator, 'CmdOrCtrl+T');
+  assert.equal(item(windows,'corvid-toggle-fullscreen').accelerator, 'F11');
   const windowItem = item(mac,'corvid-window-one');
   assert.equal(windowItem.type, 'radio');
   assert.equal(windowItem.checked, false);

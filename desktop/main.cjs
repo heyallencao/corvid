@@ -11,12 +11,13 @@ const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.c
 const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
+const { resolveDataDirectory } = require('./data-directory.cjs');
 const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
 // Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
 const INITIAL_BROWSER_CHROME_HEIGHT = 90;
 let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
-const dataDir = process.env.CORVID_DATA_DIR || path.join(app.getPath('home'), '.corvid');
+const dataDir = resolveDataDirectory({ override:process.env.CORVID_DATA_DIR, homeDir:app.getPath('home') });
 const startupProgress = createStartupProgress({ dataDir, enabled: process.env.CORVID_TEST_MODE === '1', onError: error => console.error(`Corvid test startup progress could not be saved: ${error.message}`) });
 let dataDirectoryError = null;
 try {
@@ -35,16 +36,23 @@ try {
 } catch (error) {
   dataDirectoryError = new Error(mainMessages.t('dataDirectoryFailure', {path:dataDir,error:error.message}));
 }
+let singleInstanceLock = false;
+if (!dataDirectoryError) {
+  app.setPath('userData', dataDir);
+  singleInstanceLock = app.requestSingleInstanceLock();
+}
 
-if (!dataDirectoryError) startupProgress('main-module-loaded');
+if (!singleInstanceLock && !dataDirectoryError) app.quit();
+else if (singleInstanceLock) startupProgress('main-module-loaded');
 if (dataDirectoryError) {
   console.error(dataDirectoryError.message);
   void app.whenReady().then(() => {
     if (process.env.CORVID_TEST_MODE !== '1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'), dataDirectoryError.message);
     app.exit(1);
   });
+} else if (!singleInstanceLock) {
+  // A second process must not initialize Corvid application state.
 } else {
-app.setPath('userData', dataDir);
 const hadExistingCorvidData=[path.join(dataDir,'rooms.json'),path.join(dataDir,'spaces.json'),path.join(dataDir,'profiles.json'),path.join(dataDir,'library.json'),path.join(dataDir,'window-state.json'),path.join(dataDir,'agent-tasks.json'),path.join(dataDir,'managed-extensions.json')].some(file=>fs.existsSync(file));
 const token = crypto.randomBytes(32).toString('hex');
 const tabs = new Map();
@@ -124,6 +132,18 @@ let rooms = [], activeRoomId, activeProfileId = 'default', window, server, quitt
 // `frontView` stay as aliases for the focused window so existing call sites keep
 // their meaning; `focusWindow` switches those aliases.
 const windowRecords = new Map();
+let pendingSecondInstanceActivation = false;
+app.on('second-instance', () => {
+  const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.isFocused())
+    || [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed());
+  if (!record) {
+    pendingSecondInstanceActivation = true;
+    return;
+  }
+  if (record.browserWindow.isMinimized()) record.browserWindow.restore();
+  if (!record.browserWindow.isVisible()) record.browserWindow.show();
+  record.browserWindow.focus();
+});
 let applicationMenu = null;
 const agentRuntime = createPiAgentRuntime({ dataDir, modelManager: usePiFixture ? null : piModelManager, getModelSelection: () => usePiFixture ? null : piModelManager.getSelection(), createSession: usePiFixture ? fixtureSession : undefined });
 const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
@@ -1793,6 +1813,12 @@ app.whenReady().then(async () => {
   // least one user room in the focused window.
   const primary=activeRecord();
   focusWindow(primary);
+  if (pendingSecondInstanceActivation) {
+    pendingSecondInstanceActivation = false;
+    if (primary.browserWindow.isMinimized()) primary.browserWindow.restore();
+    if (!primary.browserWindow.isVisible()) primary.browserWindow.show();
+    primary.browserWindow.focus();
+  }
   if (!rooms.length) { startupProgress('create-initial-room'); await createRoom('我的空间','user'); }
   else if (!roomsOfWindow(primary).length) { const orphan=rooms[0]; moveRoomToWindow(orphan,primary); primary.activeRoomId=orphan.id; primary.activeProfileId=orphan.profileId; }
   if(saved?.rooms?.length && browserPreferences.startupBehavior==='new-tab'){
