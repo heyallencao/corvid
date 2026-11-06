@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-07 Issue #408 设置到模型配置的遮罩交接
+
+- 基线：隔离 worktree `ui/issue-408-modal-handoff`，基于 `origin/main` `d8e2bad`；macOS arm64、Darwin 25.5.0、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与本地 HTTP fixture，未调用 OAuth 或真实模型。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/settings-preferences-e2e.cjs` EXIT 0。覆盖干净设置直接打开模型配置时原生网页 `WebContentsView` 保持隐藏，以及该测试原有的未保存更改/返回设置流程。
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 未通过；node:test 47/47 PASS，串行 E2E 运行至 `tests/fullscreen-e2e.cjs:144` 时失败：最大化窗口 normal bounds 实际宽度 1470、预期 1280（高度均为 847）。该失败对应已存在的 Issue #403，与设置/模型配置交接路径无关；按协作门禁要求 PR #409 暂不合并。
+- 静态检查：`node --check desktop/renderer.js` 与 `git diff --check` 均通过。
+- 限制：仅 macOS arm64 开发版；Windows、打包版及其他 macOS 屏幕配置未覆盖。全量门禁最终候选受 #403 阻塞，待其修复后须在最新候选重跑。
+
 ## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
 
 - 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。
