@@ -2047,6 +2047,12 @@
 - 修正：dialogs UI 用例在触发网页 prompt 前等待 Room tab 的 `loadComplete`；打印快捷键路由通过合成 `before-input-event` 直接触发真实 BrowserWindow shortcut handler，并断言事件被处理及当前页面收到 print 调用。
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/dialogs-ui-e2e.cjs` 连续 3 次通过；`... node tests/browser-print-e2e.cjs` 连续 3 次通过。使用隔离临时数据和本地 fixture，未跑本机全量套件。直接触发 handler 不覆盖物理键盘/操作系统事件生成；本次验证覆盖 handler 分支与页面路由。本记录不代表 hosted full gate 已通过，也没有发布 Release。
 
+## 2026-11-06 Issue #319 hosted legacy window work-area follow-up（PR 前）
+
+- Hosted run [42157629754](https://github.com/heyallencao/corvid/actions/runs/42157629754)：preflight、Intel app/DMG/ZIP、Windows installer/upload 均通过；arm64 两轮均在 `tests/window-state-e2e.cjs:76` legacy 单对象恢复断言失败，runner 实际高度 684px，测试仍期望 730px。dialog 与 print 用例本轮均通过。
+- 修正：legacy 状态恢复尺寸断言也按 primary display work area 限定；此前 off-screen 数组状态断言已作相同适配。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 3 次通过；使用隔离临时数据与本地 fixture，未跑本机全量套件。通过后提交 PR 并再次执行合并后 hosted gate。本地全量未重跑；没有发布 Release。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。

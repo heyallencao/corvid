@@ -70,10 +70,10 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await stop();
     // The v1 single-object shape must still be read as one window. macOS may
     // nudge the restored y position (title bar/menu bar constraints), so the
-    // size is exact and the origin is compared with a small tolerance.
+    // size is work-area bounded and the origin is compared with a small tolerance.
     fs.writeFileSync(statePath,JSON.stringify({x:160,y:170,width:1020,height:730}));
     const legacy=await start();
-    assert.deepEqual({width:legacy.bounds.width,height:legacy.bounds.height},{width:1020,height:730});
+    assert.deepEqual({width:legacy.bounds.width,height:legacy.bounds.height},{width:Math.min(1020,legacy.workArea.width),height:Math.min(730,legacy.workArea.height)});
     assert.ok(Math.abs(legacy.bounds.x-160)<=4,`expected x near 160, got ${legacy.bounds.x}`);
     assert.ok(Math.abs(legacy.bounds.y-170)<=24,`expected y near 170, got ${legacy.bounds.y}`);
     await stop();
