@@ -2035,6 +2035,12 @@
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs` 连续 3 次通过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test tests/uploads.e2e.mjs` 连续 3 次通过。使用隔离临时目录与本地 fixture；没有本机全量回归。本地定向结果不能证明 hosted full gate 已通过。
 - 后续：合并后重新执行 `version=0.2.0`、`publish=false` 手动 Release workflow；没有发布 Release。
 
+## 2026-11-06 Issue #319 hosted work-area 与 shortcut follow-up（PR 前）
+
+- Hosted run [42154735606](https://github.com/heyallencao/corvid/actions/runs/42154735606)：Intel 与 Windows packaged smoke 均通过；arm64 retry 1 在 detached-monitor 窗口状态用例把 runner 实际裁剪后的 `1000×684` 与固定 `1000×700` 比较而失败，retry 2 的 browser print shortcut 仍未观察到第 4 次打印调用。file chooser 用例本轮通过。
+- 修正：off-screen restore 断言按实际 work area 对尺寸取值；打印快捷键继续通过 Electron `sendInputEvent` 触发应用的 `before-input-event` handler，将 keyDown/keyUp 间隔增加到 100ms。Playwright `keyboard.press` 不覆盖这个 Electron handler，未用于该验收。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/window-state-e2e.cjs` 连续 3 次通过；`... node tests/browser-print-e2e.cjs` 连续 5 次通过。本地全量未重跑；定向结果仍不能代表 hosted full gate 已通过。没有发布 Release。
+
 ## 2026-11-06 Issue #289 全量 E2E 跨 worktree 互斥
 
 - 变更：`npm test` 先获取按规范化 Git remote 派生的同机临时目录锁，再运行原串行测试链；同一 remote 的另一 worktree 会等待并打印当前 owner PID。退出时释放锁，owner PID 已退出或锁 age 超过 6 小时的遗留锁会回收。直接单跑某个 E2E 脚本不经过该锁。

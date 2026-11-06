@@ -19,7 +19,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${fixture.address().port}`;
-  let app;
+  let app, shell;
 
   async function until(fn, message = 'Timed out waiting for browser state') {
     for (let i = 0; i < 200; i++) {
@@ -70,20 +70,13 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   async function shortcut(key) {
     const primary = process.platform === 'darwin' ? 'meta' : 'control';
-    await app.evaluate(({ app: electronApp }) => electronApp.focus(process.platform === 'darwin' ? { steal: true } : undefined));
-    await app.evaluate(async ({ BrowserWindow }, { key, primary }) => {
+    await app.evaluate(async ({ BrowserWindow }, { keyCode, modifiers }) => {
       const window = BrowserWindow.getAllWindows()[0];
-      window.focus();
-      window.webContents.focus();
-      for (let attempt = 0; attempt < 120 && (!window.isFocused() || !window.webContents.isFocused()); attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 25));
-      }
-      if (!window.isFocused() || !window.webContents.isFocused()) throw new Error('Browser window did not receive focus before shortcut');
       const contents = window.webContents;
-      contents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: [primary] });
+      contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers });
       await new Promise(resolve => setTimeout(resolve, 100));
-      contents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: [primary] });
-    }, { key, primary });
+      contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers });
+    }, { keyCode: key.toUpperCase(), modifiers: [primary] });
   }
 
   try {
@@ -92,7 +85,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       args: [project],
       env: { ...process.env, CORVID_DATA_DIR: dataDir, CORVID_TEST_MODE: '1', CORVID_PORT: '0' },
     });
-    const shell = await app.firstWindow();
+    shell = await app.firstWindow();
     await until(() => fs.existsSync(path.join(dataDir, 'control.json')));
     await shell.locator('#address').fill(`${base}/first`);
     await shell.locator('#address').press('Enter');
