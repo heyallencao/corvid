@@ -238,7 +238,7 @@ async function readContrastPalette(shell) {
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await shell.getByText('请先打开一个 HTTP(S) 页面，再连接 Corvid Agent').waitFor();
     const darkAgentPalette=await shell.evaluate(()=>({form:getComputedStyle(document.querySelector('#pi-task-form')).backgroundColor,composer:getComputedStyle(document.querySelector('#pi-task-form textarea')).backgroundColor,welcomeMark:getComputedStyle(document.querySelector('.pi-welcome-mark')).backgroundColor}));
-    assert.deepEqual(darkAgentPalette,{form:'rgb(27, 32, 41)',composer:'rgb(29, 35, 45)',welcomeMark:'rgb(41, 47, 76)'},'Corvid Agent composer and empty state use dark surfaces');
+    assert.deepEqual(darkAgentPalette,{form:'rgb(32, 37, 47)',composer:'rgba(0, 0, 0, 0)',welcomeMark:'rgb(41, 47, 76)'},'Corvid Agent composer card keeps dark surfaces and the prompt field draws on the card itself');
     if(process.env.CORVID_THEME_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_THEME_SCREENSHOT_PATH});
     await shell.emulateMedia({colorScheme:'light'});
     await shell.waitForFunction(()=>!matchMedia('(prefers-color-scheme: dark)').matches&&getComputedStyle(document.documentElement).colorScheme==='light');
