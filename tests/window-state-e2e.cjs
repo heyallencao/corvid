@@ -33,20 +33,26 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     fs.writeFileSync(statePath,JSON.stringify([{x:130,y:150,width:600,height:400}]));
     const restoredMinimum=await start();
     assert.deepEqual({width:restoredMinimum.bounds.width,height:restoredMinimum.bounds.height},{width:719,height:420},'legacy undersized persisted bounds are normalized before restore');
-    await app.evaluate(({app:electronApp,BrowserWindow})=>{
+    const targetBounds={
+      width:Math.min(1010,restoredMinimum.workArea.width),
+      height:Math.min(720,restoredMinimum.workArea.height),
+    };
+    targetBounds.x=restoredMinimum.workArea.x+Math.min(130,restoredMinimum.workArea.width-targetBounds.width);
+    targetBounds.y=restoredMinimum.workArea.y+Math.min(150,restoredMinimum.workArea.height-targetBounds.height);
+    await app.evaluate(({app:electronApp,BrowserWindow},expected)=>{
       electronApp.focus(process.platform==='darwin'?{steal:true}:undefined);
       const window=BrowserWindow.getAllWindows()[0];
       window.focus();
-      window.setBounds({x:130,y:150,width:1010,height:720});
-    });
-    await until(()=>app.evaluate(({BrowserWindow})=>{
+      window.setBounds(expected);
+    },targetBounds);
+    await until(()=>app.evaluate(({BrowserWindow},expected)=>{
       const bounds=BrowserWindow.getAllWindows()[0].getBounds();
-      return bounds.x===130&&bounds.y===150&&bounds.width===1010&&bounds.height===720;
-    }),'updated window bounds');
-    await until(()=>{try{const states=readStates();return states[0]?.x===130&&states[0]?.y===150&&states[0]?.width===1010&&states[0]?.height===720;}catch{return false;}},'window state file');
+      return bounds.x===expected.x&&bounds.y===expected.y&&bounds.width===expected.width&&bounds.height===expected.height;
+    },targetBounds),'updated window bounds');
+    await until(()=>{try{const state=readStates()[0];return state?.x===targetBounds.x&&state?.y===targetBounds.y&&state?.width===targetBounds.width&&state?.height===targetBounds.height;}catch{return false;}},'window state file');
     await stop();
     const restored=await start();
-    assert.deepEqual({x:restored.bounds.x,y:restored.bounds.y,width:restored.bounds.width,height:restored.bounds.height},{x:130,y:150,width:1010,height:720});
+    assert.deepEqual(restored.bounds,targetBounds);
     await stop();
     // A corrupt state file must fall back to the default window instead of
     // blocking startup.
