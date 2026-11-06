@@ -90,6 +90,12 @@ test('rooms, browser interactions, yieldControl and shutdown through the running
     const firstTab = first.tabs[0], secondTab = second.tabs[0];
     await call('POST', `/tabs/${firstTab.id}/navigate`, { url: `${origin}/cookie` });
     await call('POST', `/tabs/${secondTab.id}/navigate`, { url: `${origin}/form` });
+    await eventually(async () => {
+      const rooms = await call('GET', '/rooms');
+      const firstLoaded = rooms.rooms.find(room => room.id === first.id)?.tabs[0]?.loadComplete;
+      const secondLoaded = rooms.rooms.find(room => room.id === second.id)?.tabs[0]?.loadComplete;
+      return firstLoaded && secondLoaded;
+    });
     await call('POST', `/rooms/${first.id}/activate`);
     const action = async (tabId, operation, args = {}) => call('POST', `/tabs/${tabId}/action`, { operation, args });
     const cookie = await action(secondTab.id, 'evaluate', { expression: 'document.cookie' });

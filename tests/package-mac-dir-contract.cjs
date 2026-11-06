@@ -6,6 +6,10 @@ const { spawnSync } = require('node:child_process');
 const { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } = fs;
 const temp = mkdtempSync(path.join(os.tmpdir(), 'corvid-package-mac-dir-'));
 try {
+  const packageScripts = require('../package.json').scripts;
+  for (const name of ['package:mac:release', 'package:mac:release:x64', 'package:win:release']) {
+    assert.match(packageScripts[name], /--publish never(?:\s|$)/, `${name} must build artifacts without invoking a publisher`);
+  }
   const project = path.join(temp, 'project');
   const scripts = path.join(project, 'scripts');
   const fakeBin = path.join(temp, 'bin');
