@@ -2,10 +2,10 @@
 
 ## 2026-11-06 Issue #341 只读站点命令
 
-- 基线与环境：隔离 worktree `agent/issue-341-readonly-site-commands`，更新到最新 `origin/main` `a6a065d`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。真实 Electron 使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；未调用真实模型、Provider 或 OAuth，未读取真实浏览数据。
+- 基线与环境：隔离 worktree `agent/issue-341-readonly-site-commands`，更新到最新 `origin/main` `1ec70ce`；macOS arm64、Node.js v24.22.1、Electron 45.2.1。真实 Electron 使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；未调用真实模型、Provider 或 OAuth，未读取真实浏览数据。
 - 定向合同：`node tests/site-commands-store.cjs` PASS；`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` PASS，覆盖站点命令生命周期、授权、Room/origin 隔离、保留/删除及 retained-only 搜索/运行。
 - 完整门禁：独占锁已取得，`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；首段 43/43 个 `node:test` 用例通过，随后 76 条独立串行脚本全部通过（共 119 项自动化检查）。其中 `dialogs.e2e.mjs` 与 `uploads.e2e.mjs` 均通过，site command store 与 MCP/Electron 生命周期亦在整链中通过。
-- #289 处理记录：此前基于 `879c84a` 的失败在该提交干净 worktree 中以相同签名复现；此次在包含 #289 已合入测试链稳定化的最新主线 `a6a065d` 上完整复验通过。失败签名未在最新主线重现；本记录不宣称定位了所有历史焦点波动的根因。
+- #289 处理记录：此前基于 `879c84a` 的失败在该提交干净 worktree 中以相同签名复现；#289 已通过 PR #353 合入全量 E2E 跨 worktree 互斥稳定化。此次在最新主线 `1ec70ce` 上完整复验通过，`dialogs.e2e.mjs` 和 `uploads.e2e.mjs` 均通过；历史失败签名未重现。本记录不宣称定位了所有历史焦点波动的根因。
 - 静态检查：变更脚本 `node --check`、`git diff --check` 通过。全量 E2E 生成的 9 张跟踪截图已按测试前干净状态恢复，没有把测试副产物作为本切片变更。
 - 限制：仅 macOS arm64 开发版、隔离本地 fixture；未验证真实网站、真实 MCP Host、Windows 或打包版。
 
