@@ -2137,24 +2137,9 @@
 - 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例通过，随后完整串行脚本链通过（76 条独立脚本，包含单实例与只读目录 E2E）。启动前检查无活动 Electron E2E；运行期间保持唤醒。`git diff --check` 与新增/修改 JS 入口 `node --check` 通过。
 - 隐私与限制：使用临时 `CORVID_DATA_DIR` 与本地 fixture，不调用真实模型、Provider 或 OAuth。当前机器为 macOS，未在本机运行 Windows packaged executable；合并后仍须执行既有 `release.yml` 手动 workflow（`publish=false`）。Windows 原生文件/保存面板、NSIS 安装交互、DPI/字体/任务栏仍待 Windows 桌面人工验收；未签名 SmartScreen 策略未作产品决策，本轮未签名、公证或发布。
 
-## 2026-11-06 Issue #319 最终 Release gate 复核
+## 2026-11-06 Issue #377/#378/#381 Agent 工作台布局重构
 
-- 基线：`origin/main` `baad6429519d81da0818ec0d9179047f2f7bbac6`（含 PR #376）。Hosted workflow [run 42173674375](https://github.com/heyallencao/corvid/actions/runs/42173674375) 使用 `version=0.2.0`、`publish=false`；preflight、macOS arm64 全量 E2E、arm64 app/DMG/ZIP、Intel app/DMG/ZIP、Windows packaged gate 与资产上传全部通过；publish job 按参数跳过，未发布 Release。
-- 定向复核：Mac 解锁后，`env -u ELECTRON_RUN_AS_NODE node tests/browser-print-e2e.cjs`、`node tests/fullscreen-e2e.cjs`（连续 3 次）、`node --test tests/browser.e2e.mjs`、`node tests/dialogs-ui-e2e.cjs` 均通过。使用隔离临时数据与本地 fixture；未调用真实模型或 OAuth。
-- 失败复核：较早 hosted gate 中打印调用超时在完整重试中通过；一次 fullscreen bounds 高度差为 2px 未在解锁后的连续 3 次复跑重现；后续 hosted gate 两轮分别在 browser 输入焦点与 dialogs UI 控件等待处失败，但对应本机定向测试各通过，随后同 SHA gate 全绿。现有证据支持这些为间歇性桌面/E2E 状态问题，未据此放宽断言或改动产品逻辑。
-- 限制：macOS 本机仅运行上述四项定向 E2E，没有再次运行完整套件；完整回归与跨平台 packaged 验收来自 run 42173674375。Windows 仅覆盖 workflow 中的 packaged gate，不代表 NSIS 安装交互、签名/公证或真实 Provider 流程已验收。
-
-## 2026-11-06 Issue #345 Windows packaged 跨平台验收收尾
-
-- 本机验收：基于 `baad642` 的全量 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，46/46 `node:test` 与完整串行 E2E 链通过；macOS arm64 packaged app 定向运行 `browser-shortcuts-e2e.cjs` 通过，覆盖快捷键、导航、缩放、设置、Profile 隔离和重启持久化。测试使用隔离数据目录及本地 fixture，未调用真实模型、Provider 或 OAuth。
-- Windows 修复与验证过程：run [42170372427](https://github.com/heyallencao/corvid/actions/runs/42170372427) 的 Windows packaged 快捷键阶段因 Playwright Electron launcher 无法连接关闭 Node inspect fuse 的 packaged exe 而超时；已由 issue #374 / PR #376 将 packaged 覆盖改为 loopback CDP 连接 renderer，并通过测试模式受限端点调用目标窗口的真实 `webContents.sendInputEvent()`。最终 runner 保留单实例、快捷键及 packaged UI smoke 三阶段，production fuse 未修改。
-- hosted 中间复验：run [42171503087](https://github.com/heyallencao/corvid/actions/runs/42171503087) 的 Windows 与 macOS Intel 打包通过；macOS arm64 全量回归两次尝试分别遇到打印状态等待超时和 fullscreen 高度相差 2 px 的断言失败，因此此 run 未作为最终门禁通过证据。
-- 最终 hosted 验收：既有手动 `release.yml` run [42173674375](https://github.com/heyallencao/corvid/actions/runs/42173674375)，基线 `baad6429519d81da0818ec0d9179047f2f7bbac6`，参数 `version=0.2.0`、`publish=false`；preflight、Windows packaged installer/launcher/单实例/快捷键/UI smoke、macOS Intel 打包，以及 macOS arm64 全量 E2E 与打包 jobs 全部成功，`publish` job 按配置跳过。Windows 日志确认三个 runner 阶段均执行，快捷键测试输出 `PASS shortcuts, navigation, zoom and per-profile search settings across restart`。本轮未签名、公证或发布。
-- 未覆盖边界：Windows 原生文件与保存对话框、NSIS 安装/卸载交互、DPI/字体/任务栏行为仍需 Windows 桌面人工验收；hosted installer 构建成功不代表这些交互已人工验收。未签名 SmartScreen 策略仍待产品决策。
-
-## 2026-11-06 Issue #332 网页对话框 Escape 取消答复
-
-- 修改：`#page-dialog` 监听原生 `cancel` 事件并阻止浏览器只关闭 `<dialog>` 的默认行为，转入既有 `answerPageDialog(false)` 取消路径，使页面等待中的 `prompt` 收到取消结果。
-- 定向验证：macOS arm64、Node.js v24.22.1、Electron 45.2.1；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/dialogs-ui-e2e.cjs` 通过。真实 Electron 页面 prompt 的接受路径返回输入文本；取消按钮、标题头 × 与键盘 Escape 均使页面返回 `null`，触发页面动作完成而非挂起。
-- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例通过，之后完整串行 E2E 链全部 PASS。`node --check`（renderer 与 E2E）、`git diff --check` 通过。全量运行改写的 9 张历史 QA 截图已在隔离 worktree 中恢复；PR 不包含截图。
-- 环境与限制：仅在 macOS arm64 source Electron 与本地 fixture 验证，未调用真实模型、Provider 或 OAuth；本次新增专项断言覆盖网页 `prompt`，没有新增 `confirm`/`alert` 页面取消语义断言。截图不适用：本 PR 修改关闭键盘行为与 E2E，不改变可见界面。
+- 变更：`desktop/renderer.js` composer 引入 `.pi-composer-row`（模型簇+预览）与 `.pi-send-row`（同意+发送）两个分组容器；任务卡拆出 `.pi-task-actions` 操作行（状态留在 `.pi-task-meta`）。`desktop/styles.css` 重写工作台相关块：composer 胶囊化模型选择/连接行、`:focus-within` 反馈、状态胶囊 pill 化、ghost 操作按钮、事件胶囊化、消息队列一体表面、欢迎态/工具栏/历史统一；清理 `.pi-chat-thread`/`.pi-thread-heading`/`.pi-chat-messages`/`.pi-chat-empty` 4 条无引用死规则；短高（520/480/440）与既有断点按新 flex 结构重写。测试依赖的 DOM 合同（id、class 名、data-*、aria）全部保留。
+- 定向验证：`node --check desktop/renderer.js` 通过；`grep` 复核死规则类名在 desktop/ 与 tests/ 无引用。14 个相关 E2E 套件全绿：pi-workbench-e2e、pi-workbench-header-e2e、pi-workbench-short-height-e2e、pi-workbench-errors-e2e、pi-unconnected-model-label-e2e、pi-model-picker-ui-e2e、pi-credential-os-store-e2e、pi-custom-endpoint-e2e、agent-rooms-panel-e2e、agent-stop-e2e、localization-e2e、typography-e2e、native-controls-e2e、fullscreen-e2e。`tests/agent-rooms-panel-e2e.cjs` 深色断言同步为新表面值（composer 卡 `--surface-soft`、prompt 融入卡片），断言语义（深色表面层级）不变。
+- 视觉验收：隔离 Electron（`CORVID_TEST_MODE=1`、独立数据目录、本地 fixture）9 张截图覆盖浅/深色 × zh-CN/en × 1280×850/704×420，见 `docs/qa/issue-377-workbench-layout-refactor.md` 与 `docs/qa/screenshots/issue-377/`。impeccable detect 仅报 `.agent-access-boundary` 既有 border-left（范围外，未改）。
+- 环境与限制：macOS arm64、Node.js v24.22.1、Electron 45.2.1；未调用真实模型/OAuth。真实模型长流式气泡与队列 ≥3 条密度未覆盖（#382）。Windows 未验证。
