@@ -48,6 +48,7 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await firstNativeWindow.evaluate(window=>window.maximize());
     await until(()=>firstNativeWindow.evaluate(window=>window.isMaximized()),'maximized window before full screen');
+    const maximizedBeforeFullscreen=await firstNativeWindow.evaluate(window=>window.getNormalBounds());
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
     const toggle=shell.getByRole('menuitemcheckbox',{name:'全屏模式'});
     assert.equal(await toggle.getAttribute('aria-checked'),'false');
@@ -132,17 +133,15 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
       const restored=await firstNativeWindow.evaluate(window=>window.isMaximized());
       return native&&restored&&state.windows.every(window=>!window.fullscreen&&!window.pageFullscreen);
     },'page full-screen exit event completes and restores the original maximized window');
-    const windowStateBeforeRestart=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(window=>({maximized:window.isMaximized(),bounds:window.getNormalBounds()})));
-    assert.ok(windowStateBeforeRestart.some(window=>window.maximized),'fixture includes a window that was maximized before full screen');
+    assert.ok(maximizedBeforeFullscreen.width>0&&maximizedBeforeFullscreen.height>0,'fixture records the maximized window’s normal bounds before full screen');
     const previousToken=config.token;
     await closeElectron(app);
     app=undefined;
     const persistedWindows=JSON.parse(fs.readFileSync(path.join(dataDir,'window-state.json'),'utf8'));
     const boundsForSort=windows=>windows.map(window=>({width:window.width??window.bounds.width,height:window.height??window.bounds.height})).sort((a,b)=>a.width-b.width||a.height-b.height);
-    const maximizedBeforeRestart=windowStateBeforeRestart.find(window=>window.maximized);
     const persistedMaximized=persistedWindows.find(window=>window.maximized);
     assert.ok(persistedMaximized,'full screen exit must persist the prior maximized state');
-    assert.deepEqual(boundsForSort([persistedMaximized]),boundsForSort([maximizedBeforeRestart]),'full screen bounds must not replace the maximized window’s normal bounds');
+    assert.deepEqual(boundsForSort([persistedMaximized]),boundsForSort([maximizedBeforeFullscreen]),'full screen bounds must not replace the maximized window’s normal bounds');
 
     config=undefined;
     const restarted=await launchElectron(_electron,{executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}},{label:'fullscreen-e2e-restart',dataDir});
@@ -152,7 +151,7 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     assert.ok(restoredWindows.every(window=>!window.fullscreen),'app restart must not restore a transient full-screen state');
     const restoredMaximized=restoredWindows.find(window=>window.maximized);
     assert.ok(restoredMaximized,'app restart restores the prior maximized state');
-    assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([maximizedBeforeRestart]),'app restart restores the prior normal bounds');
+    assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([maximizedBeforeFullscreen]),'app restart restores the prior normal bounds');
     console.log('PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart');
   }finally{
     if(app)await closeElectron(app).catch(error=>{console.error(error);process.exitCode=1;});

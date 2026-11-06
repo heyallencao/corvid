@@ -139,7 +139,18 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     const oldCredential = await request(control.baseUrl, oldControl.token, '/rooms');
     assert.equal(oldCredential.status, 401, 'the pre-crash Bearer credential is rejected by the restarted server');
-    state = await call('/rooms');
+    state = await waitFor(async () => {
+      const current = await call('/rooms');
+      const room = current.rooms.find(item => item.id === expected.roomId);
+      const restoredTabs = room?.tabs.filter(tab => tab.id === expected.firstTabId || tab.id === expected.secondTabId) ?? [];
+      const urls = Object.fromEntries(restoredTabs.map(tab => [tab.id, tab.url]));
+      return restoredTabs.length === 2
+        && restoredTabs.every(tab => tab.ready)
+        && urls[expected.firstTabId] === expected.firstUrl
+        && urls[expected.secondTabId] === expected.secondUrl
+        ? current
+        : false;
+    }, 'restored Room tabs to finish loading their saved URLs');
     const restoredRoom = state.rooms.find(room => room.id === expected.roomId);
     assert.ok(restoredRoom, 'the user Room is restored after abrupt process termination');
     assert.deepEqual(new Set(restoredRoom.tabs.map(tab => tab.id)), new Set([expected.firstTabId, expected.secondTabId]));
