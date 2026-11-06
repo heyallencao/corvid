@@ -1281,7 +1281,7 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
       extensionLoadErrors.delete(`${profileId}:${extension.id}`);
       update();return {removed:true,id:extension.id};
     }
-    case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
+    case 'saveSettings': {const profileId=args.profileId ?? activeProfileId;findProfile(profileId);if(!validSearchTemplate(args.searchTemplate)) throw new Error('[[corvid-error:search-template-invalid]] 搜索模板必须是包含 {query} 的 HTTP(S) 地址');saveSettings(profileId,{searchTemplate:args.searchTemplate});update();return profileSettings(profileId);}
     case 'setUiLocale': {
       if(fromApi) throw new Error('User action required');
       if(!['zh-CN','en'].includes(args.locale)) throw Object.assign(new Error('Unsupported application language'),{code:'CORVID_INVALID_ARGUMENT'});
@@ -1289,8 +1289,8 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
       for(const record of windowRecords.values()) update(record);
       return {uiLocale};
     }
-    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('浏览身份名称不能为空');const name=args.name.trim();if(profiles.some(profile=>profile.deletionPending&&profile.name===name))throw Object.assign(new Error('同名浏览身份仍在清理中，请先重试清理'),{code:'CORVID_PROFILE_DELETING'});const profile={id:id(),name,isDefault:false};saveProfiles([...profiles,profile]);update();return profile;}
-    case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
+    case 'createProfile': {if(typeof args.name!=='string' || !args.name.trim()) throw new Error('[[corvid-error:profile-name-required]] 浏览身份名称不能为空');const name=args.name.trim();if(profiles.some(profile=>profile.deletionPending&&profile.name===name))throw Object.assign(new Error('同名浏览身份仍在清理中，请先重试清理'),{code:'CORVID_PROFILE_DELETING'});const profile={id:id(),name,isDefault:false};saveProfiles([...profiles,profile]);update();return profile;}
+    case 'renameProfile': {if(fromApi)throw new Error('User action required');if(typeof args.name!=='string' || !args.name.trim())throw new Error('[[corvid-error:profile-name-required]] 浏览身份名称不能为空');findProfile(target);saveSettings(target,{name:args.name.trim()});update();return findProfile(target);}
     case 'closeRoomFromUser': {
       if(fromApi)throw new Error('User action required');
       const room=findRoom(target),tabIds=[...room.tabIds],ownership=room.ownership,profileId=room.profileId;

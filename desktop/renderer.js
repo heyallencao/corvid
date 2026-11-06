@@ -843,7 +843,7 @@ document.querySelector('#cancel-profile').onclick=()=>document.querySelector('#n
 document.querySelector('#new-profile-close').onclick=()=>document.querySelector('#new-profile').close();
 document.querySelector('#new-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
 let renameProfileId;
-document.querySelector('#rename-profile-form').onsubmit=async event=>{event.preventDefault();try{const profile=state.profiles.find(item=>item.id===renameProfileId),entered=document.querySelector('#renamed-profile-name').value,name=profile&&entered===profileDisplayName(profile)?profile.name:entered;await api.invoke('renameProfile',{id:renameProfileId,name});document.querySelector('#rename-profile').close();}catch(error){document.querySelector('#rename-profile-error').textContent=error.message;}};
+document.querySelector('#rename-profile-form').onsubmit=async event=>{event.preventDefault();try{const profile=state.profiles.find(item=>item.id===renameProfileId),entered=document.querySelector('#renamed-profile-name').value,name=profile&&entered===profileDisplayName(profile)?profile.name:entered;await api.invoke('renameProfile',{id:renameProfileId,name});document.querySelector('#rename-profile').close();}catch(error){document.querySelector('#rename-profile-error').textContent=userFacingAgentError(error);}};
 document.querySelector('#cancel-rename-profile').onclick=()=>document.querySelector('#rename-profile').close();
 document.querySelector('#rename-profile-close').onclick=()=>document.querySelector('#rename-profile').close();
 document.querySelector('#rename-profile').onclose=()=>api.invoke('setPanel',{open:Boolean(libraryKind),workspace:Boolean(libraryKind)});
