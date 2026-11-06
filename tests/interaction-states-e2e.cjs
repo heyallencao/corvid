@@ -39,10 +39,10 @@ const contrastRatio = (foreground, background) => {
       await shell.emulateMedia({ colorScheme, reducedMotion: 'no-preference' });
 
       const designTokens = await shell.evaluate(() => {
-        const styleOf = selector => {
+        const styleOf = (selector, pseudo) => {
           const element = document.querySelector(selector);
           if (!element) throw new Error(`Missing tokenized component: ${selector}`);
-          const style = getComputedStyle(element);
+          const style = getComputedStyle(element, pseudo);
           return { radius: style.borderRadius, shadow: style.boxShadow };
         };
         const root = getComputedStyle(document.documentElement);
@@ -57,9 +57,10 @@ const contrastRatio = (foreground, background) => {
         return {
           radius: Object.fromEntries(['xs', 'sm', 'md', 'lg', 'xl', 'circle'].map(key => [key, root.getPropertyValue(`--radius-${key}`).trim()])),
           elevation: Object.fromEntries(['card', 'raised', 'popover', 'panel', 'menu', 'dialog'].map(key => [key, shadowFromToken(`--elevation-${key}`)])),
-          profile: styleOf('.profile-switcher'),
+          dock: styleOf('#room-dock'),
+          roomTile: styleOf('#room-strip button', '::after'),
           address: styleOf('#address-form'),
-          newTab: styleOf('#tabs > #new-tab'),
+          newTab: styleOf('#tab-strip > #new-tab'),
           profileMenu: styleOf('#profile-menu'),
           siteTools: styleOf('#site-tools'),
           findbar: styleOf('#findbar'),
@@ -78,22 +79,22 @@ const contrastRatio = (foreground, background) => {
         assert.match(designTokens.elevation[key], /^rgba?\(.+\) /, `${colorScheme}: ${key} elevation resolves to a theme color`);
         assert.ok(designTokens.elevation[key].endsWith(geometry), `${colorScheme}: ${key} elevation keeps its semantic geometry`);
       }
-      assert.equal(designTokens.profile.radius, '12px');
+      assert.equal(designTokens.roomTile.radius, '9px');
+      assert.equal(designTokens.dock.radius, '22px');
       assert.equal(designTokens.address.radius, '20px');
       assert.equal(designTokens.newTab.radius, '8px');
       assert.equal(designTokens.profileMenu.radius, '12px');
       assert.equal(designTokens.siteTools.radius, '12px');
       assert.equal(designTokens.findbar.radius, '12px');
       assert.equal(designTokens.library.radius, '16px');
-      assert.match(designTokens.profile.shadow, /^rgba?\(.+\) 0px 1px 2px 0px$/);
+      assert.match(designTokens.roomTile.shadow, /^rgba?\(.+\) 0px 0px 0px 2px/, `${colorScheme}: the Room tile selection chip keeps its layered ring`);
       assert.match(designTokens.profileMenu.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
       assert.match(designTokens.siteTools.shadow, /^rgba?\(.+\) 0px 14px 38px 0px$/);
       assert.match(designTokens.findbar.shadow, /^rgba?\(.+\) 0px 12px 32px 0px$/);
       assert.match(designTokens.library.shadow, /^rgba?\(.+\) 0px 12px 36px 0px$/);
 
       const surfaces = await shell.evaluate(() => {
-        const nav = document.querySelector('#show-bookmarks');
-        const scrollArea = document.querySelector('#room-strip');
+        const dockStrip = document.querySelector('#room-strip');
         const tabs = document.querySelector('#tabs');
         const selection = getComputedStyle(document.documentElement, '::selection');
         const colorFromToken = (property, token) => {
@@ -107,8 +108,8 @@ const contrastRatio = (foreground, background) => {
         return {
           selectionBackground: selection.backgroundColor,
           selectionColor: selection.color,
-          scrollbarWidth: getComputedStyle(scrollArea).scrollbarWidth,
-          scrollbarColor: getComputedStyle(scrollArea).scrollbarColor,
+          dockStripWidth: getComputedStyle(dockStrip).scrollbarWidth,
+          dockStripColor: getComputedStyle(dockStrip).scrollbarColor,
           scrollbarThumbColor: colorFromToken('color', '--line-strong'),
           accentSelectionBackground: colorFromToken('backgroundColor', '--accent-soft'),
           accentSelectionColor: colorFromToken('color', '--accent-ink'),
@@ -116,54 +117,37 @@ const contrastRatio = (foreground, background) => {
           motionFast: getComputedStyle(document.documentElement).getPropertyValue('--motion-fast').trim(),
         };
       });
-      assert.equal(surfaces.scrollbarWidth, 'thin', `${colorScheme}: Corvid scroll areas use the themed thin scrollbar`);
-      assert.ok(surfaces.scrollbarColor.includes(surfaces.scrollbarThumbColor), `${colorScheme}: scrollbar thumb color follows the theme`);
+      assert.equal(surfaces.dockStripWidth, 'none', `${colorScheme}: the Room dock strip intentionally hides its scrollbar like the tab strip`);
+      assert.ok(surfaces.dockStripColor.includes(surfaces.scrollbarThumbColor), `${colorScheme}: scrollbar thumb color follows the theme`);
       assert.equal(surfaces.tabScrollbarWidth, 'none', 'the horizontally scrollable tab strip keeps its intentional hidden scrollbar');
       assert.equal(surfaces.motionFast, '120ms');
       assert.equal(surfaces.selectionBackground, surfaces.accentSelectionBackground, `${colorScheme}: text selection uses the accent surface`);
       assert.equal(surfaces.selectionColor, surfaces.accentSelectionColor, `${colorScheme}: selected text uses the theme accent ink`);
 
-      const nav = shell.locator('#show-bookmarks');
-      await nav.click();
-      await nav.waitFor({ state: 'visible' });
-      await shell.waitForFunction(() => document.querySelector('#show-bookmarks')?.getAttribute('aria-expanded') === 'true');
-      await shell.mouse.move(0, 0);
-      await shell.waitForTimeout(220);
-      const selectedBeforeHover = await nav.evaluate(element => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor }));
-      await nav.hover();
-      await shell.waitForTimeout(220);
-      const selected = await nav.evaluate(element => ({
-        color: getComputedStyle(element).color,
-        background: getComputedStyle(element).backgroundColor,
-        boxShadow: getComputedStyle(element).boxShadow,
-      }));
-      assert.equal(selected.color, selectedBeforeHover.color, `${colorScheme}: selected navigation text remains stable on hover`);
-      assert.equal(selected.background, selectedBeforeHover.background, `${colorScheme}: selected navigation surface remains stable on hover`);
-      assert.match(selected.boxShadow, /2px 0px.*inset/, `${colorScheme}: selected navigation keeps its accent marker`);
-      selectedTextContrast[colorScheme] = contrastRatio(selected.color, selected.background).toFixed(2);
-      assert.ok(Number(selectedTextContrast[colorScheme]) >= 4.5, `${colorScheme}: selected navigation text meets WCAG AA`);
-
+      // 空间 dock 取代旧侧栏导航后，“当前项”选中态由活动空间磁贴的 accent 描边表达。
       const activeRoom = shell.locator('#room-strip button[aria-current="page"]');
       assert.equal(await activeRoom.count(), 1, `${colorScheme}: exactly one Room is announced as current`);
-      const roomSelection = await activeRoom.evaluate(element => ({
-        color: getComputedStyle(element).color,
-        background: getComputedStyle(element).backgroundColor,
-        boxShadow: getComputedStyle(element).boxShadow,
-      }));
-      assert.equal(roomSelection.color, selected.color, `${colorScheme}: current Room and current navigation use the same selected text color`);
-      assert.equal(roomSelection.background, selected.background, `${colorScheme}: current Room and current navigation use the same selected surface`);
-      assert.match(roomSelection.boxShadow, /2px 0px.*inset/, `${colorScheme}: current Room uses the same accent marker as current navigation`);
-      assert.equal(contrastRatio(roomSelection.color, roomSelection.background).toFixed(2), selectedTextContrast[colorScheme], `${colorScheme}: current Room contrast matches current navigation`);
+      await shell.mouse.move(0, 0);
+      const roomSelection = await activeRoom.evaluate(element => {
+        const chip = getComputedStyle(element, '::after');
+        return { color: chip.color, background: chip.backgroundColor, boxShadow: chip.boxShadow };
+      });
+      assert.match(roomSelection.boxShadow, /0px 0px 0px 3.5px/, `${colorScheme}: current Room keeps the accent selection ring`);
+      selectedTextContrast[colorScheme] = contrastRatio(roomSelection.color, roomSelection.background).toFixed(2);
+      assert.ok(Number(selectedTextContrast[colorScheme]) >= 4.5, `${colorScheme}: current Room chip text meets WCAG AA`);
+      const dockRevealPoint = await shell.evaluate(() => ({ x: Math.round(innerWidth / 2), y: innerHeight - 2 }));
+      await shell.mouse.move(dockRevealPoint.x, dockRevealPoint.y, { steps: 4 });
       await activeRoom.hover();
       await shell.waitForTimeout(220);
-      const roomHovered = await activeRoom.evaluate(element => ({
-        color: getComputedStyle(element).color,
-        background: getComputedStyle(element).backgroundColor,
-        boxShadow: getComputedStyle(element).boxShadow,
-      }));
-      assert.deepEqual(roomHovered, roomSelection, `${colorScheme}: current Room selection remains stable on hover`);
+      const roomHovered = await activeRoom.evaluate(element => {
+        const chip = getComputedStyle(element, '::after');
+        return { color: chip.color, boxShadow: chip.boxShadow };
+      });
+      assert.equal(roomHovered.color, roomSelection.color, `${colorScheme}: current Room selection text remains stable on hover`);
+      assert.equal(roomHovered.boxShadow, roomSelection.boxShadow, `${colorScheme}: current Room keeps its selection ring on hover`);
       await shell.mouse.move(0, 0);
 
+      await shell.mouse.move(dockRevealPoint.x, dockRevealPoint.y, { steps: 4 });
       await shell.locator('#create-room-trigger').click();
       const dialogTokens = await shell.locator('#new-room').evaluate(element => ({ radius: getComputedStyle(element).borderRadius, shadow: getComputedStyle(element).boxShadow }));
       assert.equal(dialogTokens.radius, '16px', `${colorScheme}: dialogs use the large radius token`);
@@ -196,6 +180,8 @@ const contrastRatio = (foreground, background) => {
         await shell.screenshot({ path: path.join(qaDir, `issue-216-interaction-${colorScheme}-${viewport.width}x${viewport.height}.png`) });
       }
 
+      // 旧侧栏已由空间 dock 取代，按压反馈改在常驻的 #new-tab 控件上验证。
+      const nav = shell.locator('#new-tab');
       const bounds = await nav.boundingBox();
       await shell.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
       await shell.mouse.down();
@@ -231,19 +217,14 @@ const contrastRatio = (foreground, background) => {
       await shell.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
       const compactSelection = await shell.evaluate(() => {
         const room = document.querySelector('#room-strip button[aria-current="page"]');
-        const nav = document.querySelector('#show-bookmarks[aria-expanded="true"]');
-        const style = element => ({
-          color: getComputedStyle(element).color,
-          background: getComputedStyle(element).backgroundColor,
-          marker: getComputedStyle(element).boxShadow,
-        });
-        return { width: window.innerWidth, height: window.innerHeight, room: style(room), nav: style(nav) };
+        const chip = getComputedStyle(room, '::after');
+        return { width: window.innerWidth, height: window.innerHeight, marker: chip.boxShadow, color: chip.color };
       });
-      assert.deepEqual(compactSelection.room, compactSelection.nav, `${colorScheme}: compact Room and navigation selections share the same visual language`);
+      assert.match(compactSelection.marker, /0px 0px 0px 3.5px/, `${colorScheme}: compact Room selection keeps the accent ring`);
       assert.equal(compactSelection.width, 719);
     }
 
-    console.log(`PASS interaction states at ${viewport.width}x${viewport.height} plus 704x420 compact mode: Room/navigation selection matches across light/dark themes and survives hover (contrast ${JSON.stringify(selectedTextContrast)}), dialog submit keeps its accent on hover, press feedback is visible, and themed scrollbars/selection respect reduced motion`);
+    console.log(`PASS interaction states at ${viewport.width}x${viewport.height} plus 704x420 compact mode: Room dock selection matches across light/dark themes and survives hover (contrast ${JSON.stringify(selectedTextContrast)}), dialog submit keeps its accent on hover, press feedback is visible, and themed scrollbars/selection respect reduced motion`);
   } finally {
     if (app) await closeElectron(app).catch(error => { console.error(error); process.exitCode = 1; });
     fs.rmSync(dataDir, { recursive: true, force: true });

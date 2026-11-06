@@ -77,7 +77,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       throw error;
     });
     const page = result.pageViews.find(item => item.url === pageUrl);
-    assert.equal(page.bounds.height + page.bounds.y, await shell.evaluate(() => window.innerHeight));
+    // 页面画布底部为房间 dock 预留条带；其高度由渲染进程实时上报。
+    const dockStrip = await shell.evaluate(() => Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-strip')) || 0);
+    assert.equal(page.bounds.height + page.bounds.y, await shell.evaluate(() => window.innerHeight) - dockStrip);
     return result;
   }
 
@@ -97,6 +99,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.ok(withBookmarkAndStatus.chromeHeight > 90, 'visible bookmark and status content increases measured chrome height');
     assert.ok(withBookmarkAndStatus.chrome.status.height > 0, 'transient bookmark feedback occupies a measured status row');
 
+    await shell.locator('#library-trigger').click();
+    await shell.locator('#library-menu:not([hidden])').waitFor();
     await shell.locator('#show-bookmarks').click();
     await shell.locator('#library:not([hidden])').waitFor();
     const panelPosition = await shell.locator('#library').evaluate(element => ({ top: Math.round(element.getBoundingClientRect().top), chromeHeight: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--browser-chrome-height')) }));

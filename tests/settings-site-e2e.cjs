@@ -48,7 +48,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const shell=await app.firstWindow();
     const control=await waitFor(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'Corvid control endpoint');
     const call=async(method,route,body)=>{const response=await fetch(control.baseUrl+route,{method,headers:{authorization:`Bearer ${control.token}`,'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result;};
-    const openSettings=async()=>{await shell.locator('#show-settings').click();await waitFor(()=>shell.locator('#settings').evaluate(dialog=>dialog.open),'settings dialog open');};
+    const openSettings=async()=>{await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();await waitFor(()=>shell.locator('#settings').evaluate(dialog=>dialog.open),'settings dialog open');};
     const currentOrigin=async()=>app.evaluate(async({webContents},expected)=>{
       const contents=webContents.getAllWebContents().find(item=>item.getURL()===expected+'/');
       return contents?contents.executeJavaScript('localStorage.getItem("settings-site-marker")'):null;

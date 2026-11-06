@@ -31,7 +31,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#address').fill(base+'/file');
     await shell.locator('#address').press('Enter');
     const entry=await until(async()=>(await downloads()).find(item=>item.filename==='notes.txt'&&item.status==='completed'),'completed download');
-    await shell.locator('#show-downloads').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-downloads').click();
     await shell.getByText('notes.txt — 已完成',{exact:true}).waitFor();
     // Replacing the native shell helpers keeps the test offline: it verifies
     // which path the app forwards rather than opening a real application.

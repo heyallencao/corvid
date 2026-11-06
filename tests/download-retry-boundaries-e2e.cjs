@@ -65,7 +65,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       catch (error) { return { error: error.message }; }
     }, id);
 
-    await shell.locator('#show-downloads').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-downloads').click();
     await shell.getByText('default.bin — 失败：测试网络错误', { exact: true }).waitFor();
     assert.equal(await shell.getByText('isolated.bin — 失败', { exact: true }).count(), 0, 'downloads from another Profile must not appear in the current list');
     assert.match((await invoke('isolated-failed')).error, /当前浏览身份/, 'renderer retry must reject a record owned by another Profile');

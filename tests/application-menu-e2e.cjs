@@ -95,7 +95,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       await until(async()=>{const state=await api('/rooms');return state.rooms.find(room=>room.id===firstWindow.activeRoomId)?.tabs.length===3;},'menu action follows focused window');
     }
 
-    await shell.locator('#show-settings').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
     await shell.locator('#ui-locale').selectOption('en');
     await until(async()=>{const value=await menu();return value.some(item=>item.label==='File')?value:false;},'menu labels switch to English');
     assert.ok((await menu()).some(item=>item.label==='Window'));

@@ -80,19 +80,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(profile.appearance, 'none', `${locale}: profile select unloads the native appearance`);
         assert.ok(profile.backgroundImage.includes('data:image/svg+xml'), `${locale}: profile select draws its own caret`);
         assert.ok(profile.backgroundImage.includes(caretStroke), `${locale}: caret artwork follows the color scheme`);
-        assert.ok(Math.abs(profile.height - 28) <= 2, `${locale}: profile select sits on the 28px input tier (observed ${profile.height.toFixed(1)})`);
+        assert.ok(Math.abs(profile.height - 34) <= 2, `${locale}: profile select fills the 34px dock avatar tier (observed ${profile.height.toFixed(1)})`);
         assert.equal(await ensureWindowFocus(app, shell), true, `${locale}: test window holds OS focus for focus-visible contracts`);
         await shell.locator('#profile-select').evaluate(element => element.focus());
         const switcherFocus = await shell.evaluate(() => {
-          const switcher = document.querySelector('.profile-switcher');
-          const style = getComputedStyle(switcher);
+          const switcher = document.querySelector('.dock-profile');
+          const style = getComputedStyle(switcher.querySelector('.profile-avatar'));
           return { within: switcher.matches(':focus-within'), shadow: style.boxShadow, border: style.borderColor };
         });
-        assert.equal(switcherFocus.within, true, `${locale}: focusing the select lights up the switcher`);
+        assert.equal(switcherFocus.within, true, `${locale}: focusing the select lights up the dock profile`);
         assert.notEqual(switcherFocus.shadow, 'none', `${locale}: keyboard focus on the profile select is visible`);
 
         // 3. 设置中心验证 select/checkbox 契约。
-        await shell.locator('#show-settings').click();
+        await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
         await shell.locator('#settings[open]').waitFor({ timeout: 5000 });
         const localeSelect = await probeStyle(shell, '#ui-locale', '');
         assert.equal(localeSelect.appearance, 'none', `${locale}: settings selects use the unified appearance`);
@@ -136,7 +136,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       }
     }
     await shell.emulateMedia({ colorScheme: 'light' });
-    console.log('PASS unified native control surfaces: select caret, checkbox drawing, focus-within switcher, 28/32/36 input tiers');
+    console.log('PASS unified native control surfaces: select caret, checkbox drawing, focus-within dock profile, 34/32/36 input tiers');
   } finally {
     if (app) await closeElectron(app).catch(error => { console.error(error); process.exitCode = 1; });
     fs.rmSync(dataDir, { recursive: true, force: true });

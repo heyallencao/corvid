@@ -76,7 +76,7 @@ const dayKey = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padS
       return history.some(item => item.url === firstUrl) && history.some(item => item.url === `${base}/today-two`) ? history : false;
     }, 'both local fixture visits in history');
     const firstVisit = visits.find(item => item.url === firstUrl);
-    await shell.locator('#show-history').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-history').click();
 
     const items = shell.locator('#library-items');
     const todayGroup = items.locator('.history-group[data-history-group="today"]');

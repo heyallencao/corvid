@@ -50,7 +50,7 @@ const executablePath=packagedAppPath||require('electron');
       assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1,'the second process does not create another BrowserWindow');
       assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isVisible()),true,'the second-instance event shows the existing window');
     }
-    assert.ok(await shell.locator('#rooms').count());
+    assert.ok(await shell.locator('#room-dock').count());
     console.log('PASS a second process focuses the running Corvid instance without opening another window');
   }finally{
     if(second&&second.exitCode===null&&!second.signalCode){second.kill('SIGTERM');await new Promise(resolve=>second.once('exit',resolve));}
