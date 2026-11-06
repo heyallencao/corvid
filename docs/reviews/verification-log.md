@@ -2251,3 +2251,18 @@
 - 定向行为验证（全部 EXIT 0）：`env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-e2e.cjs`（`PASS Corvid Agent workbench delegated page context, multi-turn transcript and restart recovery, user handoff and same-task continuation`，覆盖托管派发、多轮/重启恢复、队列撤回与自动派发、失败与清理未确认、接管与交还）；`tests/pi-workbench-short-height-e2e.cjs`、`tests/agent-stop-e2e.cjs`、`tests/agent-rooms-panel-e2e.cjs`、`tests/sigkill-recovery-e2e.cjs`、`tests/localization-e2e.cjs`、`tests/settings-preferences-e2e.cjs`、`tests/pi-runtime-e2e.cjs`、`tests/agent-runtime-contract-e2e.cjs` 均 PASS。非 Electron 合同测试 `tests/agent-message-queue-contract.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-legacy-checkpoint-migration.cjs`、`tests/profile-deletion-services.cjs` 均 EXIT 0。`git diff --check` 通过，改动 JS 文件 `node --check` 通过。
 - 视觉证据：隔离 Electron 实拍 13 张（zh-CN/en × 浅色/深色 × 1280×850/704×420，含 2 张 #377 前后对照），状态、窗口尺寸与 SHA-256 见 [QA 记录](../qa/issue-407-agent-chat-density.md) 与 `docs/qa/screenshots/issue-407/`。
 - 限制：本机定向验证与截图均未运行全量 `npm test`；本轮期间另一条 lane 独占全量 E2E 锁（`/tmp/corvid-406-full-suite-retry-3.log`），全量门禁需在最终候选上补跑。未覆盖 Windows/Linux、打包版、读屏实播（VoiceOver/Narrator）与其他 macOS 版本；截图为确定性 fixture，不代表真实模型输出。PR 尚未合并，合并后 `main` 的 hosted Release 门禁仍需重跑。
+
+## 2026-11-07 Issue #407 Agent 对话区（续）：全量门禁与遗留合同
+
+- 全量门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 跑到 43 项 PASS 后在 `tests/fullscreen-e2e.cjs:144` 失败（最大化窗口常态 bounds 期望 1280×850、实际 1470×851）。同一失败在干净 `origin/main`（`d8e2bad`）的独立 worktree 上原样复现，并已由 [Issue #403](https://github.com/heyallencao/corvid/issues/403) 跟踪（同一现象、同一基线）；因此该失败与本改动无关，全量门禁在 #403 修复前无法通过，本轮不声称全量 PASS。
+- 串行链剩余 35 项（fullscreen 之后）：首次未加 `caffeinate` 运行，26 项 PASS、9 项失败。其中 `interaction-states-e2e`、`button-hover-contrast-e2e` 断言真实指针 `:hover`，在显示空转下失配；加 `caffeinate -dimsu` 复跑同一分支 PASS，属运行条件问题而非回归。
+- 其余 7 项是本轮 UI 合同未跟进导致的真实失败，已修复：
+  1. `native-controls-e2e`：模型选择器触发器被压到 25.4px，破坏 #208 的 32px 控件层级 → CSS 恢复 `min-height: 32px`（短窗 28px），保持胶囊样式。
+  2. `pi-model-picker-ui-e2e`、`pi-unconnected-model-label-e2e`：原实现先关闭弹层再 `manage.focus()`，隐藏元素无法获得焦点，Tab 键盘路径实际落空 → 改为弹层内 Tab：搜索 → 管理模型 → 收尾回输入区，`Shift+Tab` 回搜索、`Escape` 回徽标；测试改按新焦点路径断言（未连接徽标仍可用 Enter 打开模型搜索）。
+  3. `pi-workbench-header-e2e`：`manageInModelRow` 仍在查找已移除的 `.pi-model-choice` → 改为 `.pi-model-controls .pi-model-manage`。
+  4. `pi-custom-endpoint-e2e`、`pi-credential-os-store-e2e`：连接状态、API Key 与退出都在模型弹层内，直接按可见元素操作已不成立 → 先展开徽标再操作，并在连接/退出后重建的弹层上重新展开；凭据加密、文件权限、重启读取与登出删除等安全断言保持不变。
+  5. `pi-workbench-errors-e2e`：托管即授权后「旧预览过期」路径不存在 → 改以 `POST /rooms/:id/yieldControl` 让用户收回空间，断言英文 `Message not sent: This space, profile, or page has changed. Return control or review the page again before retrying.` 且未创建任务，覆盖失败关闭而非旧预览校验。
+- 合同补齐：`agent-workbench` 移除 `createSession` 中残留的 `includePageContext`/`expectedContext` 死参数，`consentedSnapshot` 更名 `pageSnapshot`；自动派发队首失败的事件改用 `agentQueueDispatchFailed`（zh-CN/en 各新增一条），英文界面不再出现中文；`pi-real-model-smoke` 删除已移除的同意步骤。
+- 复跑（全部 EXIT 0，`caffeinate -dimsu` + 隔离 `CORVID_DATA_DIR`）：`native-controls-e2e`、`pi-model-picker-ui-e2e`、`pi-unconnected-model-label-e2e`、`pi-workbench-header-e2e`、`pi-workbench-errors-e2e`、`pi-custom-endpoint-e2e`、`pi-credential-os-store-e2e`、`pi-workbench-short-height-e2e`、`pi-workbench-e2e`、`localization-e2e`、`agent-message-queue-contract`。另在 `d8e2bad` 基线上复跑 `interaction-states-e2e`、`button-hover-contrast-e2e`、`native-controls-e2e` 均 PASS，用于区分回归与既有失败。
+- 视觉证据：`docs/qa/screenshots/issue-407/` 13 张按 32px 模型徽标与 28px 撤回命中区重拍，SHA-256 见 [QA 记录](../qa/issue-407-agent-chat-density.md)。
+- 限制：全量 `npm test` 仍被 #403 阻断；`pi-real-model-smoke` 需要真实 OAuth，本轮未运行；未覆盖 Windows/Linux、打包版、读屏实播与其他 macOS 版本。
