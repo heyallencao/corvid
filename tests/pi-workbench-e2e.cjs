@@ -49,6 +49,26 @@ const assertNoRuntimeBrandInVisibleAgentUi = async (page, surface) => {
   }));
   assert.doesNotMatch(`${content.title}\n${content.text}\n${content.labels.join('\n')}`, /\bPi\b|pi-coding-agent/i, `${surface} must use Corvid product language`);
 };
+const assertTaskStateVisual = async (card, status, expectedSurface, expectedText) => {
+  const style = await card.locator(`.pi-task-state[data-status="${status}"]`).evaluate(element => ({
+    background: getComputedStyle(element).backgroundColor,
+    color: getComputedStyle(element).color,
+    label: element.textContent,
+    liveRole: element.getAttribute('role')
+  }));
+  assert.equal(style.label, expectedText, `${status} state label is localized and visible`);
+  assert.equal(style.liveRole, 'status', `${status} state is announced as a status`);
+  const surface = await card.evaluate((element, name) => getComputedStyle(element.ownerDocument.documentElement).getPropertyValue(name).trim(), expectedSurface);
+  const expectedColor = await card.evaluate((element, name) => getComputedStyle(element.ownerDocument.documentElement).getPropertyValue(name).trim(), status === 'failed' ? '--danger' : status === 'completed' ? '--success' : status === 'waiting_for_user' ? '--warning' : status === 'running' ? '--accent-ink' : '--text-secondary');
+  assert.equal(style.background, await card.evaluate((element, value) => {
+    const probe = document.createElement('span'); probe.style.background = value; element.append(probe);
+    const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color;
+  }, surface), `${status} state uses ${expectedSurface}`);
+  assert.equal(style.color, await card.evaluate((element, value) => {
+    const probe = document.createElement('span'); probe.style.color = value; element.append(probe);
+    const color = getComputedStyle(probe).color; probe.remove(); return color;
+  }, expectedColor), `${status} state uses its semantic text color`);
+};
 const chooseModel = async (page, providerId, modelId) => {
   const trigger = page.getByRole('button', { name: 'Corvid Agent 模型' });
   await trigger.click();
@@ -198,6 +218,9 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.doesNotMatch(await firstTaskCard.innerText(),/corvid_page_snapshot/,'user-visible tool activity does not expose an internal API name');
     await shell.locator('.pi-task-title').getByText('总结当前页面内容').waitFor();
     assert.equal(await shell.locator('.pi-task-state').textContent(),'已完成','task state is shown separately from its target page and runtime');
+    await assertTaskStateVisual(firstTaskCard,'completed','--surface-success','已完成');
+    await firstTaskCard.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(shell,'issue-16-state-completed-zh-CN-1280x850.png');
     const completedElapsed=firstTaskCard.locator('.pi-task-elapsed');
     await completedElapsed.waitFor();
     const completedElapsedText=await completedElapsed.textContent();
@@ -216,6 +239,9 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.doesNotMatch(JSON.stringify(savedTasks[0].events),/corvid_page_snapshot|corvid_navigate/,'persisted user task activity does not include internal tool names');
     assert.ok(savedTasks[0].events.some(event=>event.messageKey==='agentPageReadCompleted'&&event.text===''),'tool activity is stored as a locale key rather than locale-specific text');
     await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await assertTaskStateVisual(firstTaskCard,'completed','--surface-success','Completed');
+    await firstTaskCard.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(shell,'issue-16-state-completed-en-1280x850.png');
     await shell.locator('.pi-chat-toolbar button').first().click();
     await firstTaskCard.getByText('Finished reading the current page',{exact:true}).waitFor();
     await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
@@ -248,6 +274,13 @@ const chooseModel = async (page, providerId, modelId) => {
     await shell.getByRole('button',{name:'发送',exact:true}).click();
     const queuedTask=shell.locator('.pi-task-entry').filter({hasText:queuedPrompt}).first();
     await queuedTask.locator('.pi-task-state[data-status="running"]').waitFor();
+    await assertTaskStateVisual(queuedTask,'running','--surface-running','Agent 正在回复');
+    await queuedTask.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(shell,'issue-16-state-running-zh-CN-1280x850.png');
+    await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await assertTaskStateVisual(queuedTask,'running','--surface-running','Agent is replying');
+    await saveScreenshot(shell,'issue-16-state-running-en-1280x850.png');
+    await shell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     const runningElapsed=queuedTask.locator('.pi-task-elapsed');
     const elapsedBefore=await runningElapsed.textContent();
     let elapsedAfter=elapsedBefore;
@@ -289,12 +322,18 @@ const chooseModel = async (page, providerId, modelId) => {
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'editing, reordering, and removing queue entries leaves the intended order');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await queuedTask.locator('.pi-task-state[data-status="interrupted"]').waitFor();
+    await assertTaskStateVisual(queuedTask,'interrupted','--surface-neutral','等待检查');
+    await queuedTask.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(shell,'issue-16-state-interrupted-zh-CN-1280x850.png');
     const stoppedElapsedText=await runningElapsed.textContent();
     await delay(1_100);
     assert.equal(await runningElapsed.textContent(),stoppedElapsedText,'stopping a turn freezes its displayed duration');
     assert.equal(await queuedTask.locator('.pi-message-queue-item').count(),2,'stopping freezes dispatch and preserves queued messages');
     await shell.evaluate(()=>window.corvidI18n.setLocale('en'));
     await queuedTask.locator('.pi-task-elapsed').getByText(/^Turn elapsed/).waitFor();
+    await assertTaskStateVisual(queuedTask,'interrupted','--surface-neutral','Waiting for review');
+    await queuedTask.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(shell,'issue-16-state-interrupted-en-1280x850.png');
     await queuedTask.getByText('Follow-up queue',{exact:false}).waitFor();
     await assertNoRuntimeBrandInVisibleAgentUi(shell,'English follow-up queue');
     const primaryQueueAction=queuedTask.locator('.pi-message-queue-send').first(),moreQueueMenu=queuedTask.locator('.pi-message-queue-item').first().locator('.pi-message-queue-more');
@@ -458,6 +497,14 @@ const chooseModel = async (page, providerId, modelId) => {
     await restoredShell.getByRole('button',{name:'发送',exact:true}).click();
     const failedCard=restoredShell.locator('.pi-task-entry').filter({hasText:'[fixture:fail-once] 模拟 Provider 断连'});
     await failedCard.locator('.pi-task-state[data-status="failed"]').waitFor();
+    await assertTaskStateVisual(failedCard,'failed','--surface-error','需要处理');
+    await failedCard.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(restoredShell,'issue-16-state-failed-zh-CN-1280x850.png');
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await assertTaskStateVisual(failedCard,'failed','--surface-error','Needs attention');
+    await failedCard.locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(restoredShell,'issue-16-state-failed-en-1280x850.png');
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     const failedTask=readSavedTasks(dataDir)[0];
     assert.equal(failedTask.status,'failed');
     assert.ok(failedTask.sessionRef?.data?.sessionFile&&fs.existsSync(failedTask.sessionRef.data.sessionFile),'failed prompt keeps the task transcript available for an explicit recovery attempt');
@@ -551,9 +598,21 @@ const chooseModel = async (page, providerId, modelId) => {
     await restoredShell.locator('.pi-task-event').getByText(/你已接管此空间；Agent 已暂停/).waitFor();
     assert.equal(await restoredShell.locator('.pi-task-state').textContent(),'等待你接管');
     assert.equal(await restoredShell.locator('.pi-task-control-state').textContent(),'用户控制中');
+    await assertTaskStateVisual(restoredShell.locator('.pi-task-entry').first(),'waiting_for_user','--surface-warning','等待你接管');
+    const controlStyle=await restoredShell.locator('.pi-task-control-state').evaluate(element=>({background:getComputedStyle(element).backgroundColor,role:element.getAttribute('role')}));
+    assert.equal(controlStyle.role,'status','Room ownership is exposed as a separate status');
+    assert.equal(controlStyle.background,await restoredShell.locator('.pi-task-control-state').evaluate(element=>{const probe=document.createElement('span');probe.style.background='var(--surface-warning)';element.append(probe);const color=getComputedStyle(probe).backgroundColor;probe.remove();return color;}));
+    await restoredShell.locator('.pi-task-entry').first().locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(restoredShell,'issue-16-state-control-handoff-zh-CN-1280x850.png');
     assert.equal(await taskAnnouncement.evaluate(region=>window.__taskStatusRegion===region),true,'the live status region stays mounted while task and Room states change');
     assert.match(await taskAnnouncement.textContent(),/等待你接管/);
     assert.match(await taskAnnouncement.textContent(),/用户控制中/);
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('en'));
+    await assertTaskStateVisual(restoredShell.locator('.pi-task-entry').first(),'waiting_for_user','--surface-warning','Waiting for you to take over');
+    await restoredShell.locator('.pi-task-control-state').getByText('User in control',{exact:true}).waitFor();
+    await restoredShell.locator('.pi-task-entry').first().locator('.pi-task-state').evaluate(element=>element.scrollIntoView({block:'center'}));
+    await saveScreenshot(restoredShell,'issue-16-state-control-handoff-en-1280x850.png');
+    await restoredShell.evaluate(()=>window.corvidI18n.setLocale('zh-CN'));
     handoffTask=readSavedTasks(dataDir)[0];
     assert.equal(handoffTask.status,'waiting_for_user');
     let controlledState=await (await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}})).json();
