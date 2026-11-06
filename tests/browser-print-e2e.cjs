@@ -63,6 +63,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     return app.evaluate(() => globalThis.__corvidPrintCalls || []);
   }
 
+  async function waitForLoadedTab(url) {
+    await until(async () => (await call('/rooms')).rooms.some(room => room.tabs.some(tab =>
+      tab.active && tab.url === url && tab.ready && tab.loadComplete && !tab.isLoading
+    )));
+  }
+
   async function focusBrowserWindow() {
     await app.evaluate(async ({ app: electronApp, BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
@@ -118,7 +124,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until(() => fs.existsSync(path.join(dataDir, 'control.json')));
     await shell.locator('#address').fill(`${base}/first`);
     await shell.locator('#address').press('Enter');
-    await until(async () => (await call('/rooms')).rooms.some(room => room.tabs.some(tab => tab.active && tab.url === `${base}/first` && tab.ready)));
+    await waitForLoadedTab(`${base}/first`);
     await until(() => requests.includes('/first'));
     await installPrintStub(`${base}/first`);
 
@@ -143,7 +149,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until(async () => (await call('/rooms')).rooms.some(room => room.tabs.some(tab => tab.url === 'about:blank' && tab.active)));
     await shell.locator('#address').fill(`${base}/second`);
     await shell.locator('#address').press('Enter');
-    await until(async () => (await call('/rooms')).rooms.some(room => room.tabs.some(tab => tab.active && tab.url === `${base}/second` && tab.ready)));
+    await waitForLoadedTab(`${base}/second`);
     await until(() => requests.includes('/second'));
     await installPrintStub(`${base}/second`);
     assert.equal(await printShortcut(), true, 'platform print shortcut is handled by the BrowserWindow input handler');
