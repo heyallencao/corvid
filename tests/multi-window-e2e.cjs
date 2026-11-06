@@ -51,8 +51,13 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
 
     // Each shell window renders only its own Room. Playwright reports every
     // webContents as a window, so identify the shell pages by their markup.
-    const shells=[];
-    for (const page of app.windows()) { if (await page.locator('#rooms').count()) shells.push(page); }
+    const shells=await until(async()=>{
+      const pages=[];
+      for (const page of app.windows()) {
+        try { if (await page.locator('#rooms').count()) pages.push(page); } catch {}
+      }
+      return pages.length===2?pages:false;
+    },'two shell windows');
     assert.equal(shells.length,2,'two shell windows are open');
     await until(async()=>{for(const page of shells)if(await page.locator('#room-strip button').count()<1)return false;return true;},'each window renders its Room list');
     const roomTitlesPerWindow=[];
