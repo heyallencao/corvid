@@ -229,7 +229,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 #room-strip .room-name { font-weight: 600; }
 #room-strip .room-agent-summary { color: var(--text-tertiary); font-size: var(--font-size-micro); line-height: 1.35; font-weight: 400; }
 #room-strip button:has(.room-agent-summary) { min-height: 42px; align-items: flex-start; flex-direction: column; justify-content: center; gap: 1px; padding-left: 27px; }
-#room-strip .room-task-status { position: absolute; top: 5px; right: 7px; display: inline-flex; align-items: center; gap: 5px; max-width: 45%; overflow: hidden; padding: 2px 6px; border-radius: var(--radius-xs); font-size: var(--font-size-micro); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+#room-strip .room-task-status { position: static; align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; max-width: 100%; overflow: hidden; padding: 2px 6px; border-radius: var(--radius-xs); font-size: var(--font-size-micro); line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
 #room-strip .room-task-status::before { content: ""; width: 6px; height: 6px; flex: none; border: 1px solid currentColor; border-radius: var(--radius-circle); background: currentColor; }
 #room-strip .room-task-status[data-status="running"] { background: var(--surface-running); color: var(--accent-ink); }
 #room-strip .room-task-status[data-status="waiting"] { background: var(--surface-warning); color: var(--warning); }

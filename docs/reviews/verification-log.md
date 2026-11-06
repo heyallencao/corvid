@@ -2198,9 +2198,23 @@
 - 全量验证：`env -u ELECTRON_RUN_AS_NODE npm --prefix /Users/allen/Workspace/projects/personal/corvid-release-fix test` 退出码 0；46/46 node:test 与串行链 77 条脚本 PASS。环境 macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时数据目录和本地 fixture，未调用真实模型、Provider 或 OAuth。测试生成的 9 张既有 QA 截图已恢复。
 - 限制：PR 尚未合并；这次本机全量结果不替代合并后 `main` 上的手动 Release workflow。Intel macOS 与 Windows packaged build/smoke 尚待 hosted workflow。本记录不代表 Release 已创建。
 
+## 2026-11-06 Issue #16 Agent 工作台状态视觉矩阵（B2）
+
+- 候选分支以更新后的 `origin/main` 为基线；修改 `tests/pi-workbench-e2e.cjs`，为 completed/running/waiting_for_user/failed/interrupted 与 Room 控制权交接增加 locale 文案、状态 ARIA role、CSS 语义 token computed-style 合同及运行态截图。
+- 验证：`node --check tests/pi-workbench-e2e.cjs`、`git diff --check` 通过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE CORVID_UI_EVIDENCE_DIR=/private/tmp/corvid-issue16-b2 node tests/pi-workbench-e2e.cjs` EXIT 0。输出 `PASS Corvid Agent workbench context consent, multi-turn transcript and restart recovery, user handoff and same-task continuation`。截图已归档到 `docs/qa/screenshots/issue-16-state-matrix/`，窗口外框 1280×850 CSS px，双语矩阵、SHA-256、参考和限制见[QA 记录](../qa/issue-16-state-visual-matrix.md)。
+- 环境：macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用本地页面和确定性 Agent fixture、隔离临时数据目录；没有真实 Provider、模型或 OAuth。`node_modules` 是指向主克隆既有依赖的 worktree 本地符号链接，未修改主克隆文件。
+- 限制：只覆盖浅色主题与 1280×850；未覆盖窄窗、暗色主题、跨平台、打包版或读屏实播。本切片交付 B2 的状态语义/运行态证据，不代表 Issue #16 的 B3 错误态和 B4 完整键盘走查已完成。
+
 ## 2026-11-06 Issue #130 设置校验错误双语映射（A2）
 
 - 修改：无效搜索模板与缺少浏览身份名称分别返回 `search-template-invalid`、`profile-name-required` 稳定错误码，并增加 zh-CN/en 资源；浏览身份重命名界面使用统一 `userFacingError` 映射。合同测试也断言两种 locale 均解析这两个错误码。
 - 定向验证：`profiles-e2e.cjs` EXIT 0；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0；同一脚本以 `CORVID_CAPTURE_QA_SCREENSHOTS=1` 运行 EXIT 0，覆盖设置错误状态与中英文重命名错误状态。首次全量门禁暴露 profiles E2E 对旧中文原文的断言，恢复原有语义文案并同步双语断言后通过。最终候选 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，46/46 `node:test` 与串行 E2E 链 77 条 PASS。`git diff --check` 通过。环境为 macOS arm64、Node.js v24.22.1、Electron 45.2.1；独立 `CORVID_DATA_DIR`、本地页面 fixture，未调用真实模型或 OAuth。
 - 截图：Electron 窗口 1024×700 CSS px，分别呈现 en 与 zh-CN 的设置错误和浏览身份错误。SHA-256：`issue-130-a2-error-en-1024x700.png` `95e69ffe646dc3a518f8b658b66768f279b747bc925362d5099831b082cf53a5`；`issue-130-a2-error-zh-CN-1024x700.png` `f76162ffebfbdd61dd8581ce8b7a21fbe8ff1cb70ab4a84aa743719141331113`；`issue-130-a2-profile-error-en-1024x700.png` `c14849c45d69e8bc97f2f881d18bf88a0b5a2081aa6496d72bafe3321344912b`；`issue-130-a2-profile-error-zh-CN-1024x700.png` `e2b573e163e73b0169cc506ca3ff4275d67903e0f1997c7aea8a8e54bd47097e`。
 - 限制：这只覆盖两类设置校验，不构成主进程错误源或全产品文案扫描；完整窄窗布局、键盘全流程、读屏、Windows/Linux 和打包版仍未覆盖。D24 保持“部分”，不据此宣称 Corvid 完成整体双语验收。
+
+## 2026-11-06 Issue #16 空间任务状态与长标题避让
+
+- 改动：Room 导航中的 Agent 任务状态从宽栏绝对定位改为标题下方的正常布局流，避免状态徽标遮挡长任务标题；窄侧栏仍用角落圆点表达状态。E2E 检查状态文字与标题矩形不相交。
+- 验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/agent-rooms-panel-e2e.cjs` EXIT 0；含截图运行再次 EXIT 0。覆盖 Agent 空态、并行任务 running/waiting/completed/failed、双语状态、窄布局 719×568 @2x，以及 719/720/721/800/860/873/874/900/972/983/984/1024/1280 宽度合同。基于 `origin/main` `bbbcf08` 的最终候选全量 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，47/47 `node:test` 与串行 E2E 链全部 PASS。macOS arm64、Node.js v24.22.1、Electron 45.2.1，隔离数据目录及本地 fixture；未调用真实模型、Provider 或 OAuth。测试重写的 9 张既有 QA 截图已恢复。
+- 截图：1280×850 CSS px 中文运行态 [Room 状态与长标题](../qa/screenshots/issue-16-state-matrix/issue-16-room-status-zh-CN-1280x850.png)，SHA-256 `03b91a40cd1fa2910876878d631eb3c58a74ad5cf94c33c42eb2c69e2c90d7a3`。截图目视确认状态在标题下方，长标题可能省略，但未被徽标遮挡。
+- 限制：仅开发版、浅色主题、macOS 和合成 Agent 任务；未覆盖暗色主题、Windows、打包版或屏幕阅读器实播。此为 Issue #16 的一个布局切片，不代表整单完成。

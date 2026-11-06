@@ -291,6 +291,9 @@ async function readContrastPalette(shell) {
     const roomButton=name=>shell.locator('#room-strip button').filter({hasText:name});
     await roomButton('Default agent room').locator('.room-task-status[data-status="running"]').waitFor();
     await roomButton('Parallel agent room').locator('.room-task-status[data-status="running"]').waitFor();
+    const roomStatusLayouts=await shell.locator('#room-strip button:has(.room-task-status)').evaluateAll(items=>items.map(item=>{const name=item.querySelector('.room-name').getBoundingClientRect(),status=item.querySelector('.room-task-status').getBoundingClientRect();return{nameRight:name.right,statusLeft:status.left,nameTop:name.top,nameBottom:name.bottom,statusTop:status.top,statusBottom:status.bottom};}));
+    assert.ok(roomStatusLayouts.every(layout=>layout.nameRight<=layout.statusLeft||layout.nameBottom<=layout.statusTop||layout.statusBottom<=layout.nameTop),JSON.stringify(roomStatusLayouts));
+    if(process.env.CORVID_ROOM_STATUS_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_ROOM_STATUS_SCREENSHOT_PATH});
     assert.match(await roomButton('Default agent room').getAttribute('aria-label'),/任务运行中/,'Room navigation announces the running task state');
     assert.match(await roomButton('Default agent room').getAttribute('title'),/任务运行中/,'Room navigation tooltip includes the task state');
     await agentRoomsTrigger.click();
