@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { launchPackagedApp } = require('./packaged-app-launcher.cjs');
+const { normalizeMacArchitecture } = require('./packaged-architecture.cjs');
 const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const root = path.resolve(__dirname, '..');
@@ -39,7 +40,7 @@ if (process.platform === 'darwin') {
       userAgent: navigator.userAgent,
     }));
     const architectures = process.platform === 'darwin'
-      ? execFileSync('/usr/bin/lipo', ['-archs', executablePath], { encoding: 'utf8' }).trim().split(/\s+/)
+      ? execFileSync('/usr/bin/lipo', ['-archs', executablePath], { encoding: 'utf8' }).trim().split(/\s+/).map(normalizeMacArchitecture)
       : [process.arch];
     assert.deepEqual(architectures, [expectedArch]);
     assert.match(info.appPath, /\.asar\//, 'desktop assets resolve from the packaged application archive');
