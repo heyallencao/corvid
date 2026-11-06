@@ -30,6 +30,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const room = await call('/rooms', 'POST', { name: 'Browser MCP 工作空间' });
     await app.evaluate(({ clipboard }) => { clipboard.writeText = text => { globalThis.__copiedAgentClientToken = text; }; });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704, 568));
+    await shell.locator('#show-settings').waitFor({ state: 'visible' });
     await shell.getByRole('button', { name: '设置', exact: true }).click();
     await shell.getByRole('dialog').filter({ has: shell.getByText('搜索引擎') }).waitFor();
     await shell.locator('#settings-nav-agent').click();
