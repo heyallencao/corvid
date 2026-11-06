@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import http from 'node:http';
-import electron from 'electron';
 import { connect } from '../sdk/index.js';
+import { launchElectronTestApp } from './electron-test-launcher.cjs';
 
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,timeout=5000){const end=Date.now()+timeout;while(Date.now()<end){const result=await fn();if(result)return result;await delay(25);}throw new Error('Timed out');}
@@ -15,7 +13,7 @@ async function until(fn,timeout=5000){const end=Date.now()+timeout;while(Date.no
 test('upload local files with node identity and handle a change-handler dialog', {timeout:30000},async()=>{
   const dir=await mkdtemp(path.join(tmpdir(),'corvid-upload-'));const first=path.join(dir,'first.txt'),second=path.join(dir,'second.txt');await writeFile(first,'first content');await writeFile(second,'second content');
   const fixture=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end(`<input id="file" type="file" multiple><input id="single" type="file"><button id="choose">Choose</button><iframe id="frame" srcdoc="&lt;input type=file aria-label='Frame file'&gt;"></iframe><div id="shadow"></div><script>document.querySelector('#choose').onclick=()=>{const input=document.createElement('input');input.type='file';input.id='dynamic';input.onchange=()=>{window.dynamicConfirmed=confirm('Dynamic upload?')};document.body.append(input);input.click()};document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<input type="file" aria-label="Shadow file">';window.events=[];document.querySelector('#file').addEventListener('input',e=>events.push({type:e.type,trusted:e.isTrusted}));document.querySelector('#file').addEventListener('change',e=>{events.push({type:e.type,trusted:e.isTrusted});window.confirmed=confirm('Upload files?')});</script>`);});await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));
-  const app=spawn(electron,['.'],{cwd:path.resolve(import.meta.dirname,'..'),env:{...process.env,CORVID_DATA_DIR:path.join(dir,'profile'),CORVID_TEST_MODE:'1'},stdio:['ignore','pipe','pipe']});let output='';app.stdout.on('data',x=>output+=x);app.stderr.on('data',x=>output+=x);
+  const app=launchElectronTestApp({projectDir:path.resolve(import.meta.dirname,'..'),env:{...process.env,CORVID_DATA_DIR:path.join(dir,'profile'),CORVID_TEST_MODE:'1'}});
   try {
     await until(async()=>{try{return JSON.parse(await readFile(path.join(dir,'profile','control.json'),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}});
     const client=await connect({dataDir:path.join(dir,'profile')});const room=await client.createRoom('Upload');const page=await room.open(`http://127.0.0.1:${fixture.address().port}/`);
@@ -49,6 +47,6 @@ test('upload local files with node identity and handle a change-handler dialog',
     const chooserBase=`/tabs/${page.tabId}/chooser`,abandoned=await client.api(`${chooserBase}/arm`,{method:'POST',body:{timeoutMs:150}});await delay(300);await assert.rejects(()=>client.api(`${chooserBase}?id=${abandoned.id}`),/expired|unavailable/);const rearmed=await client.api(`${chooserBase}/arm`,{method:'POST',body:{timeoutMs:1000}});await client.api(`${chooserBase}/cancel`,{method:'POST',body:{chooserId:rearmed.id}});
     const yieldControlWait=page.waitForFileChooser({timeout:2000});await page.chooserArm;const yieldControlRejected=assert.rejects(yieldControlWait,/expired|unavailable|user control/i);await room.yieldControl();await yieldControlRejected;await room.resumeControl();
     const finishWait=page.waitForFileChooser();await page.click('#choose');const finishChooser=await finishWait;const receipt=await room.finish({keep:[]});assert.equal(receipt.closedRoom,true);await assert.rejects(()=>finishChooser.setFiles(first),/not found/i);await client.disconnect();
-  }catch(error){error.message+=`\nElectron output: ${output}`;throw error;}
-  finally{if(app.exitCode===null && app.signalCode===null){app.kill('SIGTERM');await Promise.race([once(app,'exit'),delay(3000)]);if(app.exitCode===null && app.signalCode===null)app.kill('SIGKILL');}fixture.closeAllConnections();await new Promise(resolve=>fixture.close(resolve));await rm(dir,{recursive:true,force:true});}
+  }catch(error){error.message+=`\nElectron launcher output: ${app.output}`;throw error;}
+  finally{await app.stop();fixture.closeAllConnections();await new Promise(resolve=>fixture.close(resolve));await rm(dir,{recursive:true,force:true});}
 });

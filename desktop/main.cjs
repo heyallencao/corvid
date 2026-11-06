@@ -11,6 +11,7 @@ const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.c
 const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
+const { createActionIndicator } = require('./action-indicator.cjs');
 const { resolveDataDirectory } = require('./data-directory.cjs');
 const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
 // Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
@@ -779,14 +780,8 @@ function installDownloads(partition,profileId) {
     notifyDownloads();
   });
 }
-function layout(record = activeRecord()) {
-  if (!record) return;
-  const browserWindow = record.browserWindow;
-  if (browserWindow.isDestroyed()) return;
-  const roomId = record.activeRoomId;
-  const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
-  const tab = room && tabs.get(room.activeTabId);
-  const [width,height] = browserWindow.getContentSize();
+function browserPageBounds(record) {
+  const [width,height] = record.browserWindow.getContentSize();
   const top = record.browserChromeHeight ?? INITIAL_BROWSER_CHROME_HEIGHT;
   const sidebarWidth = width <= 873 ? 64 : 232;
   const workspaceWidth = record.panelOpen
@@ -795,16 +790,27 @@ function layout(record = activeRecord()) {
       : Math.min(420, Math.max(310, width - sidebarWidth - 330))
     : 0;
   const workspaceGap = workspaceWidth ? (width > 720 ? 12 : 10) : 0;
+  return {x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)};
+}
+function layout(record = activeRecord()) {
+  if (!record) return;
+  const browserWindow = record.browserWindow;
+  if (browserWindow.isDestroyed()) return;
+  const roomId = record.activeRoomId;
+  const room = rooms.find(item => item.id === roomId && item.windowId === record.id);
+  const tab = room && tabs.get(room.activeTabId);
+  const pageBounds = browserPageBounds(record);
   for (const item of tabs.values()) {
     // Every view is owned by exactly one window. Keep background pages visible
     // behind the selected page so trusted Agent input and screenshots keep a
     // live compositor; the active about:blank page paints Corvid's home UI.
     const owner = rooms.find(entry => entry.id === item.roomId);
     if (owner?.windowId !== record.id) continue;
-    item.view.setBounds({x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)});
+    item.view.setBounds(pageBounds);
     item.view.setVisible(Boolean(tab) && !record.modalOpen);
   }
   if (tab && record.frontView !== tab.view) { browserWindow.contentView.removeChildView(tab.view); browserWindow.contentView.addChildView(tab.view); record.frontView = tab.view; if (browserWindow === window) frontView = tab.view; }
+  if(record.actionIndicator && (!tab || record.actionIndicatorTabId!==tab.id || record.modalOpen))record.actionIndicator.hide();
 }
 function allocatePageLabel(room,requested) {
   if(requested!==undefined && (typeof requested!=='string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(requested)))throw new Error('Page label must start with a letter and contain letters, numbers, _ or -');
@@ -960,6 +966,7 @@ async function resolveRoom(identifier,profileId) {
 }
 async function closeTab(tabId) {
   const t=findTab(tabId),s=findRoom(t.roomId),contents=t.view.webContents;
+  for(const record of windowRecords.values())record.actionIndicator?.hideTab(tabId);
   agentDownloads.cancelTab(tabId);
   await pageDebugger.prepareClose(contents);
   let closed;
@@ -991,7 +998,7 @@ async function closeTabFromBrowserUi(tab) {
   return {closed:true};
 }
 async function closeRoom(roomId) {
-  const s=findRoom(roomId);let count=0;
+  const s=findRoom(roomId);clearActionIndicatorsForRoom(roomId);let count=0;
   for(const tabId of [...s.tabIds]){try{await closeTab(tabId);count++;}catch(error){if(count)throw new Error(`${error.message}；已有 ${count} 个标签关闭`);throw error;}}
   if(s.tabIds.length)throw new Error(`关闭期间出现新标签；已有 ${count} 个标签关闭，请检查剩余页面`);
   const owner=windowRecords.get(s.windowId);
@@ -1007,6 +1014,17 @@ async function closeRoom(roomId) {
   } else update();
 }
 function asUrl(value,profileId) { if (typeof value !== 'string' || !value.trim()) throw new Error('URL required'); const input = value.trim(); if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return input; if (/^[^\s.]+(?:\.[^\s.]+)+(?::\d+)?(?:[/?#]|$)/.test(input) || /^localhost(?::\d+)?(?:[/?#]|$)/.test(input)) return `https://${input}`; return profileSettings(profileId).searchTemplate.replaceAll('{query}',encodeURIComponent(input)); }
+async function ensureActionIndicator(record) {
+  if(record.actionIndicator)return record.actionIndicator;
+  const indicator=createActionIndicator(record.browserWindow,BrowserWindow);
+  record.actionIndicator=indicator;
+  try { await indicator.ready; }
+  catch(error) { indicator.dispose();if(record.actionIndicator===indicator)record.actionIndicator=null;throw error; }
+  return indicator;
+}
+function clearActionIndicatorsForRoom(roomId) {
+  for(const record of windowRecords.values())record.actionIndicator?.hideRoom(roomId);
+}
 function installShortcuts(contents, getWindowRecord = activeRecord) {
   contents.on('before-input-event',(event,input)=>{
     if(input.type!=='keyDown') return;
@@ -1037,7 +1055,7 @@ function installShortcuts(contents, getWindowRecord = activeRecord) {
     if(action){event.preventDefault();Promise.resolve(action()).catch(error=>console.error('Shortcut failed:',error));}
   });
 }
-async function dispatch(method, args = {}, fromApi = false) {
+async function dispatch(method, args = {}, fromApi = false, requestContext = {}) {
   const {id:target} = args;
   if(fromApi && ['closeTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload'].includes(method) && args.pageLabel!==undefined && findTab(target).label!==args.pageLabel)throw new Error('Page label is stale or no longer manages this tab');
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','yieldControl','resumeControl','armChooser','getChooser','chooseFiles','adoptTab','releasePage','finishRoom','claimRoom'].includes(method)) {const s=['createTab','closeRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom'].includes(method)?findRoom(target):findRoom(findTab(target).roomId);if(s.userResumePending)throw new Error('User resumeControl is pending');}
@@ -1433,7 +1451,7 @@ async function dispatch(method, args = {}, fromApi = false) {
     case 'claimRoom': return claimRoom(findRoom(target));
     case 'activateRoom': {const s=findRoom(target);const record=requireFocusedRecord();if(s.windowId!==record.id) moveRoomToWindow(s,record);record.activeProfileId=s.profileId;record.activeRoomId=target;update(record);return describe(record);}
     case 'activateTab': {const t=findTab(target), s=findRoom(t.roomId); const record=requireFocusedRecord(); if(s.windowId!==record.id) moveRoomToWindow(s,record); record.activeProfileId=s.profileId;record.activeRoomId=s.id; s.activeTabId=target; update(record); return describe(record);}
-    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await agentWorkbench.pauseRoom(s.id);return describe();}
+    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}clearActionIndicatorsForRoom(s.id);for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await agentWorkbench.pauseRoom(s.id);return describe();}
     case 'resumeControl': {const s=findRoom(target);if(!s.yielded) throw new Error('Room was not handed off by an agent');if(fromApi && s.manualControl)throw new Error('The user has not returned control');if(s.executionRisk)throw new Error('Room has an unresolved timed-out execution; user review is required');s.ownership='agent';s.yielded=false;s.manualControl=false;update();return describe();}
     case 'requestUserControl': return requestUserControl(target);
     case 'returnUserControl': {if(fromApi)throw new Error('User action required');return dispatch('resumeControl',{id:target},false);}
@@ -1480,7 +1498,33 @@ async function dispatch(method, args = {}, fromApi = false) {
       await runAction.releasePointer(tab.view.webContents);await closeTab(target);return {ok:true};
     }
     case 'navigate': {const t=findTab(target),url=asUrl(args.url,findRoom(t.roomId).profileId);if(!fromApi){const sequence=t.userNavigation=(t.userNavigation || 0)+1;t.pendingNavigationUrl=url;t.navigationError=null;t.isLoading=true;t.restoringInitial=false;update();void (async()=>{await t.bootstrap;if(tabs.get(target)!==t || t.userNavigation!==sequence)return;await t.view.webContents.loadURL(url);if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;update();}})().catch(error=>{if(tabs.get(target)===t && t.userNavigation===sequence){t.pendingNavigationUrl=null;t.isLoading=false;if(!navigationWasCancelled(error)&&!t.navigationError){const failure=navigationFailureDetails(error.errno,error.message,mainMessages);t.navigationError={url,...failure};}update();console.error('Navigation failed:',error.message);}});return {ok:true};}return navigateAgent(t,url);}
-    case 'action': {const t=findTab(target); if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId)); if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {}); const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);const beforePopup=t.popupSequence;const result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground}); const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};}); return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};}
+    case 'action': {
+      const t=findTab(target);
+      if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId));
+      if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {});
+      const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);
+      const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);
+      const indicatorOperation=['click','hover','scroll','fill'].includes(args.operation);
+      const canShowIndicator=Boolean(requestContext.showPageActionIndicator&&indicatorOperation&&record&&owner.ownership==='agent'&&!owner.userResumePending&&!owner.executionRisk&&owner.activeTabId===t.id&&record.activeRoomId===owner.id&&!record.modalOpen&&record.frontView===t.view&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&record.browserWindow.isFocused());
+      let indicator=null;
+      if(canShowIndicator){try{indicator=await ensureActionIndicator(record);}catch(error){console.error('Corvid page action indicator failed to initialize:',error.message);}}
+      const actionId=crypto.randomUUID();
+      let indicatorShown=false;
+      const onInput=({operation,point})=>{
+        if(!indicator||!point||!tabs.has(t.id)||tabs.get(t.id)!==t||!rooms.includes(owner)||owner.ownership!=='agent'||owner.userResumePending||owner.executionRisk||owner.activeTabId!==t.id||record.activeRoomId!==owner.id||record.modalOpen||record.frontView!==t.view||record.browserWindow.isDestroyed()||!record.browserWindow.isVisible()||record.browserWindow.isMinimized()||!record.browserWindow.isFocused())return;
+        const pageBounds=browserPageBounds(record),zoom=t.view.webContents.getZoomFactor(),actionLabel=mainMessages.t(`actionIndicator${operation[0].toUpperCase()}${operation.slice(1)}`);
+        indicator.show({actionId,roomId:owner.id,tabId:t.id,operation,x:pageBounds.x+point.x*zoom,y:pageBounds.y+point.y*zoom,label:actionLabel,ariaLabel:mainMessages.t('actionIndicatorAriaLabel',{action:actionLabel})});
+        record.actionIndicatorTabId=t.id;
+        indicatorShown=true;
+      };
+      const beforePopup=t.popupSequence;
+      let result;
+      try { result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground,onInput}); }
+      catch(error) { if(indicatorShown)indicator.hide();throw error; }
+      if(indicatorShown)indicator.finish(actionId);
+      const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};});
+      return {...result,receipt:{popups,dialog:pageDebugger.get(t.view.webContents) ?? null}};
+    }
     case 'getDialog': {const contents=findTab(target).view.webContents;if(!pageDebugger.available(contents)) throw new Error('Page debugger is unavailable; dialog state is unknown');return {dialog:pageDebugger.get(contents)};}
     case 'getPopupEvents': {const tab=findTab(target);if(args.after===undefined)return {cursor:tab.popupSequence,event:null};const after=Number(args.after);if(!Number.isSafeInteger(after) || after<0 || after>tab.popupSequence)throw new Error('Invalid popup cursor');if(tab.popupEvents.length && after<tab.popupEvents[0].sequence-1)throw new Error('Popup event history expired');const event=tab.popupEvents.find(item=>item.sequence>after);if(!event)return {cursor:tab.popupSequence,event:null};const popup=tabs.get(event.tabId);return {cursor:tab.popupSequence,event:{...event,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}: {})}};}
     case 'armDownload': return agentDownloads.arm(target,args.timeoutMs);
@@ -1526,6 +1570,7 @@ async function claimRoom(room) {
   return describe().rooms.find(item=>item.id===room.id);
 }
 async function finishRoom(room,keep) {
+  clearActionIndicatorsForRoom(room.id);
   if(keep!=='all' && (!Array.isArray(keep) || keep.some(label=>typeof label!=='string' || !label)))throw new Error('finish requires keep: "all" or an array of page labels');
   const managed=room.tabIds.map(findTab).filter(tab=>tab.label),keepSet=new Set(keep==='all'?managed.map(tab=>tab.label):keep);
   for(const label of keepSet)if(!managed.some(tab=>tab.label===label))throw new Error(`Page label not found: ${label}`);
@@ -1544,7 +1589,7 @@ async function finishRoom(room,keep) {
 async function requestUserControl(roomId) {
   const room=findRoom(roomId);if(room.ownership!=='agent')throw new Error('Room is already under user control');
   if(room.userResumePending)throw new Error('User resumeControl is already pending');
-  room.userResumePending=true;update();
+  room.userResumePending=true;clearActionIndicatorsForRoom(room.id);update();
   try {
     for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);await pageDebugger.cancelChooser(findTab(tabId).view.webContents);}
     return await dispatchQueued('yieldControl',{id:roomId,manual:true},false);
@@ -1561,16 +1606,16 @@ async function evaluateWithDeadline(tab,args) {
   const deadline=new Promise(resolve=>{timer=setTimeout(()=>{timedOut=true;room.executionRisk={operationId,tabId:tab.id,status:'timed_out',executionStopped:false,mayHaveLateEffects:true};update();resolve({status:'timed_out',operationId,executionStopped:false,mayHaveLateEffects:true});},timeout);});
   try {return await Promise.race([execution,deadline]);} finally {clearTimeout(timer);}
 }
-function dispatchQueued(method,args={},fromApi=false) {
+function dispatchQueued(method,args={},fromApi=false,requestContext={}) {
   const roomMethods=['createTab','closeRoom','closeRoomFromUser','activateRoom','yieldControl','resumeControl','returnUserControl','adoptTab','releasePage','finishRoom','claimRoom'];
   const tabMethods=['closeTab','activateTab','navigate','back','forward','reload','action','armDownload'];
   let roomId;
-  try { if(roomMethods.includes(method)) roomId=findRoom(args.id).id; else if(tabMethods.includes(method)) roomId=findTab(args.id).roomId; }
+  try { if(roomMethods.includes(method)) roomId=findRoom(args.id).id; else if(tabMethods.includes(method)) roomId=findRoom(findTab(args.id).roomId).id; }
   catch(error) { return Promise.reject(error); }
   if(fromApi && roomId && findRoom(roomId).userResumePending) return Promise.reject(new Error('User resumeControl is pending'));
-  if (!roomId) return dispatch(method,args,fromApi);
+  if (!roomId) return dispatch(method,args,fromApi,requestContext);
   const previous=queues.get(roomId) || Promise.resolve();
-  const pending=previous.catch(()=>{}).then(()=>dispatch(method,args,fromApi));
+  const pending=previous.catch(()=>{}).then(()=>dispatch(method,args,fromApi,requestContext));
   queues.set(roomId,pending); pending.finally(()=>{if(queues.get(roomId)===pending) queues.delete(roomId);}).catch(()=>{});
   return pending;
 }
@@ -1664,7 +1709,7 @@ async function startServer() {
         record.browserWindow.webContents.sendInputEvent({type:'keyUp',...shortcut});
         result={sent:true};
       }
-      else result=await dispatchQueued(method,{...body,...routeArgs},true);
+      else result=await dispatchQueued(method,{...body,...routeArgs},true,{showPageActionIndicator:principal.kind==='admin'||!String(principal.client?.id||'').startsWith('builtin:')});
       res.end(JSON.stringify(result));
       if(method==='shutdown') setImmediate(()=>app.quit());
     } catch (error) {res.writeHead(error.status||400);res.end(JSON.stringify({error:error.message,code:error.code||errorCode(error.message)}));}
@@ -1686,7 +1731,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
@@ -1713,9 +1758,9 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
     if(!record.htmlFullscreen&&transitionTarget!==true)record.fullscreenRestoreMaximized=null;
     update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
   });
-  browserWindow.on('close',()=>{closeExtensionPopup(record);saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
+  browserWindow.on('close',()=>{closeExtensionPopup(record);record.actionIndicator?.hide();saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
-  browserWindow.on('closed',()=>{windowRecords.delete(recordId);rebuildApplicationMenu();if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
+  browserWindow.on('closed',()=>{record.actionIndicator?.dispose();windowRecords.delete(recordId);rebuildApplicationMenu();if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents,()=>record);
   startupProgress('shell-window-load-file');
   await browserWindow.loadFile(path.join(__dirname,'index.html'));
@@ -1731,6 +1776,7 @@ async function closeWindowRecord(record) {
   for (const room of scoped) moveRoomToWindow(room, fallback);
   const browserWindow = record.browserWindow;
   windowRecords.delete(record.id);
+  record.actionIndicator?.dispose();
   if (!browserWindow.isDestroyed()) browserWindow.destroy();
   const next = activeRecord();
   if (next) { focusWindow(next); update(next); }

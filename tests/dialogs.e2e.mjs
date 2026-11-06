@@ -3,11 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import http from 'node:http';
-import electron from 'electron';
 import { connect } from '../sdk/index.js';
+import { launchElectronTestApp } from './electron-test-launcher.cjs';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,timeout=5000){const end=Date.now()+timeout;while(Date.now()<end){const value=await fn();if(value)return value;await sleep(25);}throw new Error('Timed out waiting for dialog or app');}
@@ -16,8 +14,7 @@ test('page dialogs can be handled while their triggering action is pending', {ti
   const dir=await mkdtemp(path.join(tmpdir(),'corvid-dialog-'));
   const server=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end(`<title>Dialogs</title><button id="alert" onclick="alert('hello');document.body.dataset.alert='done'">alert</button><button id="confirm" onclick="document.body.dataset.confirm=confirm('continue?')">confirm</button><button id="do-prompt" onclick="document.body.dataset.prompt=window.prompt('name?','default')">prompt</button><button id="sequence" onclick="alert('first');document.body.dataset.sequence=prompt('second','')">sequence</button><script>window.errors=[];window.onerror=(message)=>window.errors.push(message);window.clicks=[];document.addEventListener("click",e=>window.clicks.push(e.target.id),true)</script>`);});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const app=spawn(electron,['.'],{cwd:path.resolve(import.meta.dirname,'..'),env:{...process.env,CORVID_DATA_DIR:dir,CORVID_TEST_MODE:'1'},stdio:['ignore','pipe','pipe']});
-  let output='';app.stderr.on('data',chunk=>output+=chunk);app.stdout.on('data',chunk=>output+=chunk);
+  const app=launchElectronTestApp({projectDir:path.resolve(import.meta.dirname,'..'),env:{...process.env,CORVID_DATA_DIR:dir,CORVID_TEST_MODE:'1'}});
   try{
     const config=await until(async()=>{try{return JSON.parse(await readFile(path.join(dir,'control.json'),'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}});
     const client=await connect({dataDir:dir});const room=await client.createRoom('Dialog test');const page=await room.open(`http://127.0.0.1:${server.address().port}/`);
@@ -36,6 +33,6 @@ test('page dialogs can be handled while their triggering action is pending', {ti
     await until(async()=>(await page.dialog())?.message==='reconnect');controller.abort();await abandoned;
     const resumed=await connect({dataDir:dir});const resumedPage=await (await resumed.room(room.id)).page(page.tabId);assert.equal((await resumedPage.dialog()).defaultPrompt,'seed');await resumedPage.acceptDialog('resumed');await until(async()=>(await resumedPage.evaluate(()=>window.abandoned))==='resumed');await resumed.disconnect();
     await room.close();await client.disconnect();
-  } catch(error){error.message+=`\nElectron output: ${output}`;throw error;}
-  finally{if(app.exitCode===null && app.signalCode===null){app.kill('SIGTERM');await Promise.race([once(app,'exit'),sleep(3000)]);if(app.exitCode===null && app.signalCode===null)app.kill('SIGKILL');}server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(dir,{recursive:true,force:true});}
+  } catch(error){error.message+=`\nElectron launcher output: ${app.output}`;throw error;}
+  finally{await app.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(dir,{recursive:true,force:true});}
 });

@@ -1,5 +1,17 @@
 # 验证记录
 
+## 2026-11-06 Issue #343 页面动作指示定向 Electron 验收
+
+- 环境：隔离 worktree `ui/issue-343-page-action-indicator`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；未调用 OAuth、真实模型或真实网站。
+- 修复的验收问题：macOS 父子原生窗口的标题读取继承为主窗口“Corvid”，测试按 `getTitle()` 找叠加层会漏检；改按原生窗口的 `isFocusable() === false` 特征定位。页面点击结果使用 `backgroundPage.evaluate()` 读取 fixture DOM 状态，避免把仅列出可访问控件的 Snapshot 错当成静态段落文本。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE CORVID_PAGE_ACTION_INDICATOR_SCREENSHOT_PATH=docs/qa/screenshots/issue-343-page-action-indicator.png node tests/page-action-indicator-e2e.cjs` EXIT 0。覆盖后台 Room 隔离、click/hover/scroll/fill 的阶段与位置、fill 文本不泄漏、指示窗口不接收焦点、实际 click 页面效果、交还/结束清理和无效目标拒绝；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/localization-e2e.cjs` EXIT 0，应用双语资源合同与窄窗/重启回归通过。
+- 测试焦点限制与修复：直接 `spawn`/Playwright attach 的 Electron 在 macOS 未成为系统前台应用；`bringToFront()`、`app.focus({steal:true})`、`BrowserWindow.focus()` 后窗口仍 visible=true、focused=false，页面 alert handler 执行但原生 dialog 未上报。通过 Launch Services `open -na` 启动独立 Electron 后，前台 bundle 为 `com.github.Electron`，fixture alert 被 SDK 捕获。新增 `tests/electron-test-launcher.cjs` 供 dialogs/uploads 使用；动作指示定向用例仍 stub `isFocused()`，OS 焦点门槛不由该用例单独证明。另一次桌面交互曾直接观察到聚焦中的 Corvid 页面显示标记和“正在点击”，但没有保存全窗口截图。
+- 渲染证据：透明叠加窗口 PNG 为 2560×1622 设备像素，SHA-256 `d827d0434aa1bf2babfa2bb63b8ab2d8fb79d522568ba334ed80bb4b69f2da4d`，见 `docs/qa/screenshots/issue-343-page-action-indicator.png`。图像只包含透明指示层，不代表完整页面合成结果或鼠标穿透验收。
+- 原生焦点修复：`tests/electron-test-launcher.cjs` 在 macOS 经 Launch Services `open -na` 启动隔离 Electron，并根据该实例的 `startup-progress.json` PID 清理；其他平台保留原直接进程启动。修复前，`bringToFront()`、`app.focus({steal:true})`、`BrowserWindow.focus()` 未使窗口取得系统焦点；前台 bundle 验证确认 Launch Services 启动后 Electron 成为前台应用，SDK 本地 fixture 成功收到页面 alert。
+- 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test --test-concurrency=1 tests/dialogs.e2e.mjs tests/uploads.e2e.mjs` 2/2 PASS。涵盖 dialog、file chooser、文件设置与变化事件、iframe/shadow DOM、取消/过期及控制权路径。
+- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；Node 阶段 46/46 PASS，后续 `test:serial` 所有独立 E2E 脚本均 PASS，包含新增的动作指示验收；无 skip。macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用隔离临时数据和本地 fixture，未调用 OAuth、真实模型或真实网站。
+- 未覆盖：多显示器/缩放坐标、窗口移动缩放时同步、OS 原生点击穿透、Windows、打包版及屏幕阅读器未覆盖。
+
 ## 2026-11-06 Issue #348 空间导航 Agent 任务三态标记
 
 - 基线：隔离 worktree 分支 `ui/issue-348-space-task-status`，基于当时 `origin/main` `7ba8026`；macOS arm64，Node.js v24.22.1，Electron 45.2.1；临时 Corvid 数据目录与本地 HTTP fixture，不使用真实模型、OAuth 或个人浏览数据。

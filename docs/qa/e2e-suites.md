@@ -1,6 +1,6 @@
 # 端到端测试索引
 
-本索引覆盖 `tests/` 下 80 项入口：`npm test` 包含 78 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（12 个文件、46 个 `node:test` 用例）和 77 条独立脚本命令，共 123 项自动化检查；另有 `tests/agent-browser-capabilities.test.cjs` 作为不启动 Electron 的共享能力模块合同检查，随全量链运行。原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 `test:serial` 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）、`tests/electron-startup.e2e.mjs`（启动/清理诊断替身及原生窗口锁屏预检合同）和 `tests/e2e-suite-lock.test.cjs`（全量门禁互斥合同）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
+本索引覆盖 `tests/` 下 81 项入口：`npm test` 包含 79 项自动化入口，另有不纳入默认命令的真实模型 smoke test 与打包应用 E2E。当前 `npm test` 配置包含 1 条 `node --test` 命令（12 个文件、46 个 `node:test` 用例）和 78 条独立脚本命令，共 124 项自动化检查；另有 `tests/agent-browser-capabilities.test.cjs` 作为不启动 Electron 的共享能力模块合同检查，随全量链运行。原生菜单、网页上下文菜单、Chrome 导入类别隔离与 SQLite 错误分类模块合同分别见 `tests/application-menu.test.mjs`、`tests/page-context-menu.test.mjs`、`tests/chrome-import-categories.test.mjs` 和 `tests/chrome-import-sqlite.test.mjs`。索引中的序号按 `package.json` 的 `test:serial` 脚本顺序排列。除 `tests/recovery-e2e.cjs`（预期启动失败）、`tests/agent-runtime-contract-e2e.cjs`、`tests/agent-task-continuation-contract.cjs`、`tests/agent-message-queue-contract.cjs`、`tests/profile-deletion-services.cjs`（隔离数据目录的模块合同测试）、`tests/electron-startup.e2e.mjs`（启动/清理诊断替身及原生窗口锁屏预检合同）和 `tests/e2e-suite-lock.test.cjs`（全量门禁互斥合同）外，每项都会启动真实 Electron；`tests/sdk-e2e.cjs` 先启动桌面，再运行 `sdk/e2e.js`。结果记录见 [验证记录](../reviews/verification-log.md)，各工作块的验收合同见 [执行任务板](../execution/feature-board.md)。
 
 ## 共同前提与限制
 
@@ -114,12 +114,12 @@
 
 - macOS 前台 bundle 被 `lsappinfo` 确认为 `com.apple.loginwindow` 时，`fullscreen-e2e.cjs` 输出 `SKIPPED_NATIVE_FULLSCREEN` 并整项跳过；`application-menu-e2e.cjs` 和 `chrome-import-e2e.cjs` 仅跳过各自原生焦点/失焦子场景，其余合同继续运行。预检不可用或无法确定前台应用时不跳过，照常运行默认路径。
 - 可分别用 `CORVID_TEST_SKIP_NATIVE_FULLSCREEN=1`、`CORVID_TEST_SKIP_NATIVE_WINDOW_FOCUS=1`、`CORVID_TEST_SKIP_NATIVE_POPUP_BLUR=1` 显式跳过对应原生场景。所有 skip 输出都不是原生焦点/全屏验收通过证据；这些场景仍需解锁的 macOS 桌面运行默认路径。
-- 11 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs tests/chrome-import-sqlite.test.mjs tests/page-context-menu.test.mjs tests/e2e-suite-lock.test.cjs`，共 43 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行，启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件、`application-menu.test.mjs` 与 `chrome-import-sqlite.test.mjs` 使用纯 Node 合同测试。
+- 11 个 `node:test` 文件：`node --test --test-concurrency=1 tests/*.e2e.mjs tests/window-shortcuts.test.mjs tests/window-fullscreen-state.test.mjs tests/application-menu.test.mjs tests/chrome-import-categories.test.mjs tests/chrome-import-sqlite.test.mjs tests/page-context-menu.test.mjs tests/e2e-suite-lock.test.cjs`，共 46 个用例；browser、dialogs、uploads 会启动真实 Electron 窗口并须串行。dialogs/uploads 在 macOS 通过 `tests/electron-test-launcher.cjs` 使用 Launch Services 启动隔离实例，确保原生 dialog/file chooser 场景有系统前台焦点；其他平台保留直接子进程启动。启动诊断用合成 launcher 和子进程 fixture，两个窗口状态文件、`application-menu.test.mjs` 与 `chrome-import-sqlite.test.mjs` 使用纯 Node 合同测试。
 - 75 个独立脚本：例如 `node tests/rpc-e2e.cjs`、`node tests/user-control-e2e.cjs`、`node tests/sdk-e2e.cjs`、`node tests/contract-e2e.cjs`、`node tests/snapshot-e2e.cjs`、`node tests/agent-rooms-panel-e2e.cjs`、`node tests/agent-access-e2e.cjs`、`node tests/agent-access-ui-e2e.cjs`、`node tests/mcp-e2e.cjs`、`node tests/pi-runtime-e2e.cjs`、`node tests/localization-e2e.cjs`，其余按 `package.json` 的 `test:serial` 顺序运行。
 - `node tests/agent-browser-capabilities.test.cjs`：不启动 Electron 的共享 Agent 浏览器能力模块合同测试，检查两类 adapter schema、能力名称唯一性、副作用分类、操作委派与失效 Room/Page/URL 拒绝；随 `test:serial` 链运行。
 - Issue #208 模型选择器定向回归：`env -u ELECTRON_RUN_AS_NODE node tests/pi-model-picker-ui-e2e.cjs`；与短窗工作台回归 `env -u ELECTRON_RUN_AS_NODE node tests/pi-workbench-short-height-e2e.cjs` 配合运行。两者使用隔离 Electron 数据目录和本地模型目录，不连接 OAuth 或真实模型；详见[模型选择器 QA 记录](issue-208-model-picker.md)。
 - `tests/sdk-e2e.cjs` 会自行启动隔离桌面并运行 `sdk/e2e.js`；如已单独启动桌面，也可在相同 `CORVID_DATA_DIR` 下直接运行 `node sdk/e2e.js`。
-- 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。macOS 锁屏时三个原生窗口 E2E 会显式跳过全部或原生交互子场景；窗口未获桌面焦点但未检测为锁屏时仍运行默认路径，失败须按真实结果记录。skip 不计通过。
+- 沙箱/CI 环境需清理 `ELECTRON_RUN_AS_NODE` 并允许 Chromium 建立沙箱，否则真实 Electron 可能无法启动。macOS 锁屏时三个原生窗口 E2E 会显式跳过全部或原生交互子场景；窗口未获桌面焦点但未检测为锁屏时仍运行默认路径，失败须按真实结果记录。dialogs/uploads 通过 Launch Services 激活各自隔离 Electron 窗口；该启动不依赖锁屏 skip。skip 不计通过。
 
 ## 打包应用验证
 
@@ -146,6 +146,7 @@
 | 79 | `tests/settings-accessibility-e2e.cjs` | 真实 Electron 设置中心：Tab/Enter 分类导航与焦点转移；“当前网站”权限/数据操作顺序与键盘取消确认；确认默认非破坏选项；Chromium AX 树在 zh-CN/en 下的设置对话框、分类导航、站点操作及保存/取消可访问名称；活动分类 `aria-current`。 | 临时 `CORVID_DATA_DIR`、本地 HTTP fixture；原生确认框由测试替身返回取消；Chromium AX 树不代表 VoiceOver/Narrator 实际朗读；不覆盖打包版、Windows、全产品键盘审计与原生系统对话框。 |
 | 77 | `tests/button-hover-contrast-e2e.cjs` | 真实 Electron 首次启动 Chrome 导入引导：浅/深主题 hover 时主要操作保留强调色背景，文字对比度均≥4.5:1；次要中性操作仍使用 hover 表面。 | 隔离 `CORVID_DATA_DIR`、测试模式合成 onboarding；1024×700、zh-CN；不验证 Windows/Linux、打包版、屏幕阅读器或网页合成像素。 |
 | 78 | `tests/pi-workbench-errors-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：将 UI 切换到英文，在 Agent Room 中预览并同意页面上下文后导航绑定页面，再提交旧预览；断言错误以英文呈现，且校验失败前未创建任务。 | 使用临时 `CORVID_DATA_DIR` 和本地合成页面；不访问外网/真实浏览数据，不调用模型或 OAuth；仅覆盖页面已变化错误和英文界面。 |
+| 80 | `tests/page-action-indicator-e2e.cjs` | 真实 Electron + 本地 HTTP fixture：外部 SDK 对后台 Room 操作不显示前台指示；活动 Room 的 click/hover/scroll/fill 显示双语阶段与已校验坐标；填入值不进入指示层；窗口不可聚焦；点击实际改变页面；交还与结束清除，失效目标失败。 | 隔离临时 `CORVID_DATA_DIR`；测试进程内 stub 主窗口 `isFocused()` 使 macOS 前台焦点条件可重复，不验证 OS 焦点门槛；PNG 是透明叠加层自身，未验证完整桌面合成像素/鼠标穿透；仅 macOS Electron 45.2.1。详情见 [Issue #343 QA](issue-343-page-action-indicator.md)。 |
 
 ## Issue #203 菜单破坏性动作定向覆盖
 

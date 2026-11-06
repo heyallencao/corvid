@@ -257,7 +257,10 @@ function pageOperation(operation, args, seed) {
   }
   throw new Error('Unsupported operation');
 }
-module.exports = async function runAction(contents, operation, args = {}) {
+module.exports = async function runAction(contents, operation, args = {}, hooks = {}) {
+  const reportInput = (action, point) => {
+    try { hooks.onInput?.({ operation:action, point:{x:point.x,y:point.y} }); } catch {}
+  };
   const run = async (op, options) => {
     const code=`(()=>{try{return {ok:true,result:(${pageOperation.toString()})(${JSON.stringify(op)},${JSON.stringify(options)},${JSON.stringify(crypto.randomUUID())})}}catch(error){return {ok:false,error:String(error.message || error)}}})()`;
     const result=await contents.executeJavaScriptInIsolatedWorld(4815,[{code}]);
@@ -308,6 +311,7 @@ module.exports = async function runAction(contents, operation, args = {}) {
     const point=x===undefined?{x:Math.floor(viewport.width/2),y:Math.floor(viewport.height/2)}:{x,y};
     if(point.x<0 || point.y<0 || point.x>=viewport.width || point.y>=viewport.height)throw new Error('Scroll coordinates are outside the viewport');
     // CDP mouseWheel is ignored by hidden background WebContentsView targets; use a mouse-source scroll gesture so background Rooms scroll without activation.
+    reportInput(operation,point);
     await pageDebugger.ensure(contents);
     await contents.debugger.sendCommand('Input.synthesizeScrollGesture',{x:point.x,y:point.y,xDistance:-deltaX,yDistance:-deltaY,gestureSourceType:'mouse',speed:1200,preventFling:true});
     return {ok:true,point};
@@ -328,7 +332,7 @@ module.exports = async function runAction(contents, operation, args = {}) {
     const to=await run('prepare-input',{target:target.ref,noScroll:true});
     return drag(contents,from,to,run);
   }
-  if (operation==='hover') {const {ref}=await run('resolve',args);const point=await run('prepare-input',{target:ref});return pointerAction(contents,'mouseMove',point,run);}
+  if (operation==='hover') {const {ref}=await run('resolve',args);const point=await run('prepare-input',{target:ref});reportInput(operation,point);return pointerAction(contents,'mouseMove',point,run);}
   if (operation==='dblclick') {const {ref}=await run('resolve',args);const point=await run('prepare-input',{target:ref});return doubleClick(contents,point);}
   if (operation==='focus') {const {ref}=await run('resolve',args);return run('focus-element',{target:ref});}
   if (['keyboardDown','keyboardUp','keyboardPress','keyboardType','keyboardInsertText','keyboardPaste'].includes(operation)) return keyboardAction(contents,operation,args);
@@ -339,7 +343,7 @@ module.exports = async function runAction(contents, operation, args = {}) {
     try {return {result:await contents.debugger.sendCommand(args.method,args.params || {})};}
     catch(error) {throw new Error(`CDP ${args.method} failed: ${error.message}`);}
   }
-  if (['click','fill','press'].includes(operation)) { const {ref}=await run('resolve',args); return trustedInput(contents, operation, {...args,target:ref}, run); }
+  if (['click','fill','press'].includes(operation)) { const {ref}=await run('resolve',args); return trustedInput(contents, operation, {...args,target:ref}, run, reportInput); }
   if (!['snapshot','text','select','selector-state'].includes(operation)) throw new Error('Unsupported operation');
   return run(operation,args);
 };
@@ -426,7 +430,7 @@ async function setFiles(contents,ref,files,nonce) {
 }
 
 // The page debugger has one owner and remains attached for dialog events.
-async function trustedInput(contents, operation, args, run) {
+async function trustedInput(contents, operation, args, run, reportInput) {
   if (operation === 'fill' && typeof args.value !== 'string') throw new Error('Fill value must be a string');
   const keyEvent = operation === 'press' ? parseKey(args.key) : null;
   const point = ['click','fill'].includes(operation) ? await run('prepare-input', {target:args.target, kind:operation}) : null;
@@ -435,6 +439,7 @@ async function trustedInput(contents, operation, args, run) {
   {
     const send = (method, params) => contents.debugger.sendCommand(method,params);
     if (point) {
+      reportInput(operation,point);
       try {await pointerAction(contents,'mouseClick',point,run);}
       catch(error) {await module.exports.releasePointer(contents).catch(()=>{});throw error;}
     }
