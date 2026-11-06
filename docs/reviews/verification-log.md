@@ -9,7 +9,8 @@
 - 渲染证据：透明叠加窗口 PNG 为 2560×1622 设备像素，SHA-256 `d827d0434aa1bf2babfa2bb63b8ab2d8fb79d522568ba334ed80bb4b69f2da4d`，见 `docs/qa/screenshots/issue-343-page-action-indicator.png`。图像只包含透明指示层，不代表完整页面合成结果或鼠标穿透验收。
 - 原生焦点修复：`tests/electron-test-launcher.cjs` 在 macOS 经 Launch Services `open -na` 启动隔离 Electron，并根据该实例的 `startup-progress.json` PID 清理；其他平台保留原直接进程启动。修复前，`bringToFront()`、`app.focus({steal:true})`、`BrowserWindow.focus()` 未使窗口取得系统焦点；前台 bundle 验证确认 Launch Services 启动后 Electron 成为前台应用，SDK 本地 fixture 成功收到页面 alert。
 - 定向验证：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node --test --test-concurrency=1 tests/dialogs.e2e.mjs tests/uploads.e2e.mjs` 2/2 PASS。涵盖 dialog、file chooser、文件设置与变化事件、iframe/shadow DOM、取消/过期及控制权路径。
-- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；Node 阶段 46/46 PASS，后续 `test:serial` 所有独立 E2E 脚本均 PASS，包含新增的动作指示验收；无 skip。macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用隔离临时数据和本地 fixture，未调用 OAuth、真实模型或真实网站。
+- 全量门禁：最终在 rebase 到 `origin/main` `13fa144` 后运行 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；Node 阶段 46/46 PASS，后续 `test:serial` 所有独立 E2E 脚本均 PASS，包含新增的动作指示验收；无 skip。macOS arm64、Node.js v24.22.1、Electron 45.2.1；使用隔离临时数据和本地 fixture，未调用 OAuth、真实模型或真实网站。
+- 中间复跑：一次基于 `43942bb` 的全量复跑在 `chrome-import-e2e.cjs` 键盘焦点断言失败；该脚本单独运行通过，紧接着同一基线完整复跑通过。随后 main 前进至 `13fa144`，最终 rebase 后完整门禁再次通过。
 - 未覆盖：多显示器/缩放坐标、窗口移动缩放时同步、OS 原生点击穿透、Windows、打包版及屏幕阅读器未覆盖。
 
 ## 2026-11-06 Issue #348 空间导航 Agent 任务三态标记
