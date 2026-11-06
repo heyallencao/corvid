@@ -45,31 +45,28 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const scopedContext = await readPiPageContext({ dataDir, profileId, roomId: room.id, tabId, agentCredential });
     assert.equal(scopedContext.roomId, room.id, 'the built-in Agent reads its page through the granted task identity');
     await assert.rejects(readPiPageContext({ dataDir, profileId, roomId: otherRoom.id, tabId: otherRoom.tabs[0].id, agentCredential }), error => error.code === 'CORVID_NOT_FOUND', 'the task credential cannot enumerate an ungranted Room');
-    await assert.rejects(createPiAgentSession({ dataDir, taskId: 'missing-scoped-identity', profileId, roomId: room.id, tabId, includePageContext: true }), error => error.code === 'CORVID_UNAUTHORIZED', 'the built-in Agent never falls back to the administrator credential');
+    await assert.rejects(createPiAgentSession({ dataDir, taskId: 'missing-scoped-identity', profileId, roomId: room.id, tabId }), error => error.code === 'CORVID_UNAUTHORIZED', 'the built-in Agent never falls back to the administrator credential');
+    // 托管即授权：授予空间的凭据读取已绑定页面不再需要逐条确认，原先的“未确认即拒绝”路径已移除。
     await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'unconfirmed', profileId, roomId: room.id, tabId, includePageContext: false, agentCredential }),
-      /explicitly confirm sharing this page context/,
-    );
-    await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'wrong-profile', profileId: 'missing-profile', roomId: room.id, tabId, includePageContext: true, agentCredential }),
+      createPiAgentSession({ dataDir, taskId: 'wrong-profile', profileId: 'missing-profile', roomId: room.id, tabId, agentCredential }),
       error => error.code === 'CORVID_NOT_FOUND',
     );
 
     const userRoom = (await call('/rooms')).rooms.find(item => item.ownership === 'user');
     const userScope = await call('/agent-clients', 'POST', { name: '用户控制边界测试身份', roomIds: [userRoom.id] });
     await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'user-room', profileId, roomId: userRoom.id, tabId: userRoom.tabs[0].id, includePageContext: true, agentCredential: {id:userScope.id,token:userScope.token} }),
+      createPiAgentSession({ dataDir, taskId: 'user-room', profileId, roomId: userRoom.id, tabId: userRoom.tabs[0].id, agentCredential: {id:userScope.id,token:userScope.token} }),
       error => error.code === 'CORVID_CONTROL_LOST',
     );
 
     await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'missing-corvid-model-adapter', profileId, roomId: room.id, tabId, includePageContext: true, agentCredential, selectedModel: { providerId: 'openai-codex', modelId: 'gpt-6-luna' } }),
+      createPiAgentSession({ dataDir, taskId: 'missing-corvid-model-adapter', profileId, roomId: room.id, tabId, agentCredential, selectedModel: { providerId: 'openai-codex', modelId: 'gpt-6-luna' } }),
       /Corvid must provide the selected model and its account authorization through the Agent adapter/,
       'the runtime session factory cannot create or read its own provider credential file',
     );
     assert.equal(fs.existsSync(path.join(dataDir, 'pi-agent', 'auth.json')), false, 'no runtime-owned auth file is created without Corvid credentials');
 
-    createdSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, agentCredential });
+    createdSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, agentCredential });
     assert.deepEqual(createdSession.tools, PI_TOOL_NAMES);
     assert.deepEqual(createdSession.tools, ['corvid_navigate', 'corvid_page_info', 'corvid_page_snapshot', 'corvid_wait_for_selector']);
     assert.deepEqual(createdSession.session.getActiveToolNames().slice().sort(), PI_TOOL_NAMES);
@@ -82,22 +79,22 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(fs.existsSync(createdSession.sessionFile), false, 'Pi creates its transcript file when the first message is appended');
     assert.match(createdSession.session.systemPrompt, /You are Corvid/);
     fs.writeFileSync(createdSession.sessionFile, `${JSON.stringify({type:'session',version:3,id:crypto.randomUUID(),timestamp:new Date().toISOString(),cwd:dataDir})}\n`, {mode:0o600});
-    reopenedSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, agentCredential, sessionFile: createdSession.sessionFile });
+    reopenedSession = await createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, agentCredential, sessionFile: createdSession.sessionFile });
     assert.equal(reopenedSession.sessionFile, createdSession.sessionFile);
     assert.deepEqual(reopenedSession.tools, PI_TOOL_NAMES);
     const outsideTranscript = path.join(dataDir, 'outside-transcript.jsonl');
     fs.writeFileSync(outsideTranscript, '{}\n');
     fs.symlinkSync(outsideTranscript, path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl'));
     await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, agentCredential, sessionFile: path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl') }),
+      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, agentCredential, sessionFile: path.join(path.dirname(createdSession.sessionFile), 'linked-transcript.jsonl') }),
       /Pi transcript must remain inside this task directory/,
     );
     await assert.rejects(
-      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, includePageContext: true, agentCredential, sessionFile: path.join(dataDir, 'outside-task.jsonl') }),
+      createPiAgentSession({ dataDir, taskId: 'isolated-task-1', profileId, roomId: room.id, tabId, agentCredential, sessionFile: path.join(dataDir, 'outside-task.jsonl') }),
       /Pi transcript must remain inside this task directory/,
     );
 
-    console.log('PASS Pi SDK session, task-isolated transcript path, explicit page consent, Room/Profile binding, and browser-only tool allowlist');
+    console.log('PASS Pi SDK session, task-isolated transcript path, delegated page context, Room/Profile binding, and browser-only tool allowlist');
   } finally {
     createdSession?.session.dispose();
     reopenedSession?.session.dispose();

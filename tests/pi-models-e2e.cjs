@@ -413,11 +413,11 @@ const safeStorage=createFakeSafeStorage();
       },
     },
   });
-  const preview = await workbench.prepare({ profileId: 'profile-a', roomId: 'room-a', tabId: 'tab-a' });
-  const task = await workbench.start({ profileId: 'profile-a', roomId: 'room-a', tabId: 'tab-a', prompt: 'first', includePageContext: true, contextPreview: preview });
+  await workbench.prepare({ profileId: 'profile-a', roomId: 'room-a', tabId: 'tab-a' });
+  const task = await workbench.start({ profileId: 'profile-a', roomId: 'room-a', tabId: 'tab-a', prompt: 'first' });
   await new Promise(resolve => setImmediate(resolve));
   selection = { providerId: 'provider-b', modelId: 'model-b' };
-  await workbench.continueTask({ taskId: task.id, message: 'follow-up', includePageContext: true, contextPreview: preview });
+  await workbench.continueTask({ taskId: task.id, message: 'follow-up' });
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(selectedModels, [
     { providerId: 'provider-a', modelId: 'model-a', name: 'model-a' },
