@@ -68,8 +68,11 @@ const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
     assert.equal(await modelSelect.innerText(), 'Current selection is not connected');
     await shell.waitForFunction(() => document.querySelector('.pi-model-status')?.textContent === 'Not connected');
     await modelSelect.focus();
-    await shell.keyboard.press('Tab');
-    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Manage models', 'the neutral label preserves the model choice keyboard path');
+    await shell.keyboard.press('Enter');
+    await shell.locator('.pi-model-search:visible').waitFor({ timeout: 5_000 });
+    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('role')), 'combobox', 'the neutral label still opens the model search from the keyboard');
+    await shell.keyboard.press('Escape');
+    assert.equal(await shell.evaluate(() => document.activeElement.className), 'pi-model-select', 'Escape returns focus to the neutral label');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704, 420));
     await modelSelect.scrollIntoViewIfNeeded();
     const narrowSelector = await modelSelect.evaluate(select => {
@@ -78,8 +81,15 @@ const evidenceDirectory = process.env.CORVID_UI_EVIDENCE_DIR;
       return { width: rect.width, height: rect.height, insideForm: rect.top >= form.top && rect.bottom <= form.bottom };
     });
     assert.ok(narrowSelector.width > 0 && narrowSelector.height > 0 && narrowSelector.insideForm, `the neutral model label remains reachable in a 704×420 window: ${JSON.stringify(narrowSelector)}`);
-    await shell.locator('.pi-model-status').scrollIntoViewIfNeeded();
-    await shell.getByRole('button', { name: 'Connect account', exact: true }).scrollIntoViewIfNeeded();
+    // 连接状态与入口在模型弹出层里：窄窗下展开后仍必须完整落在视口内。
+    await modelSelect.click();
+    await shell.locator('.pi-model-status').waitFor({ state: 'visible', timeout: 5_000 });
+    await shell.getByRole('button', { name: 'Connect account', exact: true }).waitFor({ state: 'visible', timeout: 5_000 });
+    const popoverInsideViewport = await shell.locator('.pi-model-picker-panel').evaluate(panel => {
+      const bounds = panel.getBoundingClientRect();
+      return bounds.height > 0 && bounds.top >= 0 && bounds.bottom <= innerHeight && bounds.left >= 0 && bounds.right <= innerWidth;
+    });
+    assert.ok(popoverInsideViewport, 'the unconnected status and connection entry stay inside the 704×420 viewport');
     await shell.screenshot({ path: path.join(screenshotsDirectory, 'issue-200-unconnected-model-en-704x420.png') });
     console.log(JSON.stringify({ result: 'PASS', locale: 'zh-CN/en', selectionPreserved: true, connected: false, screenshots: ['unconnected-model-zh-CN.png', 'unconnected-model-en.png'], evidence: 'isolated synthetic page; no provider, OAuth, API key, or credential storage calls' }));
   } finally {

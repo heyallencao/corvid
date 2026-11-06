@@ -95,7 +95,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           toolbar: rect(toolbar),
           toolbarScrollWidth: toolbar.scrollWidth,
           toolbarClientWidth: toolbar.clientWidth,
-          manageInModelRow: Boolean(document.querySelector('.pi-model-choice .pi-model-manage')),
+          manageInModelRow: Boolean(document.querySelector('.pi-model-controls .pi-model-manage')),
           manageInToolbar: Boolean(toolbar.querySelector('.pi-model-manage')),
           toolbarIsOutsideList: !list.contains(toolbar),
           toolbarParentIsWorkspace: toolbar.parentElement === workspace,
@@ -115,7 +115,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         geometry.toolbarScrollWidth <= geometry.toolbarClientWidth + 1,
         `${locale} toolbar keeps both actions inside the panel without horizontal clipping: ${geometry.toolbarScrollWidth}/${geometry.toolbarClientWidth}`
       );
-      assert.equal(geometry.manageInModelRow, true, `${locale} manage-models lives in the model row as a secondary action`);
+      assert.equal(geometry.manageInModelRow, true, `${locale} manage-models lives in the model controls as a secondary action`);
       assert.equal(geometry.manageInToolbar, false, `${locale} header toolbar carries no orphan manage-models button`);
       assert.ok(
         geometry.button.width > 0 && geometry.visibleButtonWidth >= geometry.button.width - 1,

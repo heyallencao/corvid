@@ -75,8 +75,11 @@ async function saveScreenshot(page, name) {
     assert.equal(await shell.getByText('No matching models', { exact: true }).count(), 1, 'English empty results are explicit');
     await saveScreenshot(shell, 'issue-208-model-picker-no-results-en-1280x850.png');
     await search.press('Tab');
-    assert.equal(await trigger.getAttribute('aria-expanded'), 'false', 'Tab closes the picker');
-    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Manage models', 'Tab continues to the next control');
+    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Manage models', 'Tab moves from the search field to the popover footer action');
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'true', 'the picker stays open while focus is inside it');
+    await shell.keyboard.press('Tab');
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'false', 'leaving the footer closes the picker');
+    assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Describe the browsing task', 'Tab continues to the composer input');
 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(704, 420));
     await trigger.scrollIntoViewIfNeeded();

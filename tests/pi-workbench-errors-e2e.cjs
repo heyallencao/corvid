@@ -18,7 +18,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   });
   await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
   const pageUrl = `http://127.0.0.1:${fixture.address().port}/`;
-  const changedUrl = `${pageUrl}changed`;
   let app;
   try {
     app = await _electron.launch({
@@ -57,25 +56,24 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const roomsBeforeConnection = new Set((await getRooms()).map(room => room.id));
     await shell.getByRole('button', { name: 'Connect current page', exact: true }).click();
     const agentRoom = await waitFor(async () => (await getRooms()).find(room => !roomsBeforeConnection.has(room.id) && room.tabs.some(tab => tab.url === pageUrl)), 'the Agent-bound local fixture page');
-    await shell.getByRole('button', { name: 'Review and preview page context', exact: true }).click();
-    await shell.locator('.pi-context').getByText('Original fixture page').waitFor();
     await shell.getByLabel('Describe the browsing task').fill('Summarize the reviewed page');
-    await shell.getByLabel(/I reviewed and agree/).check();
 
-    const boundTab = agentRoom.tabs.find(tab => tab.url === pageUrl);
-    const navigation = await fetch(`${control.baseUrl}/tabs/${boundTab.id}/navigate`, {
+    // 托管即授权：页面变化不再拦发送，派发时读取当前页面；但用户收回空间后必须失败关闭。
+    const yieldResponse = await fetch(`${control.baseUrl}/rooms/${agentRoom.id}/yieldControl`, {
       method: 'POST',
       headers: { authorization: `Bearer ${control.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ url: changedUrl }),
     });
-    assert.equal(navigation.status, 200, 'the bound Agent page navigates through the local control API');
-    await waitFor(async () => (await getRooms()).some(room => room.tabs.some(tab => tab.url === changedUrl)), 'the changed fixture page');
+    assert.equal(yieldResponse.status, 200, 'the user takes control of the bound Agent space');
+    await waitFor(async () => (await getRooms()).find(room => room.id === agentRoom.id)?.ownership === 'user', 'the bound space to return to user control');
 
     await shell.getByRole('button', { name: 'Send', exact: true }).click();
-    await waitFor(async () => (await shell.locator('.pi-page-binding').textContent())?.startsWith('Message not sent:'), 'the localized stale-page validation error');
-    assert.equal((await shell.locator('.pi-page-binding').textContent()).trim(), 'Message not sent: The page changed. Review and confirm its content again.');
-    assert.equal(await shell.locator('.pi-task-entry').count(), 0, 'a stale page preview fails before a task or model request is created');
-    console.log('PASS Agent workbench stale page-context error is localized in the English UI');
+    const composerError = await waitFor(async () => {
+      const text = await shell.locator('.pi-composer-error').textContent().catch(() => '');
+      return text?.trim() || null;
+    }, 'the localized lost-control send error');
+    assert.equal(composerError, 'Message not sent: This space, profile, or page has changed. Return control or review the page again before retrying.');
+    assert.equal(await shell.locator('.pi-task-entry').count(), 0, 'a space the user took back fails before a task or model request is created');
+    console.log('PASS Agent workbench lost-space send error is localized in the English UI');
   } finally {
     if (app) await app.close().catch(() => {});
     await new Promise(resolve => fixture.close(resolve));

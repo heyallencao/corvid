@@ -9,6 +9,14 @@ const { assertDeveloperIdSignature } = require('./packaged-app-signature.cjs');
 
 const project = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(predicate, label, attempts = 200) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const value = await predicate();
+    if (value) return value;
+    await delay(25);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
 async function launch(dataDir) {
   const extraArgs = String(process.env.CORVID_ELECTRON_EXTRA_ARGS || '').split(/\s+/).filter(Boolean);
   const packagedAppPath = process.env.CORVID_PACKAGED_APP_PATH ? path.resolve(process.env.CORVID_PACKAGED_APP_PATH) : null;
@@ -42,7 +50,7 @@ async function openApiKeyProvider(app) {
   await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
   const select = shell.locator('.pi-model-select:visible').first();
   const status = shell.locator('.pi-model-status');
-  await status.waitFor({ state: 'visible', timeout: 2_000 });
+  // 连接状态只在模型弹出层展开时可见；这里先等徽标，失败时再读状态文案判断是不是安全存储恢复态。
   try { await select.waitFor({ state: 'visible', timeout: 20_000 }); }
   catch (error) {
     const message = await status.innerText().catch(() => '');
@@ -74,6 +82,9 @@ async function openApiKeyProvider(app) {
   for (let step = 0; step < (targetIndex - activeIndex + optionCount) % optionCount; step++) await search.press('ArrowDown');
   await search.press('Enter');
   await shell.waitForFunction(() => document.querySelector('.pi-model-select[aria-expanded="false"]'));
+  // 连接状态与凭据控件都在模型弹出层里：重新展开，调用方才能操作它们。
+  await shell.locator('.pi-model-select:visible').first().click();
+  await shell.waitForFunction(() => document.querySelector('.pi-model-select')?.getAttribute('aria-expanded') === 'true');
   return shell;
 }
 
@@ -101,10 +112,17 @@ async function openApiKeyProvider(app) {
     let shell = await openApiKeyProvider(app);
     await shell.locator('.pi-model-key').fill(secret);
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).click();
-    await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
-
-    const persisted = fs.readFileSync(credentialPath, 'utf8');
+    const persisted = await waitFor(() => {
+      try {
+        const text = fs.readFileSync(credentialPath, 'utf8');
+        return JSON.parse(text).providers?.anthropic ? text : null;
+      } catch { return null; }
+    }, 'the API Key to be stored through the OS credential store');
     const document = JSON.parse(persisted);
+    // 连接成功后弹出层会重建并关闭，重新展开才能看到“退出”。
+    await shell.waitForFunction(() => document.querySelector('.pi-model-controls')?.dataset.connected === 'true');
+    await shell.locator('.pi-model-select:visible').first().click();
+    await shell.getByRole('button', { name: /退出|Sign out/i }).waitFor();
     assert.equal(document.schemaVersion, 2);
     assert.deepEqual(Object.keys(document.providers.anthropic).sort(), ['encryptedCredential', 'kind']);
     assert.equal(persisted.includes(secret), false, 'the isolated credential file contains no plaintext API Key');
@@ -123,6 +141,8 @@ async function openApiKeyProvider(app) {
     assert.equal(await shell.locator('.pi-model-key').count(), 0,
       'the persisted credential is readable by the OS-protected store after an Electron restart');
     await shell.getByRole('button', { name: /退出|Sign out/i }).click();
+    await shell.waitForFunction(() => document.querySelector('.pi-model-controls')?.dataset.connected === 'false');
+    await shell.locator('.pi-model-select:visible').first().click();
     await shell.getByRole('button', { name: /连接 Key|Connect key/i }).waitFor();
     const afterLogout = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
     assert.equal(afterLogout.providers.anthropic, undefined, 'logout removes the credential from Corvid persistence');
