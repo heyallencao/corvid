@@ -2091,9 +2091,9 @@
 
 ## 2026-11-06 Issue #362 Agent 浏览器共享能力合同
 
-- 基线与环境：隔离 worktree `agent/issue-362-unified-browser-capabilities`，提交 `414e98a`，基于 `origin/main` `861022c`；macOS 26.5.1 arm64、Node.js v24.22.1、Electron 45.2.1。测试使用隔离临时数据目录和本地 fixture。
+- 基线与环境：隔离 worktree `agent/issue-362-unified-browser-capabilities`，最终候选 `cf5dd1e`，基于 `origin/main` `861022c`；macOS 26.5.1 arm64、Node.js v24.22.1、Electron 45.2.1。测试使用隔离临时数据目录和本地 fixture。
 - 定向验证：`node tests/agent-browser-capabilities.test.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/pi-runtime-e2e.cjs`、`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 均通过；MCP 检查共享定义生成的工具描述与输入字段，Pi 检查四个浏览器工具及既有授权/会话合同。改动 JS 文件 `node --check` 和 `git diff --check HEAD^ HEAD` 通过。
-- 全量门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例及后续完整串行脚本链通过，包括共享能力模块合同、Pi runtime、MCP 和工作台 E2E。E2E 链生成的 9 张已跟踪 QA 截图已还原到提交状态。
+- 全量门禁：最终 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；46/46 `node:test` 用例及完整串行脚本链通过，包括共享能力模块合同、Pi runtime、MCP、工作台与 Chrome 导入 E2E。此前两轮全量分别在 `pi-workbench-e2e.cjs:665`（窄栏标记）与 `chrome-import-e2e.cjs:778`（原生父窗口激活后 popup 关闭）失败；两个入口各自独立复跑通过，最终全量复跑两者均通过。E2E 链生成的 9 张已跟踪 QA 截图已还原到候选提交状态。
 - 隐私与限制：本轮未调用真实模型、OAuth 或外部 MCP host；真实网站、Windows 平台和打包版未覆盖。CLI SDK 脚本仍以本地 Node.js 进程权限运行，不构成沙箱；内置 Agent/MCP 的最终授权仍由桌面服务执行。
 
 ## 2026-11-06 Issue #319 合入后 Release gate follow-up
