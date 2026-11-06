@@ -239,3 +239,9 @@ Google 官方帮助页另说明：Gemini in Chrome 默认使用当前标签内�
 本段是对 Issue #350 及本文件较早 D20 结论的 Corvid 源码复核，不是新的 REA 观察。直接源码证据：`sdk/README.md` 126–130 行公开 page dialog、`setInputFiles` 和 `waitForFileChooser`；`desktop/agent-downloads.cjs` 将下载绑定 tab 与一次性 arm token，保存在 Corvid 临时目录并提供取消/丢弃；`desktop/main.cjs` 的下载监听同时维护常规浏览器下载历史。由此确认旧结论“当前不提供文件上传”已过时：SDK 可以通过本机绝对路径选择文件；该合同没有逐次用户确认，不能据此推断用户已同意上传。
 
 决策：保留现有受管 Page alert/confirm/prompt 应答和桌面用户可见状态；下载限 Page 绑定的一次性等待与临时目录，不开放任意路径；拖拽/通用事件注入不提供；adapter 仅接受人工审查、版本固定、可移除的只读命令，并沿用 Room/Page/接管校验，不引入自学习或页面脚本。文件上传需独立增加逐次明确授权与拒绝/取消用例后才可作为支持能力。本结论反映文档与源码现状，不证明真实 MCP host、辅助技术、跨平台 UI 或真实网站行为。
+
+## 2026-11-06 Issue #347 跨 Room 活动历史源码复核
+
+直接源码证据：`desktop/agent-task-store.cjs` 将任务保存于版本化 `agent-tasks.json`；`desktop/agent-workbench.cjs` 的 `listSummaries(profileId)` 仅为指定 Profile 返回现有任务的 Room ID、脱敏 prompt 摘要、状态与更新时间。移除任务会删掉任务记录及其会话数据；删除浏览身份会清理其任务；关闭 Room 本身保留任务记录。当前没有持久化“Agent 已读页面”事件，也没有可区分“授权/读取上下文”与“已消费页面”的信号。
+
+决策：活动入口作为 Agent 工作区单一视图，按当前浏览身份查询并可按 Room/状态筛选；数据只从现有任务记录派生，不跨 Profile、不复制新历史库。列表不展示页面正文/快照/凭据，仅显示时间、Room、状态和现有脱敏任务摘要；摘要模式清理不承诺识别所有个人信息。记录保留与任务一致：删除任务/浏览身份后消失；Room 已关闭但任务仍在时显示不可跳转状态。先只聚合任务，不把页面上下文授权或快照读取误报为“已读”。此为源码与持久化合同核对，没有观察实际 UI，也未验证 VoiceOver、跨平台、真实模型或 Provider 行为。
