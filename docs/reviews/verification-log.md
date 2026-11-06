@@ -2143,3 +2143,9 @@
 - 定向验证：`node --check desktop/renderer.js` 通过；`grep` 复核死规则类名在 desktop/ 与 tests/ 无引用。14 个相关 E2E 套件全绿：pi-workbench-e2e、pi-workbench-header-e2e、pi-workbench-short-height-e2e、pi-workbench-errors-e2e、pi-unconnected-model-label-e2e、pi-model-picker-ui-e2e、pi-credential-os-store-e2e、pi-custom-endpoint-e2e、agent-rooms-panel-e2e、agent-stop-e2e、localization-e2e、typography-e2e、native-controls-e2e、fullscreen-e2e。`tests/agent-rooms-panel-e2e.cjs` 深色断言同步为新表面值（composer 卡 `--surface-soft`、prompt 融入卡片），断言语义（深色表面层级）不变。
 - 视觉验收：隔离 Electron（`CORVID_TEST_MODE=1`、独立数据目录、本地 fixture）9 张截图覆盖浅/深色 × zh-CN/en × 1280×850/704×420，见 `docs/qa/issue-377-workbench-layout-refactor.md` 与 `docs/qa/screenshots/issue-377/`。impeccable detect 仅报 `.agent-access-boundary` 既有 border-left（范围外，未改）。
 - 环境与限制：macOS arm64、Node.js v24.22.1、Electron 45.2.1；未调用真实模型/OAuth。真实模型长流式气泡与队列 ≥3 条密度未覆盖（#382）。Windows 未验证。
+
+## 2026-11-06 PR #384 合并前全量 E2E 门禁
+
+- 基线：PR #384 已 rebase 到 `origin/main` `43942bb`，分支提交 `9adcf48`；运行命令 `caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test`，退出码 0。
+- 结果：46/46 `node:test` 用例通过，串行 E2E 链 76 条独立脚本全部输出 PASS；#289 同机互斥锁成功取得并由 runner 释放。E2E 改写了 9 张跟踪截图，已逐一恢复为基线版本，PR 中只保留本次 `issue-377` 证据截图。
+- 环境与限制：macOS arm64、Node.js v24.22.1、Electron 45.2.1；隔离临时数据与本地 fixtures，不调用真实模型、Provider 或 OAuth。Windows packaged 验收不属于此本地门禁范围。
