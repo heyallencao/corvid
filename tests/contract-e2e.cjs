@@ -5,6 +5,7 @@ const os = require('node:os');
 const http = require('node:http');
 const { _electron } = require('playwright-core');
 const electron = require('electron');
+const { focusElectronWindow } = require('./electron-test-startup.cjs');
 
 const root = path.resolve(__dirname, '..');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -35,7 +36,8 @@ async function until(fn, timeout = 6000) {
   let app, client;
   try {
     app = await _electron.launch({ executablePath: electron, args: [root], env });
-    await app.firstWindow();
+    const shell = await app.firstWindow();
+    await focusElectronWindow(app, shell, { label: 'contract-e2e' });
     await until(() => fs.existsSync(path.join(dir, 'control.json')));
     client = await (await import('../sdk/index.js')).connect({ dataDir: dir });
     const room = await client.openRoom('Contract room');

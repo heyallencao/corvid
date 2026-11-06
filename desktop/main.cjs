@@ -7,7 +7,7 @@ const { safePageUrl, createPageContextMenuTemplate } = require('./page-context-m
 const { createAgentClientsStore } = require('./agent-clients.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
-const { clearPageFullscreen, markPageFullscreen } = require('./page-fullscreen.cjs');
+const { clearPageFullscreen, markPageFullscreen, snapshotFullscreenRestoreState } = require('./page-fullscreen.cjs');
 const { createStartupProgress } = require('./startup-progress.cjs');
 const { applicationMenuText, createApplicationMenuTemplate, syncApplicationMenuState } = require('./application-menu.cjs');
 const { createMainLocale } = require('./main-locales.cjs');
@@ -411,9 +411,9 @@ function saveWindowState() {
   const states = [];
   for (const record of windowRecords.values()) {
     if (record.browserWindow.isDestroyed()) continue;
-    const bounds = record.browserWindow.getNormalBounds();
     const fullscreen = isTransientFullscreen(record);
     const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : record.browserWindow.isMaximized();
+    const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : record.browserWindow.getNormalBounds();
     states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
   if (!states.length) return;
@@ -432,7 +432,7 @@ function requestWindowFullscreen(record, enabled) {
   const browserWindow = record.browserWindow;
   if (browserWindow.isDestroyed() || record.closing) return { requested: enabled };
   if (record.htmlFullscreen) return { requested: Boolean(record.appFullscreen), blockedByPageFullscreen: true };
-  if (enabled && record.fullscreenRestoreMaximized === null) record.fullscreenRestoreMaximized = browserWindow.isMaximized() || record.lastKnownMaximized;
+  if (enabled) snapshotFullscreenRestoreState(record);
   record.fullscreenTransitionTarget = enabled;
   browserWindow.setFullScreen(enabled);
   return { requested: enabled };
@@ -1731,19 +1731,22 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
   const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,fullscreenRestoreBounds:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record))scheduleWindowStateSave();layout(record);});
-  browserWindow.on('move',()=>{if(!isTransientFullscreen(record))scheduleWindowStateSave();});
+  const clearRestoredBoundsAfterGeometryChange=()=>{
+    if(!isTransientFullscreen(record)&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  };
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
   browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=true;});
-  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=false;});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}});
   // macOS transitions are asynchronous; if the user reverses direction during
   // the animation, replay the latest target instead of trusting a stale event.
   browserWindow.on('enter-full-screen',()=>{
     if(record.closing)return;
-    if(record.fullscreenRestoreMaximized===null)record.fullscreenRestoreMaximized=browserWindow.isMaximized()||record.lastKnownMaximized;
+    snapshotFullscreenRestoreState(record);
     record.appFullscreen=true;
     if(record.fullscreenTransitionTarget===true)record.fullscreenTransitionTarget=null;
     else if(record.fullscreenTransitionTarget===false&&!browserWindow.isDestroyed())browserWindow.setFullScreen(false);

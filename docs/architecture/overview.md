@@ -8,7 +8,7 @@ Provider 凭据由 Corvid 以 `agent-credentials.json` schemaVersion 2 管理；
 
 ## 系统边界
 
-- 应用负责浏览器窗口、Room、标签以及控制权的生命周期；Agent 通过本地认证接口操作获得授权的 Room。
+- 应用负责浏览器窗口、Room、标签以及控制权的生命周期；Agent 通过本地认证接口操作获得授权的 Room。窗口状态持久化保留常态 bounds 与最大化状态；进入窗口或网页全屏时先记录常态 bounds，避免临时全屏几何写入恢复状态。
 - **Profile** 是浏览身份及其 Cookie、存储的边界；**Room** 是同一 Profile 下的工作区与控制权边界。不能把 Room 隔离误称为浏览数据隔离。
 - 桌面端维护 Room、Page、控制权状态；页面由 Electron `WebContentsView` 承载，同一 Profile 的页面使用同一持久化 session，不同 Profile 使用不同 session。
 - Agent SDK 与 CLI 连接本地控制服务。管理员 Bearer 凭据保存在权限为 0600 的 `control.json`；可由管理员为 Agent 客户端签发仅保存 SHA-256 摘要的独立凭据，并将每个客户端限制到明确的 Room ID 列表。服务在每次请求中校验身份和 Room 范围；撤销立即生效。Scoped 客户端只能列出/访问已授权 Room，Profile 列表只返回授权 Room 所属身份，并拒绝历史、书签、下载和窗口接口。用户可在设置中签发/查看/撤销客户端凭据；Browser MCP 仅接受 `CORVID_AGENT_TOKEN` scoped credential，不再回退到管理员 token。内置 Agent 每个任务轮次使用只存在于主进程内存、绑定单一任务和 Room 的短期 scoped credential；续聊重新签发，完成、失败、停止及用户接管时撤销。该凭据不写入客户端授权文件、任务记录或对话记录。稳定 Room ID、标签 ID 和 Page label 映射由服务维护；显示名称不充当唯一标识。

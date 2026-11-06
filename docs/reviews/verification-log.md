@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
+
+- 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。
+- 改动：共享 Electron E2E 启动现在在 macOS 激活 Electron、聚焦目标 BrowserWindow 与 shell 页面，并等待原生窗口和 `document.hasFocus()` 同时成立；contract、CLI、beforeunload 的直接启动路径复用该前置，history Tab 路径再次确认窗口与起始控件焦点。SDK `fill` 在可信点击与 500ms 焦点等待后，仅对显式编辑目标调用 `focus-target` 并重新验证后输入，不切换活动 Room；全屏进入前保存常态 bounds，最大化/全屏持久化取快照，正常窗口几何变化清除快照。
+- 定向验证：`node --test tests/window-fullscreen-state.test.mjs` 11/11 PASS；串行运行 `env -u ELECTRON_RUN_AS_NODE node tests/contract-e2e.cjs`、`tests/cli-e2e.cjs`、`tests/history-panel-e2e.cjs`、`tests/beforeunload-e2e.cjs`、`tests/fullscreen-e2e.cjs` 均 PASS；`node --check` 覆盖全部改动 JS 文件，`git diff --check` PASS。
+- 完整门禁：`env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0；node:test 47/47，随后完整 `test:serial` Electron E2E 与合同链全部通过，无 skip。全量链使用 repo-shared lock 独占运行，没有并行 Electron E2E。
+- Hosted 背景：正式 Release workflow 在 `0d08671742740342028b6629d6231d90366ccc69` 的 Apple Silicon 门禁曾三次失败（runs [42203402036](https://github.com/heyallencao/corvid/actions/runs/42203402036)、[42205066394](https://github.com/heyallencao/corvid/actions/runs/42205066394)、[42207250376](https://github.com/heyallencao/corvid/actions/runs/42207250376)）；本轮仅证明本机 arm64 完整门禁通过，合并后的 hosted Release workflow 仍须重新运行。此前未发布 `v0.2.0`。
+- 边界：未覆盖 Windows E2E、打包版及其他 macOS 版本；本地通过不能替代合入后 Apple Silicon hosted 门禁。没有调用 OAuth、真实模型或真实网站。
+
 ## 2026-11-06 Issue #343 页面动作指示定向 Electron 验收
 
 - 环境：隔离 worktree `ui/issue-343-page-action-indicator`；macOS arm64、Node.js v24.22.1、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与本地 HTTP fixture；未调用 OAuth、真实模型或真实网站。

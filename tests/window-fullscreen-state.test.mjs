@@ -3,14 +3,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const require = createRequire(import.meta.url);
-const { clearPageFullscreen, markPageFullscreen } = require('../desktop/page-fullscreen.cjs');
+const { clearPageFullscreen, markPageFullscreen, snapshotFullscreenRestoreState } = require('../desktop/page-fullscreen.cjs');
 
 function createRecord(overrides = {}) {
   const calls = { setFullScreen: [], sent: [] };
   let fullScreen = overrides.fullScreen ?? true;
+  const normalBounds = overrides.bounds ?? { x: 100, y: 80, width: 1024, height: 684 };
   const browserWindow = {
     isDestroyed: () => Boolean(overrides.destroyed),
     isMaximized: () => Boolean(overrides.maximized),
+    getNormalBounds: () => ({ ...normalBounds }),
     isFullScreen: () => fullScreen,
     setFullScreen(value) { calls.setFullScreen.push(value); fullScreen = value; },
     webContents: { send: (...args) => calls.sent.push(args) },
@@ -22,6 +24,7 @@ function createRecord(overrides = {}) {
     htmlFullscreenTabId: 'tab-a',
     fullscreenTransitionTarget: null,
     fullscreenRestoreMaximized: null,
+    fullscreenRestoreBounds: null,
     lastKnownMaximized: false,
     ...overrides.record,
   };
@@ -30,11 +33,22 @@ function createRecord(overrides = {}) {
 
 const describe = record => ({ pageFullscreen: record.htmlFullscreen, tabId: record.htmlFullscreenTabId });
 
+test('snapshots exact normal bounds once before a fullscreen transition', () => {
+  const bounds = { x: 11, y: 22, width: 1024, height: 684 };
+  const { record } = createRecord({ bounds, maximized: true });
+  snapshotFullscreenRestoreState(record);
+  bounds.height = 682;
+  snapshotFullscreenRestoreState(record);
+  assert.equal(record.fullscreenRestoreMaximized, true);
+  assert.deepEqual(record.fullscreenRestoreBounds, { x: 11, y: 22, width: 1024, height: 684 });
+});
+
 test('records the exact page tab that entered HTML fullscreen', () => {
   const { record, calls } = createRecord({ record: { htmlFullscreen: false, htmlFullscreenTabId: null } });
   assert.equal(markPageFullscreen(record, 'tab-a', describe), true);
   assert.equal(record.htmlFullscreen, true);
   assert.equal(record.htmlFullscreenTabId, 'tab-a');
+  assert.deepEqual(record.fullscreenRestoreBounds, { x: 100, y: 80, width: 1024, height: 684 });
   assert.deepEqual(calls.sent, [['shell-state', { pageFullscreen: true, tabId: 'tab-a' }]]);
 });
 
