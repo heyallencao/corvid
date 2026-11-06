@@ -11,35 +11,35 @@ const safeUrl = value => {
   catch { return null; }
 };
 
-function profilePath(root, relative) {
-  if (typeof relative !== 'string' || !relative || path.isAbsolute(relative)) throw new Error('Chrome Profile 路径无效');
+function profilePath(root, relative, sourceName='Chrome') {
+  if (typeof relative !== 'string' || !relative || path.isAbsolute(relative)) throw new Error(`${sourceName} Profile 路径无效`);
   const resolved = path.resolve(root, relative);
-  if (!resolved.startsWith(`${path.resolve(root)}${path.sep}`)) throw new Error('Chrome Profile 路径超出所选目录');
+  if (!resolved.startsWith(`${path.resolve(root)}${path.sep}`)) throw new Error(`${sourceName} Profile 路径超出所选目录`);
   const canonicalRoot=fs.realpathSync(root),canonicalProfile=fs.realpathSync(resolved);
-  if(!canonicalProfile.startsWith(`${canonicalRoot}${path.sep}`))throw new Error('Chrome Profile 符号链接超出所选目录');
+  if(!canonicalProfile.startsWith(`${canonicalRoot}${path.sep}`))throw new Error(`${sourceName} Profile 符号链接超出所选目录`);
   return resolved;
 }
 
-function sourceFile(directory,name) {
+function sourceFile(directory,name,sourceName='Chrome') {
   const file=path.join(directory,name);
   if(!fs.existsSync(file))return file;
   const root=fs.realpathSync(directory),resolved=fs.realpathSync(file);
-  if(!resolved.startsWith(`${root}${path.sep}`))throw new Error(`Chrome 源文件符号链接超出资料目录：${name}`);
+  if(!resolved.startsWith(`${root}${path.sep}`))throw new Error(`${sourceName} 源文件符号链接超出资料目录：${name}`);
   return resolved;
 }
 
-function profiles(root) {
+function profiles(root,sourceName='Chrome') {
   const base = path.resolve(root);
   let info = {};
-  try { info = JSON.parse(fs.readFileSync(sourceFile(base, 'Local State'), 'utf8'))?.profile?.info_cache || {}; }
-  catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw new Error(`无法读取 Chrome Profile 清单：${error.message}`); }
+  try { info = JSON.parse(fs.readFileSync(sourceFile(base, 'Local State',sourceName), 'utf8'))?.profile?.info_cache || {}; }
+  catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw new Error(`无法读取 ${sourceName} Profile 清单：${error.message}`); }
   const dirs = fs.readdirSync(base, {withFileTypes:true}).filter(entry => entry.isDirectory() && !entry.name.startsWith('.'));
   const found = dirs.map(entry => {
     const relative = entry.name;
-    const directory = profilePath(base, relative);
-    const hasBookmarks = fs.existsSync(sourceFile(directory, 'Bookmarks'));
-    const hasHistory = fs.existsSync(sourceFile(directory, 'History'));
-    const hasExtensions = fs.existsSync(sourceFile(directory, 'Extensions'));
+    const directory = profilePath(base, relative,sourceName);
+    const hasBookmarks = fs.existsSync(sourceFile(directory, 'Bookmarks',sourceName));
+    const hasHistory = fs.existsSync(sourceFile(directory, 'History',sourceName));
+    const hasExtensions = fs.existsSync(sourceFile(directory, 'Extensions',sourceName));
     if (!hasBookmarks && !hasHistory && !hasExtensions) return null;
     const metadata = info[relative] || {};
     return {id:relative,name:typeof metadata.name==='string' && metadata.name.trim()?metadata.name.trim():(relative==='Default'?'默认资料':relative),hasBookmarks,hasHistory,hasExtensions};
@@ -47,8 +47,8 @@ function profiles(root) {
   return found.sort((a,b)=>a.id==='Default'?-1:b.id==='Default'?1:a.name.localeCompare(b.name));
 }
 
-function readBookmarks(directory) {
-  const file = sourceFile(directory, 'Bookmarks');
+function readBookmarks(directory,sourceName='Chrome') {
+  const file = sourceFile(directory, 'Bookmarks',sourceName);
   let data;
   try { data=JSON.parse(fs.readFileSync(file,'utf8')); }
   catch (error) { if(error.code==='ENOENT') return []; throw new Error(`无法读取书签文件：${error.message}`); }
@@ -58,10 +58,10 @@ function readBookmarks(directory) {
   return result;
 }
 
-function readHistory(directory) {
-  const file=sourceFile(directory,'History');
+function readHistory(directory,sourceName='Chrome') {
+  const file=sourceFile(directory,'History',sourceName);
   if(!fs.existsSync(file)) return [];
-  sourceFile(directory,'History-wal');sourceFile(directory,'History-shm');
+  sourceFile(directory,'History-wal',sourceName);sourceFile(directory,'History-shm',sourceName);
   let database;
   try {
     database=new DatabaseSync(file,{readOnly:true});
@@ -182,13 +182,13 @@ function assertCookieConsent(categories,consent,platform=process.platform){
   if(consent!==true)throw new Error('请先确认 Cookie 导入说明，再读取 macOS 钥匙串中的 Chrome Safe Storage。');
 }
 
-function readSelectedProfile(root, relative, categories) {
-  const directory=profilePath(root,relative);
+function readSelectedProfile(root, relative, categories, {sourceName='Chrome',includeCookies=true}={}) {
+  const directory=profilePath(root,relative,sourceName);
   const selected=new Set(categories);
   return {
-    bookmarks:selected.has('bookmarks')?readBookmarks(directory):[],
-    history:selected.has('history')?readHistory(directory):[],
-    cookieCount:selected.has('cookies')&&process.platform==='darwin'?cookieCount(directory):null,
+    bookmarks:selected.has('bookmarks')?readBookmarks(directory,sourceName):[],
+    history:selected.has('history')?readHistory(directory,sourceName):[],
+    cookieCount:includeCookies&&selected.has('cookies')&&process.platform==='darwin'?cookieCount(directory):null,
   };
 }
 
@@ -196,13 +196,13 @@ function readProfile(root, relative) {
   return readSelectedProfile(root,relative,['bookmarks','history','cookies']);
 }
 
-function readProfilePreview(root, relative) {
-  const directory=profilePath(root,relative),result={bookmarks:[],history:[],cookieCount:null,errors:{}};
+function readProfilePreview(root, relative, {sourceName='Chrome',includeCookies=true}={}) {
+  const directory=profilePath(root,relative,sourceName),result={bookmarks:[],history:[],cookieCount:null,errors:{}};
   for(const category of ['bookmarks','history']){
-    try{result[category]=category==='bookmarks'?readBookmarks(directory):readHistory(directory);}
+    try{result[category]=category==='bookmarks'?readBookmarks(directory,sourceName):readHistory(directory,sourceName);}
     catch{result.errors[category]=true;}
   }
-  if(process.platform==='darwin'){
+  if(includeCookies&&process.platform==='darwin'){
     result.cookieCount=cookieCount(directory);
     if(result.cookieCount===null)result.errors.cookies=true;
   }
