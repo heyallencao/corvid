@@ -313,7 +313,7 @@ function draw(value) {
   roomAction(extensionMessages.t('newWindow'),async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
   if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}},{destructive:true});
   const room = state.rooms.find(s => s.id === state.activeRoomId);
-  if (!room) {updateConnectionIndicator(null);void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
+  if (!room) {updateConnectionIndicator(null);void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsStructureSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
   const active = activeTab(),address=document.querySelector('#address');
   updateConnectionIndicator(active);

@@ -278,7 +278,8 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 /* Browser chrome. */
 #browser-shell { min-width: 0; background: var(--surface); }
 #tab-strip { height: 40px; min-width: 0; display: flex; align-items: stretch; background: var(--surface-soft); }
-#tabs { min-width: 0; height: 40px; flex: 1; display: flex; align-items: stretch; gap: 3px; overflow: auto; padding: 4px 6px 0; white-space: nowrap; scrollbar-width: none; scroll-behavior: smooth; }
+/* 宽度随内容收缩：新建标签按钮得以紧跟最后一个标签；窗口变窄时仍可收缩出横向滚动。 */
+#tabs { min-width: 0; height: 40px; flex: 0 1 auto; display: flex; align-items: stretch; gap: 3px; overflow: auto; padding: 4px 6px 0; white-space: nowrap; scrollbar-width: none; scroll-behavior: smooth; }
 #tabs::-webkit-scrollbar { display: none; }
 .tab-scroll-control { width: 26px; height: 36px; flex: none; align-self: center; display: grid; place-items: center; padding: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted); }
 .tab-scroll-control[hidden] { display: none; }

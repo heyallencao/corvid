@@ -2293,3 +2293,12 @@
 - 定向验证（EXIT 0，skipped=0）：`node tests/browser-script-e2e.cjs`（开关合同/一次调用批量/越权 Room 拒绝/脚本错误收据/超时强杀后 Room 与页面数量不变且服务可用/输出截断）；`node tests/agent-connect-e2e.cjs` 增补断言（默认不含 CORVID_BROWSER_SCRIPT、`--browser-script` 写入 host env）后全绿；`node tests/connect-e2e.cjs`、`node tests/mcp-e2e.cjs` 回归通过。
 - 边界：脚本与 CLI 同为本地 Node 权限非沙箱（文档明示）；多 Room 并发脚本、Windows 未验证；子进程复用父进程 env（含 CORVID_DATA_DIR/CORVID_AGENT_TOKEN）。
 - 合并门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `3811e3d` 上 **EXIT 0**——串行链 86 项 PASS，skipped=0。已按 protocol squash 合并至 main。
+
+## 2026-11-07 Room 创建残留与新标签按钮位置修复（用户直报缺陷）
+
+- 缺陷与根因：① 新建空间后渲染层长时间停留在上一个空间画面——`createRoom` 调 `createTab` 未传 `notifyInitialState`，about:blank 初始标签在 bootstrap（loadURL+debugger+起始页注入）完成前不推送 shell-state（`desktop/main.cjs:921`），期间空间条无新磁贴、标签栏仍是旧空间标签、旧空间页面视图盖在最上层（`frontView` 要等首次 update→layout 才切换）；② `renderer.js:316` 将 `tabsStructureSignature` 误写为不存在的 `tabsSignature`，room 短暂 miss 后签名缓存不重置，标签栏可卡在过期状态；③ 「+」新建标签按钮钉在窗口最右缘（`#tabs` 为 `flex:1` 占满整行），标签少时远离最后一个标签。
+- 修复：`createRoom` 传 `notifyInitialState:true`（创建后立即推送一次，标签栏/空间条即刻切到新空间）；typo 改正为 `tabsStructureSignature`；`#tabs` 改 `flex:0 1 auto`，「+」紧跟最后一个标签，溢出时仍钉在右缘、不随横向滚动移出（与 `tab-overflow-e2e` 的可达性断言一致）。
+- 定向验证（macOS arm64，Darwin 25.5.0，Node v24，主克隆工作区，顺序执行全部 EXIT 0）：`node tests/tab-overflow-e2e.cjs`、`node tests/tab-ux-e2e.cjs`、`node tests/room-close-e2e.cjs`、`node tests/browser-layout-e2e.cjs`。
+- 边界：新空间磁贴/标签栏的切换时序为定向 E2E 覆盖，未做人工多空间冒烟实拍；Windows 未验证；本次为用户直报修复，未单开 issue。合并门禁按 protocol 在最终候选上跑全量。
+- 追查（用户反馈「新建标签也会自动创建一个空间」）：两轮 Playwright _electron 复现（隔离 `CORVID_DATA_DIR`）均未复现——单空间连点 `#new-tab`×3 与 Cmd+T、三空间×两轮×每次连点两次后，dock 磁贴数与 `rooms.json` 空间数均不变（3 个空间、每个 5 个标签，数据层隔离完好）。代码层空间创建仅四条路径（启动兜底、新建窗口、dock「+」对话框、面板无空间兜底），顶部「+」不在此列。倾向解释：旧包过期标签栏 bug 让新标签追加在旧空间标签残影中，造成「新标签开了新空间」的错觉；待用户在修复版构建上复测。复现脚本存 `.scratch/repro-newtab-room*.cjs`（未入库）。
+- 交付用户实测：`npm run package:mac:dir`（未签名目录版，非安装器）产出 `dist/mac-arm64/Corvid.app`，已复制为 `~/Desktop/Corvid-test.app`（arm64，含本轮三处修复）。

@@ -958,7 +958,9 @@ async function createRoom(name, ownership = 'agent', profileId = 'default') {
   const record=requireFocusedRecord();
   const previousRoom=record.activeRoomId,previousProfile=record.activeProfileId;
   const room = {id:id(),name:name.trim(),profileId,windowId:record.id,ownership,yielded:false,nextPageNumber:1,usedLabels:[],tabIds:[],activeTabId:null}; rooms.push(room); if (ownership === 'user') {record.activeProfileId=profileId;record.activeRoomId=room.id;} else if(!record.activeRoomId && record.activeProfileId===profileId) record.activeRoomId=room.id;
-  try {await createTab(room.id,'about:blank',id(),{openedBy:ownership==='agent'?'agent':'user'}); update(record); return describe(record).rooms.find(s => s.id === room.id);}
+  // 新空间的初始标签是 about:blank，默认不推送；不显式 notify 的话，渲染层要等
+  // bootstrap 完成才知道新空间存在，期间标签栏和页面视图仍是上一个空间的残留。
+  try {await createTab(room.id,'about:blank',id(),{openedBy:ownership==='agent'?'agent':'user',notifyInitialState:true}); update(record); return describe(record).rooms.find(s => s.id === room.id);}
   catch(error) {rooms=rooms.filter(item=>item!==room);if(record.activeRoomId===room.id){record.activeRoomId=previousRoom;record.activeProfileId=previousProfile;}update(record);throw error;}
 }
 async function navigateAgent(tab,url) {
