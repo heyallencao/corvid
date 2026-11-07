@@ -2292,3 +2292,4 @@
 - 过程中修复的真实缺陷：① 工具 handler 双重包装收据（registerActionTool 再包一层 asToolResult）；② 脚本挂起时 Node 事件循环排空导致子进程干净退出（裸 promise 不保持循环）——runner 加 keep-alive interval，超时强杀路径才成立（以伪造控制服务的 MCP 层复现器定位，41ms 复现/修复后 509ms 返回 CORVID_TIMEOUT）。
 - 定向验证（EXIT 0，skipped=0）：`node tests/browser-script-e2e.cjs`（开关合同/一次调用批量/越权 Room 拒绝/脚本错误收据/超时强杀后 Room 与页面数量不变且服务可用/输出截断）；`node tests/agent-connect-e2e.cjs` 增补断言（默认不含 CORVID_BROWSER_SCRIPT、`--browser-script` 写入 host env）后全绿；`node tests/connect-e2e.cjs`、`node tests/mcp-e2e.cjs` 回归通过。
 - 边界：脚本与 CLI 同为本地 Node 权限非沙箱（文档明示）；多 Room 并发脚本、Windows 未验证；子进程复用父进程 env（含 CORVID_DATA_DIR/CORVID_AGENT_TOKEN）。
+- 合并门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `3811e3d` 上 **EXIT 0**——串行链 86 项 PASS，skipped=0。已按 protocol squash 合并至 main。
