@@ -2327,3 +2327,4 @@
 - 过程确认的环境合同：**JS dialog 只在前台焦点窗口真正打开**——`_electron.launch` 直启（无焦点）下 confirm 不触发 `javascriptDialogOpening`（SDK 探针 6.4s 轮询全 null），Launch Services 启动器（dialogs.e2e 同款）正常。据此 dialog 工具覆盖放在 `tests/dialogs.e2e.mjs`（LS 启动器环境），mcp-e2e 保留 popup/download 覆盖。
 - 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（popup adopt 受管返回、download 收据 status=completed/path/filename、未命中事件 CORVID_TIMEOUT 透传）；`env -u ELECTRON_RUN_AS_NODE node tests/dialogs.e2e.mjs` 全绿（新增 MCP 对话框场景：act_and_wait 观测 confirm、handle_dialog 取消后状态清空）。
 - 边界：dialog 覆盖依赖前台焦点窗口（与 dialogs.e2e 既有前提一致，锁屏/失焦环境不产生通过证据）；download 收据的临时目录生命周期沿用 agent download 既有合同；多 Room 并发事件等待未专项覆盖。
+- 合并门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `1ff2426` 上 **EXIT 0**——串行链 86 项 PASS，skipped=0，已按 protocol squash 合并至 main。首轮门禁在 `restore-loading-e2e` 挂起 20 分钟（既有链内环境敏感挂起族，与本改动无代码交集），终止后重跑全绿。
