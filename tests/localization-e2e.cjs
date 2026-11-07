@@ -34,7 +34,9 @@ assertCatalogSourceHasUniqueKeys();
   const stop=async()=>{await app.close();app=undefined;};
   const waitFor=async(fn,label)=>{for(let i=0;i<200;i++){const value=await fn();if(value)return value;await delay(25);}throw new Error(`Timed out waiting for ${label}`);};
   const capture=async(shell,locale,width,height)=>{if(!captureScreenshots)return;const directory=path.join(root,'docs/qa/screenshots');fs.mkdirSync(directory,{recursive:true});const filename=locale.startsWith('issue-130-a2-')?`${locale}-${width}x${height}.png`:locale.endsWith('-settings')?`issue-165-settings-${locale.slice(0,-9)}-${width}x${height}.png`:`corvid-localization-${locale}-${width}x${height}.png`;await shell.screenshot({path:path.join(directory,filename)});};
+  const revealDock=async shell=>{await shell.mouse.move(...Object.values(await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}))),{steps:2});await delay(100);};
   const verifyRenameError=async(shell,locale,expected)=>{
+    await revealDock(shell);
     await shell.locator('#profile-menu-trigger').click();
     const actionName=locale==='en'?'Rename current browsing profile':'重命名当前浏览身份';
     await shell.getByRole('menuitem',{name:actionName}).click();
@@ -82,7 +84,7 @@ assertCatalogSourceHasUniqueKeys();
     await shell.locator('#settings-error').evaluate(node=>{node.textContent='';});
     await shell.locator('#cancel-settings').click();
     await verifyRenameError(shell,'zh-CN','浏览身份名称不能为空');
-    await shell.getByRole('button',{name:'设置'}).click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
     await shell.locator('#settings-nav-appearance').click();
     assert.equal(await shell.locator('#settings-nav-appearance').getAttribute('aria-current'),'location');
     assert.equal(await shell.locator('#settings-appearance').evaluate(node=>node.matches(':focus')),true);
