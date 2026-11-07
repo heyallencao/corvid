@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { connect } from '../sdk/index.js';
+import { HOST_IDS, connectHost, disconnectHost, doctor } from './connect.mjs';
 
 const usage=`corvid run < script.mjs
 
@@ -20,11 +21,44 @@ Example:
 
 Scripts execute with the local Node.js process's permissions. Browser actions
 require a running corvid desktop. This is a partial API; see sdk/README.md.
+
+corvid connect <host> [--token <token>] [--yes]
+corvid disconnect <host>
+corvid doctor [host]
+
+Connect the Corvid Browser MCP server and the corvid-browser skill into an
+external agent host (supported: ${HOST_IDS.join(', ')}). connect lists every
+config file and entry it is about to write and requires explicit confirmation
+(pass --token with a scoped token from the Corvid settings to embed
+CORVID_AGENT_TOKEN into the host config; without it the MCP server reads the
+variable from its environment). disconnect reverts exactly what connect wrote.
+doctor diagnoses the desktop control service, registrations and skills.
 `;
+
+function parseFlags(args) {
+  const flags={};
+  const rest=[];
+  for(let i=0;i<args.length;i++){
+    const arg=args[i];
+    if(arg==='--yes')flags.yes=true;
+    else if(arg==='--token')flags.token=args[++i];
+    else if(arg.startsWith('--token='))flags.token=arg.slice(8);
+    else rest.push(arg);
+  }
+  return {flags,rest};
+}
 
 async function main(){
   const [command,...args]=process.argv.slice(2);
   if(!command || command==='help' || command==='--help' || command==='skill') {if(args.length)throw new Error('Unexpected arguments');process.stdout.write(usage);return;}
+  if(command==='connect' || command==='disconnect' || command==='doctor') {
+    const {flags,rest}=parseFlags(args);
+    if(command==='connect'){if(rest.length!==1)throw new Error('Usage: corvid connect <host>');await connectHost(rest[0],{token:flags.token,yes:Boolean(flags.yes)});return;}
+    if(command==='disconnect'){if(rest.length!==1)throw new Error('Usage: corvid disconnect <host>');await disconnectHost(rest[0]);return;}
+    if(rest.length>1)throw new Error('Usage: corvid doctor [host]');
+    await doctor(rest[0]||undefined);
+    return;
+  }
   if(command!=='run' || args.length)throw new Error('Usage: corvid run < script.mjs');
   let source='';process.stdin.setEncoding('utf8');for await(const chunk of process.stdin)source+=chunk;
   const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
