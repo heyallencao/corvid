@@ -27,6 +27,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_ENTRY = join(REPO_ROOT, 'mcp', 'corvid.mjs');
 const SKILL_SOURCE = join(REPO_ROOT, 'skills', 'corvid-browser', 'SKILL.md');
 const TOKEN_ENV_KEY = 'CORVID_AGENT_TOKEN';
+const BROWSER_SCRIPT_ENV_KEY = 'CORVID_BROWSER_SCRIPT';
 export const HOST_IDS = ['claude-code', 'codex', 'cursor', 'dsh'];
 
 const HOST_LABELS = {
@@ -51,14 +52,14 @@ function tomlString(value) { return JSON.stringify(value); }
 class Aborted extends Error {}
 class ConflictingEntry extends Error {}
 
-function jsonHost({ configPath, entryType }) {
+function jsonHost({ configPath, entryType, browserScript }) {
   return {
     kind: 'json',
     configPath,
     async readPlan(token) {
       const current = await readJsonIfExists(configPath);
       const servers = current?.mcpServers && typeof current.mcpServers === 'object' ? current.mcpServers : {};
-      const entry = jsonEntry(entryType, token);
+      const entry = jsonEntry(entryType, token, browserScript);
       const existing = servers[SERVER_NAME];
       return {
         path: configPath,
@@ -70,7 +71,7 @@ function jsonHost({ configPath, entryType }) {
     },
     async apply(token) {
       const current = await readJsonIfExists(configPath);
-      const entry = jsonEntry(entryType, token);
+      const entry = jsonEntry(entryType, token, browserScript);
       const servers = current?.mcpServers && typeof current.mcpServers === 'object' && !Array.isArray(current.mcpServers) ? { ...current.mcpServers } : {};
       servers[SERVER_NAME] = entry;
       await writeJson(configPath, { ...current, mcpServers: servers });
@@ -88,24 +89,26 @@ function jsonHost({ configPath, entryType }) {
       const current = await readJsonIfExists(configPath);
       const existing = current?.mcpServers?.[SERVER_NAME];
       if (!existing) return { registered: false };
-      const expected = jsonEntry(entryType, undefined);
+      const expected = jsonEntry(entryType, undefined, browserScript);
       const tokenMatches = typeof existing?.env?.[TOKEN_ENV_KEY] === 'string' && existing.env[TOKEN_ENV_KEY].length > 0;
-      return { registered: true, current: existing, matchesBase: sameValue({ ...existing, env: undefined }, { ...expected, env: undefined }), hasToken: tokenMatches };
+      return { registered: true, current: existing, matchesBase: sameValue({ ...existing, env: undefined }, { ...expected, env: undefined }), hasToken: tokenMatches, browserScript: existing?.env?.[BROWSER_SCRIPT_ENV_KEY] === '1' };
     },
   };
 }
 
-function jsonEntry(entryType, token) {
+function jsonEntry(entryType, token, browserScript) {
   const entry = entryType ? { type: entryType, command: 'node', args: [SERVER_ENTRY] } : { command: 'node', args: [SERVER_ENTRY] };
-  if (token) entry.env = { [TOKEN_ENV_KEY]: token };
+  const env = {};
+  if (token) env[TOKEN_ENV_KEY] = token;
+  if (browserScript) env[BROWSER_SCRIPT_ENV_KEY] = '1';
+  if (Object.keys(env).length) entry.env = env;
   return entry;
 }
 
 function isManagedJsonEntry(existing) {
-  const withToken = jsonEntry(undefined, 'x');
-  const withoutToken = jsonEntry(undefined, undefined);
+  const variants = [jsonEntry(undefined, 'x'), jsonEntry(undefined, 'x', true), jsonEntry(undefined, undefined), jsonEntry(undefined, undefined, true)];
   const strip = entry => ({ ...entry, env: entry?.env ? { ...entry.env, [TOKEN_ENV_KEY]: 'x' } : undefined });
-  return sameValue(strip(existing), strip(withToken)) || sameValue(strip(existing), strip(withoutToken));
+  return variants.some(variant => sameValue(strip(existing), strip(variant)));
 }
 
 async function readJsonIfExists(path) {
@@ -120,13 +123,16 @@ async function writeJson(path, value) {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 }
 
-function codexHost({ configPath }) {
+function codexHost({ configPath, browserScript }) {
   const header = `[mcp_servers.${SERVER_NAME}]`;
   const sectionRe = new RegExp(`^\\[mcp_servers\\.(?:"${SERVER_NAME}"|${SERVER_NAME.replace(/[.-]/g, m => `\\${m}`)})\\]\\s*$`);
   const anySectionRe = /^\[/;
   function block(token) {
     const lines = [header, `command = "node"`, `args = [${tomlString(SERVER_ENTRY)}]`];
-    if (token) lines.push(`env = { ${TOKEN_ENV_KEY} = ${tomlString(token)} }`);
+    const env = {};
+    if (token) env[TOKEN_ENV_KEY] = token;
+    if (browserScript) env[BROWSER_SCRIPT_ENV_KEY] = '1';
+    if (Object.keys(env).length) lines.push(`env = { ${Object.entries(env).map(([key, value]) => `${key} = ${tomlString(value)}`).join(', ')} }`);
     return lines.join('\n');
   }
   function parseToml(text, label) {
@@ -196,13 +202,13 @@ function isManagedTomlEntry(existing) {
   if (keys.length !== 2 || keys[0] !== 'command' || keys[1] !== 'args') return false;
   if (existing.args[0] !== SERVER_ENTRY) return false;
   if (existing.env === undefined) return true;
-  const envKeys = Object.keys(existing.env);
-  return envKeys.length === 1 && envKeys[0] === TOKEN_ENV_KEY;
+  const envKeys = Object.keys(existing.env).sort();
+  return sameValue(envKeys, [TOKEN_ENV_KEY]) || sameValue(envKeys, [BROWSER_SCRIPT_ENV_KEY, TOKEN_ENV_KEY]);
 }
 
 const DSH_PATCH_NAME = '@deepseek-ai/dsh-mcp-client';
 
-function dshHost({ configPath }) {
+function dshHost({ configPath, browserScript }) {
   function managedYaml(token) {
     const lines = [
       '- insert:',
@@ -215,7 +221,13 @@ function dshHost({ configPath }) {
       '        args:',
       `          - ${SERVER_ENTRY}`,
     ];
-    if (token) lines.push('        env:', `          ${TOKEN_ENV_KEY}: ${token}`);
+    const env = {};
+    if (token) env[TOKEN_ENV_KEY] = token;
+    if (browserScript) env[BROWSER_SCRIPT_ENV_KEY] = '1';
+    if (Object.keys(env).length) {
+      lines.push('        env:');
+      for (const [key, value] of Object.entries(env)) lines.push(`          ${key}: ${value}`);
+    }
     return `${lines.join('\n')}\n`;
   }
   function loadDocument() {
@@ -296,7 +308,7 @@ function stripToken(item) {
   if (typeof item !== 'object' || item === null || !Array.isArray(item.insert)) return item;
   return { ...item, insert: item.insert.map(entry => {
     const config = typeof entry?.config === 'object' && entry.config !== null ? { ...entry.config } : entry?.config;
-    if (config && typeof config.env === 'object' && config.env !== null) config.env = { ...config.env, [TOKEN_ENV_KEY]: 'x' };
+    if (config && typeof config.env === 'object' && config.env !== null) config.env = { ...config.env, [TOKEN_ENV_KEY]: 'x', [BROWSER_SCRIPT_ENV_KEY]: 'flag' };
     return { ...entry, config };
   }) };
 }
@@ -305,11 +317,11 @@ function findManagedItem(items) {
   return items.find(isManagedItem);
 }
 
-export function createHostAdapter(host, home = homedir()) {
-  if (host === 'claude-code') return jsonHost({ configPath: join(home, '.claude.json'), entryType: 'stdio' });
-  if (host === 'cursor') return jsonHost({ configPath: join(home, '.cursor', 'mcp.json'), entryType: undefined });
-  if (host === 'codex') return codexHost({ configPath: join(home, '.codex', 'config.toml') });
-  if (host === 'dsh') return dshHost({ configPath: join(home, '.dsh', 'profiles', 'desktop', 'cordis.patch.yml') });
+export function createHostAdapter(host, home = homedir(), { browserScript = false } = {}) {
+  if (host === 'claude-code') return jsonHost({ configPath: join(home, '.claude.json'), entryType: 'stdio', browserScript });
+  if (host === 'cursor') return jsonHost({ configPath: join(home, '.cursor', 'mcp.json'), entryType: undefined, browserScript });
+  if (host === 'codex') return codexHost({ configPath: join(home, '.codex', 'config.toml'), browserScript });
+  if (host === 'dsh') return dshHost({ configPath: join(home, '.dsh', 'profiles', 'desktop', 'cordis.patch.yml'), browserScript });
   throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
 }
 
@@ -419,10 +431,19 @@ async function confirm(question, { yes }) {
   return answer === 'y' || answer === 'yes';
 }
 
-export async function connectHost(host, { token, yes = false, home = homedir(), stdout = process.stdout } = {}) {
+export async function connectHost(host, { token, yes = false, home = homedir(), stdout = process.stdout, browserScript } = {}) {
   if (!HOST_IDS.includes(host)) throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
   const willIssue = !token;
-  const adapter = createHostAdapter(host, home);
+  // browser_script 批量执行开关：默认关；--browser-script 显式开启；交互环境单独询问。
+  let useScript = browserScript === true;
+  if (browserScript === undefined) {
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      useScript = await confirm('是否启用 browser_script 批量脚本执行？（脚本以本地 Node 权限运行，非沙箱）', { yes: false });
+    }
+  } else if (browserScript !== false) {
+    useScript = true;
+  }
+  const adapter = createHostAdapter(host, home, { browserScript: useScript });
   const skillDir = skillTargetDir(host, home);
   // 计划展示用占位 token；真实签发在用户确认之后，取消/失败路径不会留下孤儿凭据。
   const plan = await adapter.readPlan(token || 'corvid_agent_***');
@@ -431,6 +452,7 @@ export async function connectHost(host, { token, yes = false, home = homedir(), 
   if (plan.action !== 'current') stdout.write(`    条目：${formatEntry({ ...plan.entry, env: plan.entry?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
   if (plan.existing && plan.action === 'replace') stdout.write(`    现有条目：${formatEntry({ ...plan.existing, env: plan.existing?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
   stdout.write(`\n[2] Skill 安装 ${skillDir}/SKILL.md（来自 ${SKILL_SOURCE}）\n`);
+  stdout.write(`\n[3] browser_script 批量脚本执行：${useScript ? '启用（CORVID_BROWSER_SCRIPT=1 写入 host 配置 env；脚本以本地 Node 权限运行，非沙箱）' : '不启用（默认；如需开启用 --browser-script）'}\n`);
   stdout.write(`\n${willIssue ? '未提供 --token：确认后用本地管理员凭据通过 Corvid 桌面签发 openRoomGrant 授权客户端（初始授权范围为空，仅能访问其自建的 Room），token 写入 host 配置 env。\n' : `已携带 scoped token（${TOKEN_ENV_KEY} 写入 host 配置 env）。\n`}`);
   if (plan.action === 'current' && existsSync(join(skillDir, 'SKILL.md'))) {
     const installedSkill = await readFile(join(skillDir, 'SKILL.md'), 'utf8');
@@ -550,6 +572,7 @@ async function checkMcpHandshake(adapter) {
     return { registered: false, detail: `${adapter.configPath} 未注册 corvid-browser MCP${inspect.inspectError ? `（${inspect.inspectError}）` : ''}` };
   }
   const stale = inspect.matchesBase === false ? '；条目与当前版本不一致，建议重跑 connect 更新' : '';
+  const scriptState = inspect.browserScript ? 'browser_script 已启用' : 'browser_script 未启用';
   const token = inspect.hasToken ? inspect.current?.env?.[TOKEN_ENV_KEY] : process.env[TOKEN_ENV_KEY];
   const spawnCheck = await spawnMcpProbe(token);
   let tokenCheck = { ok: true, detail: '未携带 token（MCP 工具调用时才会鉴权）' };
@@ -557,7 +580,7 @@ async function checkMcpHandshake(adapter) {
   return {
     registered: true,
     ok: spawnCheck.ok && tokenCheck.ok,
-    detail: `已注册${stale}；${spawnCheck.detail}；${tokenCheck.detail}`,
+    detail: `已注册${stale}；${scriptState}；${spawnCheck.detail}；${tokenCheck.detail}`,
   };
 }
 
