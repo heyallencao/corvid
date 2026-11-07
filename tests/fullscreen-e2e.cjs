@@ -56,7 +56,7 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     await toggle.click();
     await until(async()=>{const state=await api('/rooms');return state.windows[0]?.fullscreen===true;},'app full-screen state');
     assert.equal(await firstNativeWindow.evaluate(window=>window.isFullScreen()),true);
-    assert.equal(await shell.locator('#rooms').isVisible(),true,'browser navigation remains visible in app full screen');
+    assert.equal(await shell.locator('#room-dock').isVisible(),true,'browser navigation remains visible in app full screen');
     assert.equal(await shell.locator('#library[data-kind="pi-workbench"]').isVisible(),true,'Corvid Agent workspace remains visible in app full screen');
 
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
@@ -72,10 +72,10 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     await sendShortcut(shortcut);
     await until(async()=>{const state=await api('/rooms');return state.windows[0]?.fullscreen===false;},'keyboard shortcut exits full screen');
 
-    await shell.getByRole('button',{name:'新建窗口'}).click();
+    await shell.evaluate(()=>window.browserShell.invoke('createWindow',{}));
     const otherShell=await until(async()=>{
       const pages=app.windows();
-      for(const page of pages){if(page===shell)continue;try{if(await page.locator('#rooms').count())return page;}catch{}}
+      for(const page of pages){if(page===shell)continue;try{if(await page.locator('#room-dock').count())return page;}catch{}}
       return false;
     },'second browser window');
     await until(async()=>{const state=await api('/rooms');return state.windows.length===2?state:false;},'two window records');

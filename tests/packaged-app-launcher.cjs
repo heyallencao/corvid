@@ -69,7 +69,7 @@ async function launchPackagedApp({ executablePath, dataDir, args = [], env = pro
       await delay(50);
     }
     if (!page) throw new Error(`packaged Corvid did not open a desktop page within ${timeoutMs} ms; output=${childOutput}`);
-    await page.locator('#rooms').waitFor({ timeout: Math.max(1, timeoutMs - (Date.now() - startedAt)) });
+    await page.locator('#room-dock').waitFor({ timeout: Math.max(1, timeoutMs - (Date.now() - startedAt)) });
 
     const controlPath = path.join(dataDir, 'control.json');
     let control;

@@ -106,7 +106,7 @@ async function readContrastPalette(shell) {
     const startTask=async(room,prompt,expectedStatus='running')=>{
       const url=`http://127.0.0.1:${site.address().port}/`;
       await call(`/rooms/${room.id}/activate`,'POST',{});
-      await shell.waitForFunction(name=>[...document.querySelectorAll('#room-strip button')].some(item=>item.textContent.startsWith(name)&&item.classList.contains('selected')),room.name);
+      await shell.waitForFunction(name=>[...document.querySelectorAll('#room-strip button')].some(item=>item.textContent.startsWith(name)&&item.getAttribute('aria-current')==='page'),room.name);
       await call(`/tabs/${room.tabs[0].id}/navigate`,'POST',{url});
       await shell.waitForFunction(expected=>document.querySelector('#address')?.value===expected,url);
       if(await shell.locator('#library[data-kind="pi-workbench"]').count()===0)await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
@@ -129,7 +129,6 @@ async function readContrastPalette(shell) {
     await shell.getByRole('button', { name: '空间选项' }).waitFor();
     await shell.getByRole('button', { name: '新建空间' }).waitFor();
     await shell.getByRole('button', { name: '我的空间 · 用户空间', exact: true }).waitFor();
-    assert.equal(await shell.locator('#spaces-heading').textContent(), '空间');
 
     const profileMenuTrigger=shell.locator('#profile-menu-trigger'),profileMenu=shell.locator('#profile-menu');
     assert.equal(await profileMenuTrigger.getAttribute('aria-haspopup'),'menu');
@@ -169,7 +168,7 @@ async function readContrastPalette(shell) {
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.last().textContent());
     await shell.keyboard.press('ArrowDown');
     assert.equal(await shell.evaluate(()=>document.activeElement.textContent),await roomItems.first().textContent(),'ArrowDown wraps to the first menu action');
-    for(const [selector,triggerId,menuId] of [['.profile-switcher','profile-menu-trigger','profile-menu'],['#spaces-heading','room-menu-trigger','room-menu'],['#room-strip','room-menu-trigger','room-menu']]){
+    for(const [selector,triggerId,menuId] of [['.dock-profile','profile-menu-trigger','profile-menu'],['#room-strip','room-menu-trigger','room-menu']]){
       const trigger=shell.locator(`#${triggerId}`),menu=shell.locator(`#${menuId}`);
       await shell.locator(selector).evaluate(element=>element.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2})));
       await menu.waitFor({state:'visible'});
@@ -192,42 +191,51 @@ async function readContrastPalette(shell) {
     assertPaletteContrast(await readContrastPalette(shell), 'light');
     if (process.env.CORVID_CONTRAST_SCREENSHOT_PATH) await shell.screenshot({path:process.env.CORVID_CONTRAST_SCREENSHOT_PATH});
 
-    const bookmarksTrigger=shell.locator('#show-bookmarks');
+    const bookmarksTrigger=shell.locator('#library-trigger');
     await bookmarksTrigger.click();
+    await shell.locator('#library-menu:not([hidden])').waitFor();
+    await shell.locator('#show-bookmarks').click();
     await shell.locator('#library[data-kind="bookmarks"]').waitFor();
     await shell.locator('#close-library').focus();
     await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
-    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-bookmarks','closing Bookmarks restores focus to the sidebar control that opened it');
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'library-trigger','closing Bookmarks restores focus to the library menu trigger that opened it');
 
     for(const [kind,triggerId] of [['history','show-history'],['downloads','show-downloads']]){
+      await shell.locator('#library-trigger').click();
+      await shell.locator('#library-menu:not([hidden])').waitFor();
       await shell.locator(`#${triggerId}`).click();
       await shell.locator(`#library[data-kind="${kind}"]`).waitFor();
       await shell.locator('#close-library').focus();
       await shell.keyboard.press('Enter');
       await shell.locator('#library').waitFor({ state: 'hidden' });
-      assert.equal(await shell.evaluate(() => document.activeElement.id),triggerId,`closing ${kind} restores focus to its sidebar control`);
+      assert.equal(await shell.evaluate(() => document.activeElement.id),'library-trigger',`closing ${kind} restores focus to the library menu trigger`);
     }
 
-    const agentRoomsTrigger=shell.getByRole('button', { name: 'Agent 工作区' });
+    await shell.locator('#library-trigger').click();
+    await shell.locator('#library-menu:not([hidden])').waitFor();
+    const agentRoomsTrigger=shell.getByRole('menuitem', { name: 'Agent 工作区' });
+    const openAgentRooms=async()=>{await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await agentRoomsTrigger.click();};
     await agentRoomsTrigger.focus();
     await shell.keyboard.press('Enter');
     await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
-    assert.equal(await shell.evaluate(() => document.activeElement.id), 'show-agent-rooms', 'keyboard activation keeps focus on the Agent workspace trigger');
+    assert.equal(await shell.evaluate(() => document.activeElement.id), 'library-trigger', 'keyboard activation from the library menu keeps focus on the menu trigger');
     await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
     await shell.emulateMedia({colorScheme:'light'});
     assertPaletteContrast(await readContrastPalette(shell), 'light');
-    const lightShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector('#rooms')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
+    const lightShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,dock:getComputedStyle(document.querySelector('#room-dock')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
     await shell.emulateMedia({colorScheme:'dark'});
     await shell.waitForFunction(()=>matchMedia('(prefers-color-scheme: dark)').matches&&getComputedStyle(document.documentElement).colorScheme==='dark');
     await shell.waitForFunction(()=>getComputedStyle(document.querySelector('#address-form')).backgroundColor==='rgb(34, 40, 51)');
     assertPaletteContrast(await readContrastPalette(shell), 'dark');
-    const darkShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector('#rooms')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor,ctaBackground:getComputedStyle(document.querySelector('.workspace-empty-action')).backgroundColor,ctaText:getComputedStyle(document.querySelector('.workspace-empty-action')).color}));
-    assert.deepEqual(darkShellPalette,{background:'rgb(24, 28, 36)',sidebar:'rgb(20, 24, 32)',tabs:'rgb(32, 37, 47)',address:'rgb(34, 40, 51)',panel:'rgb(24, 28, 36)',ctaBackground:'rgb(83, 103, 216)',ctaText:'rgb(255, 255, 255)'},'dark palette covers browser chrome, Agent workspace and high-contrast primary action');
-    assert.notDeepEqual({background:darkShellPalette.background,sidebar:darkShellPalette.sidebar,tabs:darkShellPalette.tabs,address:darkShellPalette.address,panel:darkShellPalette.panel},lightShellPalette,'system color scheme changes the visible browser and workspace surfaces');
+    const darkShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,dock:getComputedStyle(document.querySelector('#room-dock')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor,ctaBackground:getComputedStyle(document.querySelector('.workspace-empty-action')).backgroundColor,ctaText:getComputedStyle(document.querySelector('.workspace-empty-action')).color}));
+    assert.deepEqual(darkShellPalette,{background:'rgba(0, 0, 0, 0)',dock:'rgba(30, 36, 48, 0.38)',tabs:'rgb(32, 37, 47)',address:'rgb(34, 40, 51)',panel:'rgb(24, 28, 36)',ctaBackground:'rgb(83, 103, 216)',ctaText:'rgb(255, 255, 255)'},'dark palette covers browser chrome, glass space dock and high-contrast primary action');
+    assert.notDeepEqual({background:darkShellPalette.background,dock:darkShellPalette.dock,tabs:darkShellPalette.tabs,address:darkShellPalette.address,panel:darkShellPalette.panel},lightShellPalette,'system color scheme changes the visible browser and workspace surfaces');
+    const dockRevealPoint=await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}));
+    await shell.mouse.move(dockRevealPoint.x, dockRevealPoint.y, {steps: 4});
+    await shell.waitForFunction(()=>document.querySelector('#room-dock').dataset.pointerNear==='true');
     await shell.locator('#room-menu-trigger').click();
-    await shell.locator('#room-menu').getByRole('menuitem',{name:'新建空间'}).click();
-    await shell.locator('#new-room[open]').waitFor();
+    await shell.locator('#room-menu').getByRole('menuitem',{name:'新建空间'}).click();    await shell.locator('#new-room[open]').waitFor();
     const darkDialog=await shell.locator('#new-room').evaluate(dialog=>({background:getComputedStyle(dialog).backgroundColor,input:getComputedStyle(dialog.querySelector('input')).backgroundColor,scheme:getComputedStyle(dialog).colorScheme}));
     assert.deepEqual(darkDialog,{background:'rgb(24, 28, 36)',input:'rgb(24, 28, 36)',scheme:'dark'},'native HTML dialog and controls follow the dark color scheme');
     await shell.keyboard.press('Escape');
@@ -243,7 +251,7 @@ async function readContrastPalette(shell) {
     await shell.emulateMedia({colorScheme:'light'});
     await shell.waitForFunction(()=>!matchMedia('(prefers-color-scheme: dark)').matches&&getComputedStyle(document.documentElement).colorScheme==='light');
     await shell.waitForFunction(()=>getComputedStyle(document.querySelector('#address-form')).backgroundColor==='rgb(247, 248, 250)');
-    const restoredShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,sidebar:getComputedStyle(document.querySelector('#rooms')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
+    const restoredShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,dock:getComputedStyle(document.querySelector('#room-dock')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
     assert.deepEqual(restoredShellPalette,lightShellPalette,'switching back to the system light scheme restores the light palette');
     assert.equal(await shell.evaluate(() => document.activeElement.getAttribute('aria-label')), '描述要完成的浏览任务', 'empty-state CTA moves focus into the Corvid Agent composer');
     const closeAgentPanel = shell.getByRole('button', { name: '关闭面板' });
@@ -251,29 +259,29 @@ async function readContrastPalette(shell) {
     await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.evaluate(() => document.activeElement.id), 'show-pi-workbench', 'closing the CTA-opened workbench restores focus to its sidebar entry');
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
     assert.equal(await shell.locator('#library-search').isVisible(), false);
     await shell.locator('#close-library').focus();
     await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
-    assert.equal(await shell.getByRole('button', { name: 'Agent 工作区' }).getAttribute('aria-expanded'), 'false');
-    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-agent-rooms','closing Agent Rooms restores focus to its sidebar control');
+    assert.equal(await shell.locator('#show-agent-rooms').getAttribute('aria-expanded'), 'false');
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'library-trigger','closing Agent Rooms restores focus to the library menu trigger');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
     await shell.locator('#close-library').focus();
     await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
-    assert.equal(await shell.evaluate(() => document.activeElement.id),'show-agent-rooms','switching panels updates the focus restoration target');
+    assert.equal(await shell.evaluate(() => document.activeElement.id),'library-trigger','switching panels updates the focus restoration target');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await shell.locator('#close-library').focus();
     await shell.keyboard.press('Enter');
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.evaluate(() => document.activeElement.id),'show-pi-workbench','closing Pi workbench restores focus to its sidebar control');
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
 
     const defaultRoom = await call('/rooms', 'POST', { name: 'Default agent room' });
@@ -296,7 +304,7 @@ async function readContrastPalette(shell) {
     if(process.env.CORVID_ROOM_STATUS_SCREENSHOT_PATH)await shell.screenshot({path:process.env.CORVID_ROOM_STATUS_SCREENSHOT_PATH});
     assert.match(await roomButton('Default agent room').getAttribute('aria-label'),/任务运行中/,'Room navigation announces the running task state');
     assert.match(await roomButton('Default agent room').getAttribute('title'),/任务运行中/,'Room navigation tooltip includes the task state');
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.getByRole('button',{name:/^\[fixture:hold\] first parallel room task；正在回复；页面：Room task fixture；最近活动：/}).waitFor();
     await shell.getByRole('button',{name:/^\[fixture:hold\] second parallel room task；正在回复；页面：Room task fixture；最近活动：/}).waitFor();
     const roomAnnouncement=shell.locator('#agent-room-announcer');
@@ -319,7 +327,7 @@ async function readContrastPalette(shell) {
     assert.match(await shell.locator('.pi-page-binding').textContent(),/任务页面：Default agent room\s*\//,'the composer stays bound to the opened task page without activating a different Room');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await shell.locator('.pi-task-state[data-status="interrupted"]').waitFor();
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.locator('.agent-room-task-state[data-status="interrupted"]').waitFor();
     assert.equal(await roomAnnouncement.evaluate(region=>window.__agentRoomAnnouncement===region),true,'Agent Room status region survives task-list redraw');
     assert.match(await roomAnnouncement.textContent(),/Default agent room/);
@@ -338,19 +346,19 @@ async function readContrastPalette(shell) {
     assert.ok(completedTask.taskId);
     const failedTask=await startTask(parallelRoom,'[fixture:fail-once] simulated provider issue','failed');
     assert.ok(failedTask.taskId);
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await shell.locator('.agent-room-task-state[data-status="failed"]').waitFor();
     await roomButton('Default agent room').locator('.room-task-status[data-status="completed"]').waitFor();
     assert.match(await roomButton('Default agent room').getAttribute('aria-label'),/任务已完成，待查看/,'Room navigation announces completion awaiting review');
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'en'}));
     await shell.waitForFunction(()=>[...document.querySelectorAll('#room-strip button')].some(item=>item.getAttribute('aria-label')?.includes('Completed · ready to review')));
-    assert.equal(await shell.locator('#room-strip .room-task-status').filter({hasText:'Completed · ready to review'}).count(),1,'English navigation marker includes the completed review state');
+    assert.equal(await shell.locator('#room-strip .room-task-status[data-status="completed"]').count(),1,'English navigation shows the completed task marker');
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     assert.equal(await roomAnnouncement.isHidden(),true,'Agent Room announcement region is hidden outside its panel');
     assert.equal(await roomAnnouncement.textContent(),'','closed Agent Room panel does not retain a stale live announcement');
-    await agentRoomsTrigger.click();
+    await openAgentRooms();
     await shell.locator('.agent-room-task-state[data-status="completed"]').waitFor();
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(640,600));
     await shell.waitForFunction(()=>window.innerWidth<=725);
@@ -358,9 +366,9 @@ async function readContrastPalette(shell) {
     const taskRowLayouts=await shell.locator('.agent-room-entry').evaluateAll(rows=>rows.map(row=>{const tasks=row.querySelector('.agent-room-tasks');return{width:row.clientWidth,scrollWidth:row.scrollWidth,taskWidth:tasks?.clientWidth,taskScrollWidth:tasks?.scrollWidth,taskActions:[...(tasks?.querySelectorAll('button')||[])].map(action=>({left:action.getBoundingClientRect().left,right:action.getBoundingClientRect().right}))};}));
     assert.equal(taskViewport.width>=719&&taskViewport.width<=725,true,`719px minimum viewport applies: ${JSON.stringify(taskViewport)}`);
     assert.equal(await shell.locator('.agent-room-task-state').count(),4,'all parallel and terminal task states remain present in the narrow Agent Room list');
-    const narrowTaskMarker=await roomButton('Default agent room').locator('.room-task-status').evaluate(marker=>{const rect=marker.getBoundingClientRect();return{width:rect.width,height:rect.height,right:rect.right,buttonRight:marker.parentElement.getBoundingClientRect().right,visible:getComputedStyle(marker).display!=='none'};});
+    const narrowTaskMarker=await roomButton('Default agent room').locator('.room-task-status').evaluate(marker=>{const rect=marker.getBoundingClientRect();const strip=document.querySelector('#room-strip').getBoundingClientRect();return{width:rect.width,height:rect.height,right:rect.right,stripRight:strip.right,visible:getComputedStyle(marker).display!=='none'};});
     assert.equal(narrowTaskMarker.visible,true,'the completed task marker remains visible in the compact space rail');
-    assert.ok(narrowTaskMarker.width>=6&&narrowTaskMarker.height>=6&&narrowTaskMarker.right<=narrowTaskMarker.buttonRight,JSON.stringify({taskViewport,narrowTaskMarker}));
+    assert.ok(narrowTaskMarker.width>=6&&narrowTaskMarker.height>=6&&narrowTaskMarker.right<=narrowTaskMarker.stripRight,JSON.stringify({taskViewport,narrowTaskMarker}));
     assert.ok(taskRowLayouts.every(row=>row.scrollWidth<=row.width&&(!row.taskWidth||row.taskScrollWidth<=row.taskWidth)&&row.taskActions.every(action=>action.left>=0&&action.right<=taskViewport.width)),JSON.stringify({taskViewport,taskRowLayouts}));
     const minimumViewportLayout=await Promise.all([
       app.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];return{width:window.getContentSize()[0],pageWidths:window.contentView.children.map(view=>view.getBounds().width)};}),
@@ -432,7 +440,7 @@ async function readContrastPalette(shell) {
     await shell.locator('#library').waitFor({ state: 'hidden' });
     const active = await call('/rooms');
     assert.equal(active.activeRoomId, otherRoom.id);
-    assert.equal(await shell.getByRole('button', { name: 'Work agent room' }).getAttribute('class').then(value => value.includes('selected')), true);
+    assert.equal(await shell.getByRole('button', { name: 'Work agent room' }).getAttribute('aria-current'), 'page');
 
     console.log(`PASS Agent Room panel empty state, parallel task status, exact conversation return, Profile filtering, 320px browser/280px Agent layout widths ${responsiveLayouts.map(item=>item.requestedWidth).join('/')}, narrow layout ${taskViewport.width}×${taskViewport.height} @${taskViewport.deviceScaleFactor}x, keyboard handoff and Room activation`);
   } finally {

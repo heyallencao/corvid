@@ -412,7 +412,9 @@ function saveWindowState() {
   for (const record of windowRecords.values()) {
     if (record.browserWindow.isDestroyed()) continue;
     const fullscreen = isTransientFullscreen(record);
-    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : record.browserWindow.isMaximized();
+    // 恢复 zoom 态的过渡窗口内 isMaximized() 可能瞬时为 false，按待恢复标记保持
+    // 最大化语义与快照 bounds，避免把过渡帧写入持久化状态。
+    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : (record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized());
     const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : record.browserWindow.getNormalBounds();
     states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
@@ -645,6 +647,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     fullscreen: Boolean(record?.appFullscreen),
     pageFullscreen: Boolean(record?.htmlFullscreen),
     fullscreenShortcut: process.platform === 'darwin' ? '⌃⌘F' : 'F11',
+    glassChrome: process.platform === 'darwin',
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
@@ -783,14 +786,14 @@ function installDownloads(partition,profileId) {
 function browserPageBounds(record) {
   const [width,height] = record.browserWindow.getContentSize();
   const top = record.browserChromeHeight ?? INITIAL_BROWSER_CHROME_HEIGHT;
-  const sidebarWidth = width <= 873 ? 64 : 232;
+  const dockStrip = record.dockStripHeight ?? 0;
   const workspaceWidth = record.panelOpen
     ? width > 720
-      ? Math.min(420, width - sidebarWidth - 332)
-      : Math.min(420, Math.max(310, width - sidebarWidth - 330))
+      ? Math.min(420, Math.max(310, width - 332))
+      : Math.min(420, Math.max(310, width - 330))
     : 0;
   const workspaceGap = workspaceWidth ? (width > 720 ? 12 : 10) : 0;
-  return {x:sidebarWidth,y:top,width:Math.max(0,width-sidebarWidth-workspaceWidth-workspaceGap),height:Math.max(0,height-top)};
+  return {x:0,y:top,width:Math.max(0,width-workspaceWidth-workspaceGap),height:Math.max(0,height-top-dockStrip)};
 }
 function layout(record = activeRecord()) {
   if (!record) return;
@@ -845,6 +848,9 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   const s = findRoom(roomId);
   const partition=partitionFor(findProfile(s.profileId).id); await loadProfileExtensions(s.profileId); installDownloads(partition,s.profileId);
   const view = new WebContentsView({webPreferences:{partition,sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(__dirname,'page-preload.cjs')}});
+  // 透明窗口（macOS vibrancy）下 WebContentsView 默认底色会变透明，页面未绘制区域会透出
+  // 系统材质；显式固定为不透明白色，保持与不透明窗口一致。
+  if (process.platform === 'darwin') view.setBackgroundColor('#ffffff');
   const openedBy=metadata.openedBy ?? 'unknown';
   const label=metadata.label ?? (openedBy==='agent' && !metadata.restored ? allocatePageLabel(s) : null);
   const tab = {id:tabId,roomId,view,label,openedBy,openerId:metadata.openerId ?? null,ready:false,domReady:false,loadComplete:false,isLoading:false,navigationError:null,restoreUrl:metadata.restored?url:null,restoringInitial:Boolean(metadata.restored),pinned:Boolean(metadata.pinned),popupSequence:0,popupEvents:[],homeSurfaceInstalled:false,homeInjection:null};
@@ -1729,19 +1735,27 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const width=Math.min(area.width,Math.max(bounds.width,minimumWidth));
   const height=Math.min(area.height,Math.max(bounds.height,minimumHeight));
   const fittedBounds={...bounds,width,height,x:Math.min(Math.max(bounds.x,area.x),area.x+area.width-width),y:Math.min(Math.max(bounds.y,area.y),area.y+area.height-height)};
-  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(process.platform==='darwin'?{}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
+  // macOS 用原生 vibrancy 承载下缘 dock 的真实毛玻璃；页面画布由 WebContentsView 覆盖，
+  // 只有 dock 条带透出系统材质。其他平台退回不透明底色。
+  const glassChrome = process.platform === 'darwin';
+  // transparent:true 会禁用 macOS vibrancy（Electron 已知行为），只用带 alpha 的
+  // backgroundColor 即可让窗口底色透出系统材质。
+  const browserWindow = new BrowserWindow({...fittedBounds,title:'Corvid',...(glassChrome?{vibrancy:'under-window',backgroundColor:'#00000000'}:{autoHideMenuBar:true}),webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});
   browserWindow.setMinimumSize(minimumWidth,minimumHeight);
-  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,fullscreenRestoreBounds:null,lastKnownMaximized:false,closing:false};
+  const record = {id:recordId,browserWindow,browserChromeHeight:INITIAL_BROWSER_CHROME_HEIGHT,dockStripHeight:0,panelOpen:false,modalOpen:false,frontView:null,activeRoomId:null,activeProfileId:activeProfileId || 'default',extensionPopup:null,actionIndicator:null,actionIndicatorTabId:null,appFullscreen:false,htmlFullscreen:false,htmlFullscreenTabId:null,fullscreenTransitionTarget:null,fullscreenRestoreMaximized:null,fullscreenRestoreBounds:null,lastKnownMaximized:false,closing:false};
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
-  const clearRestoredBoundsAfterGeometryChange=()=>{
-    if(!isTransientFullscreen(record)&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  const settleRestoredMaximizedState=()=>{
+    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized===true&&!browserWindow.isDestroyed()&&browserWindow.isMaximized())record.fullscreenRestoreMaximized=null;
   };
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
-  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
-  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=true;});
-  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}});
+  const clearRestoredBoundsAfterGeometryChange=()=>{
+    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized!==true&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  };
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
+  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=true;clearTimeout(record.fullscreenRestoreSettleTimer);if(record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;}});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}}});
   // macOS transitions are asynchronous; if the user reverses direction during
   // the animation, replay the latest target instead of trusting a stale event.
   browserWindow.on('enter-full-screen',()=>{
@@ -1758,7 +1772,19 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
     if(transitionTarget===false)record.fullscreenTransitionTarget=null;
     else if(transitionTarget===true&&!record.closing&&!browserWindow.isDestroyed())browserWindow.setFullScreen(true);
     record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);
-    if(!record.htmlFullscreen&&transitionTarget!==true)record.fullscreenRestoreMaximized=null;
+    if(!record.htmlFullscreen&&transitionTarget!==true){
+      if(record.fullscreenRestoreMaximized===true){
+        // macOS 在退出全屏后异步恢复 zoom 态：恢复完成前事件报告的几何值是过渡帧
+        // （宽度可达全屏宽、高度可差 2px），不能据此清除快照。等 maximize 事件或
+        // 稳态几何事件确认恢复后再清除标记；定时器是事件缺失时的兜底。
+        clearTimeout(record.fullscreenRestoreSettleTimer);
+        record.fullscreenRestoreSettleTimer=setTimeout(()=>{
+          if(!browserWindow.isDestroyed()&&record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;
+        },1500);
+      }else{
+        record.fullscreenRestoreMaximized=null;
+      }
+    }
     update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
   });
   browserWindow.on('close',()=>{closeExtensionPopup(record);record.actionIndicator?.hide();saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
@@ -1802,6 +1828,14 @@ app.whenReady().then(async () => {
     const height=Math.ceil(value);
     if(record.browserChromeHeight===height)return;
     record.browserChromeHeight=height;
+    layout(record);
+  });
+  ipcMain.on('shell-dock-strip-height',(event,value)=>{
+    const record=[...windowRecords.values()].find(item=>!item.browserWindow.isDestroyed()&&item.browserWindow.webContents===event.sender);
+    if(!record||typeof value!=='number'||!Number.isFinite(value)||value<0||value>200)return;
+    const height=Math.ceil(value);
+    if(record.dockStripHeight===height)return;
+    record.dockStripHeight=height;
     layout(record);
   });
   ipcMain.handle('browser-home-action',(event,action,value)=>{

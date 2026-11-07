@@ -76,7 +76,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
     for (const locale of ['zh-CN', 'en']) {
       await assertLocale(shell, locale);
-      await shell.locator('#show-bookmarks').click();
+      await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-bookmarks').click();
       await shell.locator('#library:not([hidden])').waitFor();
       const eyebrow = await shell.locator('#library .panel-eyebrow').count();
       assert.equal(eyebrow, 0, 'browser library header uses its page title without the unrelated Corvid Workspace eyebrow');

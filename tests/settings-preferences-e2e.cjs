@@ -32,7 +32,7 @@ const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.e
   const state=async shell=>shell.evaluate(()=>window.browserShell.invoke('state'));
   const activeRoom=async shell=>{const snapshot=await state(shell);return snapshot.rooms.find(room=>room.id===snapshot.activeRoomId);};
   const navigate=async(shell,url)=>{await shell.locator('#address').fill(url);await shell.locator('#address').press('Enter');};
-  const openSettings=async shell=>{await shell.locator('#show-settings').click();await waitFor(()=>shell.locator('#settings').evaluate(dialog=>dialog.open),'settings dialog open');};
+  const openSettings=async shell=>{await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();await waitFor(()=>shell.locator('#settings').evaluate(dialog=>dialog.open),'settings dialog open');};
   const saveSettings=async shell=>{await shell.locator('#settings-form button[type="submit"]').click();await waitFor(async()=>!(await shell.locator('#settings').evaluate(dialog=>dialog.open)),'settings dialog close');};
   const savePreferences=async(shell,{startup='new-tab',newTab='blank',ask=true}={})=>{
     await openSettings(shell);
@@ -79,7 +79,7 @@ const executablePath=process.env.CORVID_PACKAGED_APP_PATH?path.resolve(process.e
     const invalidFolder=await shell.evaluate(async folder=>{try{await window.browserShell.invoke('setBrowserPreferences',{startupBehavior:'new-tab',newTabBehavior:'blank',downloadDirectory:folder,askWhereToSave:true});return null;}catch(error){return {code:error.code,message:error.message};}},invalidFolderPath);
     assert.match(invalidFolder.message,/无法访问所选下载文件夹/);
 
-    await shell.locator('#show-downloads').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-downloads').click();
     await navigate(shell,base+'/cancel-download');
     await waitFor(async()=>{const result=await request('/downloads');return result.downloads.find(item=>item.filename==='cancel-download.txt'&&item.status==='cancelled');},'cancelled download state');
     assert.equal(fs.existsSync(path.join(downloadDir,'cancel-download.txt')),false,'canceling the save dialog writes no file');

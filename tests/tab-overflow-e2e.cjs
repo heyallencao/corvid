@@ -64,7 +64,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(()=>shell.locator('#tab-scroll-right').isVisible(),'right scroll control appears with overflow');
     await shell.locator('#tab-scroll-right').click();
     await until(()=>shell.locator('#tabs').evaluate(element=>element.scrollLeft>0),'tab strip scrolls right');
-    for(let attempt=0;attempt<5&&!(await shell.locator('#tab-scroll-right').isDisabled());attempt++){await shell.locator('#tab-scroll-right').click();await delay(40);}
+    for(let attempt=0;attempt<6;attempt++){if(await shell.locator('#tab-scroll-right').isDisabled())break;await shell.locator('#tab-scroll-right').click({timeout:1500}).catch(()=>{});await delay(120);}
     assert.equal(await shell.locator('#tab-scroll-right').isDisabled(),true,'right control disables at the end');
     if(qaDir){fs.mkdirSync(qaDir,{recursive:true});await shell.screenshot({path:path.join(qaDir,'issue-201-tabs-14-zh-CN-1280x850.png')});}
     const lastTab=shell.locator('#tabs .tab-main').last();
@@ -83,7 +83,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(await shell.locator('#tab-scroll-right').isHidden(),true,'one narrow tab needs no scroll controls');
     for(let number=2;number<=5;number++){await shell.locator('#new-tab').click();await until(async()=>await tabs.count()===number,`${number} narrow tabs rendered`);await navigateCurrent(number);}
     assert.equal(await shell.locator('#tab-scroll-right').isHidden(),true,'five narrow tabs remain individually reachable');
-    for(let number=6;number<=14;number++){await shell.locator('#new-tab').click();await until(async()=>await tabs.count()===number,`${number} narrow tabs rendered`);await navigateCurrent(number);}
+    for(let number=6;number<=20;number++){await shell.locator('#new-tab').click();await until(async()=>await tabs.count()===number,`${number} narrow tabs rendered`);await navigateCurrent(number);}
     await until(()=>shell.locator('#tab-scroll-right').isVisible(),'narrow tab overflow controls');
     assert.equal(await tabs.first().evaluate(element=>getComputedStyle(element).width),'44px','narrow tabs use the compact icon width');
     assert.equal(await tabs.first().locator('.tab-title').evaluate(element=>getComputedStyle(element).display),'none','narrow tabs use favicon-only presentation');
@@ -97,7 +97,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(()=>shell.locator('#tabs').evaluate(element=>element.scrollLeft>0),'narrow strip scrolls with its control');
     await shell.locator('#tab-scroll-left').click();
     await until(()=>shell.locator('#tab-scroll-left').isDisabled(),'left control disables after scrolling to the beginning');
-    await shell.locator('#show-settings').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
     await shell.locator('#ui-locale').selectOption('en');
     await until(()=>shell.locator('html').getAttribute('lang').then(locale=>locale==='en'),'English shell locale');
     assert.equal(await shell.locator('#tab-scroll-left').getAttribute('aria-label'),'Scroll tabs left');

@@ -10,6 +10,43 @@ function reportBrowserChromeHeight(){
 }
 new ResizeObserver(reportBrowserChromeHeight).observe(browserShellElement);
 window.addEventListener('resize',reportBrowserChromeHeight,{passive:true});
+// 房间 dock：常驻于窗口下缘的保留条带；主进程按上报高度让出页面画布。
+// 无 Agent 活动且指针/焦点不在 dock 上时自动下沉，只留一条可唤出的边缘。
+const roomDockElement=document.querySelector('#room-dock');
+const dockPeekHeight=14;
+let reportedDockStripHeight=null;
+function dockHasAttention(){
+  return Boolean(agentTaskSummaries?.some(task=>['running','preparing','waiting_for_user'].includes(task.status)));
+}
+function updateDockVisibility(){
+  if(!roomDockElement)return;
+  // dock 自己的弹出菜单（空间选项/浏览身份）打开时保持显示，避免指针经过菜单与
+  // dock 之间的空隙时被自动隐藏打断。
+  const dockMenuOpen=[...roomDockElement.querySelectorAll(':scope > [role="menu"]:not([hidden])')].length>0;
+  const visible=dockHasAttention()||dockMenuOpen||roomDockElement.matches(':hover,:focus-within')||roomDockElement.dataset.pointerNear==='true';
+  roomDockElement.classList.toggle('dock-hidden',!visible);
+  reportDockStripHeight();
+}
+function reportDockStripHeight(){
+  if(!roomDockElement)return;
+  const height=roomDockElement.classList.contains('dock-hidden')?dockPeekHeight:Math.ceil(roomDockElement.getBoundingClientRect().height);
+  if(!Number.isFinite(height)||height<0||height>200||height===reportedDockStripHeight)return;
+  reportedDockStripHeight=height;
+  document.documentElement.style.setProperty('--dock-strip',`${height}px`);
+  api.reportDockStripHeight(height);
+}
+new ResizeObserver(reportDockStripHeight).observe(roomDockElement);
+window.addEventListener('pointermove',event=>{
+  // 仅在窗口最下缘的 dock 条带内触发“指针唤出”；条带区域不承载页面内容，
+  // 因此唤出动画不会移动页面元素、也不会劫持底部点击。
+  roomDockElement.dataset.pointerNear=String(event.clientY>=window.innerHeight-dockPeekHeight-2);
+  updateDockVisibility();
+},{passive:true});
+// pointerleave 不重置 pointerNear：指针贴近下缘但位于 dock 元素之外时仍应保持显示，
+// 否则 dock 会因 pointerleave 在 pointermove 之后触发而闪烁隐藏。
+roomDockElement.addEventListener('pointerleave',updateDockVisibility);
+roomDockElement.addEventListener('focusin',updateDockVisibility);
+roomDockElement.addEventListener('focusout',()=>setTimeout(updateDockVisibility,0));
 function userFacingAgentError(error, fallback=null) {
   const message=String(error?.message||error||'').trim();
   const localizedMessage=extensionMessages?.userFacingError?.(message);
@@ -196,6 +233,8 @@ function loadAgentTaskSummaries(profileId) {
 function draw(value) {
   state = value;
   loadAgentTaskSummaries(state.activeProfileId);
+  document.documentElement.dataset.glassChrome=String(Boolean(state.glassChrome));
+  updateDockVisibility();
   extensionMessages.setLocale(state.uiLocale);
   const fullscreenToggle=document.querySelector('#toggle-fullscreen');
   fullscreenToggle.setAttribute('aria-checked',String(Boolean(state.fullscreen)));
@@ -220,7 +259,7 @@ function draw(value) {
   for (const s of state.rooms.filter(s=>s.profileId===state.activeProfileId)) {
     const displayName=roomDisplayName(s);
     const summary=[...agentTaskSummaries].filter(task=>task.roomId===s.id).sort((a,b)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))[0];
-    const item=button(displayName,()=>api.invoke('activateRoom',{id:s.id}),s.id===state.activeRoomId);
+    const item=button('',()=>api.invoke('activateRoom',{id:s.id}),s.id===state.activeRoomId);
     item.dataset.ownership=s.ownership;
     item.setAttribute('aria-current',s.id===state.activeRoomId?'page':'false');
     if(summary){
@@ -232,11 +271,26 @@ function draw(value) {
       const name=document.createElement('span');name.className='room-name';name.textContent=defaultAgentRoom?prompt:displayName;
       const detail=document.createElement('span');detail.className='room-agent-summary';detail.textContent=(defaultAgentRoom?[page,time]:[prompt,page,time]).filter(Boolean).join(' · ');
       item.replaceChildren(name,detail);
-      if(statusKey){const marker=document.createElement('span');marker.className='room-task-status';marker.dataset.status=statusKey.slice('taskNav'.length).toLowerCase();marker.textContent=statusLabel;marker.setAttribute('aria-hidden','true');item.append(marker);}
-      item.dataset.roomMark=Array.from(prompt)[0]||'•';
+      const currentTab=s.tabs.find(tab=>tab.active);
+      if(currentTab&&currentTab.url&&!currentTab.url.startsWith('about:')){
+        item.classList.add('has-favicon');
+        const favicon=createTabFavicon(currentTab);favicon.classList.add('room-favicon');
+        item.append(favicon);
+      }
+      if(statusKey){const marker=document.createElement('span');marker.className='room-task-status';marker.dataset.status=statusKey.slice('taskNav'.length).toLowerCase();marker.textContent={taskNavWaiting:'!',taskNavCompleted:'✓'}[statusKey]||'';marker.setAttribute('aria-hidden','true');item.append(marker);}
+      item.dataset.roomMark=Array.from(displayName)[0]||'•';
       item.setAttribute('aria-label',`${displayName}${statusLabel?` · ${statusLabel}`:''} · ${extensionMessages.t('agentConversationSummary',{summary:accessiblePrompt,page,time})}`);
       item.title=`${displayName}${statusLabel?` · ${statusLabel}`:''} · ${titlePrompt} · ${page}${time?` · ${time}`:''}`;
     }else{
+      const name=document.createElement('span');name.className='room-name';name.textContent=displayName;item.append(name);
+      item.dataset.roomMark=Array.from(displayName)[0]||'•';
+      // tile 优先展示当前打开网页的 favicon；起始页/未加载完成时退回房间首字。
+      const currentTab=s.tabs.find(tab=>tab.active);
+      if(currentTab&&currentTab.url&&!currentTab.url.startsWith('about:')){
+        item.classList.add('has-favicon');
+        const favicon=createTabFavicon(currentTab);favicon.classList.add('room-favicon');
+        item.append(favicon);
+      }
       item.setAttribute('aria-label',`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`);
       item.title=`${displayName} · ${s.ownership==='agent'?extensionMessages.t('agentUsing'):extensionMessages.t('userSpace')}`;
     }
@@ -250,12 +304,8 @@ function draw(value) {
   const roomMenu=document.querySelector('#room-menu');roomMenu.replaceChildren();
   const roomAction=(label,fn,{destructive=false}={})=>{const item=button(label,()=>{closePopupMenu(roomMenu,{restoreFocus:true});fn();});item.setAttribute('role','menuitem');item.tabIndex=-1;if(destructive)item.classList.add('menu-item-danger');roomMenu.append(item);};
   roomAction(extensionMessages.t('createSpace'),async()=>{await openShellDialog('#new-room','#room-name');});
+  roomAction(extensionMessages.t('newWindow'),async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
   if(state.activeRoomId)roomAction(extensionMessages.t('closeCurrentSpace'),async()=>{const id=state.activeRoomId;controlError='';try{await api.invoke('closeRoomFromUser',{id});}catch(error){controlError=error.message;draw(state);}},{destructive:true});
-  const roomActions=document.querySelector('#room-actions');roomActions.replaceChildren();
-  const newWindow=button('',async()=>{controlError='';try{await api.invoke('createWindow',{});}catch(error){controlError=error.message;draw(state);}});
-  newWindow.append(createShellIcon('plus'),document.createTextNode(extensionMessages.t('newWindow')));
-  newWindow.className='new-window-button';
-  roomActions.append(newWindow);
   const room = state.rooms.find(s => s.id === state.activeRoomId);
   if (!room) {updateConnectionIndicator(null);void syncCurrentBookmarkButton(null,state.activeProfileId);document.querySelector('#tabs').replaceChildren();requestAnimationFrame(updateTabScrollControls);tabsSignature='';addressDraftDirty=false;addressDraftTabId=null;addressDraftBaseUrl=null;document.querySelector('#address').value='';document.querySelector('#status').textContent='';return;}
   renderTabs(room);
@@ -777,7 +827,7 @@ function closeLibraryPanel({restoreFocus=false}={}){
   if(restoreFocus&&trigger?.isConnected)trigger.focus();
   return closed;
 }
-async function showLibrary(kind,trigger=document.activeElement) {if(libraryKind!==kind)document.querySelector('#library-search').value='';setLibraryPanel(kind,trigger);await api.invoke('setPanel',{open:true,workspace:true});await renderLibrary();}
+async function showLibrary(kind,trigger=document.activeElement) {if(libraryKind!==kind)document.querySelector('#library-search').value='';if(trigger?.closest?.('#library-menu,#profile-menu,#room-menu'))trigger=document.querySelector('#library-trigger');setLibraryPanel(kind,trigger);await api.invoke('setPanel',{open:true,workspace:true});await renderLibrary();}
 let bookmarksRenderVersion=0;
 async function renderBookmarksBar() {
   const version=++bookmarksRenderVersion, profileId=state?.activeProfileId;
@@ -825,12 +875,12 @@ api.onPiAuthPrompt(async request=>{
   if(input.tagName==='SELECT'){const replacement=document.createElement('input');replacement.id='pi-auth-input';replacement.autocomplete='off';input.replaceWith(replacement);}
   try{await api.invoke('resolvePiAuthPrompt',{id:request.id,value,cancelled});}catch(error){const status=document.querySelector('.pi-model-status');if(status)status.textContent=extensionMessages.t('authorizationStepFailed',{message:userFacingAgentError(error)});}
 }); api.invoke('state').then(draw);
-const popupMenuBindings=[['profile-menu-trigger','profile-menu'],['room-menu-trigger','room-menu']].map(([triggerId,menuId])=>({trigger:document.querySelector(`#${triggerId}`),menu:document.querySelector(`#${menuId}`)}));
+const popupMenuBindings=[['profile-menu-trigger','profile-menu'],['library-trigger','library-menu'],['room-menu-trigger','room-menu']].map(([triggerId,menuId])=>({trigger:document.querySelector(`#${triggerId}`),menu:document.querySelector(`#${menuId}`)}));
 function popupMenuItems(menu){return [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
 function closePopupMenu(menu,{restoreFocus=false}={}){if(menu.hidden)return;menu.hidden=true;const binding=popupMenuBindings.find(item=>item.menu===menu);binding?.trigger.setAttribute('aria-expanded','false');if(restoreFocus)binding?.trigger.focus();}
 function openPopupMenu(binding,last=false){for(const item of popupMenuBindings)if(item!==binding)closePopupMenu(item.menu);binding.menu.hidden=false;binding.trigger.setAttribute('aria-expanded','true');const items=popupMenuItems(binding.menu);(last?items.at(-1):items[0])?.focus();}
-for(const binding of popupMenuBindings){binding.trigger.onclick=()=>{if(binding.menu.hidden)openPopupMenu(binding);else closePopupMenu(binding.menu);};binding.trigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openPopupMenu(binding,event.key==='ArrowUp');}else if(event.key==='Escape'&&!binding.menu.hidden){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});}};binding.menu.onkeydown=event=>{const items=popupMenuItems(binding.menu),index=items.indexOf(document.activeElement);let next=null;if(event.key==='ArrowDown')next=(index+1)%items.length;else if(event.key==='ArrowUp')next=(index-1+items.length)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else if(event.key==='Escape'){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});return;}if(next!==null&&items.length){event.preventDefault();items[next].focus();}};}
-for(const [contextSelector,menuId] of [['.profile-switcher','profile-menu'],['.sidebar-section-heading','room-menu'],['#room-strip','room-menu']]){const container=document.querySelector(contextSelector),binding=popupMenuBindings.find(item=>item.menu.id===menuId);container.oncontextmenu=event=>{event.preventDefault();if(binding)openPopupMenu(binding);};}
+for(const binding of popupMenuBindings){binding.trigger.onclick=()=>{if(binding.menu.hidden)openPopupMenu(binding);else closePopupMenu(binding.menu);};binding.menu.onclick=event=>{if(event.target.closest('button'))closePopupMenu(binding.menu,{restoreFocus:true});};binding.trigger.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();openPopupMenu(binding,event.key==='ArrowUp');}else if(event.key==='Escape'&&!binding.menu.hidden){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});}};binding.menu.onkeydown=event=>{const items=popupMenuItems(binding.menu),index=items.indexOf(document.activeElement);let next=null;if(event.key==='ArrowDown')next=(index+1)%items.length;else if(event.key==='ArrowUp')next=(index-1+items.length)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else if(event.key==='Escape'){event.preventDefault();closePopupMenu(binding.menu,{restoreFocus:true});return;}if(next!==null&&items.length){event.preventDefault();items[next].focus();}};}
+for(const [contextSelector,menuId] of [['.dock-profile','profile-menu'],['#room-dock','room-menu']]){const container=document.querySelector(contextSelector),binding=popupMenuBindings.find(item=>item.menu.id===menuId);container.oncontextmenu=event=>{event.preventDefault();event.stopPropagation();if(binding)openPopupMenu(binding);};}
 document.addEventListener('pointerdown',event=>{for(const {trigger,menu} of popupMenuBindings)if(!menu.hidden&&!menu.contains(event.target)&&!trigger.contains(event.target))closePopupMenu(menu);});
 document.addEventListener('keydown',event=>{if(event.key==='Tab')for(const {menu} of popupMenuBindings)if(!menu.hidden)setTimeout(()=>{if(!menu.contains(document.activeElement))closePopupMenu(menu);},0);});
 document.querySelector('#new-room-form').onsubmit = async event => { event.preventDefault(); const input=document.querySelector('#room-name'); const name=input.value.trim(); if(!name) return; await api.invoke('createRoom',{name,ownership:'user'}); input.value=''; document.querySelector('#new-room').close(); };
@@ -1181,8 +1231,8 @@ siteToolsMenu.onkeydown=event=>{
 };
 document.addEventListener('pointerdown',event=>{if(!siteToolsMenu.hidden&&!siteToolsMenu.contains(event.target)&&!siteToolsTrigger.contains(event.target))closeSiteTools();});
 document.querySelector('#close-library').onclick = () => closeLibraryPanel({restoreFocus:true});
-document.querySelector('#show-agent-rooms').onclick=async event=>{if(libraryKind==='agent-rooms'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('agent-rooms',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});await renderAgentRooms();}};
-document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKind==='pi-workbench'){closeLibraryPanel();}else{document.querySelector('#library-search').value='';setLibraryPanel('pi-workbench',event.currentTarget);await api.invoke('setPanel',{open:true,workspace:true});renderPiWorkbench();}};
+document.querySelector('#show-agent-rooms').onclick=async event=>{if(libraryKind==='agent-rooms'){closeLibraryPanel();}else{await showLibrary('agent-rooms',event.currentTarget);}};
+document.querySelector('#show-pi-workbench').onclick=async event=>{if(libraryKind==='pi-workbench'){closeLibraryPanel();}else{await showLibrary('pi-workbench',event.currentTarget);}};
 
 // ---- 日常浏览：标签栏（favicon/拖拽排序/中键关闭）与页内查找 ----
 let findOpen=false, findTabId=null, tabMenu=null, tabMenuTabId=null, tabMenuTrigger=null;
@@ -1238,16 +1288,21 @@ function renderTabs(room){
   const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.active,tab.pinned].join('\u0000'))].join('\u0001');
   const existing=document.querySelector('#new-tab');
   const tabs=document.querySelector('#tabs');
-  if(signature===tabsStructureSignature && existing && existing.parentElement?.id==='tabs'){
+  if(signature===tabsStructureSignature && existing && existing.parentElement?.id==='tab-strip'){
     for(const tab of room.tabs){const el=tabs.querySelector(`.tab[data-tab-id="${CSS.escape(tab.id)}"]`);if(el)syncTabElement(el,tab,room);}
     requestAnimationFrame(updateTabScrollControls);
     return;
   }
   tabsStructureSignature=signature;
   tabs.replaceChildren();
+  // 新建标签按钮位于滚动区之外，重建标签时需先移除旧按钮，避免重复堆积。
+  document.querySelectorAll('#tab-strip > #new-tab').forEach(node=>node.remove());
   for(const tab of room.tabs) tabs.append(tabElement(tab,room));
   const add=button('',()=>{void api.invoke('createTab',{id:room.id}).catch(error=>{controlError=error.message;draw(state);});});
-  add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton'));add.title=extensionMessages.t('newTabButton');add.append(createShellIcon('plus')); tabs.append(add);
+  add.id='new-tab'; add.setAttribute('aria-label',extensionMessages.t('newTabButton'));add.title=extensionMessages.t('newTabButton');add.append(createShellIcon('plus'));
+  // 新建标签按钮位于滚动区之外、紧邻标签列表末端；标签溢出时它仍然可达，不随横向滚动移出窗口。
+  const scrollRight=document.querySelector('#tab-scroll-right');
+  scrollRight.before(add);
   requestAnimationFrame(updateTabScrollControls);
 }
 async function closeTabFromUi(tabId){controlError='';try{await api.invoke('closeTabFromUser',{id:tabId});}catch(error){controlError=error.message;draw(state);}}

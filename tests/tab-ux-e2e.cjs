@@ -64,7 +64,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
       await shell.locator('#close-library').click();
       await until(async()=>await shell.locator('#library').isHidden(),'shortcut panel closes');
     }
-    await shell.locator('#show-settings').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
     await shell.locator('#search-template').fill(`${base}/search?q={query}`);
     await shell.locator('#settings-form button[type="submit"]').click();
     await until(()=>homeEval("document.visibilityState==='visible'"),'home surface restored after settings closes');
@@ -102,10 +102,12 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await captureHome(path.join(os.tmpdir(),'corvid-new-tab-surface.png'));
     await homeEval(`window.browserHome.action('navigate',${JSON.stringify(base+'/saved')})`);
     await until(async()=>(await tabs.nth(1).textContent()).includes('Saved Fixture'),'bookmark shortcut navigation');
+    await shell.mouse.move(...Object.values(await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}))),{steps:2});
     await shell.locator('#profile-menu-trigger').click();
     await shell.getByRole('menuitem',{name:'新建浏览身份'}).click();
     await shell.locator('#profile-name').fill('起始页隔离测试');
     await shell.locator('#new-profile-form button[type="submit"]').click();
+    await shell.mouse.move(...Object.values(await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}))),{steps:2});
     await shell.locator('#create-room-trigger').click();
     await shell.locator('#room-name').fill('隔离空间');
     await shell.locator('#new-room-form button[type="submit"]').click();

@@ -56,7 +56,7 @@ if (process.platform === 'darwin') {
     assert.deepEqual(normalizedArchitectures, [expectedArch]);
     assert.match(info.appPath, /\.asar$/,'desktop assets resolve from the packaged application archive');
 
-    await shell.locator('#rooms').waitFor();
+    await shell.locator('#room-dock').waitFor();
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).waitFor();
     const userAgent = await shell.evaluate(() => navigator.userAgent);
     const electronVersion = userAgent.match(/Electron\/([\d.]+)/)?.[1];

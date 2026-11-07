@@ -35,7 +35,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     assert.equal(first.windowCount,1);
 
     // A second window gets its own Room; the two windows do not share a Room list.
-    await shell.getByRole('button',{name:'新建窗口'}).click();
+    await shell.evaluate(()=>window.browserShell.invoke('createWindow',{}));
     // The window record appears before the new Room finishes initializing, so
     // wait for both windows and all their Rooms.
     const two=await until(async()=>{const state=await api('/rooms');return state.windows.length===2 && state.rooms.length===2 ? state : false;},'second window and its room');
@@ -54,7 +54,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     const shells=await until(async()=>{
       const pages=[];
       for (const page of app.windows()) {
-        try { if (await page.locator('#rooms').count()) pages.push(page); } catch {}
+        try { if (await page.locator('#room-dock').count()) pages.push(page); } catch {}
       }
       return pages.length===2?pages:false;
     },'two shell windows');
@@ -62,7 +62,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await until(async()=>{for(const page of shells)if(await page.locator('#room-strip button').count()<1)return false;return true;},'each window renders its Room list');
     const roomTitlesPerWindow=[];
     for (const page of shells) {
-      await page.locator('#rooms').waitFor();
+      await page.locator('#room-dock').waitFor();
       const labels=await page.locator('#room-strip button').allTextContents();
       roomTitlesPerWindow.push(labels.filter(label=>label.startsWith('我的空间')||label.startsWith('新窗口的空间')));
     }
@@ -90,7 +90,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     // live one.
     shell=await until(async()=>{
       for (const page of app.windows()) {
-        try { if (await page.locator('#rooms').count()) { await page.getByRole('button',{name:'新建窗口'}).click(); return page; } } catch {}
+        try { if (await page.locator('#room-dock').count()) { await page.evaluate(()=>window.browserShell.invoke('createWindow',{})); return page; } } catch {}
       }
       return false;
     },'a live shell window');

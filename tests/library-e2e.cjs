@@ -51,7 +51,7 @@ const project = path.resolve(__dirname, '..');
 
   try {
     let { shell, request } = await boot();
-    await shell.getByRole('button', { name: '空间选项' }).click();
+    await shell.mouse.move(...Object.values(await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}))),{steps:2});await shell.getByRole('button', { name: '空间选项' }).click();
     await shell.getByRole('menuitem', { name: '新建空间' }).click();
     await shell.locator('#room-name').fill('测试Room');
     await shell.getByRole('button', { name: '创建', exact: true }).click();
@@ -103,11 +103,11 @@ const project = path.resolve(__dirname, '..');
     ({ shell, request } = await boot());
     assert.equal((await request('/bookmarks')).bookmarks.length, 1);
     assert.equal((await request('/history')).history.filter(item => item.url === url).length, 1);
-    await shell.locator('#show-bookmarks').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-bookmarks').click();
     await shell.getByText('Fixture Page', { exact: true }).first().waitFor();
     await shell.getByRole('button', { name: '删除 Fixture Page' }).click();
     assert.equal((await request('/bookmarks')).bookmarks.length, 0);
-    await shell.locator('#show-history').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-history').click();
     await shell.getByRole('button', { name: '删除 Fixture Page' }).click();
     assert.equal((await request('/history')).history.length, 0);
     await stop();

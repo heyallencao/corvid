@@ -51,6 +51,8 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     await app.evaluate(({clipboard})=>{globalThis.__corvidIssue202CopiedUrl=null;clipboard.writeText=text=>{globalThis.__corvidIssue202CopiedUrl=text;};});
     const connection=await until(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'control connection');
     client=await (await import('../sdk/index.js')).connect({dataDir});
+    const dockRevealPoint=await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}));
+    await shell.mouse.move(dockRevealPoint.x,dockRevealPoint.y,{steps:4});
     await shell.locator('#create-room-trigger').click();
     await shell.locator('#room-name').fill('Navigation errors');await shell.locator('#new-room-form').press('Enter');
     const room=await until(async()=>(await client.rooms()).find(item=>item.name==='Navigation errors'),'user-owned Room');
@@ -67,7 +69,7 @@ const until=async(fn,label)=>{for(let i=0;i<200;i++){const result=await fn();if(
     await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='Connection is not encrypted');
     assert.equal(await shell.locator('#connection-indicator').getAttribute('data-connection-state'),'unencrypted','an HTTP page should show that its connection is unencrypted');
     assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'Connection is not encrypted','the connection state should be accessible in English');
-    assert.equal(await shell.locator('.nav-symbol').evaluateAll(icons=>icons.length===6&&icons.every(icon=>icon.querySelector('svg')&&!icon.textContent.trim())),true,'sidebar navigation should render drawn SVG icons instead of text glyphs');
+    assert.equal(await shell.locator('#chrome-tools .icon-button').evaluateAll(icons=>icons.length>=6&&icons.every(icon=>icon.querySelector('svg')&&!icon.textContent.trim())),true,'toolbar navigation controls should render drawn SVG icons instead of text glyphs');
     await shell.evaluate(()=>window.browserShell.invoke('setUiLocale',{locale:'zh-CN'}));
     await shell.waitForFunction(()=>document.querySelector('#connection-indicator')?.getAttribute('aria-label')==='连接未加密');
     assert.equal(await shell.locator('#connection-indicator').getAttribute('aria-label'),'连接未加密','the connection state should follow the Chinese locale');

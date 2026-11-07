@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('browserShell', {
   invoke: (method, args) => ipcRenderer.invoke('shell-action', method, args),
   reportBrowserChromeHeight: height => ipcRenderer.send('shell-browser-chrome-height', height),
+  reportDockStripHeight: height => ipcRenderer.send('shell-dock-strip-height', height),
   onState: callback => ipcRenderer.on('shell-state', (_event, state) => callback(state)),
   onPiTasks: callback => ipcRenderer.on('pi-task-state', (_event, tasks) => callback(tasks)),
   onAgentTaskSummaries: callback => ipcRenderer.on('agent-task-summary-state', (_event, payload) => callback(payload)),

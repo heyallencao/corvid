@@ -28,7 +28,7 @@ const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeou
     await shell.locator('#address').fill(origin+'/');
     await shell.locator('#address').press('Enter');
     await waitFor(()=>shell.locator('#address').inputValue().then(value=>value===origin+'/'),'local fixture navigation');
-    await shell.locator('#show-settings').click();
+    await shell.locator('#library-trigger').click();await shell.locator('#library-menu:not([hidden])').waitFor();await shell.locator('#show-settings').click();
     await waitFor(()=>shell.locator('#settings').evaluate(dialog=>dialog.open),'settings dialog');
     assert.equal(await shell.locator('#settings-nav-general').getAttribute('aria-current'),'location');
 
