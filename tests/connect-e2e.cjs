@@ -11,11 +11,13 @@ const cliPath = path.join(project, 'cli', 'corvid.mjs');
 const skillSource = path.join(project, 'skills', 'corvid-browser', 'SKILL.md');
 const TOKEN = 'corvid_agent_e2e_token';
 const SERVER_ENTRY = path.join(project, 'mcp', 'corvid.mjs');
+// 本机可能运行真实 Corvid 桌面；CLI 的 doctor/签发路径必须与真实数据目录隔离。
+const isolatedDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'corvid-connect-e2e-data-'));
 
 function cli(args, home, input) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
-      env: { ...process.env, HOME: home, CORVID_AGENT_TOKEN: '' },
+      env: { ...process.env, HOME: home, CORVID_DATA_DIR: isolatedDataDir, CORVID_AGENT_TOKEN: '' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '', stderr = '';
@@ -84,22 +86,23 @@ async function testClaudeCode() {
   assert.equal(skillInstalled(home, 'claude-code'), false);
   // 再次 disconnect 优雅处理
   assertOk(await cli(['disconnect', 'claude-code'], home), 're-disconnect claude-code');
-  // doctor 报告未注册并退出非零
+  // doctor 报告未注册（合同：未接入是提示不是失败，退出码 0）
   const missing = await cli(['doctor', 'claude-code'], home);
-  assert.notEqual(missing.code, 0);
-  assert.match(missing.stdout, /✗ Claude Code MCP 注册/);
+  assert.equal(missing.code, 0);
+  assert.match(missing.stdout, /— Claude Code MCP 注册/);
+  assert.match(missing.stdout, /未注册/);
   fs.rmSync(home, { recursive: true, force: true });
   console.log('PASS connect claude-code: 注册/无关字段/幂等/撤销/doctor');
 }
 
-async function testCursor() {
+async function testCursor() {  // --token 路径（无 token 的自动签发路径由 agent-connect-e2e 在 Electron 环境覆盖）
   const home = sandbox();
   const configPath = path.join(home, '.cursor', 'mcp.json');
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify({ mcpServers: { legacy: { command: 'npx', args: ['-y', 'x'] } } }));
-  assertOk(await cli(['connect', 'cursor', '--yes'], home), 'connect cursor');
+  assertOk(await cli(['connect', 'cursor', '--token', TOKEN, '--yes'], home), 'connect cursor');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  assert.deepEqual(config.mcpServers['corvid-browser'], { command: 'node', args: [SERVER_ENTRY] });
+  assert.deepEqual(config.mcpServers['corvid-browser'], { command: 'node', args: [SERVER_ENTRY], env: { CORVID_AGENT_TOKEN: TOKEN } });
   assert.deepEqual(config.mcpServers.legacy, { command: 'npx', args: ['-y', 'x'] });
   assert.ok(skillInstalled(home, 'cursor'));
   assertOk(await cli(['disconnect', 'cursor'], home), 'disconnect cursor');
@@ -107,7 +110,7 @@ async function testCursor() {
   assert.deepEqual(reverted, { mcpServers: { legacy: { command: 'npx', args: ['-y', 'x'] } } });
   assert.equal(skillInstalled(home, 'cursor'), false);
   fs.rmSync(home, { recursive: true, force: true });
-  console.log('PASS connect cursor: 无 token 注册（env 缺失时由环境变量提供）/撤销');
+  console.log('PASS connect cursor: 注册/撤销');
 }
 
 async function testCodex() {
@@ -233,13 +236,17 @@ async function testDriftProtection() {
 }
 
 (async () => {
-  await testClaudeCode();
-  await testCursor();
-  await testCodex();
-  await testDsh();
-  await testConfirmationContract();
-  await testDriftProtection();
-  console.log('PASS corvid connect E2E');
+  try {
+    await testClaudeCode();
+    await testCursor();
+    await testCodex();
+    await testDsh();
+    await testConfirmationContract();
+    await testDriftProtection();
+    console.log('PASS corvid connect E2E');
+  } finally {
+    fs.rmSync(isolatedDataDir, { recursive: true, force: true });
+  }
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

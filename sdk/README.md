@@ -46,6 +46,19 @@ Create a named client from Corvid **设置 → 管理 Agent 访问**, select its
 
 The MCP server refuses to start tool requests without `CORVID_AGENT_TOKEN`; it never falls back to the administrator credential. Keep the host configuration local and private. Revoke a client in Corvid settings to invalidate its key immediately. When the active browser view is the new-tab start surface, page actions for a background Room are still limited; see [Issue #98](https://github.com/heyallencao/corvid/issues/98).
 
+### corvid connect / disconnect / doctor
+
+`corvid connect <host>`（host 支持 `claude-code` / `codex` / `cursor` / `dsh`）把上面的 MCP server 注册和 `corvid-browser` skill 一次性接入外部 agent host；运行时先列出将写入的配置文件与条目，显式确认后才写（脚本化加 `--yes`）：
+
+```bash
+node cli/corvid.mjs connect codex            # 自动签发凭据（见下）
+node cli/corvid.mjs connect codex --token <one-time key>   # 使用已有 scoped key
+node cli/corvid.mjs doctor [host]            # 诊断控制服务/注册/skill/token
+node cli/corvid.mjs disconnect <host>        # 撤销 connect 写入的全部条目
+```
+
+凭据规则：不带 `--token` 时，connect 用本地管理员凭据（`control.json`）通过运行中的 Corvid 桌面签发一个 **openRoomGrant** 授权客户端——初始授权范围为空，客户端只能访问自己经 `room_open` 创建的 Room；签发的 `clientId` 记录在数据目录的 `agent-connections.json`，`disconnect` 自动撤销该凭据，对同一 host 重复 `connect` 会轮换凭据（旧的撤销）。带 `--token` 时直接写入既有 key，`disconnect` 不撤销它。openRoomGrant 客户端对授权范围外已存在的同名/同 ID Room 返回 `CORVID_FORBIDDEN`（不会创建重名 Room，避免后续 openRoom 歧义）；自建的 Room 自动并入其授权范围。写入位置的完整清单、编辑安全规则与已知边界见[外部 Agent 集成说明](../docs/architecture/external-agent-integration.md)。
+
 The page tools include `page_back`, `page_forward`, and `page_reload`. Each requires an explicit `roomId` and `tabId`, and operates only on a managed page while the Agent owns that Room without a pending user handoff or unresolved execution risk. Back/forward with no matching history entry are successful no-ops; reload sends the current document request again. A tool result acknowledges the requested browser action, not that a site-side operation succeeded; inspect `page_info` or `page_snapshot` afterwards.
 
 `page_wait_for_url` waits for an exact URL string, `page_wait_for_load` waits for `domcontentloaded` or `load`, and `page_wait_for_selector` waits for one locator to become `attached`, `detached`, `visible`, or `hidden`; they return current page info. Selector waits accept only the shared locator forms and do not run arbitrary callbacks or page scripts. Each MCP wait defaults to 10 seconds and is limited to 60 seconds; `networkidle` is not supported. Every polling action rechecks Room control, so waits stop when the user takes control or execution risk requires review.

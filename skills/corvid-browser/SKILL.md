@@ -31,7 +31,7 @@ license: 配合 Corvid 使用；本文档由 `corvid connect` 分发，`corvid d
 
 一次任务对应一个 Room，全程遵守：
 
-1. **openRoom**：`list_profiles` 选 Profile → `room_open { identifier }`（新名字创建，已有名字/ID 复用）。不要直接在用户 Room 上操作。
+1. **openRoom**：`list_profiles` 选 Profile → `room_open { identifier }`（新名字创建，已有名字/ID 复用）。用任务专属的 Room 名；如果授权范围外已存在同名 Room，调用会被拒绝（`CORVID_FORBIDDEN`），换个名字即可，不要重试原名。不要直接在用户 Room 上操作。
 2. **claim**：复用 Room 遇到控制权障碍时 `room_claim { roomId }` 请求用户批准；批准前不要重试其他写操作。
 3. **操作**：`page_new` 建 Agent 页 → `page_navigate` → `page_snapshot` → 定位 → 动作。显式传 `roomId` + `tabId`，不要凭记忆猜。
 4. **让出控制**：需要用户接手查看时 `room_yield { roomId }`；之后用 `room_claim` 取回。
@@ -57,9 +57,9 @@ license: 配合 Corvid 使用；本文档由 `corvid connect` 分发，`corvid d
 
 ## 错误恢复
 
-- `CORVID_UNAUTHORIZED`：未配置 `CORVID_AGENT_TOKEN`。告知用户在 Corvid 设置创建授权客户端并重跑 `corvid connect <host> --token <token>`。
+- `CORVID_UNAUTHORIZED`：未配置 `CORVID_AGENT_TOKEN`。告知用户重新运行 `corvid connect <host>`（无 token 时会自动签发凭据）或在 Corvid 设置创建授权客户端后用 `corvid connect <host> --token <token>`。
 - `CORVID_NOT_FOUND`：Room/Tab/Profile 不存在 → 重新 `list_*` 取当前 ID，不要沿用记忆中的 ID。
-- `CORVID_FORBIDDEN` / "under user control"：Room 在用户手里 → `room_claim` 或换 Room，不要反复硬试。
+- `CORVID_FORBIDDEN`："无权访问此空间"（room_open 撞上授权范围外的同名 Room）→ 换任务专属名字重试；"under user control" → `room_claim` 或换 Room，不要反复硬试。
 - `CORVID_CONTROL_LOST` / "unmanaged"：标签被用户收编 → 停止操作该标签，需要时在新 Agent 页重做。
 - "execution risk"：Room 有未处理的超时执行 → 报告用户人工复核，不要绕过。
 - 同一动作连败 2 次换策略（换 locator、换等待条件、换层级）；仍失败则带着快照证据向用户报告，不要循环重试。

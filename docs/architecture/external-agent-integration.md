@@ -10,8 +10,8 @@ corvid connect <host> [--token <token>] [--yes]
 
 - `host` ∈ `claude-code` / `codex` / `cursor` / `dsh`。
 - 运行时先打印完整写入计划（每个配置文件的路径与将写入的条目、skill 安装路径），交互确认后才写盘；非交互环境必须显式 `--yes`，否则拒绝执行。
-- `--token` 提供 Corvid 设置中签发的授权客户端（scoped token）。提供时 `CORVID_AGENT_TOKEN` 写入 host 配置的 env；不提供时只注册命令，token 从 MCP 进程的环境变量读取，缺失时 MCP 工具调用返回 `CORVID_UNAUTHORIZED`。
-- connect 永不读取或写入 Corvid 的管理员凭据（`control.json`）；scoped token 由用户在设置中签发。
+- **凭据签发**：不带 `--token` 时，connect 用本地管理员凭据（`control.json`）通过运行中的 Corvid 桌面调 `POST /agent-clients` 签发一个 **openRoomGrant** 授权客户端（初始授权范围为空），token 写入 host 配置 env；签发的 `clientId` 持久记录在数据目录 `agent-connections.json`。带 `--token` 时直接使用既有 scoped token，不签发、不撤销。
+- connect 永不在 host 配置中写入管理员凭据（`control.json` 的 token 不会离开本机数据目录）。
 
 ### 写入位置（P0 实测基准）
 
@@ -37,7 +37,7 @@ MCP 注册条目统一为：`command: node`、`args: [<仓库>/mcp/corvid.mjs]`�
 corvid disconnect <host>
 ```
 
-移除该 host 的 MCP 注册条目与 skill 目录（仅当内容与 connect 写入的一致）。输出逐项报告；未接入时优雅返回。重复执行安全。
+移除该 host 的 MCP 注册条目与 skill 目录（仅当内容与 connect 写入的一致），并按 `agent-connections.json` 收据撤销 connect 自动签发的凭据；`--token` 方式接入的凭据不属于 connect 管理，不撤销（输出中提示）。重连同一 host 会轮换签发凭据（旧凭据先撤销）。输出逐项报告；未接入时优雅返回。重复执行安全。
 
 ## corvid doctor
 
@@ -60,7 +60,7 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 
 授权与程序闸门与 SDK/CLI/内置 Agent 三入口一致：scoped token 按 Room 授权过滤 Profile/Room 列表；显式 `roomId`/`tabId`；用户控制中的 Room 动作返回 `CORVID_CONTROL_LOST`；执行风险未复核时拒绝。
 
-**授权范围的扩展合同**：授权客户端经 `room_open` 创建的 Room 自动并入该客户端的授权范围（与「托管即授权」一致）；复用匹配仍只在其授权范围内进行，授权范围外的同名 Room 不会被复用（会新建自己的 Room）。该自动并入会持久化在数据目录的 `agent-clients.json`，用户在设置中可随时撤销整个客户端。
+**openRoomGrant 授权合同**：connect 自动签发的客户端初始授权范围为空；经 `room_open` **自建**的 Room 自动并入其授权范围（持久化在数据目录 `agent-clients.json`，设置中可随时撤销整个客户端）。授权范围外已存在的同名/同 ID Room 一律返回 `CORVID_FORBIDDEN`，**不会**创建重名 Room——避免制造重名空间导致后续按名 openRoom 产生歧义。用户在设置中手工创建的授权客户端同样适用「自建 Room 自动并入」；显式勾选的空间授予仍然有效。
 
 ## corvid-browser skill
 

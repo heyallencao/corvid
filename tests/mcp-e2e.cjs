@@ -394,11 +394,10 @@ class McpProcess {
     const reopenedRoom = await mcp.callTool('room_open', { identifier: 'mcp-room-lifecycle' });
     assert.equal(reopenedRoom.value.id, lifecycleRoomId, 'room_open reuses the Agent Room by name within the grant');
     const nameClash = await mcp.callTool('room_open', { identifier: ungrantedRoom.name });
-    assert.equal(nameClash.result.isError, undefined);
-    assert.notEqual(nameClash.value.id, ungrantedRoom.id, 'room_open never reuses a Room outside the grant; it creates an own Room instead');
+    assert.equal(nameClash.result.isError, true, 'room_open refuses a Room whose name exists outside the grant (no duplicate-name Room)');
+    assert.equal(nameClash.value.code, 'CORVID_FORBIDDEN');
     const grantedRooms = await mcp.callTool('list_rooms', { profileId });
     assert.ok(grantedRooms.value.rooms.some(item => item.id === lifecycleRoomId), 'a Room created by the Agent client joins its grant automatically');
-    const clashRoomId = nameClash.value.id;
     const lifecyclePage = await mcp.callTool('page_new', { roomId: lifecycleRoomId });
     assert.equal(lifecyclePage.result.isError, undefined);
     const lifecycleFinish = await mcp.callTool('room_finish', { roomId: lifecycleRoomId, keep: [] });
@@ -406,8 +405,11 @@ class McpProcess {
     assert.equal(lifecycleFinish.value.closedRoom, true, 'finishing an empty-again Room closes it');
     assert.deepEqual(lifecycleFinish.value.closedManagedLabels.sort(), ['p1', lifecyclePage.value.label].sort());
     assert.equal(lifecycleFinish.value.preservedUnmanagedCount, 0);
-    const keepAllPage = await mcp.callTool('page_new', { roomId: clashRoomId });
-    const keepAllFinish = await mcp.callTool('room_finish', { roomId: clashRoomId, keep: 'all' });
+    const keepRoom = await mcp.callTool('room_open', { identifier: 'mcp-room-keep-report' });
+    assert.equal(keepRoom.result.isError, undefined);
+    const keepRoomId = keepRoom.value.id;
+    const keepAllPage = await mcp.callTool('page_new', { roomId: keepRoomId });
+    const keepAllFinish = await mcp.callTool('room_finish', { roomId: keepRoomId, keep: 'all' });
     assert.equal(keepAllFinish.value.closedRoom, false);
     assert.deepEqual(keepAllFinish.value.keptManagedLabels.sort(), ['p1', keepAllPage.value.label].sort());
     assert.deepEqual(keepAllFinish.value.closedManagedLabels, []);
@@ -443,7 +445,7 @@ class McpProcess {
     }
     await call(`/rooms/${room.id}/resumeControl`, 'POST', {});
     // keep:"all" 的房间按合同交还用户，管理端不可删除；排除它核对无其他房间泄漏。
-    assert.equal((await call('/rooms')).rooms.filter(item => item.id !== clashRoomId).length, roomCountBefore);
+    assert.equal((await call('/rooms')).rooms.filter(item => item.id !== keepRoomId).length, roomCountBefore);
     console.log('PASS stdio MCP read and scoped page actions, explicit Profile/Room/Tab scope, HTTP(S)-only navigation, page scrolling, post-action verification, user-control denial, bounded responses');
   } finally {
     if (mcp) await mcp.close();

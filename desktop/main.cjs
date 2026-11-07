@@ -378,8 +378,12 @@ const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
   const roomIds=args.roomIds;
-  if(!name||name.length>80||!Array.isArray(roomIds)||!roomIds.length||roomIds.some(roomId=>typeof roomId!=='string'||!rooms.some(room=>room.id===roomId)))throw Object.assign(new Error('请填写有效的客户端名称，并至少选择一个现有空间'),{code:'CORVID_INVALID_ARGUMENT'});
-  const created=agentClients.create({name,roomIds});
+  // openRoomGrant clients start with no granted Rooms; they gain access to Rooms
+  // they open themselves through resolveRoom (see the agent-principal checks below).
+  const openRoomGrant=args.openRoomGrant===true;
+  const roomIdsValid=Array.isArray(roomIds)&&(openRoomGrant||roomIds.length)&&roomIds.every(roomId=>typeof roomId==='string'&&(openRoomGrant||rooms.some(room=>room.id===roomId)));
+  if(!name||name.length>80||!roomIdsValid)throw Object.assign(new Error('请填写有效的客户端名称，并至少选择一个现有空间'),{code:'CORVID_INVALID_ARGUMENT'});
+  const created=agentClients.create({name,roomIds:roomIds||[]});
   return {...created.client,token:created.token};
 }
 function normalizeBounds(saved) {
@@ -966,11 +970,10 @@ async function navigateAgent(tab,url) {
   if(tabs.get(tab.id)===tab && tab.userNavigation===sequence){tab.pendingNavigationUrl=null;update();}
   return {ok:true};
 }
-async function resolveRoom(identifier,profileId,grantedRoomIds) {
+async function resolveRoom(identifier,profileId) {
   if(typeof identifier!=='string' || !identifier.trim())throw new Error('Task room name or ID is required');
   const key=identifier.trim();if(roomResolutions.has(key))return roomResolutions.get(key);
-  const matches=rooms.filter(room=>room.id===key);let candidates=matches.length ? matches : rooms.filter(room=>room.name===key);
-  if(Array.isArray(grantedRoomIds))candidates=candidates.filter(room=>grantedRoomIds.includes(room.id));
+  const matches=rooms.filter(room=>room.id===key);const candidates=matches.length ? matches : rooms.filter(room=>room.name===key);
   if(candidates.length>1)throw new Error('Task room name is ambiguous; use its ID');
   if(candidates.length) {const room=candidates[0];if(room.ownership!=='agent' || room.userResumePending || room.executionRisk)throw new Error('Task room is not available for agent control');if(profileId!==undefined && room.profileId!==profileId)throw new Error('Existing task room uses a different Profile');return describe().rooms.find(item=>item.id===room.id);}
   if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key))throw new Error('Task room ID not found');
@@ -1707,10 +1710,19 @@ async function startServer() {
       else if(method==='roomDetails') result=describeRoom(findRoom(routeArgs.id));
       else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
       else if(method==='profiles'&&principal.kind==='agent') {const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));result={profiles:profiles.filter(profile=>allowedProfileIds.has(profile.id))};}
-      else if(method==='resolveRoom'&&principal.kind==='agent') {
-        // 授权客户端 openRoom 创建的空间自动并入其授权范围（托管即授权）；复用仍只在其授权范围内匹配。
-        result=await resolveRoom(body.identifier,body.profileId,principal.client.roomIds);
-        if(result && result.id && !principal.client.roomIds.includes(result.id)) {
+      else if(method==='resolveRoom') {
+        // A scoped Agent client may open Rooms it creates itself; Rooms owned by
+        // someone else (including another Agent client) stay out of reach. A Room
+        // whose name/ID already exists outside the grant is refused (403) instead
+        // of silently creating a duplicate-name Room.
+        if(principal.kind==='agent'){
+          const key=typeof body.identifier==='string'?body.identifier.trim():'';
+          const candidates=key?rooms.filter(room=>room.id===key):[];
+          const target=(candidates.length?candidates:rooms.filter(room=>room.name===key))[0];
+          if(target && !principal.client.roomIds.includes(target.id))throw Object.assign(new Error('该 Agent 客户端无权访问此空间'),{status:403,code:'CORVID_FORBIDDEN'});
+        }
+        result=await resolveRoom(body.identifier,body.profileId);
+        if(principal.kind==='agent' && result && result.id) {
           agentClients.grantRooms(principal.client.id,[result.id]);
           principal.client.roomIds.push(result.id);
         }

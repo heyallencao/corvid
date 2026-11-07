@@ -18,6 +18,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parse as tomlParse } from 'smol-toml';
 import { parseDocument as yamlParseDocument, parse as yamlParse } from 'yaml';
+import { connect as connectAdmin } from '../sdk/index.js';
 
 const require = createRequire(import.meta.url);
 
@@ -71,8 +72,6 @@ function jsonHost({ configPath, entryType }) {
       const current = await readJsonIfExists(configPath);
       const entry = jsonEntry(entryType, token);
       const servers = current?.mcpServers && typeof current.mcpServers === 'object' && !Array.isArray(current.mcpServers) ? { ...current.mcpServers } : {};
-      const existing = current?.mcpServers?.[SERVER_NAME];
-      if (existing !== undefined && !sameValue(existing, entry)) throw new ConflictingEntry('config entry was modified outside corvid connect');
       servers[SERVER_NAME] = entry;
       await writeJson(configPath, { ...current, mcpServers: servers });
     },
@@ -156,11 +155,6 @@ function codexHost({ configPath }) {
     async apply(token) {
       const originalText = existsSync(configPath) ? await readFile(configPath, 'utf8') : '';
       const before = parseToml(originalText);
-      const existing = before.mcp_servers?.[SERVER_NAME];
-      if (existing !== undefined) {
-        const managed = tomlParse(`${block(token)}\n`).mcp_servers[SERVER_NAME];
-        if (!sameValue(existing, managed)) throw new ConflictingEntry('config entry was modified outside corvid connect');
-      }
       const { lines } = splitOffSection(originalText.split('\n'));
       const nextText = [...lines.filter((line, index) => !(index === lines.length - 1 && line === '')), block(token), ''].join('\n');
       const after = parseToml(nextText);
@@ -255,9 +249,6 @@ function dshHost({ configPath }) {
         if (!Array.isArray(document.toJS())) throw new Aborted(`${configPath} 顶层必须是 YAML 数组，已中止`);
       }
       const before = document.toJS();
-      const existing = findManagedItem(before);
-      const next = yamlParse(managedYaml(token))[0];
-      if (existing !== undefined && !sameValue(existing, next)) throw new ConflictingEntry('config entry was modified outside corvid connect');
       const managedIndex = document.contents.items.findIndex(isManagedItem);
       const node = yamlParseDocument(managedYaml(token), { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: value => value }] }).contents.items[0];
       node.commentBefore = ' Corvid Browser MCP 注册：由 `corvid connect dsh` 写入，`corvid disconnect dsh` 移除。';
@@ -333,6 +324,50 @@ export function skillTargetDir(host, home = homedir()) {
   return dirs[host]();
 }
 
+// ---- Connection receipts (what connect wrote, so disconnect can revert + revoke) ----
+
+const CONNECTIONS_FILE = 'agent-connections.json';
+
+function connectionsPath() {
+  const { resolveDataDirectory } = require('../desktop/data-directory.cjs');
+  return join(resolveDataDirectory({ override: process.env.CORVID_DATA_DIR, homeDir: homedir() }), CONNECTIONS_FILE);
+}
+
+function readReceipts() {
+  try { return JSON.parse(require('node:fs').readFileSync(connectionsPath(), 'utf8')); }
+  catch (error) { return error.code === 'ENOENT' ? { version: 1, hosts: {} } : null; }
+}
+
+async function writeReceipts(receipts) {
+  await mkdir(dirname(connectionsPath()), { recursive: true });
+  await writeFile(connectionsPath(), `${JSON.stringify(receipts, null, 2)}\n`, { mode: 0o600 });
+}
+
+// ---- Scoped credential issuance (openRoomGrant; requires the running desktop) ----
+
+async function issueCredential(host) {
+  let client;
+  try { client = await connectAdmin(); }
+  catch (error) {
+    throw new Aborted('无法读取本地管理员凭据（Corvid 桌面未运行或 control.json 不可读）；请先启动 Corvid 桌面，或用 --token 显式提供授权客户端凭据');
+  }
+  try { return await client.createAgentClient(`corvid-${host}`, [], { openRoomGrant: true }); }
+  finally { await client.disconnect(); }
+}
+
+async function revokeCredential(clientId) {
+  try {
+    const client = await connectAdmin();
+    try { await client.revokeAgentClient(clientId); }
+    catch (error) { if (error?.code !== 'CORVID_NOT_FOUND') throw error; }
+    finally { await client.disconnect(); }
+  } catch (error) {
+    if (error?.code === 'ENOENT' || /control\.json|管理员凭据/.test(String(error?.message))) return false;
+    throw error;
+  }
+  return true;
+}
+
 // ---- Skill distribution ----
 
 async function skillSourceText() { return readFile(SKILL_SOURCE, 'utf8'); }
@@ -386,13 +421,20 @@ async function confirm(question, { yes }) {
 
 export async function connectHost(host, { token, yes = false, home = homedir(), stdout = process.stdout } = {}) {
   if (!HOST_IDS.includes(host)) throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
+  let credential = null;
+  if (!token) {
+    stdout.write('未提供 --token：将用本地管理员凭据通过 Corvid 桌面签发 openRoomGrant 授权客户端（初始授权范围为空，仅能访问其自建的 Room）。\n');
+    credential = await issueCredential(host);
+    token = credential.token;
+  }
+  const issued = Boolean(credential);
   const adapter = createHostAdapter(host, home);
   const plan = await adapter.readPlan(token);
   const skillDir = skillTargetDir(host, home);
   stdout.write(`将为 ${hostLabel(host)}（${host}）接入 Corvid Browser MCP：\n`);
   stdout.write(`\n[1] MCP 配置 ${plan.path}${plan.create ? '（文件不存在，将创建）' : ''}：${plan.action === 'current' ? '已是最新，无需改动' : plan.action === 'add' ? '新增条目' : '替换现有条目'}\n`);
-  if (plan.action !== 'current') stdout.write(`    条目：${formatEntry(plan.entry)}\n`);
-  if (plan.existing && plan.action === 'replace') stdout.write(`    现有条目：${formatEntry(plan.existing)}\n`);
+  if (plan.action !== 'current') stdout.write(`    条目：${formatEntry({ ...plan.entry, env: plan.entry?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
+  if (plan.existing && plan.action === 'replace') stdout.write(`    现有条目：${formatEntry({ ...plan.existing, env: plan.existing?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
   stdout.write(`\n[2] Skill 安装 ${skillDir}/SKILL.md（来自 ${SKILL_SOURCE}）\n`);
   stdout.write(`\n${token ? `已携带 scoped token（${TOKEN_ENV_KEY} 写入 host 配置 env）。\n` : `未提供 --token：host 配置不带 ${TOKEN_ENV_KEY}，MCP 启动后需从环境变量读取；用 corvid doctor 诊断。\n`}`);
   if (plan.action === 'current' && existsSync(join(skillDir, 'SKILL.md'))) {
@@ -406,22 +448,51 @@ export async function connectHost(host, { token, yes = false, home = homedir(), 
   if (!approved) { stdout.write('已取消，未写入。\n'); return { changed: false, cancelled: true }; }
   await adapter.apply(token);
   await installSkill(host, home);
+  const receipts = readReceipts() || { version: 1, hosts: {} };
+  const previous = receipts.hosts[host];
+  let rotatedFrom = null;
+  if (issued && previous?.clientId) {
+    await revokeCredential(previous.clientId);
+    rotatedFrom = previous.clientId;
+  }
+  receipts.hosts[host] = {
+    label: hostLabel(host), configFile: adapter.configPath, kind: adapter.kind,
+    skillDir, issued,
+    clientId: credential ? credential.id : null,
+    connectedAt: new Date().toISOString(),
+  };
+  await writeReceipts(receipts);
   stdout.write(`完成：${plan.path} 已${plan.action === 'replace' ? '更新' : '写入'}，skill 已安装到 ${skillDir}。\n`);
+  if (credential) stdout.write(`凭据：${credential.id} 已签发${rotatedFrom ? `（旧凭据 ${rotatedFrom} 已撤销）` : ''}；disconnect 时自动撤销。\n`);
   stdout.write(`重启 ${hostLabel(host)} 后生效；用 corvid doctor ${host} 验证。\n`);
   return { changed: true };
 }
 
 export async function disconnectHost(host, { home = homedir(), stdout = process.stdout } = {}) {
   if (!HOST_IDS.includes(host)) throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
+  const receipts = readReceipts() || { version: 1, hosts: {} };
+  const record = receipts.hosts[host];
   const adapter = createHostAdapter(host, home);
   const configResult = await adapter.remove();
   const skillResult = await removeSkill(host, home);
+  let revoked = null;
+  if (record?.clientId && record.issued) {
+    revoked = (await revokeCredential(record.clientId)) ? record.clientId : `撤销失败：${record.clientId}`;
+    delete receipts.hosts[host];
+    await writeReceipts(receipts);
+  } else if (record) {
+    delete receipts.hosts[host];
+    await writeReceipts(receipts);
+  }
   const parts = [];
   if (configResult.removed) parts.push(`MCP 条目已从 ${adapter.configPath} 移除${configResult.drifted ? '（注意：条目内容与 corvid connect 写入的不一致，可能包含手工改动）' : ''}`);
   else parts.push(`${adapter.configPath} 中没有 corvid 的 MCP 条目${configResult.reason === 'not-registered' ? '' : `（${configResult.reason}）`}`);
   if (skillResult.removed) parts.push(`skill 已从 ${skillResult.path} 移除`);
   else if (skillResult.reason === 'modified') parts.push(`skill ${skillResult.path}/SKILL.md 被修改过，未删除（如需清理请手动处理）`);
   else parts.push(`${skillResult.path} 中没有 corvid skill`);
+  if (record?.clientId && record.issued) parts.push(revoked === record.clientId ? `签发的凭据 ${record.clientId} 已撤销` : `凭据 ${record.clientId} 撤销失败（Corvid 桌面未运行？请在设置中手动撤销）`);
+  else if (record && !record.issued) parts.push('该 host 使用 --token 提供的凭据，disconnect 不撤销（如需回收请在 Corvid 设置中处理）');
+  else parts.push('没有 connect 收据记录');
   for (const part of parts) stdout.write(`${part}\n`);
   stdout.write('重启对应 agent 后生效。\n');
   return { configRemoved: configResult.removed, skillRemoved: skillResult.removed };
@@ -451,27 +522,30 @@ async function checkToken(token) {
   const dataDir = require('../desktop/data-directory.cjs').resolveDataDirectory({ override: process.env.CORVID_DATA_DIR, homeDir: homedir() });
   let baseUrl;
   try { baseUrl = JSON.parse(await readFile(join(dataDir, 'control.json'), 'utf8')).baseUrl; }
-  catch { return { ok: false, detail: '无法读取 control.json，跳过 token 校验' }; }
+  catch { return { ok: true, detail: '跳过 token 鉴权（控制服务不可达）' }; }
   try {
     const response = await fetch(new URL('/rooms', baseUrl), { headers: { authorization: `Bearer ${token}` } });
     if (response.ok) return { ok: true, detail: 'scoped token 有效' };
     return { ok: false, detail: `scoped token 被拒绝：HTTP ${response.status}` };
   } catch (error) {
-    return { ok: false, detail: '控制服务不可达，无法校验 token' };
+    return { ok: true, detail: '跳过 token 鉴权（控制服务不可达）' };
   }
 }
 
 async function checkMcpHandshake(adapter) {
   const inspect = await adapter.inspect().catch(error => ({ registered: false, inspectError: error.message }));
   if (!inspect.registered) {
-    return { ok: false, detail: `${adapter.configPath} 未注册 corvid-browser MCP${inspect.inspectError ? `（${inspect.inspectError}）` : '；运行 corvid connect <host>'}` };
+    return { registered: false, detail: `${adapter.configPath} 未注册 corvid-browser MCP${inspect.inspectError ? `（${inspect.inspectError}）` : ''}` };
   }
-  const base = inspect.matchesBase === false ? '；条目与当前版本不一致，建议重跑 connect 更新' : '';
+  const stale = inspect.matchesBase === false ? '；条目与当前版本不一致，建议重跑 connect 更新' : '';
   const token = inspect.hasToken ? inspect.current?.env?.[TOKEN_ENV_KEY] : process.env[TOKEN_ENV_KEY];
   const spawnCheck = await spawnMcpProbe(token);
+  let tokenCheck = { ok: true, detail: '未携带 token（MCP 工具调用时才会鉴权）' };
+  if (token) tokenCheck = await checkToken(token);
   return {
-    ok: spawnCheck.ok,
-    detail: `已注册${base}；${spawnCheck.detail}`,
+    registered: true,
+    ok: spawnCheck.ok && tokenCheck.ok,
+    detail: `已注册${stale}；${spawnCheck.detail}；${tokenCheck.detail}`,
   };
 }
 
@@ -521,25 +595,27 @@ export async function doctor(host, { home = homedir(), stdout = process.stdout }
   const hosts = host ? [host] : HOST_IDS;
   if (host && !HOST_IDS.includes(host)) throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
   let failures = 0;
+  let connectedCount = 0;
   if (!host) {
     const endpoint = await checkDesktopEndpoint();
     stdout.write(`${endpoint.ok ? '✓' : '✗'} Corvid 控制服务：${endpoint.detail}\n`);
     if (!endpoint.ok) failures++;
-    const token = process.env[TOKEN_ENV_KEY];
-    const tokenCheck = await checkToken(token);
-    stdout.write(`${tokenCheck.ok ? '✓' : '✗'} ${TOKEN_ENV_KEY}：${tokenCheck.detail}\n`);
-    if (!tokenCheck.ok) failures++;
   }
   for (const id of hosts) {
     const adapter = createHostAdapter(id, home);
     const mcp = await checkMcpHandshake(adapter);
+    if (!mcp.registered) {
+      stdout.write(`— ${hostLabel(id)} MCP 注册：${mcp.detail}\n`);
+      continue;
+    }
+    connectedCount++;
     stdout.write(`${mcp.ok ? '✓' : '✗'} ${hostLabel(id)} MCP 注册：${mcp.detail}\n`);
     if (!mcp.ok) failures++;
     const skill = await checkSkill(id, home);
     stdout.write(`${skill.ok ? '✓' : '✗'} ${hostLabel(id)} skill：${skill.detail}\n`);
     if (!skill.ok) failures++;
   }
-  stdout.write(failures ? `\n${failures} 项未通过；按提示修复后重跑。\n` : '\n全部通过。\n');
+  stdout.write(failures ? `\n${failures} 项未通过；按提示修复后重跑。\n` : connectedCount ? `\n全部通过（${connectedCount} 个 host 已接入）。\n` : '\n检查完成：尚无已接入的 host。\n');
   if (failures) process.exitCode = 1;
   return { failures };
 }

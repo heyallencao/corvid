@@ -28,11 +28,12 @@ corvid doctor [host]
 
 Connect the Corvid Browser MCP server and the corvid-browser skill into an
 external agent host (supported: ${HOST_IDS.join(', ')}). connect lists every
-config file and entry it is about to write and requires explicit confirmation
-(pass --token with a scoped token from the Corvid settings to embed
-CORVID_AGENT_TOKEN into the host config; without it the MCP server reads the
-variable from its environment). disconnect reverts exactly what connect wrote.
-doctor diagnoses the desktop control service, registrations and skills.
+config file and entry it is about to write and requires explicit confirmation.
+Without --token it issues a scoped openRoomGrant credential through the running
+Corvid desktop and embeds it into the host config (disconnect revokes it);
+--token embeds an existing scoped token instead and disconnect leaves it alone.
+disconnect reverts exactly what connect wrote. doctor diagnoses the desktop
+control service, registrations and skills.
 `;
 
 function parseFlags(args) {
