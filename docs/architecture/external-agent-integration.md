@@ -62,6 +62,8 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 
 **openRoomGrant 授权合同**：connect 自动签发的客户端初始授权范围为空；经 `room_open` **自建**的 Room 自动并入其授权范围（持久化在数据目录 `agent-clients.json`，设置中可随时撤销整个客户端）。授权范围外已存在的同名/同 ID Room 一律返回 `CORVID_FORBIDDEN`，**不会**创建重名 Room——避免制造重名空间导致后续按名 openRoom 产生歧义。用户在设置中手工创建的授权客户端同样适用「自建 Room 自动并入」；显式勾选的空间授予仍然有效。
 
+**Profile（浏览身份）授权面**（Issue #418 拍板）：agent 可用的浏览身份 = 授权客户端被勾选空间覆盖的 Profile（多选）∪ `default`；`room_open` 传入范围外的 `profileId` 返回 `CORVID_FORBIDDEN`。多账号并行自动化 = 在设置中给同一授权客户端勾选多个 Profile 的空间，agent 即可在多个身份中并行自建 Room，Cookie 按各 Profile 语义隔离。不做无界任意身份访问：agent 能用哪些身份由用户通过授权显式决定；自动签发的凭据默认只见 `default`（即用户主浏览身份，agent 在其中的页面共享该 Profile 的登录态——与内置 Corvid Agent 同权）。
+
 ## corvid-browser skill
 
 `skills/corvid-browser/SKILL.md` 是随 connect 分发的 Agent 使用说明，内容：安全边界（执行环境非沙箱、托管即授权、高危动作模型自主确认）、决策阶梯（按工具面版本分档，P0 仅逐步工具级可用，`browser_script` 随 P1、`site_run` 随 P2 启用并升级文档版本）、Room 生命周期（openRoom→claim→操作→yieldControl/finish）、快照策略（语义快照 + ref 优先）、操作后检查、错误恢复（按 `CORVID_*` 错误码）与收尾分报清单。工具面变化时同步升级该文档并在 PR 中注明版本。
