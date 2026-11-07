@@ -269,6 +269,67 @@ function createServer() {
     return { performed: action.kind, target, snapshot };
   }));
 
+  registerReadTool(server, 'page_get_dialog', 'Read the currently pending dialog (alert, confirm, prompt, beforeunload) on the explicitly selected managed page, or null when none is pending. Pending dialogs block further page actions on that page until answered.', pageScopeSchema, async ({ roomId, tabId }) => withManagedPage(roomId, tabId, async page => ({ dialog: await page.dialog() })));
+
+  registerActionTool(server, 'page_handle_dialog', 'Answer the currently pending dialog on the explicitly selected managed page: accept or dismiss it, optionally providing the prompt text for a prompt dialog. Pending dialogs block further page actions on that page until answered; inspect page_get_dialog first to see what is being asked.', pageScopeSchema.extend({
+    accept: z.boolean(),
+    promptText: z.string().max(2000).optional(),
+  }), async ({ roomId, tabId, accept, promptText }) => withManagedPage(roomId, tabId, async page => {
+    if (accept) await page.acceptDialog(promptText);
+    else await page.dismissDialog();
+    return { answered: { accept, promptText: promptText ?? null }, dialog: await page.dialog() };
+  }));
+
+  registerActionTool(server, 'page_act_and_wait', 'Perform exactly one action (click, fill, press, hover, or select_option) on an explicitly selected managed page and wait for the resulting popup, download, or dialog in the same call. The event wait is armed BEFORE the action runs, matching the SDK ordering. Popup returns the newly observed managed page; download returns the agent download receipt (the desktop saves it to a temp location; use the returned path/filename in your report). Same Room/Tab gates as the single-step tools.', pageScopeSchema.extend({
+    action: pageActionSchema,
+    event: z.enum(['popup', 'download', 'dialog']),
+    timeoutMs: z.number().int().min(500).max(60_000).default(30_000),
+  }), async ({ roomId, tabId, action, event, timeoutMs }) => withManagedPage(roomId, tabId, async page => {
+    const target = action.target.by === 'ref' ? action.target.value : action.target;
+    const perform = async () => {
+      switch (action.kind) {
+        case 'click': return page.click(target);
+        case 'fill': return page.fill(target, action.value);
+        case 'press': return page.press(target, action.key);
+        case 'hover': return page.hover(target);
+        case 'select_option': return page.selectOption(target, action.choices);
+      }
+    };
+    if (event === 'dialog') {
+      // 打开对话框的动作会一直挂起直到应答：动作后台发射，这里轮询到对话框出现即返回。
+      const actionPromise = perform();
+      actionPromise.catch(() => {});
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        const dialog = await page.dialog();
+        if (dialog) return { event, dialog };
+        if (Date.now() >= deadline) throw Object.assign(new Error(`page_act_and_wait timed out after ${timeoutMs}ms waiting for a dialog; it may never open — check the action target`), { code: 'CORVID_TIMEOUT' });
+        await new Promise(resolve => setTimeout(resolve, Math.min(100, Math.max(1, deadline - Date.now()))));
+      }
+    }
+    if (event === 'popup') {
+      const popupPromise = page.waitForEvent('popup', { timeout: timeoutMs });
+      popupPromise.catch(() => {});
+      await perform();
+      const popup = await popupPromise;
+      const info = await popup.info();
+      return { event, page: { roomId: info.roomId, tabId: info.targetId, label: info.label, openedBy: info.openedBy, url: info.url, title: info.title } };
+    }
+    const downloadPromise = page.waitForEvent('download', { timeout: timeoutMs });
+    downloadPromise.catch(() => {});
+    await perform();
+    const download = await downloadPromise;
+    const state = await download.settled();
+    return {
+      event,
+      download: {
+        status: state.status, suggestedFilename: download.suggestedFilename(), url: download.url(),
+        ...(state.path === undefined ? {} : { path: state.path }),
+        ...(state.error === undefined ? {} : { error: state.error }),
+      },
+    };
+  }));
+
   if (process.env.CORVID_BROWSER_SCRIPT === '1') {
     const SCRIPT_RUNNER = fileURLToPath(new URL('./script-runner.mjs', import.meta.url));
     const SCRIPT_OUTPUT_BYTES = 32 * 1024;
