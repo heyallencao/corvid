@@ -155,7 +155,7 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_act_and_snapshot', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_navigate_and_snapshot', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
     for (const [name, properties] of Object.entries({
       page_info: ['roomId', 'tabId'],
       page_snapshot: ['roomId', 'scope', 'tabId'],
@@ -413,6 +413,26 @@ class McpProcess {
     assert.equal(keepAllFinish.value.closedRoom, false);
     assert.deepEqual(keepAllFinish.value.keptManagedLabels.sort(), ['p1', keepAllPage.value.label].sort());
     assert.deepEqual(keepAllFinish.value.closedManagedLabels, []);
+
+    const navSnap = await mcp.callTool('page_navigate_and_snapshot', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}slow`, waitState: 'load' });
+    assert.equal(navSnap.result.isError, undefined, JSON.stringify(navSnap.value).slice(0, 200));
+    assert.match(navSnap.value.navigated.url, /\/slow$/, 'composite navigate reports the reached URL');
+    assert.equal(navSnap.value.navigated.title, 'Slow MCP fixture', 'composite navigate waits for load before snapshotting');
+    const baseSnap = await mcp.callTool('page_navigate_and_snapshot', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}base`, waitState: 'load' });
+    assert.ok(baseSnap.value.snapshot.items.some(item => item.name === 'Toggle'), 'composite navigate returns snapshot items with refs');
+    const actSnap = await mcp.callTool('page_act_and_snapshot', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#toggle' } }, waitSelector: { target: { by: 'css', value: '#result' }, state: 'visible' } });
+    assert.equal(actSnap.result.isError, undefined, JSON.stringify(actSnap.value).slice(0, 200));
+    assert.equal(actSnap.value.performed, 'click');
+    assert.ok(actSnap.value.snapshot.items.some(item => item.name === 'Clicked'), 'composite act returns a post-action snapshot');
+    const fillSnap = await mcp.callTool('page_act_and_snapshot', { roomId: room.id, tabId: tab.id, action: { kind: 'fill', target: { by: 'role', value: 'textbox', name: 'Query' }, value: 'hello' } });
+    assert.equal(fillSnap.result.isError, undefined);
+    assert.equal(fillSnap.value.performed, 'fill');
+    // 已知缺陷（见 Enter 隐式提交 issue）：press('Enter') 不触发表单提交，提交走 click 提交按钮
+    const submitSnap = await mcp.callTool('page_act_and_snapshot', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'role', value: 'button', name: 'Search' } }, waitState: 'load' });
+    assert.equal(submitSnap.result.isError, undefined);
+    assert.ok(submitSnap.value.snapshot.items.some(item => item.name === 'Searched: hello'), 'click composite submits the form and snapshots the result');
+    const badAct = await mcp.callTool('page_act_and_snapshot', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#nonexistent' } } });
+    assert.equal(badAct.result.isError, true, 'composite surfaces action failures as tool errors');
 
     const waitingDuringHandoff = mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 5000 });
     const waitingForSelectorDuringHandoff = mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 5000 });

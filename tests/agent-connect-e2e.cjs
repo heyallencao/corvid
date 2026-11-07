@@ -146,6 +146,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(profileGuard.status, 403, 'a scoped client cannot create Rooms in a Profile outside its grant');
     const profileGuardList = await request(codexToken, '/rooms');
     assert.equal(profileGuardList.payload.rooms.some(room => room.name === 'connect-e2e-profile-room'), false, 'the refused profile-scoped open created no Room');
+    // 3c. 多身份正向：授权客户端被勾选第二个 Profile 的空间后，可在该身份下自建 Room
+    const secondProfile = await request(control.token, '/profiles', 'POST', { name: 'connect-e2e 第二身份' });
+    assert.equal(secondProfile.status, 200);
+    const secondProfileId = (secondProfile.payload.profile || secondProfile.payload).id;
+    const secondRoom = await request(control.token, '/rooms', 'POST', { name: 'connect-e2e 第二身份空间', profileId: secondProfileId });
+    assert.equal(secondRoom.status, 200);
+    const multiGrant = await request(control.token, '/agent-clients', 'POST', { name: 'Multi-profile Agent', roomIds: [(secondRoom.payload.room || secondRoom.payload).id], openRoomGrant: true });
+    assert.equal(multiGrant.status, 200);
+    const multiOpen = await request(multiGrant.payload.token, '/rooms/open', 'POST', { identifier: 'connect-e2e-multi-room', profileId: secondProfileId });
+    assert.equal(multiOpen.status, 200, 'a granted Profile is part of the usable identity set');
+    assert.equal(multiOpen.payload.profileId, secondProfileId);
+    const multiDefaultOpen = await request(multiGrant.payload.token, '/rooms/open', 'POST', { identifier: 'connect-e2e-multi-default' });
+    assert.equal(multiDefaultOpen.status, 200, 'default stays usable alongside granted Profiles');
 
     // 4. finish 收据字段合同
     const finished = await request(codexToken, `/rooms/${roomId}/finish`, 'POST', { keep: [] });

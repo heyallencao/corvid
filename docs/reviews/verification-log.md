@@ -2302,3 +2302,12 @@
 - 边界：新空间磁贴/标签栏的切换时序为定向 E2E 覆盖，未做人工多空间冒烟实拍；Windows 未验证；本次为用户直报修复，未单开 issue。合并门禁按 protocol 在最终候选上跑全量。
 - 追查（用户反馈「新建标签也会自动创建一个空间」）：两轮 Playwright _electron 复现（隔离 `CORVID_DATA_DIR`）均未复现——单空间连点 `#new-tab`×3 与 Cmd+T、三空间×两轮×每次连点两次后，dock 磁贴数与 `rooms.json` 空间数均不变（3 个空间、每个 5 个标签，数据层隔离完好）。代码层空间创建仅四条路径（启动兜底、新建窗口、dock「+」对话框、面板无空间兜底），顶部「+」不在此列。倾向解释：旧包过期标签栏 bug 让新标签追加在旧空间标签残影中，造成「新标签开了新空间」的错觉；待用户在修复版构建上复测。复现脚本存 `.scratch/repro-newtab-room*.cjs`（未入库）。
 - 交付用户实测：`npm run package:mac:dir`（未签名目录版，非安装器）产出 `dist/mac-arm64/Corvid.app`，已复制为 `~/Desktop/Corvid-test.app`（arm64，含本轮三处修复）。
+
+## 2026-11-07 Issue #422 P1.3 MCP 复合工具
+
+- 基线：worktree `.worktrees/issue-422-composite`，分支 `agent/issue-422-composite-tools`（基点 origin/main `1762570`）；环境同前述记录。
+- 交付：`page_navigate_and_snapshot`（导航 + load/domcontentloaded 等待 + 语义快照一次调用）与 `page_act_and_snapshot`（click/fill/press/hover/select_option 之一 + 文档态或 selector 等待 + 快照一次调用），均复用 `withManagedPage` 既有 Room/Tab 闸门与共享 locator 规则；SKILL.md 级 0 用法更新（复合优先）与 architecture/feature-board/e2e-suites 同步。
+- token 对比基线（实测，本地 fixture，MCP text content 字节数）：导航观测路径旧三连调用（navigate+wait_for_load+snapshot）3 次调用 918 字节 → 复合 1 次调用 558 字节（-39% 字节、-2 次往返）；动作观测路径旧两连调用（click+snapshot）463 字节 vs 复合 487 字节（字节持平，-1 次往返）。LLM 侧 token 大头为每次工具调用的往返开销，往返次数是主要收益。
+- 过程中发现既有缺陷并开单：`page_press`/SDK `Page.press` 的 'Enter' 不触发表单隐式提交（合成键盘 keyDown 无 `text:'\r'`，Playwright 同场景携带）——见 Issue #423（priority:P2，修复涉及共享键盘路径需回归 keyboard 用例）。P1.3 E2E 的提交流改走 click 提交按钮路径。
+- 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（新增复合工具覆盖：load 等待语义、click 后快照含状态文本、fill、click 提交按钮、动作失败透传）；`env -u ELECTRON_RUN_AS_NODE node tests/agent-connect-e2e.cjs` 全绿（新增多身份正向断言：授权第二 Profile → `room_open` 允许、default 并行可用）。
+- 边界：复合工具不改变桌面端闸门语义；press 提交缺口由 Issue #423 跟踪；多 Room 并发复合调用未专项覆盖。
