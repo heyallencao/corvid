@@ -258,16 +258,23 @@ function pageOperation(operation, args, seed) {
   }
   throw new Error('Unsupported operation');
 }
+async function runPageOperation(contents, operation, options) {
+  const code=`(()=>{try{return {ok:true,result:(${pageOperation.toString()})(${JSON.stringify(operation)},${JSON.stringify(options)},${JSON.stringify(crypto.randomUUID())})}}catch(error){return {ok:false,error:String(error.message || error)}}})()`;
+  const result=await contents.executeJavaScriptInIsolatedWorld(4815,[{code}]);
+  if(!result.ok) throw new Error(result.error);
+  return result.result;
+}
+async function prepareFileInput(contents, args) {
+  await validateFiles(args.files);
+  const {ref}=await runPageOperation(contents,'resolve',args);
+  await runPageOperation(contents,'file-validate',{target:ref,count:args.files.length,nonce:crypto.randomUUID()});
+  return ref;
+}
 module.exports = async function runAction(contents, operation, args = {}, hooks = {}) {
   const reportInput = (action, point) => {
     try { hooks.onInput?.({ operation:action, point:{x:point.x,y:point.y} }); } catch {}
   };
-  const run = async (op, options) => {
-    const code=`(()=>{try{return {ok:true,result:(${pageOperation.toString()})(${JSON.stringify(op)},${JSON.stringify(options)},${JSON.stringify(crypto.randomUUID())})}}catch(error){return {ok:false,error:String(error.message || error)}}})()`;
-    const result=await contents.executeJavaScriptInIsolatedWorld(4815,[{code}]);
-    if(!result.ok) throw new Error(result.error);
-    return result.result;
-  };
+  const run = (op, options) => runPageOperation(contents,op,options);
   if (operation === 'screenshot') {
     if(args.fullPage!==undefined && typeof args.fullPage!=='boolean')throw new Error('fullPage must be boolean');
     if(args.fullPage && args.clip!==undefined)throw new Error('fullPage and clip cannot be combined');
@@ -319,11 +326,11 @@ module.exports = async function runAction(contents, operation, args = {}, hooks 
   }
   if (operation === 'setInputFiles') {
     await validateFiles(args.files);
-    const {ref}=await run('resolve',args);
+    const ref=hooks.preparedFileTarget || (await run('resolve',args)).ref;
     const nonce=crypto.randomUUID();
     await run('file-validate',{target:ref,count:args.files.length,nonce});
     if(args.files.length===0) return run('file-clear',{target:ref});
-    return setFiles(contents,ref,args.files,nonce);
+    return setFiles(contents,ref,args.files,nonce,hooks.beforeFileSelection);
   }
   if (['mouseMove','mouseDown','mouseUp','mouseClick','mouseWheel'].includes(operation)) return pointerAction(contents,operation,args,run);
   if (operation==='dragAndDrop') {
@@ -339,6 +346,7 @@ module.exports = async function runAction(contents, operation, args = {}, hooks 
   if (['keyboardDown','keyboardUp','keyboardPress','keyboardType','keyboardInsertText','keyboardPaste'].includes(operation)) return keyboardAction(contents,operation,args);
   if (operation==='cdp') {
     if(typeof args.method!=='string' || !args.method)throw new Error('CDP method is required');
+    if(args.method==='DOM.setFileInputFiles' || args.method.startsWith('Target.'))throw Object.assign(new Error('File selection and CDP target sessions must use Corvid-managed authorization'),{code:'CORVID_FORBIDDEN'});
     if(args.params!==undefined && (args.params===null || typeof args.params!=='object' || Array.isArray(args.params)))throw new Error('CDP params must be an object');
     await pageDebugger.ensure(contents);
     try {return {result:await contents.debugger.sendCommand(args.method,args.params || {})};}
@@ -348,11 +356,20 @@ module.exports = async function runAction(contents, operation, args = {}, hooks 
   if (!['snapshot','text','select','selector-state'].includes(operation)) throw new Error('Unsupported operation');
   return run(operation,args);
 };
-async function validateFiles(files) {
+async function validateFiles(files,expectedIdentities) {
   if (!Array.isArray(files) || files.some(file=>typeof file!=='string' || !path.isAbsolute(file))) throw new Error('Files must be an array of absolute paths');
-  for (const file of files) {const info=await fs.stat(file);if(!info.isFile()) throw new Error(`Not a regular file: ${file}`);}
+  const identities=await Promise.all(files.map(async file=>{
+    const absolute=path.resolve(file);
+    const [link,target,realPath]=await Promise.all([fs.lstat(absolute,{bigint:true}),fs.stat(absolute,{bigint:true}),fs.realpath(absolute)]);
+    if(link.isSymbolicLink())throw Object.assign(new Error(`Symbolic links are not supported for file selection: ${file}`),{code:'CORVID_FORBIDDEN'});
+    if(!target.isFile())throw new Error(`Not a regular file: ${file}`);
+    return JSON.stringify([absolute,realPath,link.dev,link.ino,target.dev,target.ino,target.size,target.mtimeNs,target.ctimeNs].map(String));
+  }));
+  if(expectedIdentities && (identities.length!==expectedIdentities.length || identities.some((identity,index)=>identity!==expectedIdentities[index])))throw Object.assign(new Error('A selected file changed while approval was pending; request approval again'),{code:'CORVID_STALE_REFERENCE'});
+  return identities;
 }
 module.exports.validateFiles=validateFiles;
+module.exports.prepareFileInput=prepareFileInput;
 function pointerState(contents) {let state=pointers.get(contents);if(!state){state={x:0,y:0,buttons:0};pointers.set(contents,state);}return state;}
 async function pointerAction(contents,operation,args,run) {
   const state=pointerState(contents);await pageDebugger.ensure(contents);
@@ -404,7 +421,7 @@ module.exports.releasePointer=async function(contents) {
   for(const [button,mask] of [['left',1],['right',2],['middle',4]])if(state.buttons & mask){await contents.debugger.sendCommand('Input.dispatchMouseEvent',{type:'mouseReleased',x:state.x,y:state.y,button,buttons:state.buttons & ~mask,clickCount:1});state.buttons &= ~mask;}
 };
 
-async function setFiles(contents,ref,files,nonce) {
+async function setFiles(contents,ref,files,nonce,beforeFileSelection) {
   await pageDebugger.ensure(contents);
   const contexts=new Set();
   const listener=(_event,method,params)=>{if(method==='Runtime.executionContextCreated')contexts.add(params.context.id);};
@@ -421,6 +438,7 @@ async function setFiles(contents,ref,files,nonce) {
     const evaluated=await contents.debugger.sendCommand('Runtime.evaluate',{contextId,expression,objectGroup:'corvid-upload'});
     if(evaluated.exceptionDetails || !evaluated.result.objectId) throw new Error('Stale or unavailable file input');
     objectId=evaluated.result.objectId;
+    await beforeFileSelection?.();
     await contents.debugger.sendCommand('DOM.setFileInputFiles',{objectId,files});
     return {ok:true};
   } finally {

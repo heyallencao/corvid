@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('browserShell', {
   onAgentTaskSummaries: callback => ipcRenderer.on('agent-task-summary-state', (_event, payload) => callback(payload)),
   onPiAuthEvent: callback => ipcRenderer.on('pi-auth-event', (_event, event) => callback(event)),
   onPiAuthPrompt: callback => ipcRenderer.on('pi-auth-prompt', (_event, prompt) => callback(prompt)),
+  onAgentApprovalEvent: callback => ipcRenderer.on('agent-approval-event', (_event, event) => callback(event)),
   onFindOpen: callback => ipcRenderer.on('shell-find-open', () => callback()),
   onFindNext: callback => ipcRenderer.on('shell-find-next', (_event, options) => callback(options || {})),
   onPrintPage: callback => ipcRenderer.on('shell-print-page', (_event, request) => callback(request || {})),

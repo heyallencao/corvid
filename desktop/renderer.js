@@ -928,7 +928,76 @@ api.onPiAuthPrompt(async request=>{
   cancelled=result===null;value=result;
   if(input.tagName==='SELECT'){const replacement=document.createElement('input');replacement.id='pi-auth-input';replacement.autocomplete='off';input.replaceWith(replacement);}
   try{await api.invoke('resolvePiAuthPrompt',{id:request.id,value,cancelled});}catch(error){const status=document.querySelector('.pi-model-status');if(status)status.textContent=extensionMessages.t('authorizationStepFailed',{message:userFacingAgentError(error)});}
-}); api.invoke('state').then(draw);
+});
+const agentApprovalQueue=[];
+const agentApprovalDialog=document.querySelector('#agent-approval-dialog');
+let activeAgentApproval=null;
+function enqueueAgentApproval(request){
+  if(!request?.id || activeAgentApproval?.id===request.id || agentApprovalQueue.some(item=>item.id===request.id))return;
+  agentApprovalQueue.push(request);
+  showNextAgentApproval();
+}
+function showNextAgentApproval(){
+  if(activeAgentApproval || !agentApprovalQueue.length || agentApprovalDialog.open)return;
+  const request=activeAgentApproval=agentApprovalQueue.shift();
+  const t=key=>extensionMessages.t(key);
+  document.querySelector('#agent-approval-title').textContent=t(request.kind==='upload'?'approvalUploadTitle':'approvalConfirmTitle');
+  document.querySelector('#agent-approval-client').textContent=request.clientName||'';
+  document.querySelector('#agent-approval-room').textContent=request.room?.name||'';
+  document.querySelector('#agent-approval-page').textContent=[request.page?.title,request.page?.source].filter(Boolean).join(' · ');
+  const action=document.querySelector('#agent-approval-action'),filesPanel=document.querySelector('#agent-approval-files-panel'),filesList=document.querySelector('#agent-approval-files');
+  if(request.kind==='upload'){
+    action.hidden=false;filesPanel.hidden=false;
+    document.querySelector('#agent-approval-action-title').textContent=t('approvalUploadAction');
+    document.querySelector('#agent-approval-summary').textContent=t('approvalUploadSummary');
+    document.querySelector('#agent-approval-impact').textContent=t('approvalUploadImpact');
+    document.querySelector('#agent-approval-description').textContent=t('approvalUploadOneTime');
+    document.querySelector('#agent-approval-file-count').textContent=t(request.fileCount===1?'approvalFileCountOne':'approvalFileCountMany',{count:extensionMessages.formatNumber(request.fileCount||0)});
+    filesList.replaceChildren(...(request.files||[]).map(name=>{const item=document.createElement('li');item.textContent=name;return item;}));
+  }else{
+    action.hidden=false;filesPanel.hidden=true;filesList.replaceChildren();
+    document.querySelector('#agent-approval-action-title').textContent=t('approvalAction');
+    document.querySelector('#agent-approval-summary').textContent=request.summary||'';
+    document.querySelector('#agent-approval-impact').textContent=request.impact||'';
+    document.querySelector('#agent-approval-description').textContent=t('approvalConfirmOneTime');
+  }
+  document.querySelector('#agent-approval-status').textContent='';
+  agentApprovalDialog.showModal();
+  document.querySelector('#agent-approval-deny').focus();
+}
+async function answerAgentApproval(approved){
+  const request=activeAgentApproval;if(!request)return;
+  activeAgentApproval=null;
+  if(agentApprovalDialog.open)agentApprovalDialog.close(approved?'approve':'deny');
+  try{await api.invoke('resolveAgentApproval',{id:request.id,approved});}
+  catch(error){console.error('Agent approval response failed:',error.message);}
+  showNextAgentApproval();
+}
+function cancelAgentApproval(requestId){
+  const index=agentApprovalQueue.findIndex(item=>item.id===requestId);
+  if(index>=0)agentApprovalQueue.splice(index,1);
+  if(activeAgentApproval?.id===requestId){activeAgentApproval=null;if(agentApprovalDialog.open)agentApprovalDialog.close('cancelled');}
+  showNextAgentApproval();
+}
+document.querySelector('#agent-approval-approve').onclick=()=>void answerAgentApproval(true);
+document.querySelector('#agent-approval-deny').onclick=()=>void answerAgentApproval(false);
+document.querySelector('#agent-approval-close').onclick=()=>void answerAgentApproval(false);
+document.querySelector('#agent-approval-take-control').onclick=async()=>{
+  const request=activeAgentApproval;if(!request)return;
+  activeAgentApproval=null;if(agentApprovalDialog.open)agentApprovalDialog.close('take-control');
+  let taken=false;
+  try{await api.invoke('requestUserControl',{id:request.room.id});taken=true;}catch(error){console.error('Could not take control from approval card:',error.message);}
+  if(!taken)try{await api.invoke('resolveAgentApproval',{id:request.id,approved:false});}catch{}
+  showNextAgentApproval();
+};
+agentApprovalDialog.addEventListener('cancel',event=>{event.preventDefault();void answerAgentApproval(false);});
+agentApprovalDialog.addEventListener('click',event=>{if(event.target===agentApprovalDialog)void answerAgentApproval(false);});
+api.onAgentApprovalEvent(event=>{
+  if(event.type==='request')enqueueAgentApproval(event.request);
+  else if(event.type==='cancel')cancelAgentApproval(event.id);
+});
+void api.invoke('listAgentApprovals').then(result=>(result.requests||[]).forEach(enqueueAgentApproval)).catch(()=>{});
+api.invoke('state').then(draw);
 const popupMenuBindings=[['profile-menu-trigger','profile-menu'],['library-trigger','library-menu'],['room-menu-trigger','room-menu']].map(([triggerId,menuId])=>({trigger:document.querySelector(`#${triggerId}`),menu:document.querySelector(`#${menuId}`)}));
 function popupMenuItems(menu){return [...menu.querySelectorAll('[role="menuitem"]:not(:disabled)')];}
 function closePopupMenu(menu,{restoreFocus=false}={}){if(menu.hidden)return;menu.hidden=true;const binding=popupMenuBindings.find(item=>item.menu===menu);binding?.trigger.setAttribute('aria-expanded','false');if(restoreFocus)binding?.trigger.focus();}

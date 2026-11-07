@@ -9,7 +9,7 @@ import { CODES, CorvidError, errorFromResponse } from './errors.js';
 /** Connect to the desktop control service without exposing a browser debugging endpoint. */
 const { resolveDataDirectory } = dataDirectory;
 
-export async function connect({ dataDir = resolveDataDirectory({ override:process.env.CORVID_DATA_DIR, homeDir:homedir() }), baseUrl, token } = {}) {
+export async function connect({ dataDir = resolveDataDirectory({ override:process.env.CORVID_DATA_DIR, homeDir:homedir() }), baseUrl, token, signal } = {}) {
   let config;
   if (token !== undefined && baseUrl === undefined) {
     if (typeof token !== 'string' || !token) throw new TypeError('A non-empty scoped token is required');
@@ -31,6 +31,7 @@ export async function connect({ dataDir = resolveDataDirectory({ override:proces
       method: options.method || 'GET',
       headers: { authorization: `Bearer ${config.token}`, ...(options.body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      signal: options.signal ?? signal,
     });
     if (!response.ok) {
       const text = await response.text();
@@ -96,6 +97,13 @@ class Room {
   async adopt(page,options={}) {if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).some(key=>key!=='as'))throw new Error('Invalid adopt options');const tabId=typeof page==='string'?page:page instanceof Page?await page.resolveId():page?.id;if(typeof tabId!=='string' || !tabId)throw new Error('A tab or tab ID is required');if(page instanceof Page && page.roomId!==this.id)throw new Error('Page belongs to a different room');const tab=await this.client.api(`/rooms/${encodeURIComponent(this.id)}/adopt`,{method:'POST',body:{tabId,...options}});return new Page(this.client,tab.id,this.id,tab.label,tab.openedBy);}
   async release(label) {return this.client.api(`/rooms/${encodeURIComponent(this.id)}/release`,{method:'POST',body:{label}});}
   async finish(options) {if(!options || typeof options!=='object' || Array.isArray(options) || !Object.hasOwn(options,'keep') || Object.keys(options).some(key=>key!=='keep'))throw new Error('finish requires a keep option');return this.client.api(`/rooms/${encodeURIComponent(this.id)}/finish`,{method:'POST',body:{keep:options.keep}});}
+  async confirmAction(options={}) {
+    if(!options || typeof options!=='object' || Array.isArray(options) || Object.keys(options).some(key=>!['tabId','summary','impact','timeoutMs'].includes(key)))throw new TypeError('confirmAction accepts tabId, summary, impact, and timeoutMs');
+    const {tabId,summary,impact,timeoutMs=30_000}=options;
+    if(typeof tabId!=='string' || !tabId || typeof summary!=='string' || !summary.trim() || summary.length>1000 || typeof impact!=='string' || !impact.trim() || impact.length>2000)throw new TypeError('confirmAction requires a page ID, action summary, and impact description');
+    if(!Number.isInteger(timeoutMs) || timeoutMs<100 || timeoutMs>180_000)throw new RangeError('timeoutMs must be an integer between 100 and 180000');
+    return this.client.api(`/rooms/${encodeURIComponent(this.id)}/confirm-action`,{method:'POST',body:{tabId,summary:summary.trim(),impact:impact.trim(),timeoutMs}});
+  }
   async close() { return this.client.api(`/rooms/${encodeURIComponent(this.id)}`, { method: 'DELETE' }); }
   async yieldControl() { return this.client.api(`/rooms/${encodeURIComponent(this.id)}/yieldControl`, { method: 'POST', body: {} }); }
   async resumeControl() { return this.client.api(`/rooms/${encodeURIComponent(this.id)}/resumeControl`, { method: 'POST', body: {} }); }

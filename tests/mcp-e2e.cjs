@@ -161,7 +161,7 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_act_and_snapshot', 'page_act_and_wait', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_get_dialog', 'page_handle_dialog', 'page_hover', 'page_info', 'page_navigate', 'page_navigate_and_snapshot', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
+    assert.deepEqual(names, ['confirm_action', 'list_profiles', 'list_rooms', 'list_tabs', 'page_act_and_snapshot', 'page_act_and_wait', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_get_dialog', 'page_handle_dialog', 'page_hover', 'page_info', 'page_navigate', 'page_navigate_and_snapshot', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_upload', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
     for (const [name, properties] of Object.entries({
       page_info: ['roomId', 'tabId'],
       page_snapshot: ['roomId', 'scope', 'tabId'],
@@ -173,7 +173,7 @@ class McpProcess {
       assert.deepEqual(Object.keys(tool.inputSchema.properties).sort(), properties, `${name} exposes its shared input contract`);
     }
     assert.ok(listed.tools.filter(tool => tool.name.startsWith('list_') || ['page_info', 'page_screenshot', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === true && tool.annotations?.destructiveHint === false));
-    assert.ok(listed.tools.filter(tool => ['page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
+    assert.ok(listed.tools.filter(tool => ['confirm_action', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_navigate', 'page_new', 'page_press', 'page_reload', 'page_scroll', 'page_select_option', 'page_upload'].includes(tool.name)).every(tool => tool.annotations?.readOnlyHint === false && tool.annotations?.openWorldHint === true));
 
     const profiles = await mcp.callTool('list_profiles', {});
     const profileId = profiles.value.find(profile => profile.id === 'default').id;

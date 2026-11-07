@@ -69,6 +69,13 @@ function createAgentClientsStore(filePath) {
 
   function list() { return read().clients.map(publicClient); }
 
+  function findById(id) {
+    const internal = [...internalClients.values()].find(client => client.id === id);
+    if (internal) return publicClient(internal);
+    const client = read().clients.find(item => item.id === id);
+    return client ? publicClient(client) : null;
+  }
+
   function revoke(id) {
     const store = read();
     const client = store.clients.find(item => item.id === id);
@@ -89,7 +96,7 @@ function createAgentClientsStore(filePath) {
     return publicClient(client);
   }
 
-  return { create, createInternal, list, revoke, revokeInternal, grantRooms, findByToken };
+  return { create, createInternal, list, findById, revoke, revokeInternal, grantRooms, findByToken };
 }
 
 function publicClient(client) {

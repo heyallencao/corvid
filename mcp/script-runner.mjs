@@ -2,9 +2,9 @@
 // browser_script 子进程执行器：与 `cli/corvid.mjs run` 同引擎（SDK 子集，本地 Node
 // 权限运行，非沙箱）。由 mcp/corvid.mjs 拉起：stdin 收 { roomId, script }，stdout 回
 // JSON 收据；父进程负责超时强杀（kill 后桌面端页面状态不受影响——SDK 是无状态 HTTP）。
-// 绑定面提供 room/client 两个 SDK 对象（脚本另可通过 dynamic import 触达整个 Node
-// API——这是非沙箱合同的一部分）；不提供任何 raw CDP 逃生舱。入口执行与页面动作
-// 工具一致的 Room 闸门（Agent 控制、无待接管、无执行风险）。
+// 绑定面提供 room/client 两个实际 SDK 对象（含 Page.cdp；控制 API 拒绝 DOM.setFileInputFiles
+// 与 Target.*，其他 CDP 方法可用）。脚本另可通过 dynamic import 触达整个 Node API，并读取
+// control.json 管理员凭据直接请求控制 API；入口 Room 闸门不隔离这类本地高权限路径。
 import { connect } from '../sdk/index.js';
 import capabilityCore from '../desktop/agent-browser-capabilities.cjs';
 
@@ -46,8 +46,10 @@ console.warn = console.log;
 console.error = console.log;
 
 async function main() {
+  const token=process.env.CORVID_AGENT_TOKEN;
+  if(!token)throw Object.assign(new Error('browser_script requires a scoped Agent credential'),{code:'CORVID_UNAUTHORIZED'});
   trace('connecting');
-  const client = await connect();
+  const client = await connect({token});
   trace('connected');
   try {
     const room = await client.room(payload.roomId);

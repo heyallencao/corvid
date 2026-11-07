@@ -69,6 +69,8 @@ const { createPiModelManager } = require('./pi-models.cjs');
 const usePiFixture=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_PI_REAL_MODEL!=='1';
 const pendingPiAuthPrompts = new Map();
 let nextPiAuthPromptId = 0;
+const pendingAgentApprovals = new Map();
+let nextAgentApprovalId = 0;
 const piModelManager = createPiModelManager({ dataDir, agentDir:path.join(dataDir,'pi-agent'), safeStorage, openExternal: url => shell.openExternal(url), promptAuth: (providerId, prompt) => new Promise((resolve, reject) => {
   const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.isFocused()) || [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed());
   if (!record) { reject(new Error('找不到可完成账号授权的 Corvid 窗口')); return; }
@@ -646,6 +648,86 @@ function readSavedRooms() {
 function applyZoom(profileId) {const zoom=profileSettings(profileId).zoom;for(const tab of tabs.values()) if(findRoom(tab.roomId).profileId===profileId) tab.view.webContents.setZoomFactor(zoom);}
 const findRoom = roomId => { const room = rooms.find(s => s.id === roomId); if (!room) throw new Error('Room not found'); return room; };
 const findTab = tabId => { const tab = tabs.get(tabId); if (!tab) throw new Error('Tab not found'); return tab; };
+const AGENT_APPROVAL_TIMEOUT_MS = 180_000;
+function safeApprovalText(value,limit=500) {
+  return String(value ?? '').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g,' ').replace(/\s+/g,' ').trim().slice(0,limit);
+}
+function agentApprovalContext(roomId,tabId,principal) {
+  const room=findRoom(roomId),tab=findTab(tabId),clientId=principal?.client?.id;
+  if(principal?.kind!=='agent' || !clientId)throw Object.assign(new Error('User approval is available only to an authorized external Agent'),{code:'CORVID_FORBIDDEN'});
+  if(tab.roomId!==room.id || !room.tabIds.includes(tab.id) || !tab.label)throw Object.assign(new Error('Approval requires a managed page bound to this Room'),{code:'CORVID_CONTROL_LOST'});
+  const pageUrl=tab.view.webContents.getURL() || 'about:blank';
+  const pageTitle=tab.view.webContents.getTitle() || pageUrl;
+  const profileId=room.profileId,pageLabel=tab.label,windowId=room.windowId;
+  const validate=()=>{
+    const currentClient=agentClients.findById(clientId);
+    return rooms.includes(room) && tabs.get(tab.id)===tab && room.profileId===profileId && room.windowId===windowId && room.ownership==='agent' && !room.userResumePending && !room.executionRisk && room.tabIds.includes(tab.id) && tab.roomId===room.id && tab.label===pageLabel && !tab.view.webContents.isDestroyed() && tab.view.webContents.getURL()===(pageUrl || 'about:blank') && Boolean(currentClient && !currentClient.revoked && currentClient.roomIds.includes(room.id));
+  };
+  if(!validate())throw Object.assign(new Error('Room or page is no longer available for Agent approval'),{code:'CORVID_CONTROL_LOST'});
+  let source='about:blank';
+  try { const parsed=new URL(pageUrl);source=parsed.origin==='null' ? parsed.protocol==='about:' ? 'about:blank' : parsed.protocol : parsed.origin; } catch {}
+  return {room,tab,clientId,clientName:safeApprovalText(principal.client.name,80),pageUrl,pageTitle:safeApprovalText(pageTitle,240),pageSource:safeApprovalText(source,512),pageLabel,profileId,windowId,validate};
+}
+function settleAgentApproval(pending,approved,reason,{notify=false}={}) {
+  if(pendingAgentApprovals.get(pending.id)!==pending)return false;
+  pendingAgentApprovals.delete(pending.id);
+  clearTimeout(pending.timer);
+  if(pending.signal && pending.abortHandler)pending.signal.removeEventListener('abort',pending.abortHandler);
+  if(notify){const record=windowRecords.get(pending.windowId);if(record&&!record.browserWindow.isDestroyed())record.browserWindow.webContents.send('agent-approval-event',{type:'cancel',id:pending.id,reason});}
+  pending.resolve({status:approved?'approved':'denied',reason});
+  return true;
+}
+function cancelAgentApprovals({roomId,tabId,clientId,reason='context_changed'}={}) {
+  for(const pending of pendingAgentApprovals.values()){
+    if(roomId && pending.roomId!==roomId)continue;
+    if(tabId && pending.tabId!==tabId)continue;
+    if(clientId && pending.clientId!==clientId)continue;
+    settleAgentApproval(pending,false,reason,{notify:true});
+  }
+}
+function promptAgentApproval({context,kind,files=[],summary='',impact='',timeoutMs=AGENT_APPROVAL_TIMEOUT_MS,signal}) {
+  if(!Number.isInteger(timeoutMs) || timeoutMs<100 || timeoutMs>AGENT_APPROVAL_TIMEOUT_MS)throw Object.assign(new Error('Approval timeout must be 100–180000 ms'),{code:'CORVID_INVALID_ARGUMENT'});
+  if(signal?.aborted)return Promise.resolve({status:'denied',reason:'disconnected'});
+  if(!context.validate())throw Object.assign(new Error('Room or page changed before approval was requested'),{code:'CORVID_CONTROL_LOST'});
+  if(pendingAgentApprovals.size>=32)throw Object.assign(new Error('Too many Agent approval requests are pending'),{code:'CORVID_BUSY'});
+  const record=windowRecords.get(context.windowId);
+  if(!record || record.browserWindow.isDestroyed() || record.browserWindow.webContents.isDestroyed())throw Object.assign(new Error('No Corvid window is available to show this approval request'),{code:'CORVID_NOT_FOUND'});
+  const id=`agent-approval-${++nextAgentApprovalId}`;
+  const request={id,kind,clientName:context.clientName,room:{id:context.room.id,name:safeApprovalText(context.room.name,120)},page:{id:context.tab.id,label:context.pageLabel,title:context.pageTitle,source:context.pageSource},...(kind==='upload'?{files:files.map(file=>safeApprovalText([path.basename(path.dirname(file)),path.basename(file)].filter(Boolean).join(path.sep),255)),fileCount:files.length}:{summary:safeApprovalText(summary,1000),impact:safeApprovalText(impact,2000)}),expiresAt:Date.now()+timeoutMs};
+  return new Promise(resolve=>{
+    const pending={id,kind,roomId:context.room.id,tabId:context.tab.id,clientId:context.clientId,windowId:record.id,request,validate:context.validate,signal,resolve,timer:null,abortHandler:null};
+    pending.timer=setTimeout(()=>settleAgentApproval(pending,false,'timeout',{notify:true}),timeoutMs);
+    if(signal){pending.abortHandler=()=>settleAgentApproval(pending,false,'disconnected',{notify:true});signal.addEventListener('abort',pending.abortHandler,{once:true});}
+    pendingAgentApprovals.set(id,pending);
+    if(record.browserWindow.isMinimized())record.browserWindow.restore();
+    if(!record.browserWindow.isVisible())record.browserWindow.show();
+    record.browserWindow.focus();
+    record.browserWindow.webContents.send('agent-approval-event',{type:'request',request});
+  });
+}
+function pendingAgentApprovalsForWindow(windowId) {
+  return [...pendingAgentApprovals.values()].filter(pending=>pending.windowId===windowId).map(pending=>pending.request);
+}
+function respondAgentApproval(id,approved,windowId) {
+  if(typeof approved!=='boolean')throw Object.assign(new Error('Approval decision must be a boolean'),{code:'CORVID_INVALID_ARGUMENT'});
+  const pending=pendingAgentApprovals.get(id);
+  if(!pending || pending.windowId!==windowId)throw Object.assign(new Error('Approval request is no longer available'),{code:'CORVID_STALE_REFERENCE'});
+  if(approved && !pending.validate()){
+    settleAgentApproval(pending,false,'context_changed',{notify:true});
+    return {ok:true,approved:false,status:'denied',reason:'context_changed'};
+  }
+  settleAgentApproval(pending,approved,approved?'approved':'user_denied');
+  return {ok:true,approved,status:approved?'approved':'denied',reason:approved?'approved':'user_denied'};
+}
+function uploadAuthorizationError(reason) {
+  if(reason==='timeout')return Object.assign(new Error('File selection approval timed out; no files were selected'),{code:'CORVID_TIMEOUT'});
+  if(['control_lost','context_changed','page_changed','room_closed','authorization_revoked'].includes(reason))return Object.assign(new Error('Room or page changed before file selection was approved'),{code:'CORVID_CONTROL_LOST'});
+  return Object.assign(new Error('File selection was not approved; no files were selected'),{code:'CORVID_USER_DENIED'});
+}
+function ensureUploadAuthorization(context,signal) {
+  if(signal?.aborted)throw Object.assign(new Error('File selection request was cancelled'),{code:'CORVID_CANCELLED'});
+  if(!context.validate())throw Object.assign(new Error('Room, page, or Agent authorization changed before file selection'),{code:'CORVID_CONTROL_LOST'});
+}
 // Pinned tabs form a prefix of tabIds: pinned first, then the rest in user order.
 const tabPartition = room => ({pinned:room.tabIds.filter(id=>tabs.get(id)?.pinned),unpinned:room.tabIds.filter(id=>!tabs.get(id)?.pinned)});
 const normalizeTabOrder = room => { const {pinned,unpinned}=tabPartition(room); room.tabIds=[...pinned,...unpinned]; };
@@ -741,7 +823,7 @@ function installDownloads(partition,profileId) {
     const room=findRoom(tab.roomId);
     // Device and permission decisions belong to the user. Transfer ownership
     // before displaying the request so new automation cannot race the choice.
-    if(room.ownership==='agent') {for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);pageDebugger.cancelChooser(findTab(tabId).view.webContents).catch(()=>{});}room.ownership='user';room.yielded=true;room.manualControl=Boolean(room.userResumePending);update();}
+    if(room.ownership==='agent') {cancelAgentApprovals({roomId:room.id,reason:'control_lost'});for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);pageDebugger.cancelChooser(findTab(tabId).view.webContents).catch(()=>{});}room.ownership='user';room.yielded=true;room.manualControl=Boolean(room.userResumePending);update();}
     const requestedUrl=details.requestingUrl;
     const profile=findProfile(room.profileId);
     const permissionName=permissionDisplayName(permission,details.mediaTypes,mainMessages);
@@ -836,6 +918,7 @@ const findWindowRecord = windowId => { const record=windowRecords.get(windowId);
 // a WebContentsView can only be a child of one window's contentView at a time.
 function moveRoomToWindow(room, record) {
   if (room.windowId === record.id) return;
+  cancelAgentApprovals({roomId:room.id,reason:'context_changed'});
   const previous = windowRecords.get(room.windowId);
   for (const tabId of room.tabIds) {
     const tab = tabs.get(tabId);
@@ -896,7 +979,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('did-finish-load',()=>{tab.domReady=true;tab.loadComplete=true;tab.isLoading=false;});
   view.webContents.on('will-prevent-unload',event=>{
     if(!tabs.has(tabId))return;
-    if(s.ownership==='agent'){for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
+    if(s.ownership==='agent'){cancelAgentApprovals({roomId:s.id,reason:'control_lost'});for(const id of s.tabIds)agentDownloads.cancelTab(id);s.ownership='user';s.yielded=true;s.manualControl=true;update();}
     const choice=dialog.showMessageBoxSync(window,{type:'warning',buttons:[mainMessages.t('stayOnPage'),mainMessages.t('leavePage')],defaultId:0,cancelId:0,title:mainMessages.t('leavePageTitle'),message:mainMessages.t('unsavedChangesMessage'),detail:mainMessages.t('unsavedChangesDetail',{room:s.name})});
     tab.beforeUnloadAllowed=choice===1;if(tab.beforeUnloadAllowed)event.preventDefault();
   });
@@ -920,7 +1003,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   tabs.set(tabId,tab); s.tabIds.push(tabId); s.activeTabId = tabId; owner.browserWindow.contentView.addChildView(view); owner.frontView=null; view.setVisible(false);
   if(url!=='about:blank'||metadata.notifyInitialState) update(owner);
   const changed = () => { if (!quitting && tabs.has(tabId)) update(owner); };
-  view.webContents.on('did-start-navigation',(_event,url,_isInPlace,isMainFrame)=>{if(!isMainFrame||url==='about:blank')return;if(tab.navigationError&&url.startsWith('chrome-error://'))return;tab.isLoading=true;tab.navigationError=null;changed();});
+  view.webContents.on('did-start-navigation',(_event,url,isInPlace,isMainFrame)=>{if(isMainFrame&&!isInPlace)cancelAgentApprovals({tabId,reason:'page_changed'});if(!isMainFrame||url==='about:blank')return;if(tab.navigationError&&url.startsWith('chrome-error://'))return;tab.isLoading=true;tab.navigationError=null;changed();});
   view.webContents.on('did-finish-load',()=>{if(view.webContents.getURL()==='about:blank'&&s.ownership==='user'&&openedBy==='user')void installHomeSurface().catch(error=>console.error('Corvid start page failed to load:',error.message));else{tab.homeSurfaceInstalled=false;changed();}});
   view.webContents.on('did-fail-load',(_event,errorCode,_errorDescription,validatedURL,isMainFrame)=>{
     if(!isMainFrame || errorCode===-3)return;
@@ -942,7 +1025,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
   view.webContents.on('did-navigate',() => { if (window && !window.isDestroyed()) window.webContents.send('shell-find-reset',{tabId}); });
   const recordVisit = (_event,url) => { view.webContents.setZoomFactor(profileSettings(s.profileId).zoom);if (!restoring && !tab.restoringInitial) tab.visitId=library.visit(url,url,s.profileId)?.id; changed(); };
   view.webContents.on('did-navigate',recordVisit);
-  view.webContents.on('did-navigate-in-page',(_event,url,isMainFrame) => { if(isMainFrame) recordVisit(_event,url); });
+  view.webContents.on('did-navigate-in-page',(_event,url,isMainFrame) => { if(isMainFrame){cancelAgentApprovals({tabId,reason:'page_changed'});recordVisit(_event,url);} });
   view.webContents.setWindowOpenHandler(({url: popupUrl}) => {const popupId=id();tab.popupEvents.push({sequence:++tab.popupSequence,tabId:popupId});if(tab.popupEvents.length>128)tab.popupEvents.shift();createTab(roomId,popupUrl,popupId,{openerId:tabId}).catch(error=>console.error('Popup initialization failed:',error));return {action:'deny'};});
   })();
   tab.initialization=(async()=>{try {
@@ -984,6 +1067,7 @@ async function resolveRoom(identifier,profileId) {
 }
 async function closeTab(tabId) {
   const t=findTab(tabId),s=findRoom(t.roomId),contents=t.view.webContents;
+  cancelAgentApprovals({tabId,reason:'page_changed'});
   for(const record of windowRecords.values())record.actionIndicator?.hideTab(tabId);
   agentDownloads.cancelTab(tabId);
   await pageDebugger.prepareClose(contents);
@@ -1016,7 +1100,7 @@ async function closeTabFromBrowserUi(tab) {
   return {closed:true};
 }
 async function closeRoom(roomId) {
-  const s=findRoom(roomId);clearActionIndicatorsForRoom(roomId);let count=0;
+  const s=findRoom(roomId);cancelAgentApprovals({roomId,reason:'room_closed'});clearActionIndicatorsForRoom(roomId);let count=0;
   for(const tabId of [...s.tabIds]){try{await closeTab(tabId);count++;}catch(error){if(count)throw new Error(`${error.message}；已有 ${count} 个标签关闭`);throw error;}}
   if(s.tabIds.length)throw new Error(`关闭期间出现新标签；已有 ${count} 个标签关闭，请检查剩余页面`);
   const owner=windowRecords.get(s.windowId);
@@ -1085,9 +1169,19 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
   if (fromApi && ['createTab','closeRoom','closeTab','navigate','back','forward','reload','action','resumeControl','adoptTab','releasePage','finishRoom'].includes(method)) { const s = ['createTab','closeRoom','resumeControl','adoptTab','releasePage','finishRoom'].includes(method) ? findRoom(target) : findRoom(findTab(target).roomId); if (s.executionRisk) throw new Error('Room has an unresolved timed-out execution; user review is required'); }
   switch (method) {
     case 'state': return fromApi ? describeAll() : describe();
+    case 'listAgentApprovals': {if(fromApi || !requestContext.windowId)throw Object.assign(new Error('Approval requests are available only in Corvid UI'),{code:'CORVID_FORBIDDEN'});return {requests:pendingAgentApprovalsForWindow(requestContext.windowId)};}
+    case 'resolveAgentApproval': {if(fromApi || !requestContext.windowId)throw Object.assign(new Error('Approval requests can only be answered in Corvid UI'),{code:'CORVID_FORBIDDEN'});return respondAgentApproval(args.id,args.approved,requestContext.windowId);}
+    case 'requestAgentApproval': {
+      if(!fromApi || requestContext.principal?.kind!=='agent')throw Object.assign(new Error('Only an authorized external Agent can request action approval'),{code:'CORVID_FORBIDDEN'});
+      const summary=safeApprovalText(args.summary,1000),impact=safeApprovalText(args.impact,2000);
+      if(!summary || !impact || typeof args.tabId!=='string' || !args.tabId)throw Object.assign(new Error('A page, action summary, and impact description are required'),{code:'CORVID_INVALID_ARGUMENT'});
+      const context=agentApprovalContext(target,args.tabId,requestContext.principal);
+      const outcome=await promptAgentApproval({context,kind:'confirm-action',summary,impact,timeoutMs:args.timeoutMs ?? 30_000,signal:requestContext.signal});
+      return {status:outcome.status,reason:outcome.reason};
+    }
     case 'listAgentClients': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return {clients:agentClients.list()}; }
     case 'createAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return createAgentClientGrant(args); }
-    case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});return {revoked:true,client}; }
+    case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});cancelAgentApprovals({clientId:client.id,reason:'authorization_revoked'});await pageDebugger.cancelChoosersForClient(client.id).catch(error=>console.error('Corvid could not cancel armed file choosers after revoke:',error.message));return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
     case 'piTasks': return { tasks: agentWorkbench.list(args.profileId ?? activeProfileId) };
     case 'agentTaskSummaries': {if(fromApi)throw new Error('Agent task summaries are available only from Corvid UI');const profileId=findProfile(args.profileId ?? activeProfileId).id;return {profileId,tasks:agentWorkbench.listSummaries(profileId)};}
@@ -1469,14 +1563,14 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
     case 'claimRoom': return claimRoom(findRoom(target));
     case 'activateRoom': {const s=findRoom(target);const record=requireFocusedRecord();if(s.windowId!==record.id) moveRoomToWindow(s,record);record.activeProfileId=s.profileId;record.activeRoomId=target;update(record);return describe(record);}
     case 'activateTab': {const t=findTab(target), s=findRoom(t.roomId); const record=requireFocusedRecord(); if(s.windowId!==record.id) moveRoomToWindow(s,record); record.activeProfileId=s.profileId;record.activeRoomId=s.id; s.activeTabId=target; update(record); return describe(record);}
-    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}clearActionIndicatorsForRoom(s.id);for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await agentWorkbench.pauseRoom(s.id);return describe();}
+    case 'yieldControl': {const s=findRoom(target);if(s.ownership!=='agent'){if(!fromApi && args.manual && s.yielded){s.manualControl=true;update();return describe();}throw new Error('Room is under user control');}cancelAgentApprovals({roomId:s.id,reason:'control_lost'});clearActionIndicatorsForRoom(s.id);for(const tabId of s.tabIds){agentDownloads.cancelTab(tabId);const contents=findTab(tabId).view.webContents;await pageDebugger.cancelChooser(contents);await runAction.releasePointer(contents);}s.ownership='user';s.yielded=true;s.manualControl=Boolean(args.manual);update();await agentWorkbench.pauseRoom(s.id);return describe();}
     case 'resumeControl': {const s=findRoom(target);if(!s.yielded) throw new Error('Room was not handed off by an agent');if(fromApi && s.manualControl)throw new Error('The user has not returned control');if(s.executionRisk)throw new Error('Room has an unresolved timed-out execution; user review is required');s.ownership='agent';s.yielded=false;s.manualControl=false;update();return describe();}
     case 'requestUserControl': return requestUserControl(target);
     case 'returnUserControl': {if(fromApi)throw new Error('User action required');return dispatch('resumeControl',{id:target},false);}
     case 'reviewExecutionRisk': {
       if(fromApi) throw new Error('User review is required');
       const s=findRoom(target);if(!s.executionRisk) return describe();
-      if(s.ownership!=='user') {s.ownership='user';s.yielded=true;s.manualControl=true;}
+      if(s.ownership!=='user') {cancelAgentApprovals({roomId:s.id,reason:'control_lost'});s.ownership='user';s.yielded=true;s.manualControl=true;}
       update();
       const message=s.executionRisk.status==='unknown_after_restart' ? mainMessages.t('executionUnknownAfterRestart') : mainMessages.t('executionTimedOut');
       const choice=await dialog.showMessageBox(window,{type:'warning',buttons:[mainMessages.t('keepNotice'),mainMessages.t('understandAndContinue')],defaultId:0,cancelId:0,title:mainMessages.t('executionUnknownTitle'),message,detail:mainMessages.t('executionUnknownDetails')});
@@ -1520,6 +1614,21 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
       const t=findTab(target);
       if(args.operation==='navigate') return navigateAgent(t,asUrl(args.args?.url,findRoom(t.roomId).profileId));
       if(args.operation==='evaluate') return evaluateWithDeadline(t,args.args || {});
+      let preparedFileTarget,beforeFileSelection;
+      if(fromApi && requestContext.principal?.kind==='agent' && args.operation==='setInputFiles' && Array.isArray(args.args?.files) && args.args.files.length){
+        const fileIdentities=await runAction.validateFiles(args.args.files);
+        preparedFileTarget=await runAction.prepareFileInput(t.view.webContents,args.args);
+        const context=agentApprovalContext(t.roomId,t.id,requestContext.principal);
+        const outcome=await promptAgentApproval({context,kind:'upload',files:args.args.files,signal:requestContext.signal});
+        if(outcome.status!=='approved')throw uploadAuthorizationError(outcome.reason);
+        await runAction.validateFiles(args.args.files,fileIdentities);
+        ensureUploadAuthorization(context,requestContext.signal);
+        beforeFileSelection=async()=>{
+          ensureUploadAuthorization(context,requestContext.signal);
+          await runAction.validateFiles(args.args.files,fileIdentities);
+          ensureUploadAuthorization(context,requestContext.signal);
+        };
+      }
       const owner=findRoom(t.roomId),record=windowRecords.get(owner.windowId),activeRoom=rooms.find(room=>room.id===record?.activeRoomId),activeTab=activeRoom&&tabs.get(activeRoom.activeTabId);
       const homeIsForeground=Boolean(fromApi&&record&&!record.modalOpen&&!record.browserWindow.isDestroyed()&&record.browserWindow.isVisible()&&!record.browserWindow.isMinimized()&&activeTab&&activeTab.view!==t.view&&activeTab.view.webContents.getURL()==='about:blank'&&!activeTab.isLoading&&!activeTab.navigationError);
       const indicatorOperation=['click','hover','scroll','fill'].includes(args.operation);
@@ -1537,7 +1646,7 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
       };
       const beforePopup=t.popupSequence;
       let result;
-      try { result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground,onInput}); }
+      try { result=await runAction(t.view.webContents,args.operation,args.args,{allowHiddenPage:homeIsForeground,onInput,preparedFileTarget,beforeFileSelection}); }
       catch(error) { if(indicatorShown)indicator.hide();throw error; }
       if(indicatorShown)indicator.finish(actionId);
       const popups=(t.popupEvents||[]).filter(event=>event.sequence>beforePopup).map(event=>{const popup=tabs.get(event.tabId);return {sequence:event.sequence,tabId:event.tabId,status:popup?(popup.ready?'ready':'initializing'):'closed',...(popup?{label:popup.label,openedBy:popup.openedBy}:{})};});
@@ -1550,10 +1659,35 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
     case 'cancelAgentDownload': agentDownloads.cancel(target,args.downloadId);return {ok:true};
     case 'deleteAgentDownload': agentDownloads.discard(target,args.downloadId);return {ok:true};
     case 'handleDialog': return pageDebugger.handle(findTab(target).view.webContents,args.accept,args.promptText);
-    case 'armChooser': {const t=findTab(target),result=await pageDebugger.armChooser(t.view.webContents,args.timeoutMs);const s=findRoom(t.roomId);if(fromApi && (s.ownership!=='agent' || s.executionRisk)) {await pageDebugger.cancelChooser(t.view.webContents,result.id);throw new Error('Room is under user control or has unresolved execution');}return result;}
+    case 'armChooser': {const t=findTab(target),clientId=fromApi && requestContext.principal?.kind==='agent' ? requestContext.principal.client?.id ?? null : null,result=await pageDebugger.armChooser(t.view.webContents,args.timeoutMs,clientId);const s=findRoom(t.roomId);if(fromApi && (s.ownership!=='agent' || s.executionRisk)) {await pageDebugger.cancelChooser(t.view.webContents,result.id);throw new Error('Room is under user control or has unresolved execution');}return result;}
     case 'getChooser': return pageDebugger.getChooser(findTab(target).view.webContents,args.chooserId);
     case 'cancelChooser': return pageDebugger.cancelChooser(findTab(target).view.webContents,args.chooserId);
-    case 'chooseFiles': {if(!Array.isArray(args.files) || !args.files.length)throw new Error('Choose at least one file or cancel the chooser');await runAction.validateFiles(args.files);const t=findTab(target),s=findRoom(t.roomId);if(fromApi && (s.ownership!=='agent' || s.executionRisk))throw new Error('Room is under user control or has unresolved execution');return pageDebugger.chooseFiles(t.view.webContents,args.chooserId,args.files);}
+    case 'chooseFiles': {
+      const t=findTab(target),s=findRoom(t.roomId),agentApproval=fromApi && requestContext.principal?.kind==='agent';
+      try {
+        if(!Array.isArray(args.files) || !args.files.length)throw new Error('Choose at least one file or cancel the chooser');
+        const fileIdentities=await runAction.validateFiles(args.files);
+        if(fromApi && (s.ownership!=='agent' || s.executionRisk))throw new Error('Room is under user control or has unresolved execution');
+        let approvalContext=null;
+        if(agentApproval){
+          await pageDebugger.validateChooser(t.view.webContents,args.chooserId,args.files,{sameOriginOnly:true});
+          approvalContext=agentApprovalContext(s.id,t.id,requestContext.principal);
+          const outcome=await promptAgentApproval({context:approvalContext,kind:'upload',files:args.files,signal:requestContext.signal});
+          if(outcome.status!=='approved')throw uploadAuthorizationError(outcome.reason);
+          await runAction.validateFiles(args.files,fileIdentities);
+          ensureUploadAuthorization(approvalContext,requestContext.signal);
+        }
+        const beforeSelection=approvalContext?async()=>{
+          ensureUploadAuthorization(approvalContext,requestContext.signal);
+          await runAction.validateFiles(args.files,fileIdentities);
+          ensureUploadAuthorization(approvalContext,requestContext.signal);
+        }:undefined;
+        return await pageDebugger.chooseFiles(t.view.webContents,args.chooserId,args.files,beforeSelection,Boolean(approvalContext));
+      } catch(error) {
+        if(agentApproval)await pageDebugger.cancelChooser(t.view.webContents,args.chooserId).catch(()=>{});
+        throw error;
+      }
+    }
     case 'back': {const c=findTab(target).view.webContents; if(c.navigationHistory.canGoBack()) c.navigationHistory.goBack(); return {ok:true};}
     case 'forward': {const c=findTab(target).view.webContents; if(c.navigationHistory.canGoForward()) c.navigationHistory.goForward(); return {ok:true};}
     case 'reload': findTab(target).view.webContents.reload(); return {ok:true};
@@ -1588,6 +1722,7 @@ async function claimRoom(room) {
   return describe().rooms.find(item=>item.id===room.id);
 }
 async function finishRoom(room,keep) {
+  cancelAgentApprovals({roomId:room.id,reason:'room_closed'});
   clearActionIndicatorsForRoom(room.id);
   if(keep!=='all' && (!Array.isArray(keep) || keep.some(label=>typeof label!=='string' || !label)))throw new Error('finish requires keep: "all" or an array of page labels');
   const managed=room.tabIds.map(findTab).filter(tab=>tab.label),keepSet=new Set(keep==='all'?managed.map(tab=>tab.label):keep);
@@ -1609,7 +1744,7 @@ async function finishRoom(room,keep) {
 async function requestUserControl(roomId) {
   const room=findRoom(roomId);if(room.ownership!=='agent')throw new Error('Room is already under user control');
   if(room.userResumePending)throw new Error('User resumeControl is already pending');
-  room.userResumePending=true;clearActionIndicatorsForRoom(room.id);update();
+  room.userResumePending=true;cancelAgentApprovals({roomId:room.id,reason:'control_lost'});clearActionIndicatorsForRoom(room.id);update();
   try {
     for(const tabId of room.tabIds){agentDownloads.cancelTab(tabId);await pageDebugger.cancelChooser(findTab(tabId).view.webContents);}
     return await dispatchQueued('yieldControl',{id:roomId,manual:true},false);
@@ -1632,6 +1767,9 @@ function dispatchQueued(method,args={},fromApi=false,requestContext={}) {
   let roomId;
   try { if(roomMethods.includes(method)) roomId=findRoom(args.id).id; else if(tabMethods.includes(method)) roomId=findRoom(findTab(args.id).roomId).id; }
   catch(error) { return Promise.reject(error); }
+  if(roomId && ['yieldControl','finishRoom','closeRoom','closeRoomFromUser'].includes(method))cancelAgentApprovals({roomId,reason:method==='yieldControl'?'control_lost':'room_closed'});
+  if(['closeTab','navigate','back','forward','reload'].includes(method) || method==='action'&&args.operation==='navigate')cancelAgentApprovals({tabId:args.id,reason:'page_changed'});
+  if(method==='releasePage' && roomId){const tab=findRoom(roomId).tabIds.map(findTab).find(item=>item.label===args.label);if(tab)cancelAgentApprovals({tabId:tab.id,reason:'page_changed'});}
   if(fromApi && roomId && findRoom(roomId).userResumePending) return Promise.reject(new Error('User resumeControl is pending'));
   if (!roomId) return dispatch(method,args,fromApi,requestContext);
   const previous=queues.get(roomId) || Promise.resolve();
@@ -1662,6 +1800,7 @@ function apiRoute(req, url) {
   if (req.method==='POST' && url.pathname==='/rooms') return ['createRoom',{}];
   if (req.method==='POST' && url.pathname==='/rooms/open') return ['resolveRoom',{}];
   if (kind==='rooms' && target && req.method==='DELETE' && !action) return ['closeRoom',{id:target}];
+  if (kind==='rooms' && target && action==='confirm-action' && req.method==='POST') return ['requestAgentApproval',{id:target}];
   if (kind==='rooms' && target && req.method==='POST') return [{tabs:'createTab',activate:'activateRoom',yieldControl:'yieldControl',resumeControl:'resumeControl',adopt:'adoptTab',release:'releasePage',finish:'finishRoom',claim:'claimRoom'}[action],{id:target}];
   if (kind==='tabs' && target && req.method==='DELETE' && !action) return ['closeTab',{id:target}];
   if (kind==='tabs' && target && req.method==='GET' && action==='dialog') return ['getDialog',{id:target,...(url.searchParams.has('pageLabel')?{pageLabel:url.searchParams.get('pageLabel')}:{})}];
@@ -1687,6 +1826,9 @@ async function startServer() {
   startupProgress('control-server-listen');
   server=http.createServer(async (req,res) => {
     res.setHeader('Content-Type','application/json');
+    const requestAbortController=new AbortController();
+    req.once('aborted',()=>requestAbortController.abort());
+    res.once('close',()=>{if(!res.writableEnded)requestAbortController.abort();});
     try {
       const credential=String(req.headers.authorization || '').replace(/^Bearer\s+/i,'');
       const agentClient=credential && credential!==token ? agentClients.findByToken(credential) : null;
@@ -1704,7 +1846,7 @@ async function startServer() {
           const actingRoom=rooms.find(room=>room.id===roomId);
           if(actingRoom && actingRoom.ownership==='agent') actingRoom.agentClientName ??= principal.client.name;
         }
-        const permittedMethods=new Set(['state','profiles','roomDetails','resolveRoom','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
+        const permittedMethods=new Set(['state','profiles','roomDetails','resolveRoom','requestAgentApproval','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
         if(!permittedMethods.has(method)||!roomId&&!['state','profiles','resolveRoom'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
           res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
         }
@@ -1715,7 +1857,7 @@ async function startServer() {
       if(method==='health') result={ok:true};
       else if(method==='listAgentClients') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});result={clients:agentClients.list()};}
       else if(method==='createAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});result=createAgentClientGrant(body);}
-      else if(method==='revokeAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});const client=agentClients.revoke(routeArgs.clientId);if(!client)throw Object.assign(new Error('Agent 授权不存在'),{status:404,code:'CORVID_NOT_FOUND'});result={revoked:true,client};}
+      else if(method==='revokeAgentClient') {if(principal.kind!=='admin')throw Object.assign(new Error('需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});const client=agentClients.revoke(routeArgs.clientId);if(!client)throw Object.assign(new Error('Agent 授权不存在'),{status:404,code:'CORVID_NOT_FOUND'});cancelAgentApprovals({clientId:client.id,reason:'authorization_revoked'});await pageDebugger.cancelChoosersForClient(client.id).catch(error=>console.error('Corvid could not cancel armed file choosers after revoke:',error.message));result={revoked:true,client};}
       else if(method==='roomDetails') result=describeRoom(findRoom(routeArgs.id));
       else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
       else if(method==='profiles'&&principal.kind==='agent') {const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));result={profiles:profiles.filter(profile=>allowedProfileIds.has(profile.id))};}
@@ -1760,10 +1902,10 @@ async function startServer() {
         record.browserWindow.webContents.sendInputEvent({type:'keyUp',...shortcut});
         result={sent:true};
       }
-      else result=await dispatchQueued(method,{...body,...routeArgs},true,{showPageActionIndicator:principal.kind==='admin'||!String(principal.client?.id||'').startsWith('builtin:')});
-      res.end(JSON.stringify(result));
+      else result=await dispatchQueued(method,{...body,...routeArgs},true,{showPageActionIndicator:principal.kind==='admin'||!String(principal.client?.id||'').startsWith('builtin:'),principal:{kind:principal.kind,...(principal.client?{client:{id:principal.client.id,name:principal.client.name}}:{})},signal:requestAbortController.signal});
+      if(!res.destroyed)res.end(JSON.stringify(result));
       if(method==='shutdown') setImmediate(()=>app.quit());
-    } catch (error) {res.writeHead(error.status||400);res.end(JSON.stringify({error:error.message,code:error.code||errorCode(error.message)}));}
+    } catch (error) {if(!res.destroyed){res.writeHead(error.status||400);res.end(JSON.stringify({error:error.message,code:error.code||errorCode(error.message)}));}}
   });
   await new Promise((resolve,reject) => {server.once('error',reject);server.listen(Number(process.env.CORVID_PORT || 0),'127.0.0.1',resolve);});
   const connection={baseUrl:`http://127.0.0.1:${server.address().port}`,token};
@@ -1841,7 +1983,7 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
     }
     update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
   });
-  browserWindow.on('close',()=>{closeExtensionPopup(record);record.actionIndicator?.hide();saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
+  browserWindow.on('close',()=>{closeExtensionPopup(record);record.actionIndicator?.hide();for(const room of roomsOfWindow(record))cancelAgentApprovals({roomId:room.id,reason:'room_closed'});saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
   browserWindow.on('focus',()=>{focusWindow(record);layout(record);});
   browserWindow.on('closed',()=>{record.actionIndicator?.dispose();windowRecords.delete(recordId);rebuildApplicationMenu();if(!quitting){const next=activeRecord();if(next){focusWindow(next);update(next);}else persist();saveWindowState();}});
   installShortcuts(browserWindow.webContents,()=>record);
@@ -1873,7 +2015,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('shell-action',(event,method,args) => {
     const record = [...windowRecords.values()].find(item => !item.browserWindow.isDestroyed() && item.browserWindow.webContents === event.sender);
     if (record) { focusWindow(record); syncRecordFromAliases(record); }
-    return dispatchQueued(method,args);
+    return dispatchQueued(method,args,false,{windowId:record?.id});
   });
   // Native page bounds follow each trusted shell window's measured chrome; remote page renderers have no sender match.
   ipcMain.on('shell-browser-chrome-height',(event,value)=>{
