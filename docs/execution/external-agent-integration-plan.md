@@ -1,6 +1,6 @@
 # 外部 Agent 集成执行计划
 
-状态：**计划稿，未开工**。本文是范围与验收的设计基线；切片认领时须拆入[执行任务板](feature-board.md)，验收结果记入[验证记录](../reviews/verification-log.md)。调研依据与证据边界见文末。
+状态：**范围计划；部分 P1 已落地**。截至 2026-11-08，P0、P1.1、P1.2a、P1.3、P1.4 已合入；P1.2b（#388）与 P1.5（#429）在当前 worktree 作为本地候选，待用户安全复核。本文保留范围与验收基线；验收结果记入[验证记录](../reviews/verification-log.md)。调研依据与证据边界见文末。
 
 ## 目标与定位
 
@@ -35,13 +35,13 @@ agent 接到任务
 ```
 
 - 阶梯优先级写入 `corvid-browser` SKILL.md（模型行为由文档约束，ego 已验证有效）。
-- 现有三入口能力不一致（SDK > MCP > 内置 Agent）的问题由 P1 统一：MCP 面补齐到 SDK 平价（减 `evaluate`/raw CDP），内置 Agent 的动作面扩展不在本计划范围。
+- 现有三入口能力不一致（SDK > MCP > 内置 Agent）的问题由 P1 统一：结构化 MCP 工具面补齐到 SDK 平价（不注册 `evaluate`/通用 raw CDP 工具）；`browser_script` 是独立的高权限入口，会拿到实际 SDK 对象，包括 `Page.cdp()`，内置 Agent 的动作面扩展不在本计划范围。
 
 ## 与现行合同的关系
 
 - **托管即授权**（AGENTS.md 红线，#407 已合入）：把空间交给 Agent 即视为授权读取其绑定页面上下文，无逐条同意流程。外部 agent 入口沿用同一合同：Room 级授权、程序闸门校验（Room 归属、控制权状态、managed tab、执行风险态）。
-- **确认是模型自主的**：Corvid 提供 `confirm` 类机制供模型在判定高危（付款、发送、删除）时主动请求用户确认；Corvid 不做逐动作弹卡。
-- **不开放**：任意 raw CDP、静默接管、绕过 Room/Page 隔离。`browser_script` 无 CDP 逃生舱。
+- **模型主动确认与系统文件授权分层**：模型可用 `confirm_action` 对付款、发送、删除等高影响动作主动请求用户决定；它只返回决定，不执行动作，也不签发可复用凭证。选择本机文件属于独立安全边界，必须由 Corvid 对每次文件选择逐次审批，不能由 Room 的托管授权或 `confirm_action` 决定替代。
+- **结构化工具边界**：Browser MCP 不注册通用 raw CDP 工具，且静默接管仍禁止。SDK `Page.cdp()` 对 `DOM.setFileInputFiles` 与 `Target.*` 返回拒绝，但其他 CDP 方法会转发到页面调试器；`browser_script` 收到实际 SDK Page，因此可调用这些方法。它是显式启用的本地 Node 执行能力，不是沙箱；脚本可读取 `control.json` 管理员凭据并以管理员身份请求 Corvid 控制 API，绕过 scoped Room 检查与逐次文件选择审批。
 
 ## 分阶段交付
 
@@ -57,11 +57,12 @@ agent 接到任务
 
 | 项 | 交付物 | 验收 |
 | --- | --- | --- |
-| 1.1 | `browser_script` MCP 工具：包装现有 SDK 运行器（与 `cli/corvid.mjs run` 同引擎）；agent 提交 JS → Room 授权下本地执行 → 返回收据 + 终态快照；超时/取消/输出上限；脚本可用 API 为 SDK 子集（含 `evaluate`，**去 raw CDP**）；执行环境与 CLI 同边界（本地 Node 权限运行，**非沙箱**，此限制须写入 skill 文档）；Room 级授权开关（默认关，connect 时显式询问） | 隔离 Electron E2E：批量任务 1 次调用完成；未授权 Room 拒绝；超时取消后页面状态一致 |
-| 1.2 | MCP 工具面补齐：file upload（按 #388 逐次授权合同）、download 等待、dialog、popup | 对应定向 E2E，对齐 SDK 既有用例 |
+| 1.1 | `browser_script` MCP 工具：包装现有 SDK 运行器（与 `cli/corvid.mjs run` 同引擎）；agent 提交 JS → 入口检查指定 Room 授权 → 返回收据 + 终态快照；超时/取消/输出上限；脚本接收实际 SDK Room/Client/Page 对象，含 `evaluate` 与 `Page.cdp()`（`DOM.setFileInputFiles`、`Target.*` 被控制 API 拒绝，其他 CDP 方法可用）；本地 Node 权限运行，**非沙箱**，可读取 `control.json` 管理员凭据并绕过 scoped API/逐次上传审批，此限制须写入 skill 文档；Room 级授权开关（默认关，connect 时显式询问） | 隔离 Electron E2E：批量任务 1 次调用完成；未授权 Room 拒绝；超时取消后页面状态一致 |
+| 1.2a | MCP 工具面补齐：download 等待、dialog、popup（Issue #425） | 对应定向 E2E，对齐 SDK 既有用例 |
+| 1.2b | 文件选择逐次授权（Issue #388）：Browser MCP `page_upload` 与 SDK `setInputFiles` / chooser `setFiles` 共用主进程审批；符号链接在审批前拒绝；raw CDP 文件 setter 与 `Target.*` 嵌套通道禁止；拒绝、超时、取消/断连、撤权、页面/Room 变化失败关闭；逐次复核文件身份，跨源/opaque chooser 在审批卡前拒绝；路径身份复核与 Chromium 打开文件不是原子操作，保留狭窄检查到打开竞态 | 隔离真实 Electron：批准/拒绝、两条上传路径、页面不发生提前选择、MCP 单次取消、同路径替换后 `CORVID_STALE_REFERENCE`、跨源 chooser 无审批卡且不设置文件、审批后 CDP setter 前的二次校验、路径不泄漏与 raw CDP 拒绝 |
 | 1.3 | 复合工具：`page_navigate_and_snapshot`、带等待的动作序列，压缩观测往返 | token 消耗对比基线记入验证日志 |
 | 1.4 | 外部 agent 可见性：外部 agent 驱动的标签进命名分组 + 状态标记（#348 范围）；收尾分报 | 桌面 E2E 断言标记与分报 |
-| 1.5 | `confirm` 机制：模型自主调用的高危动作确认工具——调用后该动作挂起，桌面按 #407 后的会话流呈现确认卡，批准/拒绝/超时回传为工具结果；默认（超时/拒绝）不执行 | E2E 覆盖批准、拒绝、超时三路径及挂起期间 Room 控制权状态 |
+| 1.5 | 外部 MCP `confirm_action`（Issue #429）：模型为一个高影响动作提交摘要与影响，工具调用等待 Corvid 桌面审批并返回决定；它不执行动作、不签发可复用授权，Corvid 也不强制验证后续动作。外部 MCP 没有 Corvid 会话 ID，因此审批在桌面对话框中展示，不挂入内置 Agent 对话流 | 隔离真实 Electron 覆盖批准、拒绝、超时、并发排队、单次 MCP 取消、页面导航、Room 接管、客户端撤权，并断言批准本身不执行页面动作 |
 
 ### P2 沉淀层（热路径复利）
 
@@ -111,7 +112,7 @@ agent 接到任务
 ## 与现有 issue 的关系
 
 - #341（site command）：issue 与实现 PR #361 均已关闭未合并；分支 `agent/issue-341-readonly-site-commands` 保留一版实现（含生命周期合同与验证记录）。P2 开工前先复核该实现与本计划双型沉淀及「托管即授权」新合同的相容性，决定重放改造或重写；重开 issue 或新单引用其讨论。
-- #350（外部 Agent 工具面）、#388（上传逐次授权）、#348（运行中任务可见标记）分别被 1.2/1.4/2.x 吸收；1.5 confirm 机制开工时若 #346 的历史讨论仍适用，一并引用。
+- #350（外部 Agent 工具面）、#388（上传逐次授权）、#348（运行中任务可见标记）、#429（外部 MCP confirm_action）分别对应 1.2/1.2b/1.4/1.5；#346 的内置 Agent 站点操作面不属于本次外部 MCP 确认工具范围。
 
 ## 调研证据边界
 

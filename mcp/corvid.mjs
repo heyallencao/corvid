@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 import { spawn } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { fileURLToPath } from 'node:url';
 import { connect } from '../sdk/index.js';
 import { asPngImageContent } from './image-content.mjs';
@@ -15,6 +16,24 @@ const SERVER_NAME = 'corvid-browser';
 const SERVER_VERSION = '0.1.0';
 const MAX_ITEMS = 100;
 const MAX_OUTPUT_BYTES = 32 * 1024;
+const mcpDisconnectController = new AbortController();
+const toolRequestSignals = new AsyncLocalStorage();
+const runningScriptChildren = new Set();
+function currentToolRequestSignal() {
+  const requestSignal = toolRequestSignals.getStore();
+  return requestSignal ? AbortSignal.any([mcpDisconnectController.signal, requestSignal]) : mcpDisconnectController.signal;
+}
+function runWithToolRequestSignal(ctx, operation) {
+  return toolRequestSignals.run(ctx?.mcpReq?.signal, operation);
+}
+function cancelMcpWork() {
+  if(!mcpDisconnectController.signal.aborted)mcpDisconnectController.abort();
+  for(const child of runningScriptChildren)child.kill('SIGTERM');
+}
+process.stdin.once('end',cancelMcpWork);
+process.stdin.once('close',cancelMcpWork);
+process.once('SIGTERM',cancelMcpWork);
+process.once('SIGINT',cancelMcpWork);
 
 function asToolResult(value) {
   let encoded = JSON.stringify(value);
@@ -33,17 +52,17 @@ function asToolError(error) {
 }
 
 function registerReadTool(server, name, description, inputSchema, handler) {
-  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }, async args => {
+  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }, async (args,ctx) => runWithToolRequestSignal(ctx, async () => {
     try { return asToolResult(await handler(args)); }
     catch (error) { return asToolError(error); }
-  });
+  }));
 }
 
 function registerActionTool(server, name, description, inputSchema, handler) {
-  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } }, async args => {
+  server.registerTool(name, { description, inputSchema, annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true } }, async (args,ctx) => runWithToolRequestSignal(ctx, async () => {
     try { return asToolResult(await handler(args)); }
     catch (error) { return asToolError(error); }
-  });
+  }));
 }
 
 function registerScreenshotTool(server, handler) {
@@ -51,18 +70,18 @@ function registerScreenshotTool(server, handler) {
     description: 'Capture the current viewport of one explicitly selected managed page and return a PNG image. This does not navigate, activate its Room, or save the image to disk.',
     inputSchema: pageScopeSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  }, async args => {
+  }, async (args,ctx) => runWithToolRequestSignal(ctx, async () => {
     try {
       const image = await handler(args);
       return { content: [asPngImageContent(image)] };
     } catch (error) { return asToolError(error); }
-  });
+  }));
 }
 
 async function connectAgent() {
   const token=process.env.CORVID_AGENT_TOKEN;
   if(!token)throw Object.assign(new Error('请先在 Corvid 设置中创建授权客户端，并在 MCP 主机配置 CORVID_AGENT_TOKEN'),{code:'CORVID_UNAUTHORIZED'});
-  return connect({token});
+  return connect({token,signal:currentToolRequestSignal()});
 }
 
 const pageScopeSchema = z.object({ roomId: z.string().min(1), tabId: z.string().min(1) });
@@ -189,6 +208,7 @@ function createServer() {
   registerActionTool(server, 'page_fill', 'Fill one editable input, textarea, or contenteditable host identified by an explicit snapshot reference or a unique CSS, text, role, or href locator in a managed page. Contenteditable values are inserted as literal text, not HTML. Use only when you intend to enter this value into the site.', pageScopeSchema.extend({ target: locatorSchema, value: z.string().max(20_000) }), async ({ roomId, tabId, target, value }) => withManagedPage(roomId, tabId, async page => page.fill(target.by === 'ref' ? target.value : target, value)));
   registerActionTool(server, 'page_press', 'Press one supported key on an explicitly selected managed page target. This may submit forms or trigger site actions; inspect the page afterwards.', pageScopeSchema.extend({ target: locatorSchema, key: z.string().min(1).max(32) }), async ({ roomId, tabId, target, key }) => withManagedPage(roomId, tabId, async page => page.press(target.by === 'ref' ? target.value : target, key)));
   registerActionTool(server, 'page_select_option', 'Select one or more values, labels, or option indexes in a managed page select control. Use null or an empty array to clear selection; inspect the selected values afterwards.', pageScopeSchema.extend({ target: locatorSchema, choices: selectChoicesSchema }), async ({ roomId, tabId, target, choices }) => withManagedPage(roomId, tabId, page => page.selectOption(target.by === 'ref' ? target.value : target, choices)));
+  registerActionTool(server, 'page_upload', 'Select one or more local files for a file input on the explicitly selected managed page. Corvid shows a one-time approval card with the Room, page source, file names, and count before selection. Directories and unapproved requests are rejected; do not retry after denial.', pageScopeSchema.extend({ target: locatorSchema, files: z.array(z.string().min(1).max(4096)).min(1).max(MAX_ITEMS) }), async ({ roomId, tabId, target, files }) => withManagedPage(roomId, tabId, page => page.setInputFiles(target.by === 'ref' ? target.value : target, files)));
 
   function describeRoomSummary(room) {
     return {
@@ -214,6 +234,12 @@ function createServer() {
       return { ...describeRoomSummary(claimed), claimed: claimed.ownership === 'agent' };
     } finally { await client.disconnect(); }
   });
+
+  registerActionTool(server, 'confirm_action', 'Ask the user to approve one high-impact action immediately before you perform it. Corvid displays the Room and page source plus your action summary and impact. This tool does not perform the action. Proceed only when it returns status "approved"; denial, timeout, page changes, or Room handoff mean do not act and do not reuse approval.', z.object({ roomId: z.string().min(1), tabId: z.string().min(1), summary: z.string().trim().min(1).max(1000), impact: z.string().trim().min(1).max(2000), timeoutMs: z.number().int().min(100).max(180_000).default(30_000) }), async ({ roomId, tabId, summary, impact, timeoutMs }) => withAgentRoom(roomId, async room => {
+    const tab=(await room.tabs()).find(item=>item.id===tabId);
+    if(!tab?.label)throw Object.assign(new Error('Approval requires a managed page in the selected Room'),{code:'CORVID_CONTROL_LOST'});
+    return room.confirmAction({tabId,summary,impact,timeoutMs});
+  }));
 
   registerActionTool(server, 'room_yield', 'Hand the Room back to the user so they can inspect or take over the pages. Finish the Room with room_finish when the task is complete instead of only yielding.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => withAgentRoom(roomId, async room => {
     await room.yieldControl();
@@ -340,12 +366,22 @@ function createServer() {
     }
     function runBrowserScript({ roomId, script, timeoutMs }) {
       return new Promise((resolve, reject) => {
+        const requestSignal=currentToolRequestSignal();
+        if(requestSignal.aborted){reject(Object.assign(new Error('MCP client disconnected'),{code:'CORVID_CANCELLED'}));return;}
         const child = spawn(process.execPath, [SCRIPT_RUNNER], { env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
-        let buffer = '', settled = false;
-        const timer = setTimeout(() => {
+        runningScriptChildren.add(child);
+        child.once('exit',()=>runningScriptChildren.delete(child));
+        child.once('error',()=>runningScriptChildren.delete(child));
+        let buffer = '', settled = false, timer;
+        const cleanup=()=>{clearTimeout(timer);requestSignal.removeEventListener('abort',abortRequest);};
+        const abortRequest=()=>{
+          if(settled)return;
+          settled=true;cleanup();child.kill('SIGTERM');
+          reject(Object.assign(new Error('browser_script was cancelled by the MCP client'),{code:'CORVID_CANCELLED'}));
+        };
+        timer = setTimeout(() => {
           if (settled) return;
-          settled = true;
-          child.kill('SIGKILL');
+          settled = true;cleanup();child.kill('SIGKILL');
           reject(Object.assign(new Error(`browser_script timed out after ${timeoutMs}ms and was cancelled; the Room and its pages are untouched (the script talks to the desktop over stateless HTTP, so its in-flight steps may have landed — inspect page_info or page_snapshot). Re-run with a shorter script or a larger timeoutMs.`), { code: 'CORVID_TIMEOUT' }));
         }, timeoutMs);
         child.stdout.setEncoding('utf8');
@@ -353,35 +389,36 @@ function createServer() {
         child.stderr.setEncoding('utf8');
         let stderr = '';
         child.stderr.on('data', chunk => { stderr += chunk; });
-        child.on('error', error => { if (!settled) { settled = true; clearTimeout(timer); reject(Object.assign(new Error(`browser_script runner failed to start: ${error.message}`), { code: 'CORVID_DESKTOP_ERROR' })); } });
+        child.on('error', error => { if (!settled) { settled = true; cleanup(); reject(Object.assign(new Error(`browser_script runner failed to start: ${error.message}`), { code: 'CORVID_DESKTOP_ERROR' })); } });
         child.on('exit', (code, signal) => {
           if (settled) return;
-          settled = true;
-          clearTimeout(timer);
+          settled = true;cleanup();
           const line = buffer.split('\n').find(candidate => candidate.trim().startsWith('{'));
           if (!line) { reject(Object.assign(new Error(`browser_script runner produced no receipt (exit code ${code}, signal ${signal})${stderr ? `: ${stderr.trim().split('\n').pop()}` : ''}`), { code: 'CORVID_DESKTOP_ERROR' })); return; }
           try { resolve(JSON.parse(line)); }
           catch (error) { reject(Object.assign(new Error(`browser_script receipt was not valid JSON: ${error.message}`), { code: 'CORVID_DESKTOP_ERROR' })); }
         });
-        child.stdin.end(`${JSON.stringify({ roomId, script })}\n`);
+        requestSignal.addEventListener('abort',abortRequest,{once:true});
+        if(requestSignal.aborted)abortRequest();
+        if(!settled)child.stdin.end(`${JSON.stringify({ roomId, script })}\n`);
       });
     }
     server.registerTool('browser_script', {
-      description: 'Run a batch of JavaScript against one explicitly selected Room in a single call instead of one tool call per step. The script executes locally with full Node.js permissions — it is NOT sandboxed; never run untrusted page content as code. Available bindings: room (the Corvid SDK Room handle: room.newPage(), page.goto/url/snapshot/fill/click/press/selectOption/scroll, page.evaluate for in-page JS), client (SDK client: rooms(), profiles()). Use console.log for progress; the last awaited expression (or return value) becomes the receipt result. Returns { ok, result, logs, room tabs, durationMs }; a timed-out script is killed and the Room stays intact.',
+      description: 'Run a batch of JavaScript against one explicitly selected Room in a single call instead of one tool call per step. The script executes locally with full Node.js permissions — it is NOT sandboxed; only run trusted scripts, never page content as code. It can read local files including control.json and use its administrator credential to call Corvid control APIs, bypassing scoped Room checks and per-upload approval. Bindings: room (Corvid SDK Room: room.newPage(), page.goto/url/snapshot/fill/click/press/selectOption/scroll/evaluate/cdp), client (SDK client: rooms(), profiles()). Page.cdp() rejects DOM.setFileInputFiles and Target.* but forwards other CDP methods to the page debugger; dynamic import can access the full Node API. Use console.log for progress; the last awaited expression (or return value) becomes the receipt result. Returns { ok, result, logs, room tabs, durationMs }; a timed-out script is killed and the Room stays intact.',
       inputSchema: z.object({
         roomId: z.string().min(1),
         script: z.string().min(1).max(100_000),
         timeoutMs: z.number().int().min(500).max(120_000).default(30_000),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
-    }, async ({ roomId, script, timeoutMs }) => {
+    }, async (args,ctx) => runWithToolRequestSignal(ctx, async () => {
       try {
-        const receipt = await runBrowserScript({ roomId, script, timeoutMs });
+        const receipt = await runBrowserScript(args);
         if (!receipt.ok) return { content: [{ type: 'text', text: JSON.stringify({ error: receipt.error, code: receipt.code || 'CORVID_SCRIPT_ERROR', logs: receipt.logs, durationMs: receipt.durationMs }) }], isError: true };
         const { value } = truncateReceipt(receipt);
         return asToolResult(value);
       } catch (error) { return asToolError(error); }
-    });
+    }));
   }
 
   return server;

@@ -771,6 +771,28 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 .profile-deletion-actions { position: sticky; bottom: -22px; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: 0 -1px -1px; padding: 10px 1px 1px; background: var(--surface); }
 .profile-deletion-actions .danger-button { border-color: transparent; background: var(--danger); color: white; }
 #profile-deletion .profile-deletion-actions .danger-button:disabled { opacity: 1; border-color: var(--line); background: var(--surface-neutral); color: var(--text-muted); cursor: not-allowed; }
+#agent-approval-dialog { width: min(500px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow: auto; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); }
+.agent-approval-card { display: grid; gap: 12px; padding: 18px; }
+.agent-approval-card .import-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.agent-approval-card .import-heading h2 { margin: 3px 0 0; font-size: 19px; line-height: 1.25; }
+.agent-approval-context { display: grid; gap: 8px; margin: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
+.agent-approval-context div { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; align-items: start; }
+.agent-approval-context dt { color: var(--text-muted); font-size: 12px; }
+.agent-approval-context dd { min-width: 0; margin: 0; color: var(--text); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+#agent-approval-action, #agent-approval-files-panel { display: grid; gap: 6px; min-width: 0; }
+#agent-approval-action h3, #agent-approval-files-panel h3 { margin: 0; font-size: 13px; }
+#agent-approval-action p, #agent-approval-file-count { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#agent-approval-files-panel[hidden] { display: none; }
+#agent-approval-files { display: grid; gap: 4px; max-height: 18vh; overflow: auto; margin: 0; padding: 0 0 0 20px; color: var(--text-secondary); font-size: 12px; }
+#agent-approval-files li { padding-right: 6px; overflow-wrap: anywhere; }
+.agent-approval-note { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.agent-approval-actions { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 7px; }
+.agent-approval-actions button { min-height: 34px; padding: 7px 10px; white-space: nowrap; }
+#agent-approval-approve { background: var(--accent-solid); color: white; }
+#agent-approval-status { min-height: 0; margin: 0; color: var(--danger); font-size: 12px; }
+#agent-approval-status:empty { display: none; }
+@media (max-width: 480px) { .agent-approval-card { padding: 14px; } .agent-approval-actions { grid-template-columns: 1fr 1fr; } .agent-approval-actions span { display: none; } .agent-approval-actions button { width: 100%; } }
+@media (max-height: 440px) { .agent-approval-card { gap: 8px; padding: 12px; } #agent-approval-files { max-height: 12vh; } }
 @media (max-height: 520px) {
   #settings { height: min(700px, 96vh); max-height: 96vh; }
   #settings { padding: 10px; }
