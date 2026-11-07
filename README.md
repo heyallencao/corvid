@@ -42,6 +42,16 @@ node cli/corvid.mjs run < task.mjs
 
 脚本可用的绑定、页面能力、已知限制和错误语义见 [SDK 说明](sdk/README.md)。Agent 通过本地认证接口操作桌面，不暴露浏览器调试端口；脚本以运行它的本地用户权限执行。
 
+外部 Agent（Claude Code、Codex、Cursor、dsh）可以用一条命令接入 Corvid 的 Browser MCP server，并获得教 Agent 如何使用的 `corvid-browser` skill：
+
+```bash
+node cli/corvid.mjs connect codex --token <在 Corvid 设置中签发的授权客户端 token>
+node cli/corvid.mjs doctor codex   # 诊断控制服务、MCP 注册与 skill 安装
+node cli/corvid.mjs disconnect codex  # 撤销 connect 写入的全部条目
+```
+
+`connect` 运行时会先列出将写入的配置文件与条目（MCP server 注册 + skill 安装路径），显式确认后写入；脚本化场景加 `--yes`。不提供 `--token` 时，connect 用本地管理员凭据经运行中的 Corvid 桌面自动签发一个 openRoomGrant 授权客户端（初始授权范围为空，只能访问其自建的 Room），token 写入 host 配置 env，`disconnect` 时自动撤销；`--token` 则写入你在 Corvid 设置中签发的既有凭据，`disconnect` 不撤销它。授权客户端经 `room_open` 创建的 Room 会自动并入其授权范围；授权范围外已存在的同名 Room 会被拒绝（不创建重名 Room）。支持 `claude-code`、`codex`、`cursor`、`dsh` 四种 host，写入位置与撤销语义见 [外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
+
 ## 文档
 
 - [文档地图](docs/README.md)

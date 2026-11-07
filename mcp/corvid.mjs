@@ -188,6 +188,42 @@ function createServer() {
   registerActionTool(server, 'page_press', 'Press one supported key on an explicitly selected managed page target. This may submit forms or trigger site actions; inspect the page afterwards.', pageScopeSchema.extend({ target: locatorSchema, key: z.string().min(1).max(32) }), async ({ roomId, tabId, target, key }) => withManagedPage(roomId, tabId, async page => page.press(target.by === 'ref' ? target.value : target, key)));
   registerActionTool(server, 'page_select_option', 'Select one or more values, labels, or option indexes in a managed page select control. Use null or an empty array to clear selection; inspect the selected values afterwards.', pageScopeSchema.extend({ target: locatorSchema, choices: selectChoicesSchema }), async ({ roomId, tabId, target, choices }) => withManagedPage(roomId, tabId, page => page.selectOption(target.by === 'ref' ? target.value : target, choices)));
 
+  function describeRoomSummary(room) {
+    return {
+      id: room.id, name: room.name, ownership: room.ownership,
+      finished: Boolean(room.info.finished), yielded: Boolean(room.info.yielded),
+      userResumePending: Boolean(room.info.userResumePending), executionRisk: Boolean(room.info.executionRisk),
+      tabs: room.info.tabs.length,
+    };
+  }
+
+  registerActionTool(server, 'room_open', 'Open an Agent task Room by name or ID: a matching Room is reused when it is available for Agent control, otherwise a new Room is created. Rooms isolate your pages from the user\'s browsing; work only inside the Room this returns.', z.object({ identifier: z.string().min(1).max(256), profileId: z.string().min(1).optional() }), async ({ identifier, profileId }) => {
+    const client = await connectAgent();
+    try { return describeRoomSummary(await client.openRoom(identifier, profileId === undefined ? {} : { profileId })); }
+    finally { await client.disconnect(); }
+  });
+
+  registerActionTool(server, 'room_claim', 'Request the user\'s approval to resume a Room that is currently under user control. Wait for the returned ownership to become "agent" before acting; do not retry other write actions while approval is pending.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => {
+    const client = await connectAgent();
+    try {
+      const room = await client.room(roomId);
+      if (room.ownership === 'agent') return { ...describeRoomSummary(room), claimed: false, note: 'Room is already under Agent control' };
+      const claimed = await client.claimRoom(room.id);
+      return { ...describeRoomSummary(claimed), claimed: claimed.ownership === 'agent' };
+    } finally { await client.disconnect(); }
+  });
+
+  registerActionTool(server, 'room_yield', 'Hand the Room back to the user so they can inspect or take over the pages. Finish the Room with room_finish when the task is complete instead of only yielding.', z.object({ roomId: z.string().min(1) }), async ({ roomId }) => withAgentRoom(roomId, async room => {
+    await room.yieldControl();
+    return describeRoomSummary(await room.client.room(room.id));
+  }));
+
+  registerActionTool(server, 'room_finish', 'Finish the task Room: Agent-created pages are closed unless kept. Pass keep:"all" to keep every Agent page for the user, or an array of page labels to keep. User and unknown-origin pages are never touched. Returns the closing report (closed / kept / preserved) to relay to the user verbatim.', z.object({ roomId: z.string().min(1), keep: z.union([z.literal('all'), z.array(z.string().min(1)).max(100)]) }), async ({ roomId, keep }) => withAgentRoom(roomId, async room => {
+    const report = await room.finish({ keep });
+    const current = await room.client.room(room.id).catch(() => null);
+    return current ? { ...report, room: describeRoomSummary(current) } : { ...report, closedRoom: true };
+  }));
+
   return server;
 }
 

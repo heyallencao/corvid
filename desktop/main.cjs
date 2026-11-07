@@ -378,8 +378,12 @@ const MIN_WINDOW_HEIGHT = 420;
 function createAgentClientGrant(args = {}) {
   const name=typeof args.name==='string'?args.name.trim():'';
   const roomIds=args.roomIds;
-  if(!name||name.length>80||!Array.isArray(roomIds)||!roomIds.length||roomIds.some(roomId=>typeof roomId!=='string'||!rooms.some(room=>room.id===roomId)))throw Object.assign(new Error('请填写有效的客户端名称，并至少选择一个现有空间'),{code:'CORVID_INVALID_ARGUMENT'});
-  const created=agentClients.create({name,roomIds});
+  // openRoomGrant clients start with no granted Rooms; they gain access to Rooms
+  // they open themselves through resolveRoom (see the agent-principal checks below).
+  const openRoomGrant=args.openRoomGrant===true;
+  const roomIdsValid=Array.isArray(roomIds)&&(openRoomGrant||roomIds.length)&&roomIds.every(roomId=>typeof roomId==='string'&&(openRoomGrant||rooms.some(room=>room.id===roomId)));
+  if(!name||name.length>80||!roomIdsValid)throw Object.assign(new Error('请填写有效的客户端名称，并至少选择一个现有空间'),{code:'CORVID_INVALID_ARGUMENT'});
+  const created=agentClients.create({name,roomIds:roomIds||[]});
   return {...created.client,token:created.token};
 }
 function normalizeBounds(saved) {
@@ -1689,10 +1693,10 @@ async function startServer() {
       if(principal.kind==='agent'){
         let roomId=null;
         const pieces=url.pathname.split('/').filter(Boolean);
-        if(pieces[0]==='rooms'&&pieces[1]) roomId=pieces[1];
+        if(pieces[0]==='rooms'&&pieces[1]&&pieces[1]!=='open') roomId=pieces[1];
         else if(pieces[0]==='tabs'&&pieces[1]) {try{roomId=findTab(pieces[1]).roomId;}catch{}}
-        const permittedMethods=new Set(['state','profiles','roomDetails','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
-        if(!permittedMethods.has(method)||!roomId&&!['state','profiles'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
+        const permittedMethods=new Set(['state','profiles','roomDetails','resolveRoom','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
+        if(!permittedMethods.has(method)||!roomId&&!['state','profiles','resolveRoom'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
           res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
         }
       }
@@ -1706,6 +1710,30 @@ async function startServer() {
       else if(method==='roomDetails') result=describeRoom(findRoom(routeArgs.id));
       else if(method==='state'&&principal.kind==='agent') result={rooms:describeAll().rooms.filter(room=>principal.client.roomIds.includes(room.id))};
       else if(method==='profiles'&&principal.kind==='agent') {const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));result={profiles:profiles.filter(profile=>allowedProfileIds.has(profile.id))};}
+      else if(method==='resolveRoom') {
+        // A scoped Agent client may open Rooms it creates itself; Rooms owned by
+        // someone else (including another Agent client) stay out of reach. A Room
+        // whose name/ID already exists outside the grant is refused (403) instead
+        // of silently creating a duplicate-name Room. Profile selection is part
+        // of the grant: agents may only target Profiles visible through their
+        // granted Rooms (or the default Profile when their grant is empty).
+        if(principal.kind==='agent'){
+          const key=typeof body.identifier==='string'?body.identifier.trim():'';
+          const candidates=key?rooms.filter(room=>room.id===key):[];
+          const target=(candidates.length?candidates:rooms.filter(room=>room.name===key))[0];
+          if(target && !principal.client.roomIds.includes(target.id))throw Object.assign(new Error('该 Agent 客户端无权访问此空间'),{status:403,code:'CORVID_FORBIDDEN'});
+          if(body.profileId!==undefined){
+            const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));
+            allowedProfileIds.add('default');
+            if(!allowedProfileIds.has(body.profileId))throw Object.assign(new Error('该 Agent 客户端无权在此浏览身份中创建空间'),{status:403,code:'CORVID_FORBIDDEN'});
+          }
+        }
+        result=await resolveRoom(body.identifier,body.profileId);
+        if(principal.kind==='agent' && result && result.id) {
+          agentClients.grantRooms(principal.client.id,[result.id]);
+          principal.client.roomIds.push(result.id);
+        }
+      }
       else if(method==='shutdown') result={ok:true};
       else if(method==='sendTestShortcut') {
         if(principal.kind!=='admin') throw Object.assign(new Error('测试快捷键需要管理员授权'),{status:403,code:'CORVID_FORBIDDEN'});

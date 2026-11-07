@@ -53,7 +53,11 @@ class Client {
   async profiles() { return (await this.api('/profiles')).profiles; }
   async createProfile(name) { return this.api('/profiles', { method: 'POST', body: { name } }); }
   async agentClients() { return (await this.api('/agent-clients')).clients; }
-  async createAgentClient(name, roomIds) {
+  async createAgentClient(name, roomIds, { openRoomGrant } = {}) {
+    if (openRoomGrant === true) {
+      if (typeof name !== 'string' || !name.trim() || (roomIds !== undefined && (!Array.isArray(roomIds) || roomIds.some(id => typeof id !== 'string' || !id)))) throw new TypeError('createAgentClient requires a name and, when given, Room IDs');
+      return this.api('/agent-clients', { method: 'POST', body: { name: name.trim(), roomIds: roomIds || [], openRoomGrant: true } });
+    }
     if (typeof name !== 'string' || !name.trim() || !Array.isArray(roomIds) || roomIds.length === 0 || roomIds.some(id => typeof id !== 'string' || !id)) throw new TypeError('createAgentClient requires a name and at least one Room ID');
     return this.api('/agent-clients', { method: 'POST', body: { name: name.trim(), roomIds } });
   }

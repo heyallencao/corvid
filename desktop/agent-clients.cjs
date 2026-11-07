@@ -77,7 +77,19 @@ function createAgentClientsStore(filePath) {
     return publicClient(client);
   }
 
-  return { create, createInternal, list, revoke, revokeInternal, findByToken };
+  function grantRooms(id, roomIds) {
+    if (!Array.isArray(roomIds) || roomIds.some(roomId => typeof roomId !== 'string' || !roomId)) throw new TypeError('grantRooms requires Room IDs');
+    const store = read();
+    const client = store.clients.find(item => item.id === id);
+    if (!client || client.revoked) return null;
+    const merged = [...new Set([...client.roomIds, ...roomIds])];
+    if (merged.length === client.roomIds.length) return publicClient(client);
+    client.roomIds = merged;
+    write(store);
+    return publicClient(client);
+  }
+
+  return { create, createInternal, list, revoke, revokeInternal, grantRooms, findByToken };
 }
 
 function publicClient(client) {
