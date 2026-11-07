@@ -54,6 +54,8 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await (async () => { for (let i = 0; i < 200; i++) { const result = await call('/rooms'); if (result.rooms.flatMap(room => room.tabs).some(tab => tab.url === pageUrl && tab.title === 'Custom endpoint fixture page')) return; await delay(25); } throw new Error('Local page did not finish loading'); })();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
+    // 模型选择、连接状态与「管理模型」都收在模型弹出层里，先展开徽标才能进入设置。
+    await shell.locator('.pi-model-select:visible').first().click();
     await shell.getByRole('button', { name: '管理模型' }).click();
     await shell.locator('#pi-model-settings').waitFor({state:'visible'});
     if(process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH){fs.mkdirSync(path.dirname(process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH),{recursive:true});await shell.screenshot({path:process.env.CORVID_PI_MODEL_QA_SCREENSHOT_PATH});}
@@ -85,14 +87,16 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const optionCount = await shell.locator('[role="option"]').count();
     for (let step = 0; step < (targetIndex - activeIndex + optionCount) % optionCount; step++) await modelSearch.press('ArrowDown');
     await modelSearch.press('Enter');
-    await shell.getByText('已连接').waitFor();
+    // 连接状态在模型弹出层里：先确认徽标已切到已连接，再展开读出状态文案。
+    await shell.waitForFunction(() => document.querySelector('.pi-model-controls')?.dataset.connected === 'true');
+    await shell.locator('.pi-model-select:visible').first().click();
+    assert.equal((await shell.locator('.pi-model-status').textContent()).trim(), '已连接');
+    await shell.keyboard.press('Escape');
 
+    // 托管即授权：绑定页面即授权读取，不再有预览与逐条同意步骤。
     await shell.getByRole('button', { name: '连接当前页面' }).click();
-    await shell.getByText(/任务页面：Corvid Agent 对话/).waitFor();
+    await shell.waitForFunction(() => document.querySelector('.pi-page-binding')?.getAttribute('aria-label')?.startsWith('任务页面：Corvid Agent 对话'));
     await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill('使用当前配置的模型回复');
-    await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
-    await shell.getByText(/将分享给 Agent：/).waitFor();
-    await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button', { name: '发送' }).click();
     await shell.waitForFunction(() => [...document.querySelectorAll('.pi-task-state')].some(node => ['completed', 'failed'].includes(node.dataset.status)), { timeout: 15_000 });
     const tasksAfterRequest = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-tasks.json'), 'utf8')).tasks;

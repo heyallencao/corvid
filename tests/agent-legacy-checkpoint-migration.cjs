@@ -11,7 +11,6 @@ const taskId = 'legacy-task';
 const legacySessionFile = path.join(dataDir, 'agent-sessions', taskId, 'session.jsonl');
 const replacementSessionFile = path.join(dataDir, 'agent-sessions', 'legacy_task', 'replacement.jsonl');
 const page = { label: 'tab-one', url: 'http://127.0.0.1/fixture', title: '本地页面', snapshot: { title: '本地页面' } };
-const contextPreview = { label: page.label, url: page.url, title: page.title, snapshot: JSON.stringify(page.snapshot) };
 const previousConversation = [
   { role: 'user', text: '保留的旧问题', at: '2026-11-04T00:00:00.000Z' },
   { role: 'assistant', text: '保留的旧回答', status: 'completed', at: '2026-11-04T00:00:01.000Z' },
@@ -66,7 +65,7 @@ async function main() {
     assert.doesNotMatch(JSON.stringify(visibleTask), /pi|runtimeVersion|sessionFile/i, 'runtime checkpoint details stay internal');
 
     await workbench.continueTask({
-      taskId, message: '请接着之前的回答继续', includePageContext: true, contextPreview,
+      taskId, message: '请接着之前的回答继续'
     });
     for (let attempt = 0; attempt < 100 && workbench.list()[0].status !== 'completed'; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 0));

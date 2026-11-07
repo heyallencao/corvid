@@ -59,7 +59,7 @@ function identity(){return {issueAgentCredential:async()=>({id:'credential',toke
   assert.equal(JSON.stringify(workbench.list()),before,'a recoverable conversation blocks without changing task state');
   await workbench.clear('recoverable');
   workbench.beginProfileDeletion('work');
-  await assert.rejects(workbench.start({profileId:'work',roomId:'room-new',tabId:'tab-new',prompt:'test',includePageContext:true,contextPreview:{}}),error=>error.code==='CORVID_PROFILE_DELETING');
+  await assert.rejects(workbench.start({profileId:'work',roomId:'room-new',tabId:'tab-new',prompt:'test'}),error=>error.code==='CORVID_PROFILE_DELETING');
   assert.equal(await workbench.removeProfileData('work'),1);
   assert.deepEqual(removed,['recoverable','completed_clean']);
   assert.deepEqual(workbench.list().map(task=>task.id),['default-task']);

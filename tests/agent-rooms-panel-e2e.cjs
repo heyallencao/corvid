@@ -111,12 +111,10 @@ async function readContrastPalette(shell) {
       await shell.waitForFunction(expected=>document.querySelector('#address')?.value===expected,url);
       if(await shell.locator('#library[data-kind="pi-workbench"]').count()===0)await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
       else await shell.getByRole('button',{name:/新建对话/}).click();
-      await shell.waitForFunction(name=>document.querySelector('.pi-page-binding')?.textContent.includes(name),room.name);
+      await shell.waitForFunction(name=>document.querySelector('.pi-page-binding')?.getAttribute('aria-label')?.includes(name),room.name);
       if(await shell.getByRole('button',{name:'连接当前页面'}).count())await shell.getByRole('button',{name:'连接当前页面'}).click();
       await shell.getByRole('textbox',{name:'描述要完成的浏览任务'}).fill(prompt);
-      await shell.getByRole('button',{name:'检查并预览页面上下文'}).click();
-      await shell.getByLabel(/我已检查/).check();
-      await shell.getByRole('button',{name:'发送'}).click();
+          await shell.getByRole('button',{name:'发送'}).click();
       const taskEntry=shell.locator('.pi-task-entry').filter({hasText:prompt});
       await taskEntry.waitFor();
       await taskEntry.locator(`.pi-task-state[data-status="${expectedStatus}"]`).waitFor();
@@ -220,7 +218,7 @@ async function readContrastPalette(shell) {
     await shell.keyboard.press('Enter');
     await shell.locator('#library[data-kind="agent-rooms"]').waitFor();
     assert.equal(await shell.evaluate(() => document.activeElement.id), 'library-trigger', 'keyboard activation from the library menu keeps focus on the menu trigger');
-    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
+    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区。').waitFor();
     await shell.emulateMedia({colorScheme:'light'});
     assertPaletteContrast(await readContrastPalette(shell), 'light');
     const lightShellPalette=await shell.evaluate(()=>({background:getComputedStyle(document.body).backgroundColor,dock:getComputedStyle(document.querySelector('#room-dock')).backgroundColor,tabs:getComputedStyle(document.querySelector('#tab-strip')).backgroundColor,address:getComputedStyle(document.querySelector('#address-form')).backgroundColor,panel:getComputedStyle(document.querySelector('#library')).backgroundColor}));
@@ -282,7 +280,7 @@ async function readContrastPalette(shell) {
     await shell.locator('#library').waitFor({ state: 'hidden' });
     assert.equal(await shell.evaluate(() => document.activeElement.id),'show-pi-workbench','closing Pi workbench restores focus to its sidebar control');
     await openAgentRooms();
-    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区；发送页面内容前需要先检查并确认。').waitFor();
+    await shell.getByText('当前浏览身份还没有 Agent 空间。打开 Corvid Agent 后，可从当前网页创建工作区。').waitFor();
 
     const defaultRoom = await call('/rooms', 'POST', { name: 'Default agent room' });
     await shell.getByRole('button', { name: '查看 Default agent room' }).waitFor();
@@ -324,7 +322,9 @@ async function readContrastPalette(shell) {
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
     await shell.locator('.pi-task-entry').waitFor();
     assert.equal(await shell.locator('.pi-task-entry').getAttribute('data-task-id'),firstTaskRoom.taskId,'opening a Room task selects its existing conversation and task ID');
-    assert.match(await shell.locator('.pi-page-binding').textContent(),/任务页面：Default agent room\s*\//,'the composer stays bound to the opened task page without activating a different Room');
+    // 徽标正文只显示页面标题；空间与页面的完整来源在可访问名称里表达。
+    assert.match(await shell.locator('.pi-page-binding').getAttribute('aria-label'),/任务页面：Default agent room\s*\//,'the composer stays bound to the opened task page without activating a different Room');
+    assert.equal(await shell.locator('.pi-page-binding').textContent(),'Room task fixture','the page badge shows the bound page title');
     await shell.getByRole('button',{name:'停止任务'}).click();
     await shell.locator('.pi-task-state[data-status="interrupted"]').waitFor();
     await openAgentRooms();

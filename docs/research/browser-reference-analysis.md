@@ -245,3 +245,7 @@ Google 官方帮助页另说明：Gemini in Chrome 默认使用当前标签内�
 直接源码证据：`desktop/agent-task-store.cjs` 将任务保存于版本化 `agent-tasks.json`；`desktop/agent-workbench.cjs` 的 `listSummaries(profileId)` 仅为指定 Profile 返回现有任务的 Room ID、脱敏 prompt 摘要、状态与更新时间。移除任务会删掉任务记录及其会话数据；删除浏览身份会清理其任务；关闭 Room 本身保留任务记录。当前没有持久化“Agent 已读页面”事件，也没有可区分“授权/读取上下文”与“已消费页面”的信号。
 
 决策：活动入口作为 Agent 工作区单一视图，按当前浏览身份查询并可按 Room/状态筛选；数据只从现有任务记录派生，不跨 Profile、不复制新历史库。列表不展示页面正文/快照/凭据，仅显示时间、Room、状态和现有脱敏任务摘要；摘要模式清理不承诺识别所有个人信息。记录保留与任务一致：删除任务/浏览身份后消失；Room 已关闭但任务仍在时显示不可跳转状态。先只聚合任务，不把页面上下文授权或快照读取误报为“已读”。此为源码与持久化合同核对，没有观察实际 UI，也未验证 VoiceOver、跨平台、真实模型或 Provider 行为。
+
+## 2026-11-07 Issue #407 对话区密度重构的参照与设计修订
+
+本轮重构 Agent 对话工作区（无任务卡片、行内状态行、徽章行输入区、托管即授权、自动排队派发），直接观察的运行态证据沿用本文件既有记录：Kaze Agent 面板布局与输入/模型相邻组织（Evidence `ev_3c3ee4f92ab10275d5eaae96a797c818258f403328128bf9ee16d740bbdb9067`、`ev_ae7cc8d9bebb43705bcdbb47eb75fc571bdd0ddc99e2c1d199e2d0cb80f6dcb7`），Kobra Chat History 的消息记录与输入分区层级（Evidence `ev_f0bdd424946decdaac56fa07cc3d4d8b4ac6c817e744a955fea8f6f08574e882`、`ev_e5e809415d68356fb436392675b4d3034c6860e68446a5c22e0df174c3d49a22`，REA 受控 Chromium 截图 + DOM + 可访问性树）。本轮未做新的 REA 抓取；Rare UI、EasyUI、Pin UI、Aceternity UI 未纳入本轮切面，未完成的记录在此明示。产品决策（用户确认）将页面上下文从逐条预览同意改为托管即授权：把空间交给 Agent 即授权读取其被授予空间内已绑定页面的上下文，界面常驻页面来源徽章；接管/失败/停止未确认等关键状态保留完整文字警示条。旧的"对当前队列 UI 的设计决定"（消息编辑、上下移动、显式同意派发队首）由本节修订取代：运行中在输入区直接发送即自动排队，本轮完成后按序自动派发，队列仅提供撤回；中断后队列非空时继续发送先派发队首再入队。覆盖限制依旧：上述 Evidence 是单窗口/组件页，不证明竞品队列或托管授权语义的运行态行为；Corvid 自身实现由隔离 Electron 与本地 fixture 验收（见 docs/reviews/verification-log.md）。

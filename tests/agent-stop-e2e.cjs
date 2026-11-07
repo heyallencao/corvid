@@ -43,8 +43,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     const prompt = '[fixture:hold-stop-late] 测试主动停止';
     await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill(prompt);
-    await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
-    await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button', { name: '发送' }).click();
     const card = shell.locator('.pi-task-entry').filter({ hasText: prompt });
     await card.locator('.pi-task-state[data-status="running"]').waitFor();
@@ -67,8 +65,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.getByRole('button', { name: '连接当前页面' }).click();
     const abortFailurePrompt = '[fixture:hold-stop-fails] 测试停止失败提示';
     await shell.getByRole('textbox', { name: '描述要完成的浏览任务' }).fill(abortFailurePrompt);
-    await shell.getByRole('button', { name: '检查并预览页面上下文' }).click();
-    await shell.getByLabel(/我已检查/).check();
     await shell.getByRole('button', { name: '发送' }).click();
     const abortFailureCard = shell.locator('.pi-task-entry').filter({ hasText: abortFailurePrompt });
     await abortFailureCard.locator('.pi-task-state[data-status="running"]').waitFor();
@@ -80,7 +76,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.match(abortFailureTask.error, /无法确认停止/);
     assert.equal(abortFailureTask.stopUnconfirmed, true);
     await abortFailureCard.getByRole('status').getByText(/无法确认上一轮是否已停止/).waitFor();
-    assert.equal(await abortFailureCard.getByRole('button', { name: '继续对话' }).count(), 0, 'an unconfirmed stop cannot resume into the same transcript');
+    assert.equal(await abortFailureCard.getByRole('button', { name: '继续对话' }).isDisabled(), true, 'an unconfirmed stop cannot resume into the same transcript');
 
     console.log('PASS Corvid Agent stop state, late event isolation, and abort failure feedback');
   } finally {

@@ -43,8 +43,7 @@ function identity() { return { issueAgentCredential: async () => ({ id: 'fixture
   const workbench = createAgentWorkbench({ dataDir, runtime, canReadPageContext: () => pageAllowed, ...identity() });
   try {
     const binding = { profileId: 'default', roomId: 'queue-room', tabId: 'queue-tab' };
-    const preview = await workbench.prepare(binding);
-    const task = await workbench.start({ ...binding, prompt: 'Initial task', includePageContext: true, contextPreview: preview });
+    const task = await workbench.start({ ...binding, prompt: 'Initial task' });
     assert.equal(task.status, 'running');
     const readsAfterStart = runtime.contextReads, promptsAfterStart = runtime.prompts;
     const first = workbench.queueMessage({ taskId: task.id, text: 'First follow-up' }).messageQueue[0];
@@ -60,31 +59,43 @@ function identity() { return { issueAgentCredential: async () => ({ id: 'fixture
     workbench.removeQueuedMessage({ taskId: task.id, itemId: first.id });
     current = workbench.list()[0];
     assert.deepEqual(current.messageQueue.map(item => item.text), ['Updated next step', 'Second follow-up']);
-    runtime.sessions[0].resolvePrompt();
-    await waitFor(() => workbench.list()[0].status === 'completed');
-    const completedTurn = workbench.list()[0].conversation.at(-1);
-    assert.ok(Date.parse(completedTurn.finishedAt) >= Date.parse(completedTurn.at), 'a completed turn persists its end timestamp for a stable elapsed duration');
-    assert.equal(runtime.prompts, promptsAfterStart, 'finishing a turn must not auto-dispatch the queue');
-    await assert.rejects(workbench.continueTask({ taskId: task.id, message: 'Bypass queue', includePageContext: true, contextPreview: preview }), /后续消息顺序或内容已变化/);
-    assert.equal(runtime.contextReads, readsAfterStart, 'bypassing a non-empty queue must be rejected before reading the page');
-    const queuedNext = workbench.list()[0].messageQueue[0];
-    const currentPreview = await workbench.prepare(binding);
-    await assert.rejects(workbench.continueTask({ taskId: task.id, queueItemId: queuedNext.id, queueItemRevision: queuedNext.revision - 1, includePageContext: true, contextPreview: currentPreview }), /顺序或内容已变化/);
-    const contextReadsBeforeSend = runtime.contextReads;
-    const continuation = await workbench.continueTask({ taskId: task.id, queueItemId: queuedNext.id, queueItemRevision: queuedNext.revision, message: 'must be ignored', includePageContext: true, contextPreview: currentPreview });
-    assert.equal(continuation.status, 'running');
-    assert.equal(runtime.contextReads, contextReadsBeforeSend + 1, 'sending a queued item reads a fresh page snapshot');
-    assert.equal(workbench.list()[0].conversation.filter(turn => turn.role === 'user').at(-1).text, 'Updated next step', 'the saved queued text is the only dispatched text');
-    assert.deepEqual(workbench.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'only the committed queue head is consumed');
 
-    await workbench.stop(task.id);
-    assert.equal(workbench.list()[0].status, 'interrupted');
-    const stoppedTurn = workbench.list()[0].conversation.at(-1);
+    // 托管模型：本轮自然完成后，队列按序自动发送，每条都读取新的页面快照。
+    runtime.sessions[0].resolvePrompt();
+    await waitFor(() => workbench.list()[0].conversation.filter(turn => turn.role === 'user').at(-1)?.text === 'Updated next step');
+    assert.equal(workbench.list()[0].status, 'running', 'the completed turn auto-dispatches the queue head');
+    assert.equal(runtime.contextReads, readsAfterStart + 1, 'the auto-dispatched head reads a fresh page snapshot');
+    assert.deepEqual(workbench.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'only the committed queue head is consumed');
+    runtime.sessions[1].resolvePrompt();
+    await waitFor(() => workbench.list()[0].conversation.filter(turn => turn.role === 'user').at(-1)?.text === 'Second follow-up');
+    runtime.sessions[2].resolvePrompt();
+    await waitFor(() => workbench.list()[0].status === 'completed' && workbench.list()[0].messageQueue.length === 0);
+    assert.equal(runtime.prompts, promptsAfterStart + 2, 'each queued message produces exactly one runtime prompt');
+
+    // 用户接管/停止会冻结自动发送；显式发送队首时读取新的页面快照。
+    const secondTask = await workbench.start({ ...binding, prompt: 'Second task' });
+    workbench.queueMessage({ taskId: secondTask.id, text: 'Held follow-up' });
+    await workbench.stop(secondTask.id);
+    assert.equal(workbench.list().find(item => item.id === secondTask.id).status, 'interrupted');
+    const stoppedTurn = workbench.list().find(item => item.id === secondTask.id).conversation.at(-1);
     assert.ok(Date.parse(stoppedTurn.finishedAt) >= Date.parse(stoppedTurn.at), 'a user-stopped turn freezes its duration');
-    assert.deepEqual(workbench.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'stop freezes dispatch and preserves the queue');
+    assert.deepEqual(workbench.list().find(item => item.id === secondTask.id).messageQueue.map(item => item.text), ['Held follow-up'], 'stop freezes dispatch and preserves the queue');
+    const readsBeforeBypass = runtime.contextReads;
+    await assert.rejects(workbench.continueTask({ taskId: secondTask.id, message: 'Bypass queue' }), /后续消息顺序或内容已变化/);
+    assert.equal(runtime.contextReads, readsBeforeBypass, 'bypassing a non-empty queue must be rejected before reading the page');
+    const heldItem = workbench.list().find(item => item.id === secondTask.id).messageQueue[0];
+    await assert.rejects(workbench.continueTask({ taskId: secondTask.id, queueItemId: heldItem.id, queueItemRevision: heldItem.revision - 1 }), /顺序或内容已变化/);
+    const readsBeforeSend = runtime.contextReads;
+    const resumed = await workbench.continueTask({ taskId: secondTask.id, queueItemId: heldItem.id, queueItemRevision: heldItem.revision, message: 'must be ignored' });
+    assert.equal(resumed.status, 'running');
+    assert.equal(runtime.contextReads, readsBeforeSend + 1, 'sending a queued item reads a fresh page snapshot');
+    assert.equal(workbench.list().find(item => item.id === secondTask.id).conversation.filter(turn => turn.role === 'user').at(-1).text, 'Held follow-up', 'the saved queued text is the only dispatched text');
+    assert.deepEqual(workbench.list().find(item => item.id === secondTask.id).messageQueue, [], 'only the committed queue head is consumed');
+    runtime.sessions.at(-1).resolvePrompt();
+
     const restarted = createAgentWorkbench({ dataDir, runtime: fixtureRuntime(), ...identity() });
-    assert.deepEqual(restarted.list()[0].messageQueue.map(item => item.text), ['Second follow-up'], 'restart preserves the pending queue');
-    assert.equal(restarted.list()[0].status, 'interrupted');
+    assert.deepEqual(restarted.list().find(item => item.id === secondTask.id)?.messageQueue, [], 'restart preserves the drained queue');
+    assert.equal(restarted.list().find(item => item.id === secondTask.id)?.status, 'interrupted');
 
     pageAllowed = false;
     const readsBeforeDeniedPreview = runtime.contextReads;
@@ -105,5 +116,5 @@ function identity() { return { issueAgentCredential: async () => ({ id: 'fixture
     assert.equal(JSON.parse(fs.readFileSync(path.join(migrationDir, 'agent-tasks.json'), 'utf8')).schemaVersion, 3);
   } finally { fs.rmSync(migrationDir, { recursive: true, force: true }); }
 
-  console.log('PASS Agent follow-up queue contract: write-only enqueue, ordered edits, explicit fresh-context dispatch, freeze/restart preservation, and v2 migration');
+  console.log('PASS Agent follow-up queue contract: write-only enqueue, ordered edits, auto-dispatch on completion with fresh context, freeze/restart preservation, and v2 migration');
 })().catch(error => { console.error(error); process.exitCode = 1; });

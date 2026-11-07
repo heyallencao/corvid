@@ -30,18 +30,14 @@ function localError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
-async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, includePageContext, expectedContext, agentCredential, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
+async function createPiAgentSession({ dataDir, taskId, profileId, roomId, tabId, agentCredential, sessionFile, selectedModel, model: selectedPiModel, modelRuntime: suppliedModelRuntime, requiresAuth = true }) {
   for (const [name, value] of Object.entries({ dataDir, taskId, profileId, roomId, tabId })) {
     if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${name} is required`);
   }
   if (!/^[a-zA-Z0-9_-]{1,100}$/.test(taskId)) throw new TypeError('taskId must contain only letters, numbers, underscores, or hyphens');
-  if (includePageContext !== true) throw new Error('The user must explicitly confirm sharing this page context before starting the Agent');
   if (!agentCredential || typeof agentCredential.token !== 'string' || !agentCredential.token) throw localError('CORVID_UNAUTHORIZED', 'The built-in Agent requires a Room-scoped Corvid credential');
 
   const context = await readPiPageContext({ dataDir, profileId, roomId, tabId, agentCredential });
-  if (expectedContext && (expectedContext.label !== context.label || expectedContext.url !== context.url || expectedContext.title !== context.title || expectedContext.snapshot !== JSON.stringify(context.snapshot).slice(0, 12_000))) {
-    throw localError('CORVID_STALE_REFERENCE', 'Selected page changed after the user reviewed its context');
-  }
 
   const pi = await import('@earendil-works/pi-coding-agent');
   const { Type } = await import('typebox');
