@@ -165,6 +165,13 @@ class McpProcess {
     assert.deepEqual(failing.value.logs, ['before fail']);
 
     process.stderr.write("6. ...\n");
+    // 5b. 入口闸门：用户接管期间 browser_script 在入口被拒（与其他动作工具一致）
+    await request(control.token, `/rooms/${roomId}/yieldControl`, 'POST', {});
+    const gated = await mcp.callTool('browser_script', { roomId, script: 'return 1;' });
+    assert.equal(gated.result.isError, true);
+    assert.equal(gated.value.code, 'CORVID_CONTROL_LOST');
+    await request(control.token, `/rooms/${roomId}/resumeControl`, 'POST', {});
+
     // 6. 超时强杀：Room 与页面状态一致，服务继续可用
     const pagesBefore = (await request(control.token, '/rooms')).payload.rooms.find(room => room.id === roomId).tabs.length;
     const timedOut = await mcp.callTool('browser_script', { roomId, script: 'await new Promise(() => {});', timeoutMs: 500 });
@@ -192,7 +199,7 @@ class McpProcess {
     assert.equal(finish.result.isError, undefined);
     assert.equal(finish.value.closedRoom, true);
     await mcp.close();
-    console.log('PASS browser_script switch contract, one-call batch task, grant refusal, script error receipt, timeout cancellation leaves state consistent, output truncation');
+    console.log('PASS browser_script switch contract, one-call batch task, grant refusal, script error receipt, user-takeover entry gate, timeout cancellation leaves state consistent, output truncation');
   } finally {
     if (app) await app.close().catch(() => {});
     fixture.close();

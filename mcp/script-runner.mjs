@@ -2,8 +2,13 @@
 // browser_script 子进程执行器：与 `cli/corvid.mjs run` 同引擎（SDK 子集，本地 Node
 // 权限运行，非沙箱）。由 mcp/corvid.mjs 拉起：stdin 收 { roomId, script }，stdout 回
 // JSON 收据；父进程负责超时强杀（kill 后桌面端页面状态不受影响——SDK 是无状态 HTTP）。
-// 绑定面只有 room 和 client 两个 SDK 对象；不提供任何 CDP 逃生舱。
+// 绑定面提供 room/client 两个 SDK 对象（脚本另可通过 dynamic import 触达整个 Node
+// API——这是非沙箱合同的一部分）；不提供任何 raw CDP 逃生舱。入口执行与页面动作
+// 工具一致的 Room 闸门（Agent 控制、无待接管、无执行风险）。
 import { connect } from '../sdk/index.js';
+import capabilityCore from '../desktop/agent-browser-capabilities.cjs';
+
+const { assertAgentReadable } = capabilityCore;
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -33,6 +38,7 @@ try {
 const logs = [];
 const write = line => {
   if (logs.length < 200) logs.push(String(line).slice(0, 2000));
+  else if (logs.length === 200) logs.push('…[truncated]');
 };
 console.log = (...args) => write(args.map(String).join(' '));
 console.info = console.log;
@@ -45,6 +51,7 @@ async function main() {
   trace('connected');
   try {
     const room = await client.room(payload.roomId);
+    assertAgentReadable(room);
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     const script = new AsyncFunction('room', 'client', `"use strict";\n${payload.script}`);
     trace('script start');
