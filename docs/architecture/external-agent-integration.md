@@ -63,6 +63,8 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 
 授权与程序闸门与 SDK/CLI/内置 Agent 三入口一致：scoped token 按 Room 授权过滤 Profile/Room 列表；显式 `roomId`/`tabId`；用户控制中的 Room 动作返回 `CORVID_CONTROL_LOST`；执行风险未复核时拒绝。
 
+**外部 Agent 可见性（P1.4）**：外部客户端在其空间内的动作会把客户端名留在空间上（`agentClientName`，随会话状态持久化）；桌面标签栏为 Agent 空间渲染命名分组徽章（`Agent · 客户端名`），受管页（有 label 的页）在标签上展示页名 chip 与 `data-agent-managed` 标记；`room_finish` 的收尾分报（closed/kept/preserved/agent）进入 shell 状态条展示，Agent 重新接管该空间时清除。
+
 **openRoomGrant 授权合同**：connect 自动签发的客户端初始授权范围为空；经 `room_open` **自建**的 Room 自动并入其授权范围（持久化在数据目录 `agent-clients.json`，设置中可随时撤销整个客户端）。授权范围外已存在的同名/同 ID Room 一律返回 `CORVID_FORBIDDEN`，**不会**创建重名 Room——避免制造重名空间导致后续按名 openRoom 产生歧义。用户在设置中手工创建的授权客户端同样适用「自建 Room 自动并入」；显式勾选的空间授予仍然有效。
 
 **Profile（浏览身份）授权面**（Issue #418 拍板）：agent 可用的浏览身份 = 授权客户端被勾选空间覆盖的 Profile（多选）∪ `default`；`room_open` 传入范围外的 `profileId` 返回 `CORVID_FORBIDDEN`。多账号并行自动化 = 在设置中给同一授权客户端勾选多个 Profile 的空间，agent 即可在多个身份中并行自建 Room，Cookie 按各 Profile 语义隔离。不做无界任意身份访问：agent 能用哪些身份由用户通过授权显式决定；自动签发的凭据默认只见 `default`（即用户主浏览身份，agent 在其中的页面共享该 Profile 的登录态——与内置 Corvid Agent 同权）。

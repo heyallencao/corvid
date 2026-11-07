@@ -2328,3 +2328,11 @@
 - 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（popup adopt 受管返回、download 收据 status=completed/path/filename、未命中事件 CORVID_TIMEOUT 透传）；`env -u ELECTRON_RUN_AS_NODE node tests/dialogs.e2e.mjs` 全绿（新增 MCP 对话框场景：act_and_wait 观测 confirm、handle_dialog 取消后状态清空）。
 - 边界：dialog 覆盖依赖前台焦点窗口（与 dialogs.e2e 既有前提一致，锁屏/失焦环境不产生通过证据）；download 收据的临时目录生命周期沿用 agent download 既有合同；多 Room 并发事件等待未专项覆盖。
 - 合并门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `1ff2426` 上 **EXIT 0**——串行链 86 项 PASS，skipped=0，已按 protocol squash 合并至 main。首轮门禁在 `restore-loading-e2e` 挂起 20 分钟（既有链内环境敏感挂起族，与本改动无代码交集），终止后重跑全绿。
+
+## 2026-11-07 Issue #427 P1.4 外部 Agent 可见性
+
+- 基线：worktree `.worktrees/issue-422-composite`，分支 `agent/issue-427-agent-visibility`（基点 origin/main `552c1bc`）；环境同前述记录。
+- 交付：外部客户端在其空间内的动作将客户端名留在空间（`agentClientName`，随 rooms.json 持久化；内置 Agent 除外）；桌面 shell 状态的 `describe` 与 `describeRoom` 均携带 `agentClientName`/`finishReport`；渲染层为 Agent 空间在标签栏起点渲染命名分组徽章（`Agent · 客户端名`，双语），受管页标签带 `data-agent-managed` 与 label chip（可访问名同步）；`room_finish` 分报（closed/kept/preserved/agent）进入状态条（role=status），Agent 重新接管时清除；`agentClientName` 变更纳入标签栏重建签名。
+- 过程修复：`describe()` 的内联 rooms mapper 与 `describeRoom()` 是两条输出路径，agent 的 `/rooms` 走前者——首版只改后者导致字段缺失，已两处补齐。
+- 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/agent-visibility-e2e.cjs`（徽章含客户端名、3 个受管页 chip、finish(keep p1) 后状态条分报含 p2/p3/p1 与客户端名）。
+- 边界：多 agent 客户端先后操作同一空间只显示首个客户端名（??= 语义）；分报状态条无自动消失计时（agent 重接管/切空间后随重绘变化）；深色主题像素与 Windows 未验证。
