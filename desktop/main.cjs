@@ -664,7 +664,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     ...(includeExtensionToolbar ? {uiLocale,themePreference} : {}),
     profiles,
     extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
-    rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
+    rooms: scoped.map(s => ({ id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null,agentClientName:s.agentClientName || null,finishReport:s.finishReport || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) }))
   };
 };
 // The local control API speaks for the whole app: every Room is visible there,
@@ -682,7 +682,7 @@ const describeAll = () => {
   };
 };
 function describeRoom(s) {
-  return { id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) };
+  return { id:s.id, name:s.name, profileId:s.profileId,windowId:s.windowId,ownership:s.ownership,finished:Boolean(s.finished),yielded:Boolean(s.yielded),manualControl:Boolean(s.manualControl),userResumePending:Boolean(s.userResumePending),executionRisk:s.executionRisk || null,agentClientName:s.agentClientName || null,finishReport:s.finishReport || null, tabs:s.tabIds.map(id => { const t = tabs.get(id); return {id:t.id,label:t.label,openedBy:t.openedBy,openerId:t.openerId,ready:t.ready,domReady:t.domReady,loadComplete:t.loadComplete,isLoading:Boolean(t.isLoading),navigationError:t.navigationError || null,title:t.view.webContents.getTitle(),url:t.view.webContents.getURL() || 'about:blank',faviconUrl:t.faviconUrl || null,pinned:Boolean(t.pinned),active:s.activeTabId===id,dialog:pageDebugger.get(t.view.webContents)}; }) };
 }
 function persist() {
   const state = {schemaVersion:SCHEMA_VERSION,activeRoomId,activeProfileId, windows:[...windowRecords.values()].filter(record=>!record.browserWindow.isDestroyed()).map(record=>({id:record.id,activeRoomId:record.activeRoomId,activeProfileId:record.activeProfileId})), rooms:rooms.map(s => ({...s, tabs:s.tabIds.map(id => {const t = tabs.get(id); return {id,label:t.label,openedBy:t.openedBy,pinned:Boolean(t.pinned),url:t.pendingNavigationUrl || (!t.ready && t.restoreUrl) || t.view.webContents.getURL() || 'about:blank'};})}))};
@@ -1584,7 +1584,7 @@ async function claimRoom(room) {
   const choice=await dialog.showMessageBox(window,{type:'question',buttons:[mainMessages.t('permissionRefuse'),mainMessages.t('allowAgentToUseSpace')],defaultId:0,cancelId:0,title:mainMessages.t('claimSpaceTitle'),message:mainMessages.t('allowAgentToUseSpaceMessage',{room:room.name}),detail:mainMessages.t('allowAgentToUseSpaceDetails',{profile:displayProfileName(profile),tabs:mainMessages.plural('tabs',tabIds.length)})});
   if(choice.response!==1)throw new Error('User declined room claim');
   if(!rooms.includes(room) || room.ownership!=='user' || room.executionRisk || room.userResumePending || room.profileId!==profile.id || room.tabIds.length!==tabIds.length || room.tabIds.some((id,index)=>id!==tabIds[index]))throw new Error('Room changed while awaiting approval; request it again');
-  room.ownership='agent';room.finished=false;room.yielded=false;room.manualControl=false;update();
+  room.ownership='agent';room.finished=false;room.yielded=false;room.manualControl=false;room.finishReport=null;update();
   return describe().rooms.find(item=>item.id===room.id);
 }
 async function finishRoom(room,keep) {
@@ -1601,7 +1601,9 @@ async function finishRoom(room,keep) {
   for(const tab of closing){try{await closeTab(tab.id);closedCount++;}catch(error){if(closedCount)throw new Error(`${error.message}；已有 ${closedCount} 个标签关闭`);throw error;}if(room.ownership!=='agent' || room.userResumePending || room.executionRisk)throw new Error('Room is no longer available for agent control; some pages may already have closed');}
   if(!room.tabIds.length){await closeRoom(room.id);return {roomId:room.id,closedRoom:true,keptManagedLabels,closedManagedLabels,preservedUnmanagedCount};}
   for(const tabId of room.tabIds)findTab(tabId).label=null;
-  room.ownership='user';room.finished=true;room.yielded=false;room.manualControl=false;update();
+  room.ownership='user';room.finished=true;room.yielded=false;room.manualControl=false;
+  room.finishReport={closed:closedManagedLabels,kept:keptManagedLabels,preserved:preservedUnmanagedCount,agent:room.agentClientName || null,at:new Date().toISOString()};
+  update();
   return {roomId:room.id,closedRoom:false,keptManagedLabels,closedManagedLabels,preservedUnmanagedCount};
 }
 async function requestUserControl(roomId) {
@@ -1697,6 +1699,11 @@ async function startServer() {
         const pieces=url.pathname.split('/').filter(Boolean);
         if(pieces[0]==='rooms'&&pieces[1]&&pieces[1]!=='open') roomId=pieces[1];
         else if(pieces[0]==='tabs'&&pieces[1]) {try{roomId=findTab(pieces[1]).roomId;}catch{}}
+        // 外部 Agent 客户端在空间内的动作留下其身份，供标签栏命名分组与状态标记展示（内置 Agent 除外）。
+        if(roomId && !String(principal.client.id||'').startsWith('builtin:')) {
+          const actingRoom=rooms.find(room=>room.id===roomId);
+          if(actingRoom && actingRoom.ownership==='agent') actingRoom.agentClientName ??= principal.client.name;
+        }
         const permittedMethods=new Set(['state','profiles','roomDetails','resolveRoom','createTab','activateRoom','yieldControl','resumeControl','adoptTab','releasePage','finishRoom','claimRoom','closeRoom','closeTab','activateTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload']);
         if(!permittedMethods.has(method)||!roomId&&!['state','profiles','resolveRoom'].includes(method)||roomId&&!principal.client.roomIds.includes(roomId)){
           res.writeHead(403);res.end(JSON.stringify({error:'该 Agent 客户端无权访问此资源',code:'CORVID_FORBIDDEN'}));return;
@@ -1734,6 +1741,8 @@ async function startServer() {
         if(principal.kind==='agent' && result && result.id) {
           agentClients.grantRooms(principal.client.id,[result.id]);
           principal.client.roomIds.push(result.id);
+          const openedRoom=rooms.find(room=>room.id===result.id);
+          if(openedRoom && !String(principal.client.id||'').startsWith('builtin:')) openedRoom.agentClientName ??= principal.client.name;
         }
       }
       else if(method==='shutdown') result={ok:true};

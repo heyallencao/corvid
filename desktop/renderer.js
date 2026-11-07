@@ -338,6 +338,7 @@ function draw(value) {
   } else if(room.yielded) {const label=document.createElement('span');label.textContent=extensionMessages.t('userInControl');status.append(label);if(!room.executionRisk)status.append(button(extensionMessages.t('returnControl'),async()=>{controlError='';try{await api.invoke('returnUserControl',{id:room.id});}catch(error){controlError=error.message;draw(state);}}));}
   if(controlError){const note=document.createElement('span');note.setAttribute('role','alert');note.textContent=controlError;status.append(note);}
   if(siteDataNotice?.tabId===active?.id){const note=document.createElement('span');note.setAttribute('role','status');note.textContent=siteDataNotice.message;status.append(note);}
+  if(room?.finishReport){const report=room.finishReport;const note=document.createElement('span');note.setAttribute('role','status');note.textContent=extensionMessages.t('agentFinishReport',{agent:report.agent||extensionMessages.t('agentGenericName'),closed:report.closed?.length?report.closed.join('、'):'—',kept:report.kept?.length?report.kept.join('、'):'—',preserved:String(report.preserved??0)});status.append(note);}
   status.dataset.tone=active?.navigationError?'danger':controlError?'danger':room.executionRisk?'warning':siteDataNotice?.tabId===active?.id||bookmarkFeedbackKey?'success':'info';
   renderBookmarkFeedback();
 }
@@ -1317,6 +1318,17 @@ function syncTabElement(el,tab,room){
     }
   }
   main.querySelector('.tab-title').textContent=titleText;
+  // Agent 受管页（有 label）在标签上展示页名 chip 与 Agent 标记。
+  let chip=main.querySelector(':scope > .tab-agent-chip');
+  if(tab.label){
+    el.dataset.agentManaged='true';
+    if(!chip){chip=document.createElement('span');chip.className='tab-agent-chip';main.insertBefore(chip,main.querySelector('.tab-title'));}
+    chip.textContent=tab.label;
+    main.setAttribute('aria-label',extensionMessages.t('agentManagedTabLabel',{label:tab.label,tab:titleText}));
+  }else{
+    delete el.dataset.agentManaged;
+    chip?.remove();
+  }
   close.title=extensionMessages.t('closeNamedTab',{tab:titleText});
   main.onkeydown=event=>{if(event.key==='ContextMenu'||(event.key==='F10'&&event.shiftKey)){event.preventDefault();openTabMenu(null,tab,main);}};
   close.onclick=event=>{event.stopPropagation();void closeTabFromUi(tab.id);};
@@ -1338,7 +1350,7 @@ function renderTabs(room){
   // Rebuild only when the room or its tabs actually changed: frequent state
   // updates (download progress, agent activity) must not tear down the tab bar
   // while the user is dragging a tab or clicking its close button.
-  const signature=[room.id,...room.tabs.map(tab=>[tab.id,tab.active,tab.pinned].join('\u0000'))].join('\u0001');
+  const signature=[room.id,room.agentClientName||'',room.ownership,...room.tabs.map(tab=>[tab.id,tab.active,tab.pinned,Boolean(tab.label)].join('\u0000'))].join('\u0001');
   const existing=document.querySelector('#new-tab');
   const tabs=document.querySelector('#tabs');
   if(signature===tabsStructureSignature && existing && existing.parentElement?.id==='tab-strip'){
@@ -1348,6 +1360,17 @@ function renderTabs(room){
   }
   tabsStructureSignature=signature;
   tabs.replaceChildren();
+  // 外部 Agent 驱动的空间：标签栏起点放命名分组徽章，标明这是哪个 Agent 在动的标签组。
+  if(room.ownership==='agent'){
+    const badge=document.createElement('div');
+    badge.className='tab-group-agent';
+    const agentName=room.agentClientName||extensionMessages.t('agentGenericName');
+    badge.textContent=extensionMessages.t('agentGroupBadge',{agent:agentName});
+    badge.title=extensionMessages.t('agentGroupBadge',{agent:agentName});
+    badge.setAttribute('role','img');
+    badge.setAttribute('aria-label',extensionMessages.t('agentGroupBadge',{agent:agentName}));
+    tabs.append(badge);
+  }
   // 新建标签按钮位于滚动区之外，重建标签时需先移除旧按钮，避免重复堆积。
   document.querySelectorAll('#tab-strip > #new-tab').forEach(node=>node.remove());
   for(const tab of room.tabs) tabs.append(tabElement(tab,room));
