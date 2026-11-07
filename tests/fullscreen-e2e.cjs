@@ -152,7 +152,8 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     const restoredMaximized=restoredWindows.find(window=>window.maximized);
     assert.ok(restoredMaximized,'app restart restores the prior maximized state');
     assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([normalBoundsBeforeMaximize]),'app restart restores the prior normal bounds');
-    console.log('PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart');
+    const primaryDisplay=await app.evaluate(({screen})=>{const {bounds,workArea,size}=screen.getPrimaryDisplay();return {bounds,workArea,size};});
+    console.log(`PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart: display=${JSON.stringify(primaryDisplay)} normal=${JSON.stringify(normalBoundsBeforeMaximize)} persisted=${JSON.stringify(persistedMaximized)} restored=${JSON.stringify(restoredMaximized.bounds)}`);
   }finally{
     if(app)await closeElectron(app).catch(error=>{console.error(error);process.exitCode=1;});
     await new Promise(resolve=>server.close(resolve));

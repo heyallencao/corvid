@@ -414,8 +414,14 @@ function saveWindowState() {
     const fullscreen = isTransientFullscreen(record);
     // 恢复 zoom 态的过渡窗口内 isMaximized() 可能瞬时为 false，按待恢复标记保持
     // 最大化语义与快照 bounds，避免把过渡帧写入持久化状态。
-    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : Boolean(record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized() || record.lastKnownMaximized);
-    const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : (maximized && record.normalBounds ? record.normalBounds : record.browserWindow.getNormalBounds());
+    const maximized = fullscreen
+      ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized)
+      : Boolean(record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized() || record.lastKnownMaximized);
+    const bounds = fullscreen && record.fullscreenRestoreBounds
+      ? record.fullscreenRestoreBounds
+      : maximized && record.normalBounds
+        ? record.normalBounds
+        : record.browserWindow.getNormalBounds();
     states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
   if (!states.length) return;
@@ -1749,13 +1755,22 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   const settleRestoredMaximizedState=()=>{
     if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized===true&&!browserWindow.isDestroyed()&&browserWindow.isMaximized())record.fullscreenRestoreMaximized=null;
   };
-  const clearRestoredBoundsAfterGeometryChange=()=>{
-    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized!==true&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  let normalBoundsTimer;
+  const scheduleNormalBoundsSnapshot=()=>{
+    clearTimeout(normalBoundsTimer);
+    normalBoundsTimer=setTimeout(()=>{
+      normalBoundsTimer=null;
+      if(browserWindow.isDestroyed()||isTransientFullscreen(record)||browserWindow.isMaximized()||record.lastKnownMaximized)return;
+      record.normalBounds={...browserWindow.getNormalBounds()};
+    },500);
   };
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized())record.normalBounds={...browserWindow.getNormalBounds()};settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
-  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized())record.normalBounds={...browserWindow.getNormalBounds()};settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
-  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=true;clearTimeout(record.fullscreenRestoreSettleTimer);if(record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;}});
-  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;record.normalBounds={...browserWindow.getNormalBounds()};}scheduleWindowStateSave();}});
+  const clearRestoredBoundsAfterGeometryChange=()=>{
+    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized!==true&&!browserWindow.isMaximized()&&!record.lastKnownMaximized)record.fullscreenRestoreBounds=null;
+  };
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized()&&!record.lastKnownMaximized)scheduleNormalBoundsSnapshot();settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){if(!browserWindow.isMaximized()&&!record.lastKnownMaximized)scheduleNormalBoundsSnapshot();settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
+  browserWindow.on('maximize',()=>{clearTimeout(normalBoundsTimer);normalBoundsTimer=null;if(!isTransientFullscreen(record)){record.lastKnownMaximized=true;clearTimeout(record.fullscreenRestoreSettleTimer);if(record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;}});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}scheduleNormalBoundsSnapshot();scheduleWindowStateSave();}});
   // macOS transitions are asynchronous; if the user reverses direction during
   // the animation, replay the latest target instead of trusting a stale event.
   browserWindow.on('enter-full-screen',()=>{
