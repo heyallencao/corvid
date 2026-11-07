@@ -1,5 +1,6 @@
 const {_electron}=require('playwright-core');const electron=require('electron');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const http=require('node:http');const assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'..'),delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function revealDock(shell){await shell.mouse.move(...Object.values(await shell.evaluate(()=>({x:Math.round(innerWidth/2),y:innerHeight-2}))),{steps:2});await delay(100);}
 (async()=>{const dir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-dialog-ui-'));const fixture=http.createServer((_req,res)=>{res.writeHead(200,{'content-type':'text/html'});res.end('<title>Dialog UI</title><button onclick="window.answer=prompt(\'Your name?\',\'initial\')">Ask</button>');});await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));let app;
 try{app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dir,CORVID_TEST_MODE:'1'}});const shell=await app.firstWindow();let config;for(let i=0;i<200;i++){try{config=JSON.parse(fs.readFileSync(path.join(dir,'control.json')));break;}catch{await delay(25);}}assert.ok(config);
 const call=async(method,route,body)=>{const response=await fetch(config.baseUrl+route,{method,headers:{authorization:`Bearer ${config.token}`,'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result;};
@@ -29,19 +30,19 @@ const escapeCancelled=await call('POST',`/tabs/${tab.id}/action`,{operation:'eva
 await call('DELETE',`/rooms/${room.id}`);
 // Issue #218：统一对话框标题头——aria-labelledby 可访问名称与 × 关闭钮。
 // 新建空间：标题头 + × 关闭。
-await shell.locator('#create-room-trigger').click();
+await revealDock(shell);await shell.locator('#create-room-trigger').click();
 await shell.locator('#new-room[open]').waitFor();
 await assertDialogHeader('new-room','新建空间');
 await shell.locator('#new-room-close').click();
 await shell.locator('#new-room').waitFor({state:'hidden'});
 // 新建/重命名浏览身份：经浏览身份菜单打开。
-await shell.locator('#profile-menu-trigger').click();
+await revealDock(shell);await shell.locator('#profile-menu-trigger').click();
 await shell.locator('#profile-menu button',{hasText:'新建浏览身份'}).first().click();
 await shell.locator('#new-profile[open]').waitFor();
 await assertDialogHeader('new-profile','新建浏览身份');
 await shell.locator('#new-profile-close').click();
 await shell.locator('#new-profile').waitFor({state:'hidden'});
-await shell.locator('#profile-menu-trigger').click();
+await revealDock(shell);await shell.locator('#profile-menu-trigger').click();
 await shell.locator('#profile-menu button',{hasText:'重命名当前浏览身份'}).first().click();
 await shell.locator('#rename-profile[open]').waitFor();
 await assertDialogHeader('rename-profile','重命名当前浏览身份');

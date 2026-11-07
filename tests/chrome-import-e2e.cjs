@@ -321,7 +321,7 @@ async function verifyHostOnlyCookieCollision(tempRoot,cookieKey){
     await allowCookieImport(shell);
     await shell.locator('#confirm-chrome-import').click();
     const status=shell.locator('#chrome-import-error');
-    await status.waitFor({state:'visible',timeout:5000});
+    await status.getByText(/Cookie 新增 3 项.*跳过 1 项、不支持 2 项/).waitFor({state:'visible',timeout:5000});
     const statusText=await status.textContent();
     const cookies=await app.evaluate(({session})=>session.fromPartition('persist:corvid').cookies.get({url:'http://example.test/app',name:'host_only_same_path'}));
     assert.match(statusText,/Cookie 新增 3 项.*跳过 1 项、不支持 2 项/,'same-name same-path HostOnly/Domain collision must be reported as skipped');
