@@ -412,7 +412,9 @@ function saveWindowState() {
   for (const record of windowRecords.values()) {
     if (record.browserWindow.isDestroyed()) continue;
     const fullscreen = isTransientFullscreen(record);
-    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : record.browserWindow.isMaximized();
+    // 恢复 zoom 态的过渡窗口内 isMaximized() 可能瞬时为 false，按待恢复标记保持
+    // 最大化语义与快照 bounds，避免把过渡帧写入持久化状态。
+    const maximized = fullscreen ? Boolean(record.fullscreenRestoreMaximized ?? record.lastKnownMaximized) : (record.fullscreenRestoreMaximized===true || record.browserWindow.isMaximized());
     const bounds = record.fullscreenRestoreBounds && (fullscreen || maximized) ? record.fullscreenRestoreBounds : record.browserWindow.getNormalBounds();
     states.push({ id: record.id, x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, maximized });
   }
@@ -1744,13 +1746,16 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
   windowRecords.set(recordId,record);
   rebuildApplicationMenu();
   focusWindow(record);
-  const clearRestoredBoundsAfterGeometryChange=()=>{
-    if(!isTransientFullscreen(record)&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  const settleRestoredMaximizedState=()=>{
+    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized===true&&!browserWindow.isDestroyed()&&browserWindow.isMaximized())record.fullscreenRestoreMaximized=null;
   };
-  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
-  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
-  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record))record.lastKnownMaximized=true;});
-  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}});
+  const clearRestoredBoundsAfterGeometryChange=()=>{
+    if(!isTransientFullscreen(record)&&record.fullscreenRestoreMaximized!==true&&!browserWindow.isMaximized())record.fullscreenRestoreBounds=null;
+  };
+  browserWindow.on('resize',()=>{closeExtensionPopup(record);if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}layout(record);});
+  browserWindow.on('move',()=>{if(!isTransientFullscreen(record)){settleRestoredMaximizedState();clearRestoredBoundsAfterGeometryChange();scheduleWindowStateSave();}});
+  browserWindow.on('maximize',()=>{if(!isTransientFullscreen(record)){record.lastKnownMaximized=true;clearTimeout(record.fullscreenRestoreSettleTimer);if(record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;}});
+  browserWindow.on('unmaximize',()=>{if(!isTransientFullscreen(record)){if(record.fullscreenRestoreMaximized===true){record.lastKnownMaximized=true;}else{record.lastKnownMaximized=false;record.fullscreenRestoreBounds=null;}}});
   // macOS transitions are asynchronous; if the user reverses direction during
   // the animation, replay the latest target instead of trusting a stale event.
   browserWindow.on('enter-full-screen',()=>{
@@ -1767,7 +1772,19 @@ async function createWindowRecord(bounds = {width:1280,height:850},recordId = id
     if(transitionTarget===false)record.fullscreenTransitionTarget=null;
     else if(transitionTarget===true&&!record.closing&&!browserWindow.isDestroyed())browserWindow.setFullScreen(true);
     record.lastKnownMaximized=Boolean(browserWindow.isMaximized()||record.fullscreenRestoreMaximized);
-    if(!record.htmlFullscreen&&transitionTarget!==true)record.fullscreenRestoreMaximized=null;
+    if(!record.htmlFullscreen&&transitionTarget!==true){
+      if(record.fullscreenRestoreMaximized===true){
+        // macOS 在退出全屏后异步恢复 zoom 态：恢复完成前事件报告的几何值是过渡帧
+        // （宽度可达全屏宽、高度可差 2px），不能据此清除快照。等 maximize 事件或
+        // 稳态几何事件确认恢复后再清除标记；定时器是事件缺失时的兜底。
+        clearTimeout(record.fullscreenRestoreSettleTimer);
+        record.fullscreenRestoreSettleTimer=setTimeout(()=>{
+          if(!browserWindow.isDestroyed()&&record.fullscreenRestoreMaximized===true)record.fullscreenRestoreMaximized=null;
+        },1500);
+      }else{
+        record.fullscreenRestoreMaximized=null;
+      }
+    }
     update(record);if(!record.htmlFullscreen&&transitionTarget!==true)scheduleWindowStateSave();
   });
   browserWindow.on('close',()=>{closeExtensionPopup(record);record.actionIndicator?.hide();saveWindowState();record.closing=true;record.fullscreenTransitionTarget=null;});
