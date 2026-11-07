@@ -2336,3 +2336,4 @@
 - 过程修复：`describe()` 的内联 rooms mapper 与 `describeRoom()` 是两条输出路径，agent 的 `/rooms` 走前者——首版只改后者导致字段缺失，已两处补齐。
 - 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/agent-visibility-e2e.cjs`（徽章含客户端名、3 个受管页 chip、finish(keep p1) 后状态条分报含 p2/p3/p1 与客户端名）。
 - 边界：多 agent 客户端先后操作同一空间只显示首个客户端名（??= 语义）；分报状态条无自动消失计时（agent 重接管/切空间后随重绘变化）；深色主题像素与 Windows 未验证。
+- 合并门禁：`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `1fb6c9d` 上 **EXIT 0**——串行链 87 项 PASS（新增 agent-visibility-e2e），skipped=0，已按 protocol squash 合并至 main。首轮门禁在 `interaction-states-e2e` 真实指针 hover 断言失败（既有环境敏感族：显示空转下指针 hover 失配，与既有 #406 记录同族），caffeinate 重跑全绿。
