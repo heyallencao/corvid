@@ -226,6 +226,49 @@ function createServer() {
     return current ? { ...report, room: describeRoomSummary(current) } : { ...report, closedRoom: true };
   }));
 
+  const waitStateSchema = z.enum(['load', 'domcontentloaded']).default('load');
+  registerActionTool(server, 'page_navigate_and_snapshot', 'Navigate the explicitly selected managed page to an HTTP(S) URL, wait for the requested document state, and return the post-navigation semantic snapshot in the same call — one round trip instead of navigate plus wait plus snapshot. Same Room/Tab gates as page_navigate; inspect the returned snapshot for @ref targets.', pageScopeSchema.extend({
+    url: z.string().url().max(8192),
+    waitState: waitStateSchema,
+    timeoutMs: pageWaitTimeoutSchema,
+    scope: z.enum(['page', 'viewport']).default('page'),
+  }), async ({ roomId, tabId, url, waitState, timeoutMs, scope }) => withManagedPage(roomId, tabId, async page => {
+    const info = await page.navigate(url);
+    await page.waitForLoadState(waitState, { timeout: timeoutMs });
+    const current = await page.info();
+    const snapshot = await page.snapshot({ scope });
+    return { navigated: { url: current.url, title: current.title, requestedUrl: info?.url ?? url }, waitState, snapshot };
+  }));
+
+  const postActionLocator = locatorSchema;
+  const pageActionSchema = z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('click'), target: postActionLocator }),
+    z.object({ kind: z.literal('fill'), target: postActionLocator, value: z.string().max(20_000) }),
+    z.object({ kind: z.literal('press'), target: postActionLocator, key: z.string().min(1).max(32) }),
+    z.object({ kind: z.literal('hover'), target: postActionLocator }),
+    z.object({ kind: z.literal('select_option'), target: postActionLocator, choices: selectChoicesSchema }),
+  ]);
+  registerActionTool(server, 'page_act_and_snapshot', 'Perform exactly one action (click, fill, press, hover, or select_option) on an explicitly selected managed page, optionally wait for a document state or a selector, and return the post-action semantic snapshot in the same call — one round trip instead of action plus wait plus snapshot. Same Room/Tab gates and locator rules as the single-step tools; use page_snapshot alone when no action is needed.', pageScopeSchema.extend({
+    action: pageActionSchema,
+    waitState: waitStateSchema,
+    waitSelector: z.object({ target: locatorSchema, state: z.enum(['attached', 'detached', 'visible', 'hidden']).default('visible') }).optional(),
+    timeoutMs: pageWaitTimeoutSchema,
+    scope: z.enum(['page', 'viewport']).default('page'),
+  }), async ({ roomId, tabId, action, waitState, waitSelector, timeoutMs, scope }) => withManagedPage(roomId, tabId, async page => {
+    const target = action.target.by === 'ref' ? action.target.value : action.target;
+    switch (action.kind) {
+      case 'click': await page.click(target); break;
+      case 'fill': await page.fill(target, action.value); break;
+      case 'press': await page.press(target, action.key); break;
+      case 'hover': await page.hover(target); break;
+      case 'select_option': await page.selectOption(target, action.choices); break;
+    }
+    if (waitSelector) await page.waitForSelector(waitSelector.target.by === 'ref' ? waitSelector.target.value : waitSelector.target, { state: waitSelector.state || 'visible', timeout: timeoutMs });
+    else await page.waitForLoadState(waitState, { timeout: timeoutMs });
+    const snapshot = await page.snapshot({ scope });
+    return { performed: action.kind, target, snapshot };
+  }));
+
   if (process.env.CORVID_BROWSER_SCRIPT === '1') {
     const SCRIPT_RUNNER = fileURLToPath(new URL('./script-runner.mjs', import.meta.url));
     const SCRIPT_OUTPUT_BYTES = 32 * 1024;
