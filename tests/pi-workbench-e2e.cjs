@@ -104,8 +104,8 @@ const chooseModel = async (page, providerId, modelId) => {
     const state = await stateResponse.json();
     const activeRoom = state.rooms.find(room => room.id === state.activeRoomId);
     const sourceUrl = `http://127.0.0.1:${site.address().port}/`;
-    await shell.getByLabel('地址或搜索').fill(sourceUrl);
-    await shell.getByLabel('地址或搜索').press('Enter');
+    await shell.locator('#address').fill(sourceUrl);
+    await shell.locator('#address').press('Enter');
     await (async()=>{for(let i=0;i<200;i++){const response=await fetch(control.baseUrl+'/rooms',{headers:{authorization:`Bearer ${control.token}`}});const latest=await response.json();if(latest.rooms.flatMap(room=>room.tabs).some(tab=>tab.url===sourceUrl))return;await delay(25);}throw new Error('Fixture page did not navigate');})();
 
     await shell.getByRole('button', { name: 'Corvid Agent', exact: true }).click();
