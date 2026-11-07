@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-07 Issue #403 macOS 最大化与全屏 bounds 持久化
+
+- 历史 hosted 证据：Release run [#42223547663](https://github.com/heyallencao/corvid/actions/runs/42223547663)，source `d8e2bad15ac9ba5edc53f6660bd26db5bf47331c`；Apple Silicon 门禁曾在最大化窗口退出全屏后的常态 bounds 断言失败，Windows installer smoke 与 Intel macOS app smoke/资产上传通过，发布步骤跳过。
+- 根因：macOS 原生最大化及全屏退出期间，`resize`/`move` 事件会短暂报告窗口既非最大化也非全屏，事件中的 `getNormalBounds()` 是过渡几何。旧实现立即把它写进 normal-bounds 快照并清除全屏恢复快照；退出全屏时 `isMaximized()` 也可能短暂为 false。修复延迟 500ms 采集普通窗口快照，并以 `lastKnownMaximized` 阻止转场期间覆盖/清除；持久化将原生最大化状态和已知状态合并判断。全屏 E2E 在最大化前读取常态 bounds，再精确检查持久化和重启恢复值。
+- 验证环境：macOS 26.5.1、Apple M5 / arm64、Electron 45.2.1；主显示器 Electron 逻辑尺寸为 1470×956，work area 为 1470×845（原生报告 2560×1664 Retina）。真实 Electron 测试记录最大化前 normal bounds 为 `{x:0,y:33,width:1280,height:843}`，`window-state.json` 与重启恢复均为相同尺寸，且恢复为最大化状态。
+- 验证结果：`node --test tests/window-fullscreen-state.test.mjs` 12/12；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE node tests/fullscreen-e2e.cjs` EXIT 0，执行了原生全屏而非跳过；`caffeinate -dimsu env -u ELECTRON_RUN_AS_NODE npm test` EXIT 0，node:test 48/48，`test:serial` 中 77 条命令全部成功；`node --check` 与 `git diff --check` 通过。
+- 覆盖边界：本机 macOS arm64 开发版与当前 Retina 显示设置；未覆盖 Windows、其他 macOS 版本或打包版。既有 hosted Release 失败记录仅作历史基线，本地通过不能替代未来发布门禁。
+
 ## 2026-11-06 Issue #289 Apple Silicon hosted E2E 焦点与全屏状态修复
 
 - 基线：隔离 worktree `browser/issue-289-hosted-focus`，起点 `origin/main` `0d08671742740342028b6629d6231d90366ccc69`，随后 rebase 到最新 `origin/main` `c450c1e25ccb1e48dba9215e52af16cea6efd54c` 并在该最终候选复验；macOS arm64（Darwin 25.5.0）、Node.js v24.22.1、Electron 45.2.1，使用临时 `CORVID_DATA_DIR` 与本地 HTTP fixture。

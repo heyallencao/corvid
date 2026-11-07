@@ -46,9 +46,9 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     assert.equal(externalFullscreen.status,404,'the external control API must not expose a browser-window fullscreen action');
     await shell.getByRole('button',{name:'Corvid Agent',exact:true}).click();
     await shell.locator('#library[data-kind="pi-workbench"]').waitFor();
+    const normalBoundsBeforeMaximize=await firstNativeWindow.evaluate(window=>window.getNormalBounds());
     await firstNativeWindow.evaluate(window=>window.maximize());
     await until(()=>firstNativeWindow.evaluate(window=>window.isMaximized()),'maximized window before full screen');
-    const maximizedBeforeFullscreen=await firstNativeWindow.evaluate(window=>window.getNormalBounds());
     await shell.getByRole('button',{name:'更多浏览工具'}).click();
     const toggle=shell.getByRole('menuitemcheckbox',{name:'全屏模式'});
     assert.equal(await toggle.getAttribute('aria-checked'),'false');
@@ -133,7 +133,7 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
       const restored=await firstNativeWindow.evaluate(window=>window.isMaximized());
       return native&&restored&&state.windows.every(window=>!window.fullscreen&&!window.pageFullscreen);
     },'page full-screen exit event completes and restores the original maximized window');
-    assert.ok(maximizedBeforeFullscreen.width>0&&maximizedBeforeFullscreen.height>0,'fixture records the maximized window’s normal bounds before full screen');
+    assert.ok(normalBoundsBeforeMaximize.width>0&&normalBoundsBeforeMaximize.height>0,'fixture records the window’s normal bounds before maximizing');
     const previousToken=config.token;
     await closeElectron(app);
     app=undefined;
@@ -141,7 +141,7 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     const boundsForSort=windows=>windows.map(window=>({width:window.width??window.bounds.width,height:window.height??window.bounds.height})).sort((a,b)=>a.width-b.width||a.height-b.height);
     const persistedMaximized=persistedWindows.find(window=>window.maximized);
     assert.ok(persistedMaximized,'full screen exit must persist the prior maximized state');
-    assert.deepEqual(boundsForSort([persistedMaximized]),boundsForSort([maximizedBeforeFullscreen]),'full screen bounds must not replace the maximized window’s normal bounds');
+    assert.deepEqual(boundsForSort([persistedMaximized]),boundsForSort([normalBoundsBeforeMaximize]),'full screen and maximized bounds must not replace the window’s normal bounds');
 
     config=undefined;
     const restarted=await launchElectron(_electron,{executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}},{label:'fullscreen-e2e-restart',dataDir});
@@ -151,8 +151,9 @@ const fullscreenPreflight=applyMacLockScreenSkip({variable:'CORVID_TEST_SKIP_NAT
     assert.ok(restoredWindows.every(window=>!window.fullscreen),'app restart must not restore a transient full-screen state');
     const restoredMaximized=restoredWindows.find(window=>window.maximized);
     assert.ok(restoredMaximized,'app restart restores the prior maximized state');
-    assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([maximizedBeforeFullscreen]),'app restart restores the prior normal bounds');
-    console.log('PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart');
+    assert.deepEqual(boundsForSort([restoredMaximized]),boundsForSort([normalBoundsBeforeMaximize]),'app restart restores the prior normal bounds');
+    const primaryDisplay=await app.evaluate(({screen})=>{const {bounds,workArea,size}=screen.getPrimaryDisplay();return {bounds,workArea,size};});
+    console.log(`PASS full-screen menu reflects native state, preserves browser and Agent UI, and restores normal window state after app restart: display=${JSON.stringify(primaryDisplay)} normal=${JSON.stringify(normalBoundsBeforeMaximize)} persisted=${JSON.stringify(persistedMaximized)} restored=${JSON.stringify(restoredMaximized.bounds)}`);
   }finally{
     if(app)await closeElectron(app).catch(error=>{console.error(error);process.exitCode=1;});
     await new Promise(resolve=>server.close(resolve));

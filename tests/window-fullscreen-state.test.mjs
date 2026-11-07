@@ -43,6 +43,16 @@ test('snapshots exact normal bounds once before a fullscreen transition', () => 
   assert.deepEqual(record.fullscreenRestoreBounds, { x: 11, y: 22, width: 1024, height: 684 });
 });
 
+test('uses the last ordinary bounds snapshot when entering fullscreen from a maximized window', () => {
+  const { record } = createRecord({
+    bounds: { x: 11, y: 22, width: 1470, height: 847 },
+    maximized: true,
+    record: { normalBounds: { x: 20, y: 30, width: 1280, height: 845 }, lastKnownMaximized: true },
+  });
+  snapshotFullscreenRestoreState(record);
+  assert.deepEqual(record.fullscreenRestoreBounds, { x: 20, y: 30, width: 1280, height: 845 });
+});
+
 test('records the exact page tab that entered HTML fullscreen', () => {
   const { record, calls } = createRecord({ record: { htmlFullscreen: false, htmlFullscreenTabId: null } });
   assert.equal(markPageFullscreen(record, 'tab-a', describe), true);
