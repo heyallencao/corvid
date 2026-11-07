@@ -50,7 +50,7 @@ node cli/corvid.mjs doctor codex   # 诊断控制服务、MCP 注册与 skill �
 node cli/corvid.mjs disconnect codex  # 撤销 connect 写入的全部条目
 ```
 
-`connect` 运行时会先列出将写入的配置文件与条目（MCP server 注册 + skill 安装路径），显式确认后写入；脚本化场景加 `--yes`。加 `--browser-script` 可以一并启用 `browser_script` 批量脚本执行工具（脚本以本地 Node 权限运行，非沙箱；默认不启用，交互模式下 connect 会单独询问）。不提供 `--token` 时，connect 用本地管理员凭据经运行中的 Corvid 桌面自动签发一个 openRoomGrant 授权客户端（初始授权范围为空，只能访问其自建的 Room），token 写入 host 配置 env，`disconnect` 时自动撤销；`--token` 则写入你在 Corvid 设置中签发的既有凭据，`disconnect` 不撤销它。授权客户端经 `room_open` 创建的 Room 会自动并入其授权范围；授权范围外已存在的同名 Room 会被拒绝（不创建重名 Room）。支持 `claude-code`、`codex`、`cursor`、`dsh` 四种 host，写入位置与撤销语义见 [外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
+`connect` 运行时会先列出将写入的配置文件与条目（MCP server 注册 + skill 安装路径），显式确认后写入；脚本化场景加 `--yes`。加 `--browser-script` 可以一并启用 `browser_script` 批量脚本执行工具（脚本以本地 Node 权限运行、可通过 dynamic import 触达整个 Node API，非沙箱；默认不启用，交互模式下 connect 会单独询问）。该开关只控制外部 host 的 MCP 工具面，本地 `corvid run` CLI 不受影响。不提供 `--token` 时，connect 用本地管理员凭据经运行中的 Corvid 桌面自动签发一个 openRoomGrant 授权客户端（初始授权范围为空，只能访问其自建的 Room），token 写入 host 配置 env，`disconnect` 时自动撤销；`--token` 则写入你在 Corvid 设置中签发的既有凭据，`disconnect` 不撤销它。授权客户端经 `room_open` 创建的 Room 会自动并入其授权范围；授权范围外已存在的同名 Room 会被拒绝（不创建重名 Room）。支持 `claude-code`、`codex`、`cursor`、`dsh` 四种 host，写入位置与撤销语义见 [外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
 
 ## 文档
 
