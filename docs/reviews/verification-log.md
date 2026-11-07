@@ -2311,3 +2311,19 @@
 - 过程中发现既有缺陷并开单：`page_press`/SDK `Page.press` 的 'Enter' 不触发表单隐式提交（合成键盘 keyDown 无 `text:'\r'`，Playwright 同场景携带）——见 Issue #423（priority:P2，修复涉及共享键盘路径需回归 keyboard 用例）。P1.3 E2E 的提交流改走 click 提交按钮路径。
 - 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（新增复合工具覆盖：load 等待语义、click 后快照含状态文本、fill、click 提交按钮、动作失败透传）；`env -u ELECTRON_RUN_AS_NODE node tests/agent-connect-e2e.cjs` 全绿（新增多身份正向断言：授权第二 Profile → `room_open` 允许、default 并行可用）。
 - 边界：复合工具不改变桌面端闸门语义；press 提交缺口由 Issue #423 跟踪；多 Room 并发复合调用未专项覆盖。
+
+## 2026-11-07 Issue #425 P1.2a 对话框与事件等待工具
+
+- 基线：worktree `.worktrees/issue-422-composite`，分支 `agent/issue-425-p12a-tools`（基点 origin/main `01fbfdb`）；环境同前述记录。
+- 交付：`page_get_dialog`（观测挂起对话框）、`page_handle_dialog`（接受/取消应答）、`page_act_and_wait`（单动作 + popup/download/dialog 事件等待一次调用；事件等待先于动作 arm，与 SDK「先激活 opener 再可信点击」一致；popup adopt 后返回受管页信息，download 返回桌面临时目录保存收据 status/path/filename，dialog 在动作后台发射时轮询到即返回——打开对话框的动作本身会挂起直到应答）。均复用 withManagedPage 闸门。
+- 过程确认的环境合同：**JS dialog 只在前台焦点窗口真正打开**——`_electron.launch` 直启（无焦点）下 confirm 不触发 `javascriptDialogOpening`（SDK 探针 6.4s 轮询全 null），Launch Services 启动器（dialogs.e2e 同款）正常。据此 dialog 工具覆盖放在 `tests/dialogs.e2e.mjs`（LS 启动器环境），mcp-e2e 保留 popup/download 覆盖。
+- 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（popup adopt 受管返回、download 收据 status=completed/path/filename、未命中事件 CORVID_TIMEOUT 透传）；`env -u ELECTRON_RUN_AS_NODE node tests/dialogs.e2e.mjs` 全绿（新增 MCP 对话框场景：act_and_wait 观测 confirm、handle_dialog 取消后状态清空）。
+- 边界：dialog 覆盖依赖前台焦点窗口（与 dialogs.e2e 既有前提一致，锁屏/失焦环境不产生通过证据）；download 收据的临时目录生命周期沿用 agent download 既有合同；多 Room 并发事件等待未专项覆盖。
+
+## 2026-11-07 Issue #425 P1.2a 对话框与事件等待工具
+
+- 基线：worktree `.worktrees/issue-422-composite`，分支 `agent/issue-425-p12a-tools`（基点 origin/main `01fbfdb`）；环境同前述记录。
+- 交付：`page_get_dialog`（观测挂起对话框）、`page_handle_dialog`（接受/取消应答）、`page_act_and_wait`（单动作 + popup/download/dialog 事件等待一次调用；事件等待先于动作 arm，与 SDK「先激活 opener 再可信点击」一致；popup adopt 后返回受管页信息，download 返回桌面临时目录保存收据 status/path/filename，dialog 在动作后台发射时轮询到即返回——打开对话框的动作本身会挂起直到应答）。均复用 withManagedPage 闸门。
+- 过程确认的环境合同：**JS dialog 只在前台焦点窗口真正打开**——`_electron.launch` 直启（无焦点）下 confirm 不触发 `javascriptDialogOpening`（SDK 探针 6.4s 轮询全 null），Launch Services 启动器（dialogs.e2e 同款）正常。据此 dialog 工具覆盖放在 `tests/dialogs.e2e.mjs`（LS 启动器环境），mcp-e2e 保留 popup/download 覆盖。
+- 定向验证（EXIT 0，skipped=0）：`env -u ELECTRON_RUN_AS_NODE node tests/mcp-e2e.cjs` 3×PASS（popup adopt 受管返回、download 收据 status=completed/path/filename、未命中事件 CORVID_TIMEOUT 透传）；`env -u ELECTRON_RUN_AS_NODE node tests/dialogs.e2e.mjs` 全绿（新增 MCP 对话框场景：act_and_wait 观测 confirm、handle_dialog 取消后状态清空）。
+- 边界：dialog 覆盖依赖前台焦点窗口（与 dialogs.e2e 既有前提一致，锁屏/失焦环境不产生通过证据）；download 收据的临时目录生命周期沿用 agent download 既有合同；多 Room 并发事件等待未专项覆盖。

@@ -57,6 +57,7 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 - 读页：`page_info`、`page_snapshot`、`page_screenshot`（视口 PNG image content，≤8 MiB）、`page_wait_for_url`、`page_wait_for_load`、`page_wait_for_selector`
 - 页面动作：`page_navigate`（限无凭据 HTTP(S)）、`page_new`、`page_close`、`page_back`、`page_forward`、`page_reload`、`page_click`、`page_hover`、`page_scroll`（有界）、`page_fill`、`page_press`、`page_select_option`
 - 复合工具（P1.3）：`page_navigate_and_snapshot`（导航+等待终态+快照一次调用）、`page_act_and_snapshot`（单击/填/按键/悬停/下拉之一 + 等待文档态或 selector + 快照一次调用）；与单步工具同一套 Room/Tab 闸门，是 browser_script 未启用时的默认往返压缩主力
+- 对话框与事件等待（P1.2a）：`page_get_dialog`（读取挂起的 alert/confirm/prompt/beforeunload）、`page_handle_dialog`（接受/取消应答，prompt 支持 promptText）、`page_act_and_wait`（单动作 + popup/download/dialog 事件等待一次调用；事件等待先于动作 arm，与 SDK「先激活 opener 再可信点击」语义一致；popup 返回新受管页，download 返回临时目录保存收据，dialog 在动作后台发射时轮询到即返回）
 - Room 生命周期：`room_open`（按名字或 ID 复用/创建）、`room_claim`（请求用户批准）、`room_yield`（交还用户）、`room_finish`（收尾分报：closed / kept / preserved）
 - 批量执行（可选）：`browser_script`——一次调用对显式 Room 提交一段 JS，走 SDK 子集（含 `evaluate`，无 raw CDP），返回收据（result/logs/Room 终态 tabs/durationMs）。仅在 connect 时显式启用（`--browser-script` 或交互确认，写入 host 配置 `CORVID_BROWSER_SCRIPT=1`）后注册；脚本在子进程中以本地 Node 权限运行、**非沙箱**，`timeoutMs`（默认 30s，上限 120s）超时强杀，Room 与页面状态不受破坏；收据总量超 32 KiB 截断。决策阶梯级 1，优先于逐步工具使用（skill 文档版本 0.2.0-p1）
 

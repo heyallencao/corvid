@@ -33,6 +33,34 @@ test('page dialogs can be handled while their triggering action is pending', {ti
     await until(async()=>(await page.dialog())?.message==='reconnect');controller.abort();await abandoned;
     const resumed=await connect({dataDir:dir});const resumedPage=await (await resumed.room(room.id)).page(page.tabId);assert.equal((await resumedPage.dialog()).defaultPrompt,'seed');await resumedPage.acceptDialog('resumed');await until(async()=>(await resumedPage.evaluate(()=>window.abandoned))==='resumed');await resumed.disconnect();
     await room.close();await client.disconnect();
+
+    // Browser MCP dialog 工具（page_get_dialog / page_handle_dialog / page_act_and_wait）
+    // 与 SDK 共用同一桌面对话框状态；JS dialog 需要前台焦点窗口，故与本套件共用 LS 启动器。
+    {
+      const { spawn } = await import('node:child_process');
+      const grant = await (await fetch(`${config.baseUrl}/agent-clients`, { method: 'POST', headers: { authorization: `Bearer ${config.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'dialogs MCP', roomIds: [], openRoomGrant: true }) })).json();
+      const mcp = spawn(process.execPath, [path.join(path.resolve(import.meta.dirname, '..'), 'mcp', 'corvid.mjs')], { env: { ...process.env, CORVID_DATA_DIR: dir, CORVID_AGENT_TOKEN: grant.token }, stdio: ['pipe', 'pipe', 'pipe'] });
+      let buffer = ''; const pending = new Map(); let nextId = 1;
+      mcp.stdout.setEncoding('utf8');
+      mcp.stdout.on('data', chunk => { buffer += chunk; for (;;) { const newline = buffer.indexOf('\n'); if (newline < 0) break; const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1); if (!line.trim()) continue; try { const message = JSON.parse(line); if (message.id !== undefined && pending.has(message.id)) { pending.get(message.id)(message); pending.delete(message.id); } } catch {} } });
+      const call = async (name, args) => { const id = nextId++; const waiter = new Promise(resolve => pending.set(id, resolve)); mcp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } })}\n`); const response = await Promise.race([waiter, new Promise((_, reject) => setTimeout(() => reject(new Error(`MCP ${name} timed out`)), 20000))]); if (response.error) throw new Error(JSON.stringify(response.error)); return JSON.parse(response.result.content.find(item => item.type === 'text')?.text); };
+      { const id = nextId++; const waiter = new Promise(resolve => pending.set(id, resolve)); mcp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'dialogs-mcp', version: '1.0.0' } } })}\n`); await waiter; mcp.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`); }
+      const opened = await call('room_open', { identifier: 'dialogs-mcp-room' });
+      const mcpRoomId = opened.id;
+      const mcpPage = await call('page_new', { roomId: mcpRoomId });
+      await call('page_navigate_and_snapshot', { roomId: mcpRoomId, tabId: mcpPage.targetId, url: `http://127.0.0.1:${server.address().port}/` });
+      const emptyDialog = await call('page_get_dialog', { roomId: mcpRoomId, tabId: mcpPage.targetId });
+      assert.equal(emptyDialog.dialog, null, 'no dialog is pending before the trigger');
+      const dialogWait = await call('page_act_and_wait', { roomId: mcpRoomId, tabId: mcpPage.targetId, action: { kind: 'click', target: { by: 'css', value: '#confirm' } }, event: 'dialog', timeoutMs: 5000 });
+      assert.equal(dialogWait.event, 'dialog');
+      assert.equal(dialogWait.dialog.message, 'continue?', 'act_and_wait observes the pending confirm');
+      await call('page_handle_dialog', { roomId: mcpRoomId, tabId: mcpPage.targetId, accept: false });
+      const cleared = await call('page_get_dialog', { roomId: mcpRoomId, tabId: mcpPage.targetId });
+      assert.equal(cleared.dialog, null, 'page_handle_dialog clears the pending dialog');
+      const finish = await call('room_finish', { roomId: mcpRoomId, keep: [] });
+      assert.equal(finish.closedRoom, true);
+      mcp.kill();
+    }
   } catch(error){error.message+=`\nElectron launcher output: ${app.output}`;throw error;}
   finally{await app.stop();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(dir,{recursive:true,force:true});}
 });

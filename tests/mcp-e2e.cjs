@@ -83,6 +83,12 @@ class McpProcess {
       const pathname = new URL(request.url, 'http://fixture.local').pathname;
       const requestCount = (fixtureRequestCounts.get(pathname) || 0) + 1;
       fixtureRequestCounts.set(pathname, requestCount);
+      if (pathname === '/download') {
+        response.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="fixture.txt"' });
+        response.end('download fixture payload');
+        return;
+      }
+
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       if (pathname === '/slow') {
         response.write('<!doctype html><title>Slow MCP fixture</title><h1>Slow destination</h1>');
@@ -97,7 +103,7 @@ class McpProcess {
         response.end('<!doctype html><title>Scroll MCP fixture</title><style>html,body{margin:0}body{height:2600px}#panel{position:fixed;left:24px;top:24px;width:240px;height:140px;overflow:auto;background:#eee}#panel-content{height:1000px}</style><main><h1>Long page</h1><div id="panel"><div id="panel-content">Nested scroll area</div></div></main>');
         return;
       }
-      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><div id="rich-editor" contenteditable>Existing <strong>format</strong></div><div id="locked-editor" contenteditable="false">Locked content</div><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
+      response.end(`<!doctype html><title>MCP fixture</title><button id="request-count" type="button">Request ${requestCount} ${pathname}</button><a href="/slow">Open slow page</a><button id="open-popup" type="button" onclick="window.open('/popup','_blank')">Open popup</button><form id="form"><label>Query <input aria-label="Query"></label><label>Category <select id="category" aria-label="Category"><option value="books">Books</option><option value="music">Music</option></select></label><label>Theme <select id="theme" aria-label="Theme"><option value="light">Light</option><option value="dark">Dark</option></select></label><label>Tags <select id="tags" aria-label="Tags" multiple><option value="red">Red</option><option value="blue">Blue</option><option value="green">Green</option></select></label><button type="submit">Search</button></form><div id="rich-editor" contenteditable>Existing <strong>format</strong></div><div id="locked-editor" contenteditable="false">Locked content</div><button id="hover-target" type="button">Hover menu</button><button id="hover-menu" type="button" hidden>Hover menu revealed</button><button id="toggle" type="button">Toggle</button><button id="dialog-trigger" type="button" onclick="window.confirm('continue?')">Ask</button><a id="download-link" href="/download">Download file</a><p id="result" role="status">Ready</p><script>document.querySelector("#form").addEventListener("submit",event=>{event.preventDefault();document.querySelector("#result").textContent="Searched: "+document.querySelector("input").value});document.querySelector("#toggle").addEventListener("click",()=>{document.querySelector("#result").textContent="Clicked"});document.querySelector("#hover-target").addEventListener("mouseenter",()=>{document.querySelector("#hover-menu").hidden=false})</script>`);
     });
     await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
     const fixtureUrl = `http://127.0.0.1:${fixture.address().port}/`;
@@ -155,7 +161,7 @@ class McpProcess {
 
     const listed = await mcp.request('tools/list');
     const names = listed.tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_act_and_snapshot', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_hover', 'page_info', 'page_navigate', 'page_navigate_and_snapshot', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
+    assert.deepEqual(names, ['list_profiles', 'list_rooms', 'list_tabs', 'page_act_and_snapshot', 'page_act_and_wait', 'page_back', 'page_click', 'page_close', 'page_fill', 'page_forward', 'page_get_dialog', 'page_handle_dialog', 'page_hover', 'page_info', 'page_navigate', 'page_navigate_and_snapshot', 'page_new', 'page_press', 'page_reload', 'page_screenshot', 'page_scroll', 'page_select_option', 'page_snapshot', 'page_wait_for_load', 'page_wait_for_selector', 'page_wait_for_url', 'room_claim', 'room_finish', 'room_open', 'room_yield']);
     for (const [name, properties] of Object.entries({
       page_info: ['roomId', 'tabId'],
       page_snapshot: ['roomId', 'scope', 'tabId'],
@@ -433,6 +439,23 @@ class McpProcess {
     assert.ok(submitSnap.value.snapshot.items.some(item => item.name === 'Searched: hello'), 'click composite submits the form and snapshots the result');
     const badAct = await mcp.callTool('page_act_and_snapshot', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#nonexistent' } } });
     assert.equal(badAct.result.isError, true, 'composite surfaces action failures as tool errors');
+
+    // dialog 工具覆盖在 tests/dialogs.e2e.mjs（JS dialog 需要前台焦点的窗口，须用 LS 启动器）
+
+    const popupWait = await mcp.callTool('page_act_and_wait', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#open-popup' } }, event: 'popup', timeoutMs: 10_000 });
+    assert.equal(popupWait.result.isError, undefined, JSON.stringify(popupWait.value).slice(0, 200));
+    assert.equal(popupWait.value.event, 'popup');
+    assert.match(popupWait.value.page.url, /\/popup$/, 'act_and_wait returns the adopted popup page');
+    assert.ok(popupWait.value.page.label, 'the adopted popup is managed');
+
+    const downloadWait = await mcp.callTool('page_act_and_wait', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#download-link' } }, event: 'download', timeoutMs: 10_000 });
+    assert.equal(downloadWait.result.isError, undefined, JSON.stringify(downloadWait.value).slice(0, 200));
+    assert.equal(downloadWait.value.download.status, 'completed', 'the agent download completes');
+    assert.equal(downloadWait.value.download.suggestedFilename, 'fixture.txt');
+    assert.ok(downloadWait.value.download.path, 'the completed download reports its temp path');
+    const downloadTimeout = await mcp.callTool('page_act_and_wait', { roomId: room.id, tabId: tab.id, action: { kind: 'click', target: { by: 'css', value: '#toggle' } }, event: 'popup', timeoutMs: 500 });
+    assert.equal(downloadTimeout.result.isError, true, 'a missed popup surfaces as a tool error');
+    assert.equal(downloadTimeout.value.code, 'CORVID_TIMEOUT');
 
     const waitingDuringHandoff = mcp.callTool('page_wait_for_url', { roomId: room.id, tabId: tab.id, url: `${fixtureUrl}never`, timeoutMs: 5000 });
     const waitingForSelectorDuringHandoff = mcp.callTool('page_wait_for_selector', { roomId: room.id, tabId: tab.id, target: { by: 'css', value: '#never-present' }, state: 'visible', timeoutMs: 5000 });
