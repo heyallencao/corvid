@@ -1714,12 +1714,19 @@ async function startServer() {
         // A scoped Agent client may open Rooms it creates itself; Rooms owned by
         // someone else (including another Agent client) stay out of reach. A Room
         // whose name/ID already exists outside the grant is refused (403) instead
-        // of silently creating a duplicate-name Room.
+        // of silently creating a duplicate-name Room. Profile selection is part
+        // of the grant: agents may only target Profiles visible through their
+        // granted Rooms (or the default Profile when their grant is empty).
         if(principal.kind==='agent'){
           const key=typeof body.identifier==='string'?body.identifier.trim():'';
           const candidates=key?rooms.filter(room=>room.id===key):[];
           const target=(candidates.length?candidates:rooms.filter(room=>room.name===key))[0];
           if(target && !principal.client.roomIds.includes(target.id))throw Object.assign(new Error('该 Agent 客户端无权访问此空间'),{status:403,code:'CORVID_FORBIDDEN'});
+          if(body.profileId!==undefined){
+            const allowedProfileIds=new Set(rooms.filter(room=>principal.client.roomIds.includes(room.id)).map(room=>room.profileId));
+            allowedProfileIds.add('default');
+            if(!allowedProfileIds.has(body.profileId))throw Object.assign(new Error('该 Agent 客户端无权在此浏览身份中创建空间'),{status:403,code:'CORVID_FORBIDDEN'});
+          }
         }
         result=await resolveRoom(body.identifier,body.profileId);
         if(principal.kind==='agent' && result && result.id) {

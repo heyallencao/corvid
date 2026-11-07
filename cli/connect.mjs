@@ -421,22 +421,17 @@ async function confirm(question, { yes }) {
 
 export async function connectHost(host, { token, yes = false, home = homedir(), stdout = process.stdout } = {}) {
   if (!HOST_IDS.includes(host)) throw new Aborted(`Unknown host: ${host} (supported: ${HOST_IDS.join(', ')})`);
-  let credential = null;
-  if (!token) {
-    stdout.write('未提供 --token：将用本地管理员凭据通过 Corvid 桌面签发 openRoomGrant 授权客户端（初始授权范围为空，仅能访问其自建的 Room）。\n');
-    credential = await issueCredential(host);
-    token = credential.token;
-  }
-  const issued = Boolean(credential);
+  const willIssue = !token;
   const adapter = createHostAdapter(host, home);
-  const plan = await adapter.readPlan(token);
   const skillDir = skillTargetDir(host, home);
+  // 计划展示用占位 token；真实签发在用户确认之后，取消/失败路径不会留下孤儿凭据。
+  const plan = await adapter.readPlan(token || 'corvid_agent_***');
   stdout.write(`将为 ${hostLabel(host)}（${host}）接入 Corvid Browser MCP：\n`);
   stdout.write(`\n[1] MCP 配置 ${plan.path}${plan.create ? '（文件不存在，将创建）' : ''}：${plan.action === 'current' ? '已是最新，无需改动' : plan.action === 'add' ? '新增条目' : '替换现有条目'}\n`);
   if (plan.action !== 'current') stdout.write(`    条目：${formatEntry({ ...plan.entry, env: plan.entry?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
   if (plan.existing && plan.action === 'replace') stdout.write(`    现有条目：${formatEntry({ ...plan.existing, env: plan.existing?.env ? { [TOKEN_ENV_KEY]: 'corvid_agent_***' } : undefined })}\n`);
   stdout.write(`\n[2] Skill 安装 ${skillDir}/SKILL.md（来自 ${SKILL_SOURCE}）\n`);
-  stdout.write(`\n${token ? `已携带 scoped token（${TOKEN_ENV_KEY} 写入 host 配置 env）。\n` : `未提供 --token：host 配置不带 ${TOKEN_ENV_KEY}，MCP 启动后需从环境变量读取；用 corvid doctor 诊断。\n`}`);
+  stdout.write(`\n${willIssue ? '未提供 --token：确认后用本地管理员凭据通过 Corvid 桌面签发 openRoomGrant 授权客户端（初始授权范围为空，仅能访问其自建的 Room），token 写入 host 配置 env。\n' : `已携带 scoped token（${TOKEN_ENV_KEY} 写入 host 配置 env）。\n`}`);
   if (plan.action === 'current' && existsSync(join(skillDir, 'SKILL.md'))) {
     const installedSkill = await readFile(join(skillDir, 'SKILL.md'), 'utf8');
     if (installedSkill === await skillSourceText()) {
@@ -446,18 +441,30 @@ export async function connectHost(host, { token, yes = false, home = homedir(), 
   }
   const approved = await confirm('确认写入以上内容？', { yes });
   if (!approved) { stdout.write('已取消，未写入。\n'); return { changed: false, cancelled: true }; }
-  await adapter.apply(token);
-  await installSkill(host, home);
+  let credential = null;
+  try {
+    if (willIssue) credential = await issueCredential(host);
+    token = token || credential?.token;
+    await adapter.apply(token);
+    await installSkill(host, home);
+    if (token) await chmodConfig(adapter.configPath);
+  } catch (error) {
+    if (credential) {
+      await revokeCredential(credential.id).catch(() => {});
+      stdout.write(`写入失败，已撤销本次签发的凭据 ${credential.id}。\n`);
+    }
+    throw error;
+  }
   const receipts = readReceipts() || { version: 1, hosts: {} };
   const previous = receipts.hosts[host];
   let rotatedFrom = null;
-  if (issued && previous?.clientId) {
+  if (credential && previous?.clientId) {
     await revokeCredential(previous.clientId);
     rotatedFrom = previous.clientId;
   }
   receipts.hosts[host] = {
     label: hostLabel(host), configFile: adapter.configPath, kind: adapter.kind,
-    skillDir, issued,
+    skillDir, issued: Boolean(credential),
     clientId: credential ? credential.id : null,
     connectedAt: new Date().toISOString(),
   };
@@ -466,6 +473,11 @@ export async function connectHost(host, { token, yes = false, home = homedir(), 
   if (credential) stdout.write(`凭据：${credential.id} 已签发${rotatedFrom ? `（旧凭据 ${rotatedFrom} 已撤销）` : ''}；disconnect 时自动撤销。\n`);
   stdout.write(`重启 ${hostLabel(host)} 后生效；用 corvid doctor ${host} 验证。\n`);
   return { changed: true };
+}
+
+async function chmodConfig(configPath) {
+  const { chmod } = await import('node:fs/promises');
+  await chmod(configPath, 0o600).catch(() => {});
 }
 
 export async function disconnectHost(host, { home = homedir(), stdout = process.stdout } = {}) {

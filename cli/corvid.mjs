@@ -42,7 +42,7 @@ function parseFlags(args) {
   for(let i=0;i<args.length;i++){
     const arg=args[i];
     if(arg==='--yes')flags.yes=true;
-    else if(arg==='--token')flags.token=args[++i];
+    else if(arg==='--token'){if(i+1>=args.length)throw new Error('--token 需要一个凭据值（或省略它以自动签发）');flags.token=args[++i];}
     else if(arg.startsWith('--token='))flags.token=arg.slice(8);
     else rest.push(arg);
   }

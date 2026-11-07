@@ -50,7 +50,7 @@ node cli/corvid.mjs doctor codex   # 诊断控制服务、MCP 注册与 skill �
 node cli/corvid.mjs disconnect codex  # 撤销 connect 写入的全部条目
 ```
 
-`connect` 运行时会先列出将写入的配置文件与条目（MCP server 注册 + skill 安装路径），显式确认后写入；脚本化场景加 `--yes`。不提供 `--token` 时只注册 MCP 命令，token 需从 `CORVID_AGENT_TOKEN` 环境变量读取。授权客户端创建 Room 时，该 Room 会自动并入此客户端的授权范围。支持 `claude-code`、`codex`、`cursor`、`dsh` 四种 host，写入位置与撤销语义见 [外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
+`connect` 运行时会先列出将写入的配置文件与条目（MCP server 注册 + skill 安装路径），显式确认后写入；脚本化场景加 `--yes`。不提供 `--token` 时，connect 用本地管理员凭据经运行中的 Corvid 桌面自动签发一个 openRoomGrant 授权客户端（初始授权范围为空，只能访问其自建的 Room），token 写入 host 配置 env，`disconnect` 时自动撤销；`--token` 则写入你在 Corvid 设置中签发的既有凭据，`disconnect` 不撤销它。授权客户端经 `room_open` 创建的 Room 会自动并入其授权范围；授权范围外已存在的同名 Room 会被拒绝（不创建重名 Room）。支持 `claude-code`、`codex`、`cursor`、`dsh` 四种 host，写入位置与撤销语义见 [外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
 
 ## 文档
 

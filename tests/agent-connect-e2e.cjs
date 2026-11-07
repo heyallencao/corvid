@@ -88,10 +88,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       return { status: response.status, payload };
     };
 
-    // 0. 非交互无 --yes 拒绝写入
+    // 0. 非交互无 --yes 拒绝写入，且不留孤儿凭据
     const refusal = expectCliError(['connect', 'codex']);
     assert.match(refusal, /--yes/, 'non-interactive connect requires --yes');
     assert.equal(fs.readFileSync(codexConfig, 'utf8'), `${codexFixture}\n`, 'a refused connect leaves the host config untouched');
+    const clientsAfterRefusal = await request(control.token, '/agent-clients');
+    assert.equal((clientsAfterRefusal.payload.clients || []).filter(client => client.name === 'corvid-codex').length, 0, 'a refused connect leaves no orphan credential');
 
     // 1. connect codex --yes（无 --token）：自动签发 openRoomGrant 凭据并写入
     const connectOutput = runCli(['connect', 'codex', '--yes']);
@@ -135,6 +137,15 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     assert.equal(userOwned.status, 403, 'user-owned rooms are refused to scoped clients (not silently taken over)');
     const roomsAfterClash = await request(control.token, '/rooms');
     assert.equal(roomsAfterClash.payload.rooms.filter(room => room.name === 'connect-e2e-user-room').length, 1, 'a refused clash does not create a duplicate-name room');
+
+    // 3b. Profile 是授权面的一部分：空授权客户端只能在 default Profile 创建空间
+    const hiddenProfile = await request(control.token, '/profiles', 'POST', { name: 'connect-e2e 隐藏身份' });
+    assert.equal(hiddenProfile.status, 200);
+    const hiddenProfileId = (hiddenProfile.payload.profile || hiddenProfile.payload).id;
+    const profileGuard = await request(codexToken, '/rooms/open', 'POST', { identifier: 'connect-e2e-profile-room', profileId: hiddenProfileId });
+    assert.equal(profileGuard.status, 403, 'a scoped client cannot create Rooms in a Profile outside its grant');
+    const profileGuardList = await request(codexToken, '/rooms');
+    assert.equal(profileGuardList.payload.rooms.some(room => room.name === 'connect-e2e-profile-room'), false, 'the refused profile-scoped open created no Room');
 
     // 4. finish 收据字段合同
     const finished = await request(codexToken, `/rooms/${roomId}/finish`, 'POST', { keep: [] });
