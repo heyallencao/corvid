@@ -2284,3 +2284,11 @@
 - 边界：dsh 完整启动加载 MCP 插件的运行态行为未验证（本机 dsh 桌面未随本轮启动）；Windows 的 host 配置路径未验证；claude-code/cursor 为文件级写入验证，未做 host 应用实际加载 MCP 的运行态验证（claude 联测受模型账户 402 阻塞，MCP 注册/握手/鉴权层已验证）；doctor 的 token 鉴权依赖控制服务在线，离线时跳过并标注。
 - 评审修正（commit `6a77f9e`）：connect 签发移至确认后+失败撤销孤儿凭据；README 对外合同同步；`profileId` 纳入授权面（范围外 403，合同拍板见 Issue #418）；`--token` 缺值报错；token 写入收紧 0600。
 - 合并门禁：`env -u ELECTRON_RUN_AS_NODE npm test` 在最终候选 `6a77f9e` 上 **EXIT 0**——串行链 84 项 PASS（含 `connect-e2e`、`agent-connect-e2e`），node:test 节 `fail 0 / skipped 0`。已按 protocol squash 合并至 main（`3e38a7c`）。
+
+## 2026-11-07 Issue #419 P1.1 browser_script 批量执行
+
+- 基线：worktree `.worktrees/issue-419-browser-script`，分支 `agent/issue-419-browser-script`（基点 origin/main `eefc92f`）；环境同 #415 记录。未发 PR 前全部改动留在本地分支。
+- 交付：`browser_script` MCP 工具（`mcp/corvid.mjs` + `mcp/script-runner.mjs` 子进程执行器，与 `cli run` 同 SDK 引擎）：一次调用对显式 Room 提交 JS（绑定 `room`/`client` SDK 子集，含 `evaluate`，无 raw CDP），收据含 result/logs/Room 终态 tabs/durationMs；`timeoutMs`（默认 30s，上限 120s）超时 SIGKILL 强杀，收据总量超 32 KiB 截断；Room 级开关默认关，connect 显式启用（`--browser-script` 或交互询问）写 host 配置 `CORVID_BROWSER_SCRIPT=1`，未开启不注册工具；doctor 报开关状态；SKILL.md 决策阶梯升版 0.2.0-p1（级 1 可用）。
+- 过程中修复的真实缺陷：① 工具 handler 双重包装收据（registerActionTool 再包一层 asToolResult）；② 脚本挂起时 Node 事件循环排空导致子进程干净退出（裸 promise 不保持循环）——runner 加 keep-alive interval，超时强杀路径才成立（以伪造控制服务的 MCP 层复现器定位，41ms 复现/修复后 509ms 返回 CORVID_TIMEOUT）。
+- 定向验证（EXIT 0，skipped=0）：`node tests/browser-script-e2e.cjs`（开关合同/一次调用批量/越权 Room 拒绝/脚本错误收据/超时强杀后 Room 与页面数量不变且服务可用/输出截断）；`node tests/agent-connect-e2e.cjs` 增补断言（默认不含 CORVID_BROWSER_SCRIPT、`--browser-script` 写入 host env）后全绿；`node tests/connect-e2e.cjs`、`node tests/mcp-e2e.cjs` 回归通过。
+- 边界：脚本与 CLI 同为本地 Node 权限非沙箱（文档明示）；多 Room 并发脚本、Windows 未验证；子进程复用父进程 env（含 CORVID_DATA_DIR/CORVID_AGENT_TOKEN）。

@@ -57,6 +57,7 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 - 读页：`page_info`、`page_snapshot`、`page_screenshot`（视口 PNG image content，≤8 MiB）、`page_wait_for_url`、`page_wait_for_load`、`page_wait_for_selector`
 - 页面动作：`page_navigate`（限无凭据 HTTP(S)）、`page_new`、`page_close`、`page_back`、`page_forward`、`page_reload`、`page_click`、`page_hover`、`page_scroll`（有界）、`page_fill`、`page_press`、`page_select_option`
 - Room 生命周期：`room_open`（按名字或 ID 复用/创建）、`room_claim`（请求用户批准）、`room_yield`（交还用户）、`room_finish`（收尾分报：closed / kept / preserved）
+- 批量执行（可选）：`browser_script`——一次调用对显式 Room 提交一段 JS，走 SDK 子集（含 `evaluate`，无 raw CDP），返回收据（result/logs/Room 终态 tabs/durationMs）。仅在 connect 时显式启用（`--browser-script` 或交互确认，写入 host 配置 `CORVID_BROWSER_SCRIPT=1`）后注册；脚本在子进程中以本地 Node 权限运行、**非沙箱**，`timeoutMs`（默认 30s，上限 120s）超时强杀，Room 与页面状态不受破坏；收据总量超 32 KiB 截断。决策阶梯级 1，优先于逐步工具使用（skill 文档版本 0.2.0-p1）
 
 授权与程序闸门与 SDK/CLI/内置 Agent 三入口一致：scoped token 按 Room 授权过滤 Profile/Room 列表；显式 `roomId`/`tabId`；用户控制中的 Room 动作返回 `CORVID_CONTROL_LOST`；执行风险未复核时拒绝。
 

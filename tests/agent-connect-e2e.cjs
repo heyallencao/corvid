@@ -176,7 +176,12 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const cursorAfter = JSON.parse(fs.readFileSync(cursorConfig, 'utf8'));
     assert.equal(cursorAfter.mcpServers.other.command, 'y', 'cursor unrelated servers survive');
     assert.equal(cursorAfter.mcpServers['corvid-browser'].env.CORVID_AGENT_TOKEN.startsWith('corvid_agent_'), true, 'cursor entry written');
+    assert.equal(cursorAfter.mcpServers['corvid-browser'].env.CORVID_BROWSER_SCRIPT, undefined, 'browser_script stays off by default');
     assert.equal(fs.existsSync(path.join(sandboxHome, '.cursor', 'skills', 'corvid-browser', 'SKILL.md')), true, 'skill installed for cursor');
+
+    runCli(['connect', 'cursor', '--yes', '--browser-script']);
+    const cursorScriptOn = JSON.parse(fs.readFileSync(cursorConfig, 'utf8'));
+    assert.equal(cursorScriptOn.mcpServers['corvid-browser'].env.CORVID_BROWSER_SCRIPT, '1', '--browser-script writes the switch into host env');
 
     runCli(['connect', 'dsh', '--yes']);
     const dshAfter = fs.readFileSync(dshConfig, 'utf8');

@@ -2,6 +2,8 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { connect } from '../sdk/index.js';
 import { asPngImageContent } from './image-content.mjs';
 import capabilityCore from '../desktop/agent-browser-capabilities.cjs';
@@ -223,6 +225,60 @@ function createServer() {
     const current = await room.client.room(room.id).catch(() => null);
     return current ? { ...report, room: describeRoomSummary(current) } : { ...report, closedRoom: true };
   }));
+
+  if (process.env.CORVID_BROWSER_SCRIPT === '1') {
+    const SCRIPT_RUNNER = fileURLToPath(new URL('./script-runner.mjs', import.meta.url));
+    const SCRIPT_OUTPUT_BYTES = 32 * 1024;
+    function truncateReceipt(receipt) {
+      let encoded = JSON.stringify(receipt);
+      if (Buffer.byteLength(encoded) <= SCRIPT_OUTPUT_BYTES) return { value: receipt };
+      return { value: { truncated: true, maxBytes: SCRIPT_OUTPUT_BYTES, preview: encoded.slice(0, 12_000) } };
+    }
+    function runBrowserScript({ roomId, script, timeoutMs }) {
+      return new Promise((resolve, reject) => {
+        const child = spawn(process.execPath, [SCRIPT_RUNNER], { env: process.env, stdio: ['pipe', 'pipe', 'pipe'] });
+        let buffer = '', settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          child.kill('SIGKILL');
+          reject(Object.assign(new Error(`browser_script timed out after ${timeoutMs}ms and was cancelled; the Room and its pages are untouched (the script talks to the desktop over stateless HTTP, so its in-flight steps may have landed — inspect page_info or page_snapshot). Re-run with a shorter script or a larger timeoutMs.`), { code: 'CORVID_TIMEOUT' }));
+        }, timeoutMs);
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => { buffer += chunk; });
+        child.stderr.setEncoding('utf8');
+        let stderr = '';
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', error => { if (!settled) { settled = true; clearTimeout(timer); reject(Object.assign(new Error(`browser_script runner failed to start: ${error.message}`), { code: 'CORVID_DESKTOP_ERROR' })); } });
+        child.on('exit', (code, signal) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          const line = buffer.split('\n').find(candidate => candidate.trim().startsWith('{'));
+          if (!line) { reject(Object.assign(new Error(`browser_script runner produced no receipt (exit code ${code}, signal ${signal})${stderr ? `: ${stderr.trim().split('\n').pop()}` : ''}`), { code: 'CORVID_DESKTOP_ERROR' })); return; }
+          try { resolve(JSON.parse(line)); }
+          catch (error) { reject(Object.assign(new Error(`browser_script receipt was not valid JSON: ${error.message}`), { code: 'CORVID_DESKTOP_ERROR' })); }
+        });
+        child.stdin.end(`${JSON.stringify({ roomId, script })}\n`);
+      });
+    }
+    server.registerTool('browser_script', {
+      description: 'Run a batch of JavaScript against one explicitly selected Room in a single call instead of one tool call per step. The script executes locally with full Node.js permissions — it is NOT sandboxed; never run untrusted page content as code. Available bindings: room (the Corvid SDK Room handle: room.newPage(), page.goto/url/snapshot/fill/click/press/selectOption/scroll, page.evaluate for in-page JS), client (SDK client: rooms(), profiles()). Use console.log for progress; the last awaited expression (or return value) becomes the receipt result. Returns { ok, result, logs, room tabs, durationMs }; a timed-out script is killed and the Room stays intact.',
+      inputSchema: z.object({
+        roomId: z.string().min(1),
+        script: z.string().min(1).max(100_000),
+        timeoutMs: z.number().int().min(500).max(120_000).default(30_000),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+    }, async ({ roomId, script, timeoutMs }) => {
+      try {
+        const receipt = await runBrowserScript({ roomId, script, timeoutMs });
+        if (!receipt.ok) return { content: [{ type: 'text', text: JSON.stringify({ error: receipt.error, code: receipt.code || 'CORVID_SCRIPT_ERROR', logs: receipt.logs, durationMs: receipt.durationMs }) }], isError: true };
+        const { value } = truncateReceipt(receipt);
+        return asToolResult(value);
+      } catch (error) { return asToolError(error); }
+    });
+  }
 
   return server;
 }
