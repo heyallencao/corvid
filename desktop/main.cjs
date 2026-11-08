@@ -45,6 +45,9 @@ if (!dataDirectoryError) {
 
 if (!singleInstanceLock && !dataDirectoryError) app.quit();
 else if (singleInstanceLock) startupProgress('main-module-loaded');
+// 测试实例的 HOME 是沙箱临时目录，真实登录钥匙串不存在；Cookie 加密走 mock keychain，
+// 否则关停时 securityd 会在真实桌面会话弹「钥匙串找不到」并阻塞退出。
+if (process.env.CORVID_TEST_MODE === '1') app.commandLine.appendSwitch('use-mock-keychain');
 if (dataDirectoryError) {
   console.error(dataDirectoryError.message);
   void app.whenReady().then(() => {
@@ -372,6 +375,26 @@ let needsChromeImportOnboarding=chromeImportOnboardingState==='pending'||(allowC
 if(needsChromeImportOnboarding&&chromeImportOnboardingState!=='pending'){
   const temp=`${chromeImportOnboardingPath}.tmp`;fs.writeFileSync(temp,JSON.stringify({status:'pending',startedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);chromeImportOnboardingState='pending';
 }
+// 首启引导三步（导入 / 连接模型 / 外部 Agent 授权）。老用户没有此文件即视为已完成，
+// 只在用户实际操作时落盘；chrome-import-onboarding.json 只管欢迎框是否再出现。
+const firstRunOnboardingPath=path.join(dataDir,'onboarding.json');
+let firstRunOnboarding=null;
+try{firstRunOnboarding=JSON.parse(fs.readFileSync(firstRunOnboardingPath,'utf8'));}catch(error){if(error.code!=='ENOENT'&&!(error instanceof SyntaxError))throw error;}
+const normalizeOnboardingStep=step=>['pending','done','skipped'].includes(step)?step:'pending';
+if(firstRunOnboarding&&typeof firstRunOnboarding==='object'){
+  firstRunOnboarding.steps={import:normalizeOnboardingStep(firstRunOnboarding.steps?.import),model:normalizeOnboardingStep(firstRunOnboarding.steps?.model),agent:normalizeOnboardingStep(firstRunOnboarding.steps?.agent)};
+  firstRunOnboarding.setupDismissed=firstRunOnboarding.setupDismissed===true;
+  firstRunOnboarding.welcomeDismissed=firstRunOnboarding.welcomeDismissed===true;
+}else if(hadExistingCorvidData){
+  firstRunOnboarding={steps:{import:'done',model:'done',agent:'done'},setupDismissed:true,welcomeDismissed:false};
+}else{
+  firstRunOnboarding={steps:{import:'pending',model:'pending',agent:'pending'},setupDismissed:false,welcomeDismissed:false};
+}
+function persistFirstRunOnboarding(){
+  const temp=`${firstRunOnboardingPath}.tmp`;fs.writeFileSync(temp,JSON.stringify(firstRunOnboarding,null,2),{mode:0o600});fs.renameSync(temp,firstRunOnboardingPath);
+}
+const onboardingSnapshot=()=>({steps:{...firstRunOnboarding.steps},setupDismissed:firstRunOnboarding.setupDismissed,welcomeDismissed:firstRunOnboarding.welcomeDismissed});
+const homeSetupState=()=>({steps:{...firstRunOnboarding.steps},dismissed:firstRunOnboarding.setupDismissed,welcomeDismissed:firstRunOnboarding.welcomeDismissed});
 const connectionPath = path.join(dataDir, 'control.json');
 const agentClients = createAgentClientsStore(path.join(dataDir, 'agent-clients.json'));
 const windowStatePath = path.join(dataDir, 'window-state.json');
@@ -743,6 +766,7 @@ const describe = (record = activeRecord(),includeExtensionToolbar=false) => {
     activeRoomId: record ? record.activeRoomId : activeRoomId,
     activeProfileId: record ? record.activeProfileId : activeProfileId,
     needsChromeImportOnboarding,
+    onboarding:onboardingSnapshot(),
     ...(includeExtensionToolbar ? {uiLocale,themePreference} : {}),
     profiles,
     extensionToolbar: record&&includeExtensionToolbar ? extensionToolbarItems(record.activeProfileId) : [],
@@ -789,7 +813,7 @@ function update(record = activeRecord()) {
     const tab = tabs.get(room.activeTabId);
     if (tab?.homeSurfaceInstalled && !tab.view.webContents.isDestroyed()) {
       const bookmarks=room.ownership==='user'&&tab.openedBy==='user'?library.bookmarks(room.profileId).slice(0,8):[];
-      tab.view.webContents.send('browser-home-state', {bookmarks});
+      tab.view.webContents.send('browser-home-state', {bookmarks,setup:homeSetupState()});
     }
   }
   record.browserWindow.webContents.send('shell-state', describe(record,true));
@@ -954,7 +978,7 @@ async function createTab(roomId, url = 'about:blank', tabId = id(), metadata = {
     if(tab.homeInjection)return tab.homeInjection;
     if(view.webContents.isDestroyed()||view.webContents.getURL()!=='about:blank')return Promise.resolve();
     // 起始页文案在注入时按当前 uiLocale 生成；注入后不随切换重绘（已打开的起始页保留旧语言）。
-    const homeStrings=()=>({locale:mainMessages.locale,ariaLabel:mainMessages.t('newTabAriaLabel'),heading:mainMessages.t('newTabHeading'),intro:mainMessages.t('newTabIntro'),searchLabel:mainMessages.t('newTabSearchLabel'),searchAction:mainMessages.t('newTabSearchAction'),bookmarksTitle:mainMessages.t('newTabBookmarksTitle'),allBookmarks:mainMessages.t('newTabAllBookmarks'),bookmarksGroup:mainMessages.t('newTabBookmarksGroup'),emptyState:mainMessages.t('newTabEmptyState'),quickActions:mainMessages.t('newTabQuickActions'),historyAction:mainMessages.t('newTabHistoryAction'),agentAction:mainMessages.t('newTabAgentAction'),openBookmarkTemplate:mainMessages.t('newTabOpenBookmark'),siteFallbackName:mainMessages.t('newTabSiteFallbackName'),siteFallbackMark:mainMessages.t('newTabSiteFallbackMark')});
+    const homeStrings=()=>({locale:mainMessages.locale,ariaLabel:mainMessages.t('newTabAriaLabel'),heading:mainMessages.t('newTabHeading'),intro:mainMessages.t('newTabIntro'),searchLabel:mainMessages.t('newTabSearchLabel'),searchAction:mainMessages.t('newTabSearchAction'),bookmarksTitle:mainMessages.t('newTabBookmarksTitle'),allBookmarks:mainMessages.t('newTabAllBookmarks'),bookmarksGroup:mainMessages.t('newTabBookmarksGroup'),emptyState:mainMessages.t('newTabEmptyState'),quickActions:mainMessages.t('newTabQuickActions'),historyAction:mainMessages.t('newTabHistoryAction'),agentAction:mainMessages.t('newTabAgentAction'),openBookmarkTemplate:mainMessages.t('newTabOpenBookmark'),siteFallbackName:mainMessages.t('newTabSiteFallbackName'),siteFallbackMark:mainMessages.t('newTabSiteFallbackMark'),setupTitle:mainMessages.t('newTabSetupTitle'),setupHint:mainMessages.t('newTabSetupHint'),setupItemImport:mainMessages.t('newTabSetupItemImport'),setupItemModel:mainMessages.t('newTabSetupItemModel'),setupItemAgent:mainMessages.t('newTabSetupItemAgent'),setupDismiss:mainMessages.t('newTabSetupDismiss'),startTitle:mainMessages.t('newTabStartTitle'),startIntro:mainMessages.t('newTabStartIntro'),startPrompt1:mainMessages.t('newTabStartPrompt1'),startPrompt2:mainMessages.t('newTabStartPrompt2'),startPrompt3:mainMessages.t('newTabStartPrompt3'),startTryLabel:mainMessages.t('newTabStartTryLabel'),startShortcutsTitle:mainMessages.t('newTabStartShortcutsTitle'),startShortcutNewTab:mainMessages.t('newTabStartShortcutNewTab'),startShortcutFind:mainMessages.t('newTabStartShortcutFind'),startShortcutHistory:mainMessages.t('newTabStartShortcutHistory'),startDismiss:mainMessages.t('newTabStartDismiss')});
     tab.homeInjection=view.webContents.executeJavaScript(`(${installNewTabPage.toString()})(${JSON.stringify(tab.id)},${JSON.stringify(homeStrings())})`).then(()=>{if(view.webContents.getURL()==='about:blank'){tab.homeSurfaceInstalled=true;const owner=windowRecords.get(s.windowId);if(owner)update(owner);}}).finally(()=>{tab.homeInjection=null;});
     return tab.homeInjection;
   };
@@ -1248,10 +1272,31 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
     }
     case 'finishChromeImportOnboarding': {
       if(fromApi)throw new Error('首次启动选择必须由用户在桌面操作');
-      if(!needsChromeImportOnboarding)return {ok:true};
+      // completed=false 是欢迎框上的「稍后」/「先去设置」：欢迎框按完成收敛，但清单里导入项保持未完成。
+      const importCompleted=args.completed!==false;
+      if(firstRunOnboarding.steps.import!=='done'){firstRunOnboarding.steps.import=importCompleted?'done':'skipped';persistFirstRunOnboarding();}
+      if(!needsChromeImportOnboarding){update();return {ok:true};}
       const temp=`${chromeImportOnboardingPath}.tmp`;
       fs.writeFileSync(temp,JSON.stringify({status:'completed',completedAt:new Date().toISOString()}),{mode:0o600});fs.renameSync(temp,chromeImportOnboardingPath);
       chromeImportOnboardingState='completed';needsChromeImportOnboarding=false;update();return {ok:true};
+    }
+    case 'completeOnboardingStep': {
+      if(fromApi)throw new Error('首次引导状态只能由用户在桌面操作');
+      if(!['model','agent'].includes(args.step))throw new Error('Unknown onboarding step');
+      firstRunOnboarding.steps[args.step]='done';persistFirstRunOnboarding();update();return {ok:true};
+    }
+    case 'skipOnboardingStep': {
+      if(fromApi)throw new Error('首次引导状态只能由用户在桌面操作');
+      if(!['model','agent'].includes(args.step))throw new Error('Unknown onboarding step');
+      firstRunOnboarding.steps[args.step]='skipped';persistFirstRunOnboarding();update();return {ok:true};
+    }
+    case 'dismissOnboardingSetup': {
+      if(fromApi)throw new Error('首次引导状态只能由用户在桌面操作');
+      firstRunOnboarding.setupDismissed=true;persistFirstRunOnboarding();update();return {ok:true};
+    }
+    case 'dismissOnboardingWelcome': {
+      if(fromApi)throw new Error('首次引导状态只能由用户在桌面操作');
+      firstRunOnboarding.welcomeDismissed=true;persistFirstRunOnboarding();update();return {ok:true};
     }
     case 'chooseChromeImportSource': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
@@ -2046,6 +2091,11 @@ app.whenReady().then(async () => {
       return dispatchQueued('navigate',{id:tab.id,url:value},false);
     }
     if(action==='panel'&&['bookmarks','history','agent'].includes(value)){record.browserWindow.webContents.send('shell-home-action',value);return {ok:true};}
+    if(action==='setup'&&['import','model','agent'].includes(value)){record.browserWindow.webContents.send('shell-home-action',{kind:'setup',step:value});return {ok:true};}
+    if(action==='prompt'&&typeof value==='string'&&value.trim()&&value.length<=500){record.browserWindow.webContents.send('shell-home-action',{kind:'prompt',text:value.trim()});return {ok:true};}
+    if(action==='setupWizard'){record.browserWindow.webContents.send('shell-home-action',{kind:'openSetup'});return {ok:true};}
+    if(action==='dismissSetup'){record.browserWindow.webContents.send('shell-home-action',{kind:'dismissSetup'});return {ok:true};}
+    if(action==='dismissWelcome'){record.browserWindow.webContents.send('shell-home-action',{kind:'dismissWelcome'});return {ok:true};}
     throw new Error('不支持此起始页操作');
   });
   ipcMain.on('page-prompt',(event,message,defaultPrompt)=>{

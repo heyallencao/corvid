@@ -239,6 +239,7 @@ function loadAgentTaskSummaries(profileId) {
 function draw(value) {
   state = value;
   loadAgentTaskSummaries(state.activeProfileId);
+  if(document.querySelector('#first-run-onboarding').open)renderFirstRunWizard();
   document.documentElement.dataset.glassChrome=String(Boolean(state.glassChrome));
   updateDockVisibility();
   extensionMessages.setLocale(state.uiLocale);
@@ -902,6 +903,19 @@ async function renderBookmarksBar() {
   if(result.bookmarks.length>items.length){const more=button(extensionMessages.t('moreBookmarks'),()=>showLibrary('bookmarks'));more.className='bookmark-item';bar.append(more);}
 }
 api.onBrowserHomeAction(kind=>{
+  if(kind&&typeof kind==='object'){
+    if(kind.kind==='setup'){
+      if(kind.step==='import')void openChromeImportDialog();
+      else if(kind.step==='model')void (async()=>{try{await api.invoke('completeOnboardingStep',{step:'model'});}catch{}await openPiModelSettings();})();
+      else if(kind.step==='agent')void (async()=>{try{await api.invoke('completeOnboardingStep',{step:'agent'});}catch{}await openAgentAccessManager();})();
+    }else if(kind.kind==='prompt'&&typeof kind.text==='string'&&kind.text){
+      piPromptDraft=kind.text;piShowNewChat=true;piSelectedTaskId=null;piBinding=null;
+      void showLibrary('pi-workbench').then(()=>{const input=document.querySelector('#pi-task-prompt');if(input){input.value=piPromptDraft;input.focus();input.setSelectionRange(piPromptDraft.length,piPromptDraft.length);}});
+    }else if(kind.kind==='openSetup')void openFirstRunWizard();
+    else if(kind.kind==='dismissSetup')void api.invoke('dismissOnboardingSetup').catch(()=>{});
+    else if(kind.kind==='dismissWelcome')void api.invoke('dismissOnboardingWelcome').catch(()=>{});
+    return;
+  }
   if(kind==='bookmarks')void showLibrary('bookmarks',document.querySelector('#show-bookmarks'));
   else if(kind==='history')void showLibrary('history',document.querySelector('#show-history'));
   else if(kind==='agent')void document.querySelector('#show-pi-workbench').click();
@@ -1227,9 +1241,51 @@ document.querySelector('#start-chrome-import').onclick=async()=>{
   document.querySelector('#settings').close();
   await openChromeImportDialog();
 };
-document.querySelector('#skip-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
-document.querySelector('#begin-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding');document.querySelector('#chrome-import-onboarding').close();settingsProfileId=state.activeProfileId;await openChromeImportDialog();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
+document.querySelector('#skip-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding',{completed:false});document.querySelector('#chrome-import-onboarding').close();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
+document.querySelector('#begin-chrome-import').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding',{completed:false});document.querySelector('#chrome-import-onboarding').close();settingsProfileId=state.activeProfileId;await openChromeImportDialog();}catch(error){document.querySelector('#chrome-import-onboarding-error').textContent=error.message;}};
 document.querySelector('#chrome-import-onboarding').addEventListener('cancel',event=>event.preventDefault());
+
+// 首次引导第二段：连接模型 + 外部 Agent 授权。每步可稍后；未完成项沉淀到新标签页设置待办。
+const firstRunWizardSteps=['model','agent'];
+function firstRunPendingSteps(){const steps=state?.onboarding?.steps||{};return firstRunWizardSteps.filter(step=>(steps[step]||'pending')==='pending');}
+function renderFirstRunWizard(){
+  const steps=state?.onboarding?.steps||{},pending=firstRunPendingSteps();
+  const current=pending[0]||null;
+  document.querySelector('#first-run-error').textContent='';
+  document.querySelector('#first-run-step-model').hidden=current!=='model';
+  document.querySelector('#first-run-step-agent').hidden=current!=='agent';
+  document.querySelector('#first-run-step-done').hidden=current!==null;
+  document.querySelector('#first-run-progress').textContent=current?extensionMessages.t('firstRunProgress',{current:firstRunWizardSteps.indexOf(current)+1,total:firstRunWizardSteps.length}):'';
+  const statusLabel=step=>steps[step]==='skipped'?extensionMessages.t('onboardingStepSkipped'):steps[step]==='done'?extensionMessages.t('onboardingStepDone'):'';
+  document.querySelector('#first-run-model-status').textContent=statusLabel('model');
+  document.querySelector('#first-run-agent-status').textContent=statusLabel('agent');
+  const railState={import:steps.import==='done'?'done':'action',model:steps.model==='done'?'done':steps.model==='skipped'?'skipped':current==='model'?'current':'pending',agent:steps.agent==='done'?'done':steps.agent==='skipped'?'skipped':current==='agent'?'current':'pending'};
+  for(const step of ['import','model','agent']){
+    const item=document.querySelector(`#first-run-rail-${step}`);
+    item.dataset.state=railState[step];
+    item.querySelector('.first-run-rail-icon').setAttribute('aria-hidden','true');
+  }
+  const railLabel={import:steps.import==='done'?extensionMessages.t('onboardingStepDone'):extensionMessages.t('firstRunRailImportHint'),model:railState.model==='current'?extensionMessages.t('firstRunRailModelHint'):statusLabel('model')||extensionMessages.t('firstRunRailModelHint'),agent:railState.agent==='current'?extensionMessages.t('firstRunRailAgentHint'):statusLabel('agent')||extensionMessages.t('firstRunRailAgentHint')};
+  document.querySelector('#first-run-rail-import-state').textContent=railLabel.import;
+  document.querySelector('#first-run-rail-model-state').textContent=railLabel.model;
+  document.querySelector('#first-run-rail-agent-state').textContent=railLabel.agent;
+  document.querySelector('#first-run-import-action').hidden=steps.import==='done';
+}
+function firstRunFocusTarget(){const pending=firstRunPendingSteps();return pending.includes('model')?'#open-first-run-model':pending.includes('agent')?'#open-first-run-agent':'#close-first-run';}
+async function openFirstRunWizard(){renderFirstRunWizard();await openShellDialog('#first-run-onboarding',firstRunFocusTarget());}
+const settleFirstRunStep=async(step,method,destination)=>{
+  try{await api.invoke(method,{step});}catch(error){document.querySelector('#first-run-error').textContent=error.message;return;}
+  if(state?.onboarding?.steps)state.onboarding.steps[step]=method==='completeOnboardingStep'?'done':'skipped';
+  renderFirstRunWizard();
+  if(method==='completeOnboardingStep'){document.querySelector('#first-run-onboarding').close();try{await destination();}catch(error){document.querySelector('#first-run-error').textContent=error.message;}}
+};
+document.querySelector('#open-first-run-model').onclick=()=>settleFirstRunStep('model','completeOnboardingStep',openPiModelSettings);
+document.querySelector('#later-first-run-model').onclick=()=>settleFirstRunStep('model','skipOnboardingStep',null);
+document.querySelector('#open-first-run-agent').onclick=()=>settleFirstRunStep('agent','completeOnboardingStep',openAgentAccessManager);
+document.querySelector('#later-first-run-agent').onclick=()=>settleFirstRunStep('agent','skipOnboardingStep',null);
+document.querySelector('#close-first-run').onclick=()=>document.querySelector('#first-run-onboarding').close();
+document.querySelector('#reopen-first-run').onclick=()=>void openFirstRunWizard();
+document.querySelector('#first-run-import-action').onclick=async()=>{try{await api.invoke('finishChromeImportOnboarding',{completed:false});}catch{}try{await openChromeImportDialog();}catch(error){document.querySelector('#first-run-error').textContent=error.message;}};
 document.querySelector('#choose-chrome-source').onclick=async()=>{
   const error=document.querySelector('#chrome-import-error');error.textContent='';error.removeAttribute('data-success');
   error.removeAttribute('data-partial');
@@ -1252,6 +1308,7 @@ document.querySelector('#chrome-import-form').onsubmit=async event=>{
     const cookieSummary=extensionMessages.t('cookiesImported',{count:extensionMessages.formatNumber(result.cookies.imported),notes:cookieNotes.length?` (${cookieNotes.join(extensionMessages.locale==='zh-CN'?'、':', ')})`:''});
     error.textContent=extensionMessages.t('importCompletedSummary',{bookmarks:extensionMessages.formatNumber(result.bookmarks.imported),history:extensionMessages.formatNumber(result.history.imported),cookies:cookieSummary,extensions:extensionMessages.formatNumber(result.extensions.imported.length),skipped:result.extensions.skipped.length?extensionMessages.t('skippedExtensions',{count:extensionMessages.formatNumber(result.extensions.skipped.length)}):'',failed:failed?extensionMessages.t('importFailedItems',{items:failed}):''});
     if(result.cookies.failed)updateChromeImportButton();else document.querySelector('#confirm-chrome-import').disabled=true;
+    void api.invoke('finishChromeImportOnboarding').catch(()=>{});
     void renderBookmarksBar();
     if(libraryKind==='bookmarks'||libraryKind==='history')void renderLibrary();
     if(document.querySelector('#settings').open)void renderProfileExtensions();
