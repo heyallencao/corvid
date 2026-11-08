@@ -646,11 +646,11 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 20px; border: 1px solid
 #settings-form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-items: stretch; gap: 14px; height: 100%; min-height: 0; }
 .settings-center-header, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .settings-center-header { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-.settings-center-header h2 { margin: 2px 0 0; font-size: 20px; }
+.settings-center-header h2 { margin: 2px 0 0; font-size: 17px; }
 .settings-center-header p { max-width: 300px; margin: 0; color: var(--text-secondary); font-size: 12px; text-align: right; }
 .settings-center-body { display: grid; grid-template-columns: 156px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 16px; min-height: 0; }
 .settings-nav { display: grid; align-content: start; gap: 3px; padding-right: 12px; border-right: 1px solid var(--line); }
-.settings-nav button { min-height: 36px; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; text-align: left; }
+.settings-nav button { min-height: 36px; padding: 7px 9px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--font-size-micro); text-align: left; }
 .settings-nav button:hover { background: var(--surface-hover); color: var(--text); }
 .settings-nav button[aria-current="location"] { border-color: var(--line-accent); background: var(--surface-accent); color: var(--accent-ink); font-weight: 600; }
 .settings-content { min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 1px 4px 8px 0; scrollbar-gutter: stable; }
@@ -771,7 +771,7 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
   #settings { padding: 10px; }
   #settings-form { gap: 7px; }
   .settings-center-header { padding-bottom: 6px; }
-  .settings-center-header h2 { font-size: 18px; }
+  .settings-center-header h2 { font-size: 16px; }
   .settings-center-header p { display: none; }
   .settings-center-body { gap: 5px; }
   .settings-nav { gap: 2px; padding-bottom: 4px; }
