@@ -68,7 +68,7 @@
   --elevation-panel: 0 12px 36px var(--shadow-panel);
   --elevation-menu: 0 14px 38px var(--shadow-popover);
   --elevation-dialog: 0 24px 80px var(--shadow-dialog);
-  --dialog-backdrop: #20263345;
+  --dialog-backdrop: #20263333;
   --focus-ring: var(--accent);
   --motion-fast: 120ms;
   --disabled-opacity: .5;
@@ -641,7 +641,7 @@ body.tab-dragging { cursor: grabbing; }
 #find-count { min-width: 42px; color: var(--text-muted); font-size: var(--font-size-small); text-align: right; }
 #findbar button { width: 28px; height: 28px; padding: 0; color: var(--text-secondary); }
 #findbar button svg { width: var(--icon-size-small); height: var(--icon-size-small); }
-dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elevation-dialog); }
+dialog { width: min(500px, calc(100vw - 36px)); padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elevation-dialog); }
 #settings { width: min(760px, calc(100vw - 32px)); height: min(680px, 88vh); max-height: 88vh; overflow: hidden; }
 #settings-form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; align-items: stretch; gap: 14px; height: 100%; min-height: 0; }
 .settings-center-header, .settings-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -677,7 +677,7 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 .settings-actions button[type="submit"] { background: var(--accent-solid); color: white; }
 .settings-leave-content { display: grid; gap: 12px; }
 #settings-leave-dialog { width: min(460px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: var(--text); box-shadow: 0 18px 52px rgb(18 24 40 / 22%); }
-.settings-leave-content h2 { margin: 0; font-size: 18px; }
+.settings-leave-content h2 { margin: 0; font-size: 17px; }
 .settings-leave-content p { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .settings-leave-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .settings-leave-actions button { min-height: 36px; padding: 7px 11px; }
@@ -697,7 +697,7 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 #agent-access-dialog { width: min(620px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow: auto; }
 .agent-access-dialog { display: grid; gap: 13px; }
 .agent-access-dialog .import-heading { display: flex; align-items: flex-start; justify-content: space-between; }
-.agent-access-dialog .import-heading h2 { margin: 3px 0 0; font-size: 19px; }
+.agent-access-dialog .import-heading h2 { margin: 3px 0 0; font-size: 17px; }
 .agent-access-dialog p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 .agent-access-boundary { padding: 9px 11px; border-left: 3px solid var(--warning); border-radius: var(--radius-sm); background: var(--surface-soft); }
 #agent-client-form { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); }
@@ -742,7 +742,7 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 .pi-endpoint-actions { display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 8px; }
 #pi-endpoint-error { flex: 1 1 100%; color: var(--danger); font-size: 12px; }
 @media (max-width: 540px) { .pi-endpoint-row { grid-template-columns: minmax(0, 1fr) auto; } .pi-endpoint-row div { grid-column: 1 / -1; } }
-dialog::backdrop { background: var(--dialog-backdrop); backdrop-filter: blur(3px); }
+dialog::backdrop { background: var(--dialog-backdrop); }
 dialog form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 /* 统一对话框标题头：eyebrow/h2 + 关闭钮，供 aria-labelledby 与读屏播报对话框目的。 */
 .dialog-header { flex: 1 1 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 2px; }
@@ -754,7 +754,7 @@ dialog select { padding-right: 26px; }
 dialog form > button { min-height: 34px; padding: 7px 12px; background: var(--surface-soft); }
 dialog form > button[type="submit"] { background: var(--accent-solid); color: white; }
 .profile-deletion-form { display: grid; align-items: stretch; gap: 13px; }
-.profile-deletion-heading h2 { margin: 3px 0 0; font-size: 20px; line-height: 1.25; }
+.profile-deletion-heading h2 { margin: 3px 0 0; font-size: 17px; line-height: 1.25; }
 #profile-deletion { width: min(520px, calc(100vw - 32px)); max-height: min(86vh, 720px); overflow: auto; }
 #profile-deletion-impact { display: grid; gap: 8px; min-height: 54px; max-height: 26vh; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-soft); color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .profile-deletion-impact p { margin: 0; }
@@ -854,7 +854,7 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
   .chrome-import-actions button { padding: 7px 9px; font-size: 12px; }
 }
 #chrome-import-onboarding { width: min(460px, calc(100vw - 36px)); }
-#chrome-import-onboarding h2 { flex: 1 1 100%; margin: 0; font-size: 18px; }
+#chrome-import-onboarding h2 { flex: 1 1 100%; margin: 0; font-size: 17px; }
 #chrome-import-onboarding p { flex: 1 1 100%; margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
 #chrome-import-onboarding .import-limitation { color: var(--text-muted); font-size: 12px; }
 .onboarding-actions { display: flex; justify-content: flex-end; gap: 8px; width: 100%; margin-top: 6px; }
