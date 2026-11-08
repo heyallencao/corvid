@@ -26,9 +26,11 @@ assertCatalogSourceHasUniqueKeys();
   const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'corvid-localization-'));
   const preferencePath=path.join(dataDir,'ui-preferences.json');
   fs.writeFileSync(preferencePath,JSON.stringify({schemaVersion:1,uiLocale:'zh-CN'}),{mode:0o600});
+  // 沙箱 HOME：导入对话框会主动探测 Chrome 标准路径，不隔离会读到开发机真实 Chrome 资料。
+  const homeDir=path.join(dataDir,'home');fs.mkdirSync(homeDir);
   let app;
   const start=async()=>{
-    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
+    app=await _electron.launch({executablePath:electron,args:[root],env:{...process.env,HOME:homeDir,CORVID_DATA_DIR:dataDir,CORVID_TEST_MODE:'1',CORVID_PORT:'0'}});
     return app.firstWindow();
   };
   const stop=async()=>{await app.close();app=undefined;};

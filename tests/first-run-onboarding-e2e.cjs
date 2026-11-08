@@ -18,6 +18,11 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const homeDir = path.join(root, 'home');
   fs.mkdirSync(freshDir); fs.mkdirSync(existingDir); fs.mkdirSync(homeDir);
   fs.writeFileSync(path.join(existingDir, 'profiles.json'), JSON.stringify([{ id: 'default', name: 'Existing', isDefault: true }]), { mode: 0o600 });
+  // 标准安装路径下的合成 Chrome 夹具：验证导入对话框的主动探测（只读清单预填，导入仍需明确确认）。
+  const chromeFixture = path.join(homeDir, 'Library', 'Application Support', 'Google', 'Chrome');
+  fs.mkdirSync(path.join(chromeFixture, 'Default'), { recursive: true });
+  fs.writeFileSync(path.join(chromeFixture, 'Local State'), JSON.stringify({ profile: { info_cache: { Default: { name: '夹具 Chrome' } } } }));
+  fs.writeFileSync(path.join(chromeFixture, 'Default', 'Bookmarks'), JSON.stringify({ roots: { bookmark_bar: { type: 'folder', children: [{ type: 'url', id: '4', name: '夹具书签', url: 'https://fixture.example/bookmark' }] }, other: { type: 'folder', children: [] } } }));
   let app;
   const readOnboarding = dataDir => JSON.parse(fs.readFileSync(path.join(dataDir, 'onboarding.json'), 'utf8'));
 
@@ -111,6 +116,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until(async () => (await homeDataset('homeSetup')) === 'import', 'agent item leaves the checklist');
     await homeEval(`window.browserHome.action('setup','import')`);
     await shell.locator('#chrome-import').waitFor({ state: 'visible' });
+    // 主动探测：标准路径下的合成 Chrome 被自动预填，无需手动选择目录即可看到预览数量。
+    await until(async () => (await shell.locator('#chrome-source-profile').inputValue()) === 'Default', 'import source auto-detected from the default install path');
+    await shell.locator('#chrome-import-detected').waitFor({ state: 'visible' });
+    await until(async () => (await shell.locator('#chrome-bookmark-count').textContent()).includes('1'), 'auto-detected preview shows bookmark counts');
     await shell.locator('#cancel-chrome-import').click();
 
     // 3. 开始使用区：示例任务与快捷键可见，收起后持久化。

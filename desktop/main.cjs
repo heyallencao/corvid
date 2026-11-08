@@ -1,6 +1,7 @@
 const { app, BrowserWindow, WebContentsView, ipcMain, session, dialog, shell, screen, clipboard, safeStorage, Menu, nativeTheme } = require('electron');
 const http = require('node:http');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { safePageUrl, createPageContextMenuTemplate } = require('./page-context-menu.cjs');
@@ -170,6 +171,9 @@ const agentWorkbench = createAgentWorkbench({ dataDir, runtime: agentRuntime,
 } });
 let panelOpen = false;
 const selectedChromeSources = new Map();
+// 各平台 Chrome 默认资料目录：主动探测与手动选择对话框共用同一个建议路径。
+// 用 os.homedir() 而非 app.getPath('home')：前者尊重 HOME 环境变量，测试沙箱才不会探到开发机真实 Chrome 资料。
+const defaultChromeUserDir=()=>process.platform==='darwin'?path.join(os.homedir(),'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(os.homedir(),'.config','google-chrome');
 let failChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_FAIL_ONCE==='1';
 let failChromeCookieRollbackFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_ROLLBACK_FLUSH_FAIL_ONCE==='1';
 let hangChromeCookieFlushForTest=process.env.CORVID_TEST_MODE==='1'&&process.env.CORVID_TEST_CHROME_COOKIE_FLUSH_TIMEOUT_ONCE==='1';
@@ -1300,13 +1304,25 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
     }
     case 'chooseChromeImportSource': {
       if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
-      const home=app.getPath('home');
-      const suggested=process.platform==='darwin'?path.join(home,'Library','Application Support','Google','Chrome'):process.platform==='win32'?path.join(process.env.LOCALAPPDATA || app.getPath('appData'),'Google','Chrome','User Data'):path.join(home,'.config','google-chrome');
-      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseChromeDirectoryDialog'),defaultPath:fs.existsSync(suggested)?suggested:home,properties:['openDirectory']});
+      const suggested=defaultChromeUserDir();
+      const result=await dialog.showOpenDialog(window,{title:mainMessages.t('chooseChromeDirectoryDialog'),defaultPath:fs.existsSync(suggested)?suggested:os.homedir(),properties:['openDirectory']});
       if(result.canceled || !result.filePaths[0]) return {canceled:true};
       const root=result.filePaths[0];
       try { const sources=chromeImport.profiles(root);if(!sources.length)throw new Error('所选目录中没有找到可导入的 Chrome Profile');const sourceToken=id();selectedChromeSources.set(sourceToken,root);return {canceled:false,sourceToken,sources}; }
       catch(error){throw error;}
+    }
+    case 'detectChromeImportSource': {
+      // 主动探测标准安装路径：只读目录与 Local State 清单来预填来源；书签/历史等内容的读取仍以用户选择 Profile 为界，导入本身仍需明确确认。
+      if(fromApi) throw new Error('Chrome 导入必须由用户在桌面操作');
+      const suggested=defaultChromeUserDir();
+      if(!fs.existsSync(suggested))return {available:false};
+      try{
+        const sources=chromeImport.profiles(suggested);
+        if(!sources.length)return {available:false};
+        const sourceToken=id();
+        selectedChromeSources.set(sourceToken,suggested);
+        return {available:true,path:suggested,sourceToken,sources};
+      }catch{return {available:false};}
     }
     case 'releaseChromeImportSource': {
       if(typeof args.sourceToken==='string')selectedChromeSources.delete(args.sourceToken);

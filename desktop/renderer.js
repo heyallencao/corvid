@@ -1181,7 +1181,9 @@ document.querySelector('#pi-model-endpoint-form').onsubmit=async event=>{
 let chromeSources=[],chromeSourceId='',chromeSourceToken='',chromeImportProfileId='',chromeImportProfileLocked=false;
 const chromeImportDialog=document.querySelector('#chrome-import');
 async function openChromeImportDialog(){
+  if(chromeSourceToken)void api.invoke('releaseChromeImportSource',{sourceToken:chromeSourceToken}).catch(()=>{});
   chromeSources=[];chromeSourceId='';chromeSourceToken='';document.querySelector('#chrome-import-error').textContent='';
+  document.querySelector('#chrome-import-detected').hidden=true;
   document.querySelector('#chrome-import-error').removeAttribute('data-success');
   document.querySelector('#chrome-import-error').removeAttribute('data-partial');
   const targetProfile=document.querySelector('#chrome-import-target-profile');
@@ -1197,6 +1199,21 @@ async function openChromeImportDialog(){
   for(const input of document.querySelectorAll('input[name="chrome-category"]'))input.checked=input.value==='bookmarks'||input.value==='history';
   document.querySelector('#chrome-import-preview').textContent=extensionMessages.t('chooseDirectoryForCounts');
   await openShellDialog('#chrome-import');
+  // 主动探测标准安装路径并预填来源；探测失败或目录不存在时保持手动选择流程不变。
+  try{
+    const detected=await api.invoke('detectChromeImportSource');
+    if(detected?.available){
+      chromeSources=detected.sources;chromeSourceToken=detected.sourceToken;
+      const select=document.querySelector('#chrome-source-profile');
+      select.replaceChildren(...chromeSources.map(source=>new Option(`${source.name} (${source.id})`,source.id)));
+      select.disabled=false;select.value=chromeSources[0]?.id||'';
+      chromeSourceId=select.value;
+      const note=document.querySelector('#chrome-import-detected');
+      note.textContent=extensionMessages.t('chromeImportDetected',{path:detected.path});
+      note.hidden=false;
+      if(chromeSourceId)showChromePreview(await api.invoke('previewChromeImport',{sourceToken:chromeSourceToken,sourceId:chromeSourceId}));
+    }
+  }catch{}
 }
 function showChromePreview(preview){
   const errors=preview.errors||{},unavailable=extensionMessages.t('categoryCountUnavailable');
