@@ -50,6 +50,9 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const homeDataset = async name => homeEval(`document.querySelector('[data-corvid-home-surface]').dataset[${JSON.stringify(name)}]`);
   const until = async (fn, label, timeout = 15000) => { for (let i = 0; i < timeout / 50; i++) { const value = await fn(); if (value) return value; await delay(50); } throw new Error(`Timed out waiting for ${label}`); };
   const adminClients = async () => (await (await fetch(`${config.baseUrl}/agent-clients`, { headers: { authorization: `Bearer ${config.token}` } })).json()).clients;
+  // 页面视图可见性是模态挡板的像素级代理：模态开着时视图必须隐藏，全关后必须恢复，
+  // 否则起始页（原生视图永远在 shell 对话框之上）会盖回仍打开的对话框。
+  const pageViewVisible = async () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.map(view => view.getVisible?.() ?? null));
 
   try {
     ({ app } = await boot(freshDir));
@@ -60,6 +63,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     // 1. 全新安装：欢迎对话框（导入步）→ 稍后不弹向导；从起始页待办卡「继续设置」进入向导：模型稍后 → Agent 稍后 → 完成。
     await shell.locator('#chrome-import-onboarding').waitFor({ state: 'visible' });
     assert.equal(await shell.locator('#first-run-onboarding').evaluate(element => element.open), false, 'wizard waits behind the import welcome');
+    assert.deepEqual(await pageViewVisible(), [false], 'page view hides while the import welcome is open');
     await shell.locator('#skip-chrome-import').click();
     await until(async () => (await homeDataset('homeSetup')) === 'import,model,agent', 'start page setup checklist');
     assert.equal(await shell.locator('#first-run-onboarding').evaluate(element => element.open), false, 'skipping the welcome does not pop the wizard modal');
@@ -74,6 +78,22 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await until(async () => await shell.locator('#first-run-step-done').isVisible(), 'wizard reaches the done state');
     await shell.locator('#close-first-run').click();
     await until(() => { try { const saved = readOnboarding(freshDir); return saved.steps.model === 'skipped' && saved.steps.agent === 'skipped'; } catch { return false; } }, 'onboarding.json records the skipped steps');
+
+    // 1b. 模态叠层回归：向导开着时「打开导入」叠加第二个对话框；关掉导入后向导仍在前台，视图必须继续隐藏，
+    // 否则起始页原生视图会盖回向导上（用户实测的「一层一层盖住」）。全部关闭后视图才恢复。
+    await homeEval(`window.browserHome.action('setupWizard')`);
+    await shell.locator('#first-run-onboarding').waitFor({ state: 'visible' });
+    assert.deepEqual(await pageViewVisible(), [false], 'page view hides while the wizard is open');
+    await shell.locator('#first-run-import-action').click();
+    await shell.locator('#chrome-import').waitFor({ state: 'visible' });
+    assert.deepEqual(await pageViewVisible(), [false], 'page view stays hidden under the stacked import dialog');
+    await shell.locator('#cancel-chrome-import').click();
+    await shell.locator('#chrome-import').waitFor({ state: 'hidden' });
+    assert.equal(await shell.locator('#first-run-onboarding').evaluate(element => element.open), true, 'closing the stacked import returns to the still-open wizard');
+    await until(async () => (await pageViewVisible())[0] === false, 'page view stays hidden while the wizard remains open');
+    await shell.locator('#close-first-run').click();
+    await shell.locator('#first-run-onboarding').waitFor({ state: 'hidden' });
+    await until(async () => (await pageViewVisible())[0] === true, 'page view returns after every dialog is closed');
 
     // 2. 起始页设置待办卡：三个未完成项，逐条点击打开对应设置面并标记完成。
     await until(async () => (await homeDataset('homeSetup')) === 'import,model,agent', 'start page setup checklist');

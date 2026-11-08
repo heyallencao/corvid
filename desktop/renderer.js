@@ -88,7 +88,10 @@ async function openShellDialog(selector, focusSelector) {
   const dialog=document.querySelector(selector);dialog.showModal();
   if(focusSelector)document.querySelector(focusSelector).focus();
 }
-for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{void api.invoke('setShellModal',{open:false});});
+// 模态挡板按「仍有对话框打开」重算：向导等流程会在一个对话框开着时再开下一个，
+// 关掉顶层对话框后视图必须继续隐藏，否则起始页会盖回仍在前台的原对话框上。
+const anyShellModalOpen=()=>[...document.querySelectorAll('dialog')].some(dialog=>dialog.open);
+for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{void api.invoke('setShellModal',{open:anyShellModalOpen()});});
 function activeTab() { const room = state?.rooms.find(s => s.id === state.activeRoomId); return room?.tabs.find(t => t.active); }
 function updateConnectionIndicator(tab){
   const indicator=document.querySelector('#connection-indicator');if(!indicator)return;
@@ -937,6 +940,7 @@ api.onPiAuthPrompt(async request=>{
     const closed=()=>finish();dialog.addEventListener('close',closed,{once:true});
     form.onsubmit=event=>{event.preventDefault();dialog.close('continue');};
     document.querySelector('#pi-auth-cancel').onclick=()=>dialog.close('cancel');
+    void api.invoke('setShellModal',{open:true}).catch(()=>{});
     dialog.showModal();input.focus();
   });
   cancelled=result===null;value=result;
@@ -976,6 +980,7 @@ function showNextAgentApproval(){
     document.querySelector('#agent-approval-description').textContent=t('approvalConfirmOneTime');
   }
   document.querySelector('#agent-approval-status').textContent='';
+  void api.invoke('setShellModal',{open:true}).catch(()=>{});
   agentApprovalDialog.showModal();
   document.querySelector('#agent-approval-deny').focus();
 }
