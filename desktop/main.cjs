@@ -15,7 +15,7 @@ const { createActionIndicator } = require('./action-indicator.cjs');
 const { resolveDataDirectory } = require('./data-directory.cjs');
 const { navigationFailureDetails, navigationHttpStatusFailure } = require('./navigation-errors.cjs');
 // Covers tabs plus the toolbar until the first renderer measurement reaches the main process.
-const INITIAL_BROWSER_CHROME_HEIGHT = 90;
+const INITIAL_BROWSER_CHROME_HEIGHT = 84;
 let mainMessages = createMainLocale(/^en(?:-|$)/i.test(app.getLocale()) ? 'en' : 'zh-CN');
 
 const dataDir = resolveDataDirectory({ override:process.env.CORVID_DATA_DIR, homeDir:app.getPath('home') });
