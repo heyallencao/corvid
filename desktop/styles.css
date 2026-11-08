@@ -80,7 +80,7 @@
   --dock-line: rgba(255,255,255,.65);
   --dock-shadow: 0 12px 34px rgba(60,70,110,.22);
   --dock-highlight: inset 0 1px 1px rgba(255,255,255,.7);
-  --workspace-width: 420px;
+  --workspace-width: 360px;
   --browser-chrome-height: 84px;
   --browser-chrome-overlay-gap: 12px;
   /* 圆角以 8px 为单基准派生：xs=半档（checkbox）、sm=1、md=1.5、lg=2，不再有独立档位。 */
@@ -247,7 +247,7 @@ svg { display: block; width: var(--icon-size-small); height: var(--icon-size-sma
 #room-menu { bottom: calc(100% + 12px); right: 6px; }
 #library-menu { top: calc(100% + 6px); right: 0; min-width: 210px; }
 #profile-menu[hidden], #room-menu[hidden], #library-menu[hidden] { display: none; }
-#profile-menu button, #room-menu button { display: block; width: 100%; padding: 8px 10px; text-align: left; }
+#profile-menu button, #room-menu button { display: block; width: 100%; min-height: 32px; padding: 6px 10px; text-align: left; }
 #library-menu button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; text-align: left; }
 #library-menu button svg { width: 16px; height: 16px; flex: none; color: var(--text-secondary); }
 #library-menu .menu-separator { height: 1px; margin: 5px 7px; background: var(--line-subtle); }
@@ -347,7 +347,7 @@ svg { display: block; width: var(--icon-size-small); height: var(--icon-size-sma
 #address-suggestions[hidden] { display: none; }
 .address-suggestion-group + .address-suggestion-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line-subtle); }
 .address-suggestion-heading { padding: 4px 9px 3px; color: var(--text-muted); font-size: var(--font-size-micro); line-height: 1.35; }
-.address-suggestion { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: var(--radius-sm); color: var(--text); text-align: left; }
+.address-suggestion { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: var(--radius-sm); color: var(--text); text-align: left; }
 .address-suggestion:hover, .address-suggestion[aria-selected="true"] { background: var(--surface-selected); color: var(--surface-selected-text); }
 .address-suggestion:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .address-suggestion-icon { width: 18px; flex: none; color: var(--text-address-icon); text-align: center; }
@@ -402,7 +402,7 @@ svg { display: block; width: var(--icon-size-small); height: var(--icon-size-sma
 /* Pi workspace and browser library panels. */
 #library { position: fixed; z-index: 20; top: calc(var(--browser-chrome-height) + var(--browser-chrome-overlay-gap)); right: 12px; bottom: calc(var(--dock-strip) + 12px); width: var(--workspace-width); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--elevation-panel); }
 #library[hidden] { display: none; }
-.panel-header { min-height: 74px; display: flex; align-items: center; gap: 10px; padding: 13px 14px; border-bottom: 1px solid var(--line); }
+.panel-header { min-height: 56px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .panel-header > div { min-width: 0; flex: 1; }
 .panel-eyebrow { color: var(--text-muted); font-size: var(--font-size-micro); font-weight: 700; }
 .panel-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -592,20 +592,20 @@ svg { display: block; width: var(--icon-size-small); height: var(--icon-size-sma
 .agent-room-task-state[data-status="completed"] { color: var(--success); }
 .agent-room-task-state[data-status="failed"] { color: var(--danger); }
 .agent-room-entry button { padding: 5px 8px; font-size: var(--font-size-small); }
-.entry { min-height: 42px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line-subtle); }
+.entry { min-height: 36px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line-subtle); }
 .entry a { min-width: 0; flex: 1; overflow: hidden; padding: 9px 0; color: var(--accent-ink); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
 .entry a:hover { text-decoration: underline; }
 .entry > span { min-width: 0; flex: 1; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .entry button { padding: 6px 8px; color: var(--text-secondary); font-size: var(--font-size-small); }
 .history-group + .history-group { margin-top: 10px; }
 .history-group-title { margin: 7px 0 4px; color: var(--text-muted); font-size: var(--font-size-small); font-weight: 600; }
-.history-entry { min-height: 50px; align-items: flex-start; gap: 10px; padding: 3px 0; }
+.history-entry { min-height: 44px; align-items: flex-start; gap: 10px; padding: 3px 0; }
 .history-entry-details { min-width: 0; flex: 1; display: grid; gap: 2px; padding: 3px 0; }
 .history-entry .history-title { display: block; padding: 2px 0; }
 .history-entry-meta { min-width: 0; display: flex; align-items: center; gap: 9px; }
 .history-url { min-width: 0; flex: 1; overflow: hidden; color: var(--text-muted); font-size: var(--font-size-small); text-overflow: ellipsis; white-space: nowrap; }
 .history-time { flex: none; color: var(--text-secondary); font-size: var(--font-size-small); white-space: nowrap; }
-.library-entry { min-height: 58px; gap: 10px; padding: 6px; border-bottom: 0; border-radius: var(--radius-sm); }
+.library-entry { min-height: 48px; gap: 10px; padding: 6px; border-bottom: 0; border-radius: var(--radius-sm); }
 .library-entry:hover { background: var(--surface-hover); }
 .library-site-badge { width: 30px; height: 30px; display: grid; flex: none; place-items: center; border: 1px solid hsl(var(--site-hue) 35% 78%); border-radius: var(--radius-sm); background: hsl(var(--site-hue) 45% 95%); color: hsl(var(--site-hue) 42% 30%); font-size: 12px; font-weight: 600; }
 .entry > span.library-site-badge { width: 30px; min-width: 30px; max-width: 30px; height: 30px; flex: 0 0 30px; overflow: hidden; }
@@ -629,7 +629,7 @@ svg { display: block; width: var(--icon-size-small); height: var(--icon-size-sma
 #site-tools, #tab-menu { position: fixed; z-index: 90; min-width: 190px; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--elevation-menu); }
 #site-tools { top: calc(var(--browser-chrome-height) + var(--browser-chrome-overlay-gap)); right: 12px; }
 #site-tools[hidden], #tab-menu[hidden] { display: none; }
-#site-tools button, #tab-menu .menu-item { display: block; width: 100%; padding: 8px 10px; text-align: left; }
+#site-tools button, #tab-menu .menu-item { display: block; width: 100%; min-height: 32px; padding: 6px 10px; text-align: left; }
 #site-tools #toggle-fullscreen { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 #fullscreen-shortcut { color: var(--text-muted); font: inherit; font-size: var(--font-size-micro); }
 #tab-menu { display: flex; flex-direction: column; gap: 2px; }
@@ -864,11 +864,11 @@ dialog form > button[type="submit"] { background: var(--accent-solid); color: wh
 dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabled { opacity: var(--disabled-opacity); }
 
 @media (max-width: 984px) and (min-width: 874px) {
-  :root { --workspace-width: min(420px, max(310px, calc(100vw - 332px))); }
+  :root { --workspace-width: min(360px, max(310px, calc(100vw - 332px))); }
 }
 
 @media (max-width: 873px) {
-  :root { --workspace-width: min(420px, max(0px, calc(100vw - 336px))); }
+  :root { --workspace-width: min(360px, max(0px, calc(100vw - 336px))); }
   #room-dock { gap: 4px; padding: 7px 8px; }
   #room-strip button { width: 34px; height: 32px; }
   #room-strip button::after { width: 24px; height: 24px; }
@@ -877,7 +877,7 @@ dialog button:disabled, dialog select:disabled, #chrome-import-categories:disabl
 }
 
 @media (max-width: 720px) {
-  :root { --workspace-width: min(420px, max(310px, calc(100vw - 394px))); }
+  :root { --workspace-width: min(360px, max(310px, calc(100vw - 394px))); }
   #chrome-tools { gap: 1px; padding-inline: 5px; }
   .icon-button { width: 28px; }
   #address-form { margin-inline: 2px; padding-inline: 8px; }
