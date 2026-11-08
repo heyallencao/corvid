@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-11-08 Issue #432 UI 全面校准（Chrome 度量体系）P1–P5
+
+- 基线：分支 `ui/issue-432-chrome-calibration`（基于本地 main `1762570`），macOS arm64，Node.js v24.22.1；隔离 `CORVID_DATA_DIR`（mkdtemp）+ `CORVID_TEST_MODE=1`，不使用真实模型、OAuth 或个人浏览数据。
+- 改动：5 个独立提交（`0949028` P1 token 层 / `28d1e35` P2 chrome 密度 / `da62b78` P3 面板列表 / `b98993b` P4 对话框与软光标 / `b5a1dff` P5 设置中心）；强调色按用户「全部修复」拍板由 #5367d8 换 Chrome 蓝 #0b57d0 系（亮暗两张 token 表成对修改，新标签页 token 一并入系）。
+- 定向验证（真 Electron）：`tests/browser-layout-e2e.cjs`（空壳 chrome 高度断言 90→84 随 P2 跟改）EXIT 0；`tab-ux` / `tab-overflow` / `library` / `address-suggestions` / `settings-preferences` 各定向 E2E 均 PASS。运行态实测：chrome 高 84（tab 条 40 + 工具栏 44）、tab 34、地址栏 30、基准字号 14px、亮色 accent `#0b57d0`、暗色 `#a8c7fa`。
+- 截图留档：`docs/qa/screenshots/issue-432/calibrated-light-1280x800.png`、`calibrated-dark-1280x800.png`（about:blank 新标签页状态，1280x800）。
+- 边界：全量 E2E 未跑（纯样式切片按分层测试约定留合并门禁最终候选执行）；`shell.screenshot` 不合成 WebContentsView，页面画布呈黑色为既有拍摄限制，非回归；与 Chrome/Kaze 的并排三联对比未自动化，视觉验收以本机截图与用户过目为准；Kaze token 参照值来自本机 0.27.x app.asar 拆解。
+
 ## 2026-11-07 Issue #403 macOS 最大化与全屏 bounds 持久化
 
 - 历史 hosted 证据：Release run [#42223547663](https://github.com/heyallencao/corvid/actions/runs/42223547663)，source `d8e2bad15ac9ba5edc53f6660bd26db5bf47331c`；Apple Silicon 门禁曾在最大化窗口退出全屏后的常态 bounds 断言失败，Windows installer smoke 与 Intel macOS app smoke/资产上传通过，发布步骤跳过。

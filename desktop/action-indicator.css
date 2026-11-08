@@ -17,17 +17,17 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   place-items: center;
   border: 2px solid #fff;
   border-radius: 50%;
-  background: #1769e8;
-  box-shadow: 0 0 0 3px rgb(23 105 232 / 28%);
+  background: #0b57d0;
+  box-shadow: 0 0 0 3px rgb(11 87 208 / 28%);
   animation: appear 150ms ease-out both;
 }
 .marker-core { width: 7px; height: 7px; border-radius: 50%; background: #fff; }
-.marker-wave { position: absolute; inset: -5px; border: 2px solid #1769e8; border-radius: 50%; opacity: 0; }
+.marker-wave { position: absolute; inset: -5px; border: 2px solid #0b57d0; border-radius: 50%; opacity: 0; }
 #action-indicator[data-operation="click"] .marker-wave,
 #action-indicator[data-operation="fill"] .marker-wave { animation: pulse 620ms ease-out infinite; }
-#action-indicator[data-operation="hover"] .marker { background: #7154d9; box-shadow: 0 0 0 3px rgb(113 84 217 / 26%); }
-#action-indicator[data-operation="hover"] .marker-wave { inset: -3px; border-color: #7154d9; opacity: .85; }
-#action-indicator[data-operation="scroll"] .marker { background: #138a78; box-shadow: 0 0 0 3px rgb(19 138 120 / 26%); }
+#action-indicator[data-operation="hover"] .marker { background: #a8620a; box-shadow: 0 0 0 3px rgb(168 98 10 / 26%); }
+#action-indicator[data-operation="hover"] .marker-wave { inset: -3px; border-color: #a8620a; opacity: .85; }
+#action-indicator[data-operation="scroll"] .marker { background: #178a5e; box-shadow: 0 0 0 3px rgb(23 138 94 / 26%); }
 #action-indicator[data-operation="scroll"] .marker-core { width: 5px; height: 5px; box-shadow: 0 -7px #fff, 0 7px #fff; }
 #action-label {
   position: absolute;
@@ -39,9 +39,8 @@ html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background:
   border-radius: 999px;
   background: rgb(18 31 50 / 94%);
   color: #fff;
-  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   white-space: nowrap;
-  letter-spacing: .01em;
 }
 @keyframes appear { from { opacity: 0; scale: .72; } to { opacity: 1; scale: 1; } }
 @keyframes pulse { 0% { transform: scale(.68); opacity: .7; } 100% { transform: scale(1.55); opacity: 0; } }

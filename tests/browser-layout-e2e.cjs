@@ -85,18 +85,18 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   try {
     const { shell } = await boot();
-    await assertPageStartsBelowChrome(shell, 90, 'empty bookmark/status rows', 'about:blank');
+    await assertPageStartsBelowChrome(shell, 84, 'empty bookmark/status rows', 'about:blank');
 
     await shell.locator('#address').fill(url);
     await shell.locator('#address').press('Enter');
     await shell.getByRole('button', { name: 'Geometry fixture' }).waitFor();
-    await assertPageStartsBelowChrome(shell, 90, 'normal page without bookmarks');
+    await assertPageStartsBelowChrome(shell, 84, 'normal page without bookmarks');
 
     await shell.locator('#bookmark-current').click();
     await shell.getByText('已添加书签', { exact: true }).waitFor();
     await shell.locator('#bookmarks-bar .bookmark-item').waitFor();
     const withBookmarkAndStatus = await assertPageStartsBelowChrome(shell, null, 'bookmark and transient status rows');
-    assert.ok(withBookmarkAndStatus.chromeHeight > 90, 'visible bookmark and status content increases measured chrome height');
+    assert.ok(withBookmarkAndStatus.chromeHeight > 84, 'visible bookmark and status content increases measured chrome height');
     assert.ok(withBookmarkAndStatus.chrome.status.height > 0, 'transient bookmark feedback occupies a measured status row');
 
     await shell.locator('#library-trigger').click();
@@ -115,7 +115,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await shell.locator('#more-tools').click();
     await waitUntil(async () => !(await shell.locator('#status .bookmark-feedback').count()), 'transient bookmark feedback clears');
     const stableChromeHeight=(await measure(shell)).chromeHeight;
-    assert.ok(stableChromeHeight>90, 'the visible bookmark row contributes to measured chrome');
+    assert.ok(stableChromeHeight>84, 'the visible bookmark row contributes to measured chrome');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(719, 420));
     await waitUntil(async () => shell.evaluate(() => window.innerWidth === 719), 'minimum supported viewport');
     const narrow = await assertPageStartsBelowChrome(shell, stableChromeHeight, 'narrow viewport with bookmark row');
@@ -126,7 +126,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     await waitUntil(async () => {
       const chromeHeight = await shell.evaluate(() => Math.ceil(document.querySelector('#browser-shell').getBoundingClientRect().height));
       const visible = await shell.locator('#bookmarks-bar').evaluate(element => !element.hidden && getComputedStyle(element).display !== 'none');
-      return chromeHeight === 90 && !visible;
+      return chromeHeight === 84 && !visible;
     }, 'new-tab page collapses the bookmark row');
 
     console.log('PASS browser chrome geometry follows live DOM height across bookmark/status visibility, overlays, window resizing, and tab changes');
