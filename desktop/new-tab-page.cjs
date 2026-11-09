@@ -32,6 +32,7 @@ function installNewTabPage(tabId, strings) {
       h2{margin:0;color:var(--home-secondary-color);font-size:11px;font-weight:650}
       button{font:inherit;cursor:pointer}
       .all{padding:5px 7px;border:0;background:transparent;color:var(--home-link-color);font-size:10px}
+      .setup-header-actions{display:inline-flex;align-items:center;gap:2px}
       .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
       .bookmark{min-width:0;min-height:68px;display:flex;align-items:center;gap:8px;padding:9px;border:1px solid var(--home-line-soft);border-radius:12px;background:var(--home-card-background);text-align:left}
       .bookmark:hover{border-color:var(--home-mark-color);background:var(--home-card-hover);box-shadow:0 5px 18px var(--home-shadow)}
@@ -39,6 +40,18 @@ function installNewTabPage(tabId, strings) {
       .label{min-width:0;display:grid;gap:2px}.label strong,.label small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       .label strong{color:var(--home-text-color);font-size:10px;font-weight:600}.label small{color:var(--home-muted-color);font-size:9px}
       .empty{margin:0;padding:15px;border:1px dashed var(--home-line);border-radius:12px;color:var(--home-muted-color);font-size:10px;text-align:center}
+      .setup-hint{margin:-4px 0 10px;color:var(--home-muted-color);font-size:10px}
+      .setup-list{display:grid;gap:8px}
+      .setup-item{display:flex;align-items:center;gap:10px;min-height:44px;padding:9px 12px;border:1px solid var(--home-line-soft);border-radius:12px;background:var(--home-card-background);color:var(--home-text-color);font-size:11px;font-weight:600;text-align:left}
+      .setup-item:hover{border-color:var(--home-mark-color);background:var(--home-card-hover);box-shadow:0 5px 18px var(--home-shadow)}
+      .setup-item::after{content:'→';margin-left:auto;color:var(--home-link-color);font-weight:400}
+      .start-prompts{display:grid;gap:8px}
+      .start-prompt{display:flex;align-items:center;gap:10px;min-height:44px;padding:9px 12px;border:1px solid var(--home-line-soft);border-radius:12px;background:var(--home-card-background);color:var(--home-text-color);text-align:left;font-size:11px}
+      .start-prompt:hover{border-color:var(--home-mark-color);background:var(--home-card-hover);box-shadow:0 5px 18px var(--home-shadow)}
+      .start-prompt span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .start-prompt em{margin-left:auto;font-style:normal;flex:none;padding:3px 8px;border-radius:8px;background:var(--home-badge-background);color:var(--home-badge-color);font-size:9px;font-weight:650}
+      .start-shortcuts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+      .start-shortcuts span{display:inline-flex;align-items:center;min-height:28px;padding:5px 10px;border:1px solid var(--home-line-soft);border-radius:9px;background:var(--home-card-background);color:var(--home-secondary-color);font-size:10px}
       nav{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:22px}
       nav button{min-height:32px;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--home-line-soft);border-radius:9px;background:var(--home-card-background);color:var(--home-secondary-color);font-size:10px}
       nav button:hover{background:var(--home-card-hover);color:var(--home-text-color)}nav span{color:var(--home-mark-color);font-size:13px}
@@ -48,10 +61,35 @@ function installNewTabPage(tabId, strings) {
       <div class="mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M6 20.5C6 12.5 12.2 6 20 6c2.1 0 4 .5 5.8 1.5-5.6 1-9.2 5.4-10.5 10.2-1 3.7-3.8 6.3-7.2 7.8A10 10 0 0 1 6 20.5Z" fill="currentColor"/><path d="M9 25.5c6.8-1.7 12.2-6.8 15.4-14.1.9 1.8 1.4 3.8 1.4 5.9 0 6.1-4.9 11-11 11-2.1 0-4.1-.6-5.8-1.7Z" fill="currentColor" opacity=".55"/></svg></div>
       <p class="eyebrow">CORVID BROWSER</p><h1>${strings.heading}</h1><p class="intro">${strings.intro}</p>
       <form role="search"><span aria-hidden="true">⌕</span><label hidden for="home-search">${strings.searchLabel}</label><input id="home-search" type="search" aria-label="${strings.searchLabel}" placeholder="${strings.searchLabel}" autocomplete="off" spellcheck="false"><button type="submit" aria-label="${strings.searchAction}">↗</button></form>
+      <section id="home-setup" aria-labelledby="home-setup-title" hidden><header><h2 id="home-setup-title">${strings.setupTitle}</h2><span class="setup-header-actions"><button class="all" type="button" data-home-action="setupWizard">${strings.setupContinue} →</button><button class="all" type="button" data-home-action="dismissSetup">${strings.setupDismiss} ×</button></span></header><p class="setup-hint">${strings.setupHint}</p><div class="setup-list" role="group" aria-label="${strings.setupTitle}"></div></section>
       <section aria-labelledby="home-bookmarks-title"><header><h2 id="home-bookmarks-title">${strings.bookmarksTitle}</h2><button class="all" type="button" data-action="bookmarks">${strings.allBookmarks} →</button></header><div class="grid" role="group" aria-label="${strings.bookmarksGroup}"></div><p class="empty" hidden>${strings.emptyState}</p></section>
+      <section id="home-start" aria-labelledby="home-start-title" hidden><header><h2 id="home-start-title">${strings.startTitle}</h2><button class="all" type="button" data-home-action="dismissWelcome">${strings.startDismiss} ×</button></header><p class="setup-hint">${strings.startIntro}</p><div class="start-prompts" role="group" aria-label="${strings.startTitle}"><button type="button" class="start-prompt" data-home-prompt="${strings.startPrompt1}"><span>${strings.startPrompt1}</span><em>${strings.startTryLabel}</em></button><button type="button" class="start-prompt" data-home-prompt="${strings.startPrompt2}"><span>${strings.startPrompt2}</span><em>${strings.startTryLabel}</em></button><button type="button" class="start-prompt" data-home-prompt="${strings.startPrompt3}"><span>${strings.startPrompt3}</span><em>${strings.startTryLabel}</em></button></div><div class="start-shortcuts" role="group" aria-label="${strings.startShortcutsTitle}"><span>${strings.startShortcutNewTab}</span><span>${strings.startShortcutFind}</span><span>${strings.startShortcutHistory}</span></div></section>
       <nav aria-label="${strings.quickActions}"><button type="button" data-action="history"><span aria-hidden="true">◷</span>${strings.historyAction}</button><button type="button" data-action="agent"><span aria-hidden="true">✳</span>${strings.agentAction}</button></nav>
     </main>`;
   const form=root.querySelector('form'),input=root.querySelector('input'),grid=root.querySelector('.grid'),empty=root.querySelector('.empty');
+  const setupSection=root.querySelector('#home-setup'),setupList=setupSection.querySelector('.setup-list'),startSection=root.querySelector('#home-start');
+  const setupItems=setup=>{
+    const steps=setup?.steps||{},items=[];
+    if(steps.import!=='done')items.push(['import',strings.setupItemImport]);
+    if(steps.model!=='done')items.push(['model',strings.setupItemModel]);
+    if(steps.agent!=='done')items.push(['agent',strings.setupItemAgent]);
+    return items;
+  };
+  const renderSetup=setup=>{
+    const items=setupItems(setup);
+    setupSection.hidden=setup?.dismissed===true||!items.length;
+    host.dataset.homeSetup=items.map(([step])=>step).join(',');
+    host.dataset.setupDismissed=String(setup?.dismissed===true);
+    host.dataset.welcomeDismissed=String(setup?.welcomeDismissed===true);
+    if(setupSection.hidden)return;
+    setupList.replaceChildren();
+    for(const [step,label] of items){
+      const card=document.createElement('button');card.type='button';card.className='setup-item';card.dataset.setupStep=step;
+      card.setAttribute('aria-label',label);card.textContent=label;
+      card.addEventListener('click',()=>window.browserHome?.action('setup',step));
+      setupList.append(card);
+    }
+  };
   const state=next=>{
     grid.replaceChildren();
     const items=(Array.isArray(next?.bookmarks)?next.bookmarks:[]).slice(0,8);
@@ -63,10 +101,14 @@ function installNewTabPage(tabId, strings) {
       const label=document.createElement('span');label.className='label';const title=document.createElement('strong');title.textContent=item.title||hostName;const domain=document.createElement('small');domain.textContent=hostName;label.append(title,domain);card.append(badge,label);card.addEventListener('click',()=>window.browserHome.action('navigate',item.url));grid.append(card);
     }
     empty.hidden=grid.childElementCount>0;
+    renderSetup(next?.setup);
+    if(next?.setup)startSection.hidden=next.setup.welcomeDismissed===true;
   };
   window.browserHome?.onState(state);
   form.addEventListener('submit',event=>{event.preventDefault();window.browserHome?.action('navigate',input.value);});
   root.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>window.browserHome?.action('panel',button.dataset.action)));
+  root.querySelectorAll('[data-home-action]').forEach(button=>button.addEventListener('click',()=>window.browserHome?.action(button.dataset.homeAction)));
+  root.querySelectorAll('[data-home-prompt]').forEach(button=>button.addEventListener('click',()=>window.browserHome?.action('prompt',button.dataset.homePrompt)));
   requestAnimationFrame(()=>input.focus());
 }
 module.exports=installNewTabPage;

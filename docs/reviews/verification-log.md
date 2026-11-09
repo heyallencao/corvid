@@ -1,5 +1,17 @@
 # 验证记录
 
+## 2026-11-08 Issue #431 首启三步引导（导入→模型→Agent）+ 起始页待办/开始使用区
+
+- 环境：隔离 worktree `ui/issue-431-first-run-onboarding`（基于 main `38c6e15`）；macOS arm64（Darwin 25.5.0）、Node.js v24、Electron 45.2.1；临时 `CORVID_DATA_DIR` 与沙箱 HOME；未调用 OAuth、真实模型或真实网站，未创建真实 Room。
+- 交付：全新安装按「导入浏览数据 → 连接模型 → 授权外部 Agent」三步收敛，每步可稍后；向导不自动弹出（欢迎框稍后不弹向导），由起始页待办卡「继续设置」与设置中心「重新查看首次设置」进入；未完成步骤沉淀为起始页「完成 Corvid 设置」待办卡，逐项完成或收起；新增开始使用区（示例任务与快捷入口，可收起持久化）；老用户（已有 Corvid 数据）零打扰；`onboarding.json`（0600）持久化三步 done/skipped 与收起状态。向导 UI 按用户要求重设计为双栏设置助理（品牌 + 步骤轨道 + 内容面），只用 Corvid 语义。
+- 关键决策：向导改为非打断式（欢迎框稍后不再自动弹向导，避免遮断既有 chrome-import-e2e 流程与真实用户路径）；`finishChromeImportOnboarding` 增加 `completed` 参数区分「真实导入完成」与「稍后/先去设置」（后者欢迎框收敛但导入步记为 skipped）。
+- 测试环境缺陷修复（同时解释长期偶发问题）：测试实例 HOME 为沙箱临时目录，Chromium 关停 flush Cookie 时访问 macOS 钥匙串，securityd 在真实桌面会话弹「登录钥匙串找不到」并阻塞 `app.close()`（E2E 偶发挂起根因）；`CORVID_TEST_MODE=1` 下启用 `use-mock-keychain` 后连续两轮复验通过。该问题只影响测试实例，不影响真实用户安装（真实 HOME 下钥匙串项存在）。
+- 定向验证：`env -u ELECTRON_RUN_AS_NODE node tests/first-run-onboarding-e2e.cjs` EXIT 0 ×2（欢迎框→向导时序、稍后组合持久化、待办卡逐项完成收敛与收起、开始使用区收起、重启零打扰、设置重放、老用户零打扰、全程 0 授权客户端）；回归 `node tests/chrome-import-e2e.cjs`、`node tests/localization-e2e.cjs`、`node tests/native-controls-e2e.cjs`、`node tests/button-hover-contrast-e2e.cjs` 均 EXIT 0（改动触及共享引导界面与跨渲染进程清场逻辑）；`page-preload.cjs` 增加 shell 对话框关闭后跨窗口 `modalOpen` 清场的有界重试（9×100ms，仅针对「尚未准备好/当前不可用」语义）。
+- 用户实测发现的模态叠层缺陷与修复（2026-11-08 晚）：真实新装流程中出现「起始页盖回仍打开的对话框」（导入对话框只剩顶部露在起始页之上）。根因有三：(1) 通用 `dialog close` 监听写死上报 `modalOpen=false`，向导开着再叠开导入对话框、关掉顶层后视图提前恢复，原生视图（永远在 shell 对话框之上）盖回向导/导入框；(2) `pi-auth` 与 `agent-approval` 两处裸 `showModal()` 从不设模态标记；(3) NTP 待办卡「继续设置」按钮文案 `undefined`（`homeStrings()` 漏接 `newTabSetupContinue`）。修复：关闭时按「仍有对话框打开」重算模态标记；两处裸 `showModal` 前补 `setShellModal(true)`；`setupContinue` 接入 homeStrings。测试盲区同轮修正：Playwright 页面截图不合成原生 `WebContentsView`，此前视觉验证不可依赖；E2E 改用 `contentView.children[].getVisible()` 作为模态挡板的像素级代理断言（向导/叠开导入/全部关闭三态），另附向导+导入叠层回归。复验：first-run-onboarding-e2e EXIT 0；`chrome-import-e2e`、`localization-e2e`、`agent-approval-e2e` 回归 EXIT 0。附带记录：`npm run package:mac:dir` 的 electron-builder 会改写工作区 `package.json`（删除 scripts 段），打包后需还原。
+- 导入对话框主动探测（2026-11-08 晚，用户拍板）：用户实测发现新装导入对话框全部计数为 0 项且需手动找目录，拍板「要主动探测」。实现：打开导入对话框时主进程按平台探测标准 Chrome 资料目录（macOS `~/Library/Application Support/Google/Chrome`、Windows `%LOCALAPPDATA%\Google\Chrome\User Data`、Linux `~/.config/google-chrome`），命中即自动预填来源并展示提示（zh/en），探测失败或目录不存在时保持手动选择流程不变。边界：探测只读目录存在性与 `Local State` 的 Profile 清单（元数据），书签/历史等内容的读取仍以用户选择 Profile 触发预览为界，Cookie 单独同意与源文件只读不变；`detectChromeImportSource` 拒绝 API（`fromApi`）调用。测试隔离教训：探测路径改用 `os.homedir()`（尊重 `HOME` 环境变量）；`app.getPath('home')` 无视 `HOME` 永远返回真实用户目录，不得用于该路径——修复前沙箱 E2E 曾探到开发机真实 Chrome 元数据。`localization-e2e` 与 `chrome-import-e2e` 启动改为沙箱 HOME，需要探测行为的用例自行在沙箱 HOME 标准路径放合成夹具。定向验证：`first-run-onboarding-e2e`（含自动预填断言：来源下拉为 `Default`、检测提示可见、书签计数含夹具值）、`chrome-import-e2e`、`localization-e2e` 均 EXIT 0。
+- 视觉证据：双栏向导浅/深主题截图人工核对（1280×850，合成数据）；未写入仓库截图目录，像素不做自动化断言。
+- 覆盖边界：模型/Agent 步只验证「稍后」与重放路径，真实模型连接与 Agent 授权正向流程由各自专项用例覆盖；主动探测未覆盖 Windows 实际路径（仅代码分支）、真实 Chrome 安装机器与目录不存在/权限异常的组合；未覆盖 Windows、打包版、屏幕阅读器与真实钥匙串交互；测试未跑全量 `npm test`（按分层验证约定，留给合并门禁）。
+
 ## 2026-11-07 Issue #403 macOS 最大化与全屏 bounds 持久化
 
 - 历史 hosted 证据：Release run [#42223547663](https://github.com/heyallencao/corvid/actions/runs/42223547663)，source `d8e2bad15ac9ba5edc53f6660bd26db5bf47331c`；Apple Silicon 门禁曾在最大化窗口退出全屏后的常态 bounds 断言失败，Windows installer smoke 与 Intel macOS app smoke/资产上传通过，发布步骤跳过。

@@ -202,7 +202,10 @@ async function verifyCookieDecryption(tempRoot){
 }
 
 async function boot(dataDir,extraEnv={}){
-  const app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_CHROME_IMPORT:'1',...extraEnv}});
+  // 沙箱 HOME：导入对话框会主动探测 Chrome 标准路径，不隔离会读到开发机真实 Chrome 资料；
+  // 需要探测行为的用例自行在 sandbox HOME 下放置夹具（或显式传 HOME 覆盖）。
+  const homeDir=path.join(dataDir,'sandbox-home');fs.mkdirSync(homeDir,{recursive:true});
+  const app=await _electron.launch({executablePath:electron,args:[project],env:{...process.env,HOME:homeDir,CORVID_DATA_DIR:dataDir,CORVID_PORT:'0',CORVID_TEST_MODE:'1',CORVID_TEST_CHROME_IMPORT:'1',...extraEnv}});
   const shell=await app.firstWindow();
   const config=await until(()=>{try{return JSON.parse(fs.readFileSync(path.join(dataDir,'control.json'),'utf8'));}catch{return null;}},'control.json');
   const call=async(route,method='GET',body)=>{
