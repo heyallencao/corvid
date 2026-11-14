@@ -235,6 +235,27 @@ async function testDriftProtection() {
   console.log('PASS drift: 手改条目报告/损坏配置拒绝写入');
 }
 
+// #437 回归：MCP server 收到 SIGTERM/SIGINT 必须退出（#430 曾只取消不退出，
+// doctor 探针管道悬挂导致本套件与全量门禁挂起）。
+async function testMcpSignalExit() {
+  const child = spawn(process.execPath, [SERVER_ENTRY], { stdio: ['pipe', 'pipe', 'pipe'] });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('MCP initialize 超时（5s）')), 5000);
+    child.stdout.setEncoding('utf8');
+    child.stdout.once('data', () => { clearTimeout(timer); resolve(); });
+    child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'connect-e2e', version: '1.0.0' } } })}\n`);
+  });
+  const startedAt = Date.now();
+  child.kill('SIGTERM');
+  const exitCode = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('MCP server 收到 SIGTERM 后 3s 内未退出（#437 回归）')), 3000);
+    child.once('exit', (code, signal) => { clearTimeout(timer); resolve(signal === 'SIGTERM' ? 143 : code); });
+  });
+  assert.equal(exitCode, 143);
+  assert.ok(Date.now() - startedAt < 3000);
+  console.log('PASS signal: MCP server SIGTERM 后立即退出（#437）');
+}
+
 (async () => {
   try {
     await testClaudeCode();
@@ -243,6 +264,7 @@ async function testDriftProtection() {
     await testDsh();
     await testConfirmationContract();
     await testDriftProtection();
+    await testMcpSignalExit();
     console.log('PASS corvid connect E2E');
   } finally {
     fs.rmSync(isolatedDataDir, { recursive: true, force: true });

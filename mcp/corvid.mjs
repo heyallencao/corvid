@@ -32,8 +32,10 @@ function cancelMcpWork() {
 }
 process.stdin.once('end',cancelMcpWork);
 process.stdin.once('close',cancelMcpWork);
-process.once('SIGTERM',cancelMcpWork);
-process.once('SIGINT',cancelMcpWork);
+// 信号路径在取消在途工作后必须退出：宿主与 doctor 探针都以 SIGTERM 收尾，
+// #437 曾因只取消不退出导致探针管道悬挂、E2E 挂起。退出码沿用惯例 143/130。
+process.once('SIGTERM',() => { cancelMcpWork(); process.exit(143); });
+process.once('SIGINT',() => { cancelMcpWork(); process.exit(130); });
 
 function asToolResult(value) {
   let encoded = JSON.stringify(value);
