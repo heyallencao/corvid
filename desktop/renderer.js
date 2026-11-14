@@ -1086,10 +1086,71 @@ async function renderAgentAccess(){
     }
   }catch(error){document.querySelector('#agent-access-error').textContent=extensionMessages.t('cannotReadAuthorizedClients',{message:userFacingAgentError(error)});}
 }
+// 外部 Agent 自动接入（#438）：设置分区内的接入状态列表 + 总开关。
+// 已接入→断开；检测到未接入（含上次失败）→接入/重试；未检测到→只展示。
+function agentAutoConnectErrorText(error){
+  const message=String(error?.message||error||'');
+  if(/CORVID_AUTO_CONNECT_CONFLICT|非 Corvid 管理的/.test(message))return extensionMessages.t('agentAutoConnectConflictError');
+  if(/CORVID_AUTO_CONNECT_REVOKE_FAILED|撤销失败/.test(message))return extensionMessages.t('agentAutoConnectRevokeFailedError');
+  return userFacingAgentError(error);
+}
+function agentAutoConnectHostError(host){
+  if(!host.lastError)return '';
+  if(host.lastErrorCode==='CORVID_AUTO_CONNECT_CONFLICT')return extensionMessages.t('agentAutoConnectConflictError');
+  if(host.lastErrorCode==='CORVID_AUTO_CONNECT_REVOKE_FAILED')return extensionMessages.t('agentAutoConnectRevokeFailedError');
+  return userFacingAgentError({message:host.lastError});
+}
+async function renderAgentAutoConnect(){
+  const list=document.querySelector('#agent-auto-connect-list'),toggle=document.querySelector('#agent-auto-connect-toggle');
+  let status;
+  try{status=await api.invoke('agentAutoConnectStatus');}
+  catch(error){list.replaceChildren();toggle.disabled=false;document.querySelector('#agent-auto-connect-error').textContent=extensionMessages.t('agentAutoConnectStatusError',{message:agentAutoConnectErrorText(error)});return;}
+  document.querySelector('#agent-auto-connect-error').textContent='';
+  toggle.checked=status.enabled;
+  list.replaceChildren();
+  for(const host of status.hosts){
+    const row=document.createElement('article');row.className='agent-client-row';row.dataset.host=host.host;
+    const summary=document.createElement('div');summary.className='agent-client-summary';
+    const name=document.createElement('strong');name.textContent=host.label;summary.append(name);
+    const statusLine=document.createElement('span');
+    if(host.connected)statusLine.textContent=extensionMessages.t(host.connectedAt?'agentAutoConnectConnectedAt':'agentAutoConnectConnected',{date:extensionMessages.formatDate(host.connectedAt)});
+    else if(host.detected)statusLine.textContent=extensionMessages.t(host.lastError?'agentAutoConnectFailed':'agentAutoConnectDetected');
+    else statusLine.textContent=extensionMessages.t('agentAutoConnectNotDetected');
+    summary.append(statusLine);
+    if(host.lastError){const hostError=document.createElement('span');hostError.className='agent-auto-connect-host-error';hostError.textContent=agentAutoConnectHostError(host);summary.append(hostError);}
+    row.append(summary);
+    let action=null;
+    if(host.connected){
+      action=button(extensionMessages.t('agentAutoConnectDisconnectAction'),async()=>{
+        if(!window.confirm(extensionMessages.t('agentAutoConnectDisconnectConfirm',{name:host.label})))return;
+        action.disabled=true;
+        try{await api.invoke('agentAutoConnectDisconnect',{host:host.host});await renderAgentAutoConnect();}
+        catch(error){action.disabled=false;document.querySelector('#agent-auto-connect-error').textContent=agentAutoConnectErrorText(error);}
+      });
+      action.setAttribute('aria-label',extensionMessages.t('agentAutoConnectDisconnectLabel',{name:host.label}));
+    }else if(host.detected){
+      action=button(extensionMessages.t(host.lastError?'agentAutoConnectRetryAction':'agentAutoConnectConnectAction'),async()=>{
+        action.disabled=true;
+        try{await api.invoke('agentAutoConnectConnect',{host:host.host});await renderAgentAutoConnect();}
+        catch(error){action.disabled=false;document.querySelector('#agent-auto-connect-error').textContent=agentAutoConnectErrorText(error);}
+      });
+      action.setAttribute('aria-label',extensionMessages.t(host.lastError?'agentAutoConnectRetryLabel':'agentAutoConnectConnectLabel',{name:host.label}));
+    }
+    row.append(action||document.createElement('span'));
+    list.append(row);
+  }
+}
+document.querySelector('#agent-auto-connect-toggle').onchange=async event=>{
+  const toggle=event.currentTarget;
+  toggle.disabled=true;
+  try{await api.invoke('agentAutoConnectSetEnabled',{enabled:toggle.checked});document.querySelector('#agent-auto-connect-error').textContent='';}
+  catch(error){toggle.checked=!toggle.checked;document.querySelector('#agent-auto-connect-error').textContent=agentAutoConnectErrorText(error);}
+  toggle.disabled=false;
+};
 function collectSettingsDraft(){return {searchTemplate:document.querySelector('#search-template').value,startupBehavior:document.querySelector('#startup-behavior').value,newTabBehavior:document.querySelector('#new-tab-behavior').value,downloadDirectory:document.querySelector('#download-directory').value,askWhereToSave:document.querySelector('#ask-where-to-save').checked};}
 function applySettingsDraft(draft){const preset=document.querySelector('#search-preset');const known=[...preset.options].some(option=>option.value===draft.searchTemplate);preset.value=known?draft.searchTemplate:'custom';document.querySelector('#search-template').value=draft.searchTemplate;document.querySelector('#startup-behavior').value=draft.startupBehavior;document.querySelector('#new-tab-behavior').value=draft.newTabBehavior;document.querySelector('#download-directory').value=draft.downloadDirectory;document.querySelector('#ask-where-to-save').checked=draft.askWhereToSave;}
 function settingsDraftIsDirty(){return Boolean(settingsBaseline&&JSON.stringify(collectSettingsDraft())!==JSON.stringify(settingsBaseline));}
-async function showSettings({draft=null,targetId='settings-general',focusSelector=null}={}){settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});document.querySelector('#theme-preference').value=settings.themePreference||'system';const preferences=settings.browserPreferences||{};settingsBaseline={searchTemplate:settings.searchTemplate,startupBehavior:preferences.startupBehavior||'restore',newTabBehavior:preferences.newTabBehavior||'home',downloadDirectory:preferences.downloadDirectory||'',askWhereToSave:preferences.askWhereToSave!==false};applySettingsDraft(draft||settingsBaseline);for(const button of document.querySelectorAll('[data-settings-target]'))button.removeAttribute('aria-current');const selected=[...document.querySelectorAll('[data-settings-target]')].find(button=>button.dataset.settingsTarget===targetId)||document.querySelector('#settings-nav-general');selected.setAttribute('aria-current','location');for(const section of document.querySelectorAll('.settings-section'))section.hidden=section.id!==selected.dataset.settingsTarget;document.querySelector('#settings-content').scrollTop=0;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();renderSettingsCurrentSite();await openShellDialog('#settings',focusSelector);}
+async function showSettings({draft=null,targetId='settings-general',focusSelector=null}={}){settingsProfileId=state.activeProfileId;const settings=await api.invoke('settings',{profileId:settingsProfileId});document.querySelector('#theme-preference').value=settings.themePreference||'system';const preferences=settings.browserPreferences||{};settingsBaseline={searchTemplate:settings.searchTemplate,startupBehavior:preferences.startupBehavior||'restore',newTabBehavior:preferences.newTabBehavior||'home',downloadDirectory:preferences.downloadDirectory||'',askWhereToSave:preferences.askWhereToSave!==false};applySettingsDraft(draft||settingsBaseline);for(const button of document.querySelectorAll('[data-settings-target]'))button.removeAttribute('aria-current');const selected=[...document.querySelectorAll('[data-settings-target]')].find(button=>button.dataset.settingsTarget===targetId)||document.querySelector('#settings-nav-general');selected.setAttribute('aria-current','location');for(const section of document.querySelectorAll('.settings-section'))section.hidden=section.id!==selected.dataset.settingsTarget;document.querySelector('#settings-content').scrollTop=0;document.querySelector('#settings-error').textContent='';await renderProfileExtensions();renderSettingsCurrentSite();await renderAgentAutoConnect();await openShellDialog('#settings',focusSelector);}
 document.querySelector('#show-settings').onclick=()=>void showSettings();
 function renderSettingsCurrentSite(){
   const tab=activeTab();let origin='';
@@ -1104,6 +1165,7 @@ for(const item of document.querySelectorAll('[data-settings-target]'))item.oncli
   const section=document.getElementById(item.dataset.settingsTarget);
   for(const panel of document.querySelectorAll('.settings-section'))panel.hidden=panel!==section;
   document.querySelector('#settings-content').scrollTop=0;
+  if(item.dataset.settingsTarget==='settings-agent')void renderAgentAutoConnect();
   section.focus();
 };
 document.querySelector('#theme-preference').onchange=async event=>{

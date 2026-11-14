@@ -731,6 +731,12 @@ dialog { width: min(500px, calc(100vw - 36px)); padding: 22px; border: 1px solid
 .agent-client-row button { min-height: 30px; padding: 5px 9px; }
 .agent-client-row[data-revoked="true"] { opacity: .65; }
 .agent-client-empty { margin: 0; color: var(--text-muted); font-size: 12px; }
+/* #438 外部 Agent 自动接入：设置分区状态列表复用授权客户端行样式。 */
+#agent-auto-connect-card .settings-check-label { margin: 10px 0 0; }
+#agent-auto-connect-list { display: grid; gap: 8px; margin: 10px 0 0; }
+#agent-auto-connect-list:empty { display: none; }
+.agent-auto-connect-host-error { color: var(--danger); }
+#agent-auto-connect-error { display: block; margin: 8px 0 0; color: var(--danger); font-size: 12px; }
 #pi-model-settings form { align-items: stretch; }
 #pi-model-settings p, #pi-model-settings h3 { flex: 1 1 100%; margin: 0; }
 #pi-model-settings h3 { margin-top: 8px; font-size: 13px; }

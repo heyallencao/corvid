@@ -136,6 +136,7 @@
           <header class="settings-section-header"><div><span class="settings-scope" data-i18n="appScope">应用级</span><h3 id="settings-agent-title" data-i18n="settingsAgent">Agent 与连接</h3></div><p data-i18n="settingsAgentDescription">模型连接由 Corvid Agent 管理，外部客户端授权在此查看。</p></header>
           <section class="settings-import"><h4 data-i18n="modelConnections">模型连接</h4><p data-i18n="modelConnectionsDescription">打开 Corvid Agent 工作区管理模型和连接状态。</p><button type="button" id="open-agent-models-from-settings" data-i18n="manageModelConnections">管理模型连接</button></section>
           <section class="settings-import"><h4 data-i18n="externalAgentAccess">外部 Agent 访问</h4><p data-i18n="externalAgentAccessDescription">为外部 Agent 或 Browser MCP 客户端单独授权空间。访问密钥仅在创建时显示。</p><button type="button" id="open-agent-access" data-i18n="manageAgentAccess">管理 Agent 访问</button></section>
+          <section class="settings-import" id="agent-auto-connect-card"><h4 data-i18n="agentAutoConnect">外部 Agent 自动接入</h4><p data-i18n="agentAutoConnectDescription">检测到本机正在使用的外部 Agent（Claude Code、Codex、dsh）时，Corvid 会自动写入接入配置与使用说明，并签发仅能访问其自建空间的密钥；访问你的空间仍需逐次确认。</p><label class="settings-check-label"><input id="agent-auto-connect-toggle" type="checkbox"><span data-i18n="agentAutoConnectToggle">自动接入检测到的外部 Agent</span></label><div id="agent-auto-connect-list" role="group" aria-label="外部 Agent 接入状态" data-i18n-aria-label="agentAutoConnectListLabel" aria-live="polite"></div><span id="agent-auto-connect-error" role="alert"></span></section>
         </section>
       </div>
     </div>
