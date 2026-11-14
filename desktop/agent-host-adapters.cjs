@@ -402,10 +402,21 @@ function detectHosts(home = homedir()) {
   return HOST_IDS.filter(host => markers[host].some(marker => existsSync(marker)));
 }
 
+// 托管条目形状判定（自动接入冲突策略用）：现有 corvid-browser 条目是我们写入的
+// 形状（含用户只轮转过 token 的情形）即可安全重写；否则视为用户手改/外来条目，
+// 只能由 corvid connect 显式处理，绝不自动覆盖。
+function isManagedEntryShape(host, entry) {
+  if (!entry) return false;
+  if (host === 'claude-code' || host === 'cursor') return isManagedJsonEntry(entry);
+  if (host === 'codex') return isManagedTomlEntry(entry);
+  if (host === 'dsh') return isManagedItem(entry);
+  return false;
+}
+
 module.exports = {
   SERVER_NAME, SERVER_ENTRY, SKILL_SOURCE, TOKEN_ENV_KEY, BROWSER_SCRIPT_ENV_KEY,
   HOST_IDS, HOST_LABELS, hostLabel, resolveUnpackedRoot,
   Aborted, ConflictingEntry,
   createHostAdapter, skillTargetDir, skillSourceText, installSkill, removeSkill,
-  detectHosts, CONNECTIONS_FILE, connectionsPath, readReceipts, writeReceipts,
+  detectHosts, isManagedEntryShape, CONNECTIONS_FILE, connectionsPath, readReceipts, writeReceipts,
 };

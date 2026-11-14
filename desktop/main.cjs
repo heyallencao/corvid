@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { safePageUrl, createPageContextMenuTemplate } = require('./page-context-menu.cjs');
 const { createAgentClientsStore } = require('./agent-clients.cjs');
+const agentAutoConnect = require('./agent-auto-connect.cjs');
 const { permissionDisplayName } = require('./permission-labels.cjs');
 const { isFullscreenShortcut } = require('./window-shortcuts.cjs');
 const { clearPageFullscreen, markPageFullscreen, snapshotFullscreenRestoreState } = require('./page-fullscreen.cjs');
@@ -1157,6 +1158,16 @@ function installShortcuts(contents, getWindowRecord = activeRecord) {
     if(action){event.preventDefault();Promise.resolve(action()).catch(error=>console.error('Shortcut failed:',error));}
   });
 }
+// 自动接入服务上下文：host 配置的 home 用 os.homedir()（测试沙箱靠 HOME 环境变量），
+// 凭据签发/撤销直连内部 store，不经 HTTP。
+function autoConnectContext() {
+  return {
+    home: require('node:os').homedir(),
+    dataDir,
+    createGrant: createAgentClientGrant,
+    revokeClient: clientId => agentClients.revoke(clientId),
+  };
+}
 async function dispatch(method, args = {}, fromApi = false, requestContext = {}) {
   const {id:target} = args;
   if(fromApi && ['closeTab','navigate','back','forward','reload','action','getDialog','handleDialog','armChooser','getChooser','chooseFiles','cancelChooser','getPopupEvents','armDownload','getAgentDownload','cancelAgentDownload','deleteAgentDownload'].includes(method) && args.pageLabel!==undefined && findTab(target).label!==args.pageLabel)throw new Error('Page label is stale or no longer manages this tab');
@@ -1180,6 +1191,10 @@ async function dispatch(method, args = {}, fromApi = false, requestContext = {})
       return {status:outcome.status,reason:outcome.reason};
     }
     case 'listAgentClients': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return {clients:agentClients.list()}; }
+    case 'agentAutoConnectStatus': { if(fromApi)throw new Error('外部 Agent 自动接入只能在 Corvid 界面管理');return agentAutoConnect.status(autoConnectContext()); }
+    case 'agentAutoConnectSetEnabled': { if(fromApi)throw new Error('外部 Agent 自动接入只能在 Corvid 界面管理');return agentAutoConnect.setEnabled(autoConnectContext(),args.enabled===true); }
+    case 'agentAutoConnectConnect': { if(fromApi)throw new Error('外部 Agent 自动接入只能在 Corvid 界面管理');return agentAutoConnect.connectNow(autoConnectContext(),String(args?.host||'')); }
+    case 'agentAutoConnectDisconnect': { if(fromApi)throw new Error('外部 Agent 自动接入只能在 Corvid 界面管理');return agentAutoConnect.disconnectNow(autoConnectContext(),String(args?.host||'')); }
     case 'createAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');return createAgentClientGrant(args); }
     case 'revokeAgentClient': { if(fromApi)throw new Error('授权客户端只能在 Corvid 界面管理');const client=agentClients.revoke(args.id);if(!client)throw Object.assign(new Error('找不到此授权客户端'),{code:'CORVID_NOT_FOUND'});cancelAgentApprovals({clientId:client.id,reason:'authorization_revoked'});await pageDebugger.cancelChoosersForClient(client.id).catch(error=>console.error('Corvid could not cancel armed file choosers after revoke:',error.message));return {revoked:true,client}; }
     case 'copyTextToClipboard': { if(fromApi)throw new Error('剪贴板操作只能从 Corvid 界面发起');if(typeof args.text!=='string'||args.text.length>4096)throw Object.assign(new Error('剪贴板文本无效'),{code:'CORVID_INVALID_ARGUMENT'});clipboard.writeText(args.text);return {copied:true}; }
@@ -2129,6 +2144,15 @@ app.whenReady().then(async () => {
   await startServer();
   startupProgress('startup-complete');
   console.log(`Corvid control: ${connectionPath}`);
+  // 外部 Agent 自动接入（#438）：启动收尾后检测并接入已安装的 host。逐 host
+  // 失败隔离在服务内部完成；此处任何异常都不得阻断启动完成路径。
+  // 测试环境默认关闭（避免既有桌面 E2E 触碰真实 home）；自动接入的专项 E2E 用
+  // CORVID_AGENT_AUTOCONNECT_TEST=1 显式开启，配合沙箱 HOME。
+  const autoConnectTestEnabled = process.env.CORVID_AGENT_AUTOCONNECT_TEST === '1';
+  if (process.env.CORVID_TEST_MODE !== '1' || autoConnectTestEnabled) agentAutoConnect.runStartup(autoConnectContext()).then(result => {
+    const results = result?.results || {};
+    if (Object.keys(results).length) console.log(`Corvid agent auto-connect: ${JSON.stringify(results)}`);
+  }).catch(error => console.error('Corvid agent auto-connect failed:', error.message));
 }).catch(error => {console.error(error);if(process.env.CORVID_TEST_MODE!=='1') dialog.showErrorBox(mainMessages.t('appStartupFailedTitle'),error.message);app.exit(1);});
 app.on('before-quit',() => {quitting=true; persist(); saveWindowState(); if(server) server.close(); try {const current=JSON.parse(fs.readFileSync(connectionPath,'utf8'));if(current.token===token) fs.unlinkSync(connectionPath);} catch {}});
 app.on('window-all-closed',() => app.quit());
