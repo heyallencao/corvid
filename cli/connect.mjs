@@ -614,6 +614,14 @@ async function spawnMcpProbe(token) {
     return { ok: false, detail: `MCP 启动失败：${error.message}${stderr ? `；stderr: ${stderr.trim().split('\n')[0]}` : ''}` };
   } finally {
     child.kill();
+    // 兜底（#437）：SIGKILL 升级防子进程滞留；销毁父侧管道句柄，即使子进程
+    // 因回归吞掉信号，CLI 事件循环也能排空退出，不悬挂 E2E。
+    const escalate = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 2000);
+    escalate.unref();
+    child.once('exit', () => clearTimeout(escalate));
+    child.stdin.destroy();
+    child.stdout.destroy();
+    child.stderr.destroy();
   }
 }
 
