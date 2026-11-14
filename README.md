@@ -42,7 +42,9 @@ node cli/corvid.mjs run < task.mjs
 
 脚本可用的绑定、页面能力、已知限制和错误语义见 [SDK 说明](sdk/README.md)。Agent 通过本地认证接口操作桌面，不暴露浏览器调试端口；脚本以运行它的本地用户权限执行。
 
-外部 Agent（Claude Code、Codex、Cursor、dsh）可以用一条命令接入 Corvid 的 Browser MCP server，并获得教 Agent 如何使用的 `corvid-browser` skill：
+外部 Agent（Claude Code、Codex、Cursor、dsh）可以通过 Corvid 的 Browser MCP server 操作 Corvid，并获得教 Agent 如何使用的 `corvid-browser` skill。桌面版默认自动接入：安装 Corvid 后启动时，检测到本机正在使用 Claude Code、Codex 或 dsh 会自动写入接入配置并安装 skill，同时自动签发一个 openRoomGrant 授权客户端（初始授权范围为空，只能访问其自建的 Room；访问用户已有空间仍需在 Corvid 桌面逐次批准）。设置 →「Agent 与连接」→「外部 Agent 自动接入」可查看各 host 接入状态、关闭自动接入总开关、或对单个 host 断开/重接。Corvid 更新后启动会用配置中的原有 token 重写接入条目以指向新版本，不签发新凭据；检测到配置里已有非 Corvid 管理的同名条目时不自动覆盖。合同细节见[外部 Agent 集成说明](docs/architecture/external-agent-integration.md)。
+
+也可以用一条命令手动接入（Cursor、脚本化或需要指定 token 的场景）：
 
 ```bash
 node cli/corvid.mjs connect codex --token <在 Corvid 设置中签发的授权客户端 token>

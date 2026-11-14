@@ -1,6 +1,20 @@
 # 外部 Agent 集成（connect / Browser MCP / skill）
 
-状态：P0 已实现（[执行计划](../execution/external-agent-integration-plan.md) P0 节）。本文是对外合同：`corvid connect/disconnect/doctor` 的写入位置、撤销语义、Browser MCP 工具面与 `corvid-browser` skill 分发。
+状态：P0 已实现（[执行计划](../execution/external-agent-integration-plan.md) P0 节）；桌面自动接入见下文「自动接入」（Issue #438）。本文是对外合同：桌面自动接入与 `corvid connect/disconnect/doctor` 的写入位置、撤销语义、Browser MCP 工具面与 `corvid-browser` skill 分发。
+
+## 自动接入（Corvid 桌面默认行为）
+
+安装 Corvid 桌面后，应用启动时检测本机已在使用的外部 Agent host（marker：`~/.claude.json` 或 `~/.claude`、`~/.codex`、`~/.dsh`；cursor 暂不自动接入，待运行态联测后放开），对检测到且尚未接入的 host 执行与 `corvid connect <host>`（无 `--token`）同一语义的接线：写入托管 MCP 注册条目、安装 skill、经桌面签发 **openRoomGrant** 授权客户端（初始授权范围为空，注册 ≠ 授权），收据记入同一份 `agent-connections.json`。行为合同：
+
+- **总开关**：数据目录 `agent-auto-connect.json`（0600），`enabled` 默认 `true`；设置 →「Agent 与连接」→「外部 Agent 自动接入」可关闭。关闭只停止接入新检测的 host，已建立的接入不受影响。
+- **注册 ≠ 授权**：自动签发客户端与 connect 签发语义一致（见下文 openRoomGrant 授权合同），访问用户空间仍走原生审批；自动接入相关 IPC 一律拒绝 API 调用，授权客户端仅可在 Corvid 界面管理。
+- **冲突保护**：host 配置中已有非 Corvid 管理形状的 `corvid-browser` 条目（手工修改或外来工具写入）时，跳过该 host 并在设置中标记冲突（`CORVID_AUTO_CONNECT_CONFLICT`），绝不自动覆盖；可用 `corvid connect <host>` 在终端显式处理。
+- **逐 host 失败隔离**：单个 host 配置损坏或写入失败只标记该 host（设置中显示原因并提供「重试接入」），不影响应用启动与其他 host。
+- **启动自愈**：Corvid 更新/移动导致条目内 server 路径或 skill 内容过期时，启动用配置中的现有 token 重写条目与 skill，不轮换凭据。
+- **断开**：设置中断开与 `corvid disconnect <host>` 同语义（配置条目/skill/签发凭据三清；凭据撤销失败时保留收据并报 `CORVID_AUTO_CONNECT_REVOKE_FAILED`）。
+- **测试防护**：`CORVID_TEST_MODE=1` 下自动接入仅在显式 `CORVID_AGENT_AUTOCONNECT_TEST=1` 时运行；Electron 测试 launcher 统一沙箱 `HOME`（可用 `CORVID_TEST_HOME` 指定）。
+
+实现：`desktop/agent-auto-connect.cjs`（服务）与 `desktop/agent-host-adapters.cjs`（CLI 共用的 host 适配器/收据读写）。打包态：`mcp/`、`sdk/`、`cli/`、`skills/` 与 MCP 依赖图（@modelcontextprotocol、zod、smol-toml、yaml）随 `asarUnpack` 解包，写入 host 配置的 server 路径指向 `app.asar.unpacked`，host 侧普通 Node 可直接加载。
 
 ## corvid connect
 
@@ -22,7 +36,7 @@ corvid connect <host> [--token <token>] [--yes]
 | cursor | `~/.cursor/mcp.json` 的 `mcpServers["corvid-browser"]` | `~/.cursor/skills/corvid-browser/SKILL.md` |
 | dsh | `~/.dsh/profiles/desktop/cordis.patch.yml` 追加一条 `{insert: [...]}` patch，插入 `@deepseek-ai/dsh-mcp-client`（stdio，`serverName: corvid-browser`） | `~/.dsh/skills/corvid-browser/SKILL.md` |
 
-MCP 注册条目统一为：`command: node`、`args: [<仓库>/mcp/corvid.mjs]`、可选 `env.CORVID_AGENT_TOKEN`。
+MCP 注册条目统一为：`command: node`、`args: [<Corvid 资源目录>/mcp/corvid.mjs]`（开发仓库为仓库路径；打包态为 `app.asar.unpacked/mcp/corvid.mjs`）、可选 `env.CORVID_AGENT_TOKEN`。
 
 ### 编辑安全规则
 
@@ -77,6 +91,6 @@ server 名 `corvid-browser`（`mcp/corvid.mjs`，stdio）。工具分只读（`r
 
 ## 已知边界
 
-- dsh：写入与撤销已按 dsh 真实 boot 组合管线（`loadProfileDirectory` + `composeEntries`）离线验证（零告警）；但 dsh 桌面端完整启动加载 MCP 插件的运行态行为未在本机验证（mcp-client 插件不在 dsh 桌面默认组合内，需 patch 插入后随启动验证）。skill 发现路径 `~/.dsh/skills` 取自 dsh 源码 `skill-filesystem` 的 user-dsh root。
+- dsh：写入与撤销已按 dsh 真实 boot 组合管线（`loadProfileDirectory` + `composeEntries`）离线验证（零告警）；2026-11-14 运行态补验（Issue #438/#415 遗留补账）：沙箱 HOME 内克隆真实 `~/.dsh` 配置、经同一适配器 patch 插入后随 dsh 桌面真实启动，约 3 秒内观察到 `mcp/corvid.mjs` 子进程 spawn——启动加载链路已验证；host 内工具调用与鉴权语义仍未覆盖（需真实 dsh 会话驱动）。skill 发现路径 `~/.dsh/skills` 取自 dsh 源码 `skill-filesystem` 的 user-dsh root。
 - doctor 的 token 校验依赖控制服务在线；Corvid 未运行时只报告不可达，不判定 token 失效。
 - Windows 平台的 host 配置路径未验证（P0 仅在 macOS 实测）。
