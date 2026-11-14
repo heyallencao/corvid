@@ -34,7 +34,7 @@ async function launchApp({ home, dataDir }) {
 async function waitFor(predicate, { timeoutMs = 30000, step = 500, label }) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await delay(step);
   }
   throw new Error(`等待超时：${label}`);
@@ -108,6 +108,45 @@ async function waitFor(predicate, { timeoutMs = 30000, step = 500, label }) {
     assert.ok(fs.existsSync(dshConfig), 'dsh 配置已写入');
     assert.ok(fs.existsSync(path.join(adapters.skillTargetDir('dsh', home), 'SKILL.md')));
     console.log('PASS auto-connect: 开关重开后补接入');
+
+    // —— 第四段：设置分区 UI（状态列表/总开关/断开/一键重接） ——
+    app = await launchApp({ home, dataDir });
+    const shell = await app.firstWindow();
+    shell.on('dialog', dialog => { dialog.accept().catch(() => {}); });
+    await shell.locator('#library-trigger').click();
+    await shell.locator('#library-menu:not([hidden])').waitFor();
+    await shell.locator('#show-settings').click();
+    await waitFor(() => shell.locator('#settings').evaluate(dialog => dialog.open), { label: '设置打开' });
+    await shell.locator('#settings-nav-agent').click();
+    const rowFor = host => shell.locator(`#agent-auto-connect-list .agent-client-row[data-host="${host}"]`);
+    const rowButton = async host => await rowFor(host).locator('button').textContent();
+    const rowStatus = async host => await rowFor(host).locator('.agent-client-summary span').first().textContent();
+    await waitFor(async () => (await rowButton('dsh')) === '断开', { label: '设置分区展示接入状态' });
+    assert.equal(await shell.locator('#agent-auto-connect-toggle').isChecked(), true, '总开关默认开启');
+    for (const [host, label] of [['claude-code', 'Claude Code'], ['codex', 'Codex'], ['dsh', 'DeepSeek Harness (dsh)']]) {
+      assert.equal(await rowFor(host).locator('strong').textContent(), label, `${host} 行标签`);
+      assert.ok((await rowStatus(host)).startsWith('已接入'), `${host} 显示已接入`);
+    }
+    // 总开关：关闭写状态文件并回显，重开恢复。
+    await shell.locator('#agent-auto-connect-toggle').click();
+    await waitFor(() => JSON.parse(fs.readFileSync(statePath, 'utf8')).enabled === false, { label: '总开关关闭写入状态文件' });
+    assert.equal(await shell.locator('#agent-auto-connect-toggle').isChecked(), false);
+    await shell.locator('#agent-auto-connect-toggle').click();
+    await waitFor(() => JSON.parse(fs.readFileSync(statePath, 'utf8')).enabled === true, { label: '总开关重开写入状态文件' });
+    // 断开 dsh（确认框自动接受）：行转为「检测到，未接入」+ 接入按钮，自动签发客户端被撤销。
+    await rowFor('dsh').locator('button').click();
+    await waitFor(async () => (await rowButton('dsh')) === '接入', { label: 'dsh 断开后转为待接入' });
+    assert.equal(await rowStatus('dsh'), '检测到，未接入');
+    assert.equal(await adapters.createHostAdapter('dsh', home).inspect().then(info => info.registered), false, '断开移除 dsh 托管注册');
+    const clientsAfterDisconnect = JSON.parse(fs.readFileSync(path.join(dataDir, 'agent-clients.json'), 'utf8'));
+    assert.equal(clientsAfterDisconnect.clients.find(client => client.name === 'corvid-dsh').revoked, true, 'UI 断开撤销自动签发客户端');
+    // 一键重接：恢复配置、收据与已接入状态。
+    await rowFor('dsh').locator('button').click();
+    await waitFor(async () => (await rowButton('dsh')) === '断开', { label: 'dsh 一键重接' });
+    assert.ok(fs.existsSync(dshConfig), '重接恢复 dsh 配置');
+    assert.ok(adapters.readReceipts(dataDir)?.hosts?.dsh, '重接恢复收据');
+    await app.close();
+    console.log('PASS auto-connect: 设置分区 UI（状态/开关/断开/重接）');
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

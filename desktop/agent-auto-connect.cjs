@@ -63,6 +63,7 @@ async function status({ home, dataDir }) {
       connectedAt: receipt?.connectedAt || null,
       clientId: receipt?.clientId || null,
       lastError: record.error || null,
+      lastErrorCode: record.code || null,
       lastAttemptAt: record.at || null,
     };
   });
@@ -128,8 +129,9 @@ async function connectOneWithState(ctx, host) {
     await markHost(ctx.dataDir, host, { status: 'connected', at, error: null });
     return { ok: true, host, ...result };
   } catch (error) {
-    await markHost(ctx.dataDir, host, { status: 'failed', at, error: String(error.message || error) });
-    return { ok: false, host, error: String(error.message || error), code: error.code || null };
+    const message = String(error.message || error);
+    await markHost(ctx.dataDir, host, { status: 'failed', at, error: message, code: error.code || null });
+    return { ok: false, host, error: message, code: error.code || null };
   }
 }
 
