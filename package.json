@@ -58,9 +58,22 @@
       "cli/**/*",
       "mcp/**/*",
       "sdk/**/*",
+      "skills/**/*",
       "package.json",
       "!docs/**/*",
       "!tests/**/*"
+    ],
+    "asarUnpack": [
+      "mcp/**/*",
+      "sdk/**/*",
+      "cli/**/*",
+      "skills/**/*",
+      "desktop/data-directory.cjs",
+      "desktop/agent-browser-capabilities.cjs",
+      "node_modules/@modelcontextprotocol/**/*",
+      "node_modules/zod/**/*",
+      "node_modules/smol-toml/**/*",
+      "node_modules/yaml/**/*"
     ],
     "mac": {
       "target": [
